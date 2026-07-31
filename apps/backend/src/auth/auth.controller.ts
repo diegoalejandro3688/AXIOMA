@@ -42,16 +42,4 @@ export class AuthController {
   async logout(@Req() request: AuthenticatedRequest): Promise<void> {
     await this.authService.logout(request.sessionId);
   }
-
-  /**
-   * Parte síncrona de la eliminación coordinada (ver ADR-0004). El job que
-   * a los 30 días ejecuta el borrado definitivo pertenece a Privacy
-   * Foundation, no a este endpoint.
-   */
-  @Post('account/deletion')
-  @UseGuards(AuthGuard)
-  @HttpCode(202)
-  async requestDeletion(@Req() request: AuthenticatedRequest): Promise<void> {
-    await this.authService.requestAccountDeletion(request.accountId);
-  }
 }

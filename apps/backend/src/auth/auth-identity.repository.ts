@@ -42,4 +42,12 @@ export class AuthIdentityRepository {
   markUnlinked(id: string): Promise<AuthIdentity> {
     return this.prisma.authIdentity.update({ where: { id }, data: { unlinkedAt: new Date() } });
   }
+
+  /** Cierre definitivo: sustituye el email por un valor sin información personal. */
+  anonymizeEmail(id: string): Promise<AuthIdentity> {
+    return this.prisma.authIdentity.update({
+      where: { id },
+      data: { emailNormalized: `anonymized-${id}@deleted.invalid` },
+    });
+  }
 }

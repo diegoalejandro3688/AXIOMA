@@ -49,7 +49,25 @@ export class FirebaseIdentityProvider implements IdentityProvider {
     await this.auth.updateUser(providerSubject, { disabled: false });
   }
 
+  /**
+   * Resiliente a reintentos (ver ADR-0005): si deleteUser ya tuvo éxito en
+   * un intento previo pero el fallo ocurrió después (ej. al escribir en
+   * Postgres), Firebase responderá "usuario no encontrado" en el reintento
+   * -- eso se trata como éxito, no como error, para que el barrido pueda
+   * completar la anonimización sin quedar atascado para siempre.
+   */
   async deleteUser(providerSubject: string): Promise<void> {
-    await this.auth.deleteUser(providerSubject);
+    try {
+      await this.auth.deleteUser(providerSubject);
+    } catch (error: unknown) {
+      const code = (error as { code?: string } | undefined)?.code;
+      if (code === 'auth/user-not-found') {
+        this.logger.warn(
+          `deleteUser: ${providerSubject} ya no existe en Firebase (probable reintento tras fallo parcial) -- se trata como éxito`,
+        );
+        return;
+      }
+      throw error;
+    }
   }
 }

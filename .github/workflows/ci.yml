@@ -92,14 +92,15 @@ jobs:
         working-directory: apps/backend
         run: pnpm run build
 
-      - name: Start backend (AUTH_IDENTITY_PROVIDER=stub)
+      - name: Start backend for AUTH gate (AUTH_IDENTITY_PROVIDER=stub, puerto 3000)
         working-directory: apps/backend
         env:
           AUTH_IDENTITY_PROVIDER: stub
+          INTERNAL_OPS_KEY: ci-internal-ops-key
           PORT: 3000
-        run: nohup node dist/main.js > backend.log 2>&1 &
+        run: nohup node dist/main.js > backend-auth.log 2>&1 &
 
-      - name: Wait for backend to be ready
+      - name: Wait for AUTH backend to be ready
         run: |
           for i in $(seq 1 20); do
             if curl -sf http://localhost:3000/health/live > /dev/null; then exit 0; fi
@@ -108,11 +109,47 @@ jobs:
           echo "El backend no respondió a tiempo"
           exit 1
 
-      - name: Run AUTH gate (creation, session ownership, deletion, rate limiting)
+      - name: Run AUTH gate (creation, session ownership, rate limiting)
         working-directory: apps/backend
+        env:
+          DATABASE_URL: postgresql://axioma:axioma_ci_password@localhost:5432/axioma_ci?schema=public
         run: npx tsx scripts/verify-auth-gate.ts http://localhost:3000
 
-      - name: Show backend log on failure
+      # Puerto e instancia nuevos: el límite de /auth/session (10/60s) es por
+      # proceso (contador en memoria del ThrottlerModule) -- reusar el mismo
+      # servidor haría que el gate de PRIVACY heredara el límite ya agotado
+      # por el propio test de rate limiting del gate de AUTH.
+      - name: Start backend for PRIVACY gate (AUTH_IDENTITY_PROVIDER=stub, puerto 3001)
+        working-directory: apps/backend
+        env:
+          AUTH_IDENTITY_PROVIDER: stub
+          INTERNAL_OPS_KEY: ci-internal-ops-key
+          PORT: 3001
+        run: nohup node dist/main.js > backend-privacy.log 2>&1 &
+
+      - name: Wait for PRIVACY backend to be ready
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3001/health/live > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "El backend no respondió a tiempo"
+          exit 1
+
+      - name: Run PRIVACY gate (deletion, recovery via CLI, sweeps, session cleanup)
+        working-directory: apps/backend
+        env:
+          # DATABASE_URL y AUTH_IDENTITY_PROVIDER son necesarias aquí porque el
+          # script invoca src/cli/recover-account.ts como subproceso (hereda
+          # process.env) -- no solo hace requests HTTP al backend en :3001.
+          DATABASE_URL: postgresql://axioma:axioma_ci_password@localhost:5432/axioma_ci?schema=public
+          AUTH_IDENTITY_PROVIDER: stub
+          INTERNAL_OPS_KEY: ci-internal-ops-key
+        run: npx tsx scripts/verify-privacy-gate.ts http://localhost:3001
+
+      - name: Show backend logs on failure
         if: failure()
         working-directory: apps/backend
-        run: cat backend.log || true
+        run: |
+          echo "--- backend-auth.log ---"; cat backend-auth.log || true
+          echo "--- backend-privacy.log ---"; cat backend-privacy.log || true

@@ -47,4 +47,12 @@ export class AccountRepository {
       data: { status: 'CLOSED', closedAt: new Date() },
     });
   }
+
+  /** Recuperación dentro del plazo: vuelve a ACTIVE/PENDING y limpia la marca de eliminación. */
+  restoreFromDeletion(id: string, status: 'ACTIVE' | 'PENDING'): Promise<Account> {
+    return this.prisma.account.update({
+      where: { id },
+      data: { status, deletionRequestedAt: null },
+    });
+  }
 }

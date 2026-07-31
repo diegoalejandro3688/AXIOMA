@@ -30,4 +30,9 @@ export class AuthSessionRepository {
       data: { revokedAt: new Date() },
     });
   }
+
+  /** Barrido de datos temporales: elimina sesiones ya vencidas (no son datos valiosos, solo de seguridad). */
+  deleteExpired(): Promise<{ count: number }> {
+    return this.prisma.authSession.deleteMany({ where: { expiresAt: { lt: new Date() } } });
+  }
 }

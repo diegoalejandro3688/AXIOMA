@@ -116,28 +116,9 @@ async function main() {
   check('sesión previa inválida tras incrementar sessionVersion', rAfterBump.status === 401);
   check('(dato) sessionVersion antes', Number(before.rows[0].session_version) >= 1);
 
-  console.log('--- 12. Eliminación coordinada: revoca TODAS las sesiones y deshabilita la identidad ---');
-  const uidD = `uid-d-${Date.now()}`;
-  const emailD = `d-${Date.now()}@example.com`;
-  const tokenD = token({ providerSubject: uidD, email: emailD, emailVerified: true });
-  const rD = await post('/auth/session', { idToken: tokenD });
-  const accountD = rD.body?.accountId;
-  const sessionD = rD.body?.sessionId;
-  const rDeletion = await post(
-    '/auth/account/deletion',
-    {},
-    { authorization: `Bearer ${tokenD}`, 'x-session-id': sessionD },
-  );
-  check('deletion status 202', rDeletion.status === 202);
-  const statusRow = await pg.query('SELECT status FROM account WHERE id = $1', [accountD]);
-  check('status DELETION_PENDING', statusRow.rows[0]?.status === 'DELETION_PENDING');
-  const rAfterDeletion = await get('/auth/me', { authorization: `Bearer ${tokenD}`, 'x-session-id': sessionD });
-  check('sesión previa ya no sirve (sessionVersion incrementada)', rAfterDeletion.status === 401);
-  const rNewSessionAfterDisable = await post('/auth/session', { idToken: tokenD });
-  check(
-    'identidad deshabilitada en el proveedor -> ni siquiera puede crear sesión nueva',
-    rNewSessionAfterDisable.status === 401,
-  );
+  console.log('--- 12. Eliminación coordinada: movida a Privacy Foundation (Paso 5) ---');
+  console.log('   Ver scripts/verify-privacy-gate.ts -- POST /privacy/account-deletion reemplaza');
+  console.log('   a POST /auth/account/deletion (retirado). Cobertura completa ahí.');
 
   console.log('--- 13. Rate limiting en /auth/session (límite 10/60s) ---');
   let sawTooManyRequests = false;

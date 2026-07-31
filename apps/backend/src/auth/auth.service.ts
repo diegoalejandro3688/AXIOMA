@@ -1,4 +1,10 @@
-import { ConflictException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AccountRepository } from './account.repository';
 import { AuthIdentityRepository } from './auth-identity.repository';
 import { AuthSessionRepository } from './auth-session.repository';
@@ -121,6 +127,15 @@ export class AuthService {
    * vinculadas en el proveedor (no solo la usada para pedir la eliminación).
    */
   async requestAccountDeletion(accountId: string): Promise<void> {
+    const account = await this.accountRepo.findById(accountId);
+    if (!account) throw new NotFoundException();
+    if (account.status === 'CLOSED') {
+      throw new ConflictException('La cuenta ya fue cerrada definitivamente.');
+    }
+    if (account.status === 'DELETION_PENDING') {
+      throw new ConflictException('Ya existe una solicitud de eliminación en curso para esta cuenta.');
+    }
+
     await this.accountRepo.markDeletionPending(accountId);
     await this.accountRepo.incrementSessionVersion(accountId);
     await this.authSessionRepo.revokeAllByAccountId(accountId);
@@ -131,5 +146,56 @@ export class AuthService {
         await this.identityProvider.disableUser(identity.providerSubject);
       }
     }
+  }
+
+  /**
+   * Mecánica de reactivación (llamada por PrivacyService tras validar
+   * elegibilidad -- este método no conoce PrivacyRequest ni el plazo de 30
+   * días, solo ejecuta la reversión sobre AUTH). Reactiva todas las
+   * identidades vinculadas, restaura el estado según verificación de email,
+   * limpia la marca de eliminación, e incrementa sessionVersion otra vez
+   * (las sesiones previas a la solicitud de eliminación siguen revocadas;
+   * esto solo garantiza que ninguna sesión intermedia quede utilizable).
+   */
+  async reactivateAccount(accountId: string): Promise<void> {
+    const account = await this.accountRepo.findById(accountId);
+    if (!account) throw new NotFoundException();
+    if (account.status !== 'DELETION_PENDING') {
+      throw new ConflictException('No hay una eliminación pendiente para esta cuenta.');
+    }
+
+    const identities = await this.authIdentityRepo.findAllByAccountId(accountId);
+    for (const identity of identities) {
+      if (!identity.unlinkedAt) {
+        await this.identityProvider.enableUser(identity.providerSubject);
+      }
+    }
+
+    const hasVerifiedEmail = identities.some((identity) => identity.emailVerifiedAt !== null);
+    await this.accountRepo.restoreFromDeletion(accountId, hasVerifiedEmail ? 'ACTIVE' : 'PENDING');
+    await this.accountRepo.incrementSessionVersion(accountId);
+  }
+
+  /**
+   * Cierre definitivo (llamado por PrivacyService desde el barrido, cuando
+   * el plazo de 30 días ya venció). Irreversible: a diferencia de
+   * disableUser, deleteUser no tiene vuelta atrás.
+   */
+  async finalizeAccountClosure(accountId: string): Promise<void> {
+    const identities = await this.authIdentityRepo.findAllByAccountId(accountId);
+    for (const identity of identities) {
+      if (!identity.unlinkedAt) {
+        await this.identityProvider.deleteUser(identity.providerSubject);
+        await this.authIdentityRepo.markUnlinked(identity.id);
+        await this.authIdentityRepo.anonymizeEmail(identity.id);
+      }
+    }
+    await this.accountRepo.markClosed(accountId);
+  }
+
+  /** Barrido de datos temporales: sesiones ya vencidas no tienen valor, se eliminan. */
+  async cleanupExpiredSessions(): Promise<number> {
+    const result = await this.authSessionRepo.deleteExpired();
+    return result.count;
   }
 }
