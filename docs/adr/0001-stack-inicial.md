@@ -24,7 +24,7 @@ decidirlos explícitamente (regla de las tres preguntas del usuario, 2026-07-29)
   preexistente en el directorio de usuario (que no debe usarse para código de producto).
 
 ### Cliente móvil
-- **React Native + Expo** (SDK 57), managed workflow.
+- **React Native + Expo** (SDK 54 — ver adenda 2026-07-30 más abajo; originalmente SDK 57), managed workflow.
 - **Expo Router** como sistema principal de rutas (usa React Navigation internamente).
 - **expo-sqlite** + capa de repositorio propia para persistencia local/offline (no
   WatermelonDB por ahora — reevaluar si la complejidad de sincronización crece).
@@ -104,3 +104,36 @@ decidirlos explícitamente (regla de las tres preguntas del usuario, 2026-07-29)
 - `apps/mobile` empaqueta correctamente vía `expo export --platform android`
   (1226 módulos, sin errores) y resuelve `@axioma/contracts` como dependencia de
   workspace.
+
+## Adenda 2026-07-30 — downgrade temporal a Expo SDK 54
+
+**Contexto**: durante la validación en dispositivo físico del spike de renderizado
+matemático (Fase 0, Paso 2), Expo Go (Play Store) rechazó el proyecto en SDK 57 con
+"Project is incompatible with this version of Expo Go". Investigación: desde SDK 56,
+Expo cambió su modelo de distribución de Expo Go debido a demoras de revisión en las
+tiendas de apps — Expo Go para **SDK 54** es la versión que Expo garantiza mantener
+disponible en Play Store; las builds de Expo Go para SDK 56/57 no tienen esa garantía
+de disponibilidad inmediata en la tienda.
+
+**Decisión**: bajar temporalmente `apps/mobile` a **Expo SDK 54** para poder completar
+la validación en dispositivo real usando Expo Go sin fricción. La migración se hizo con
+las herramientas oficiales de Expo (`npx expo install expo@^54.0.0` seguido de
+`npx expo install --fix` para realinear todas las dependencias relacionadas —
+`react-native` 0.81.5, `react` 19.1.0, `expo-router` 6.0.24, `react-native-svg`
+15.12.1, `react-native-webview` 13.15.0, `expo-constants`/`expo-linking`/
+`expo-status-bar`/`react-native-safe-area-context`/`react-native-screens` en sus
+versiones correspondientes a SDK 54), no editando manualmente solo el número de
+versión principal.
+
+**Validación tras el downgrade**: `npx expo-doctor` → 18/18 checks pasan.
+`pnpm -r run typecheck`, `pnpm -r run lint`, build de `contracts` y `backend`, y
+`expo export --platform android` (mobile) corren todos sin errores. Backend
+levantado localmente sigue respondiendo `GET /health` con `200 OK`.
+
+**Esto es temporal, no una reversión de la decisión de stack**: SDK 54 se adopta
+únicamente por compatibilidad práctica con Expo Go en Play Store durante esta etapa
+de validación en dispositivo. La actualización a una SDK posterior (57 u otra más
+nueva en su momento) se reevaluará cuando el proyecto migre de Expo Go a
+**development builds** (`expo run:android` / EAS Build) — que es de todas formas la
+ruta que Expo recomienda para un proyecto real, no solo para evitar este problema de
+versión — o cuando termine la transición actual de Expo Go en las tiendas de apps.
