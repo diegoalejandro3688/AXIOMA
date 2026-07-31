@@ -9,6 +9,7 @@ import {
 } from '@axioma/contracts';
 import { AuthService } from './auth.service';
 import { AuthGuard, type AuthenticatedRequest } from './auth.guard';
+import { parseRequestBody } from '../platform/validation/parse-request-body';
 
 @Controller('auth')
 export class AuthController {
@@ -22,7 +23,7 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(200)
   async createSession(@Body() body: unknown): Promise<CreateSessionResponse> {
-    const { idToken } = createSessionRequestSchema.parse(body);
+    const { idToken } = parseRequestBody(createSessionRequestSchema, body);
     const result = await this.authService.createSession(idToken);
     return createSessionResponseSchema.parse(result);
   }

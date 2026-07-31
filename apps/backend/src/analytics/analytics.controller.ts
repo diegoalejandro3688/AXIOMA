@@ -1,23 +1,33 @@
-import { Controller, Get, HttpCode, Post, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, Logger, Post, Query, UseGuards } from '@nestjs/common';
 import { InternalOpsGuard } from '../platform/internal-ops/internal-ops.guard';
+import { generateCorrelationId, runWithCorrelationId } from '../platform/observability/correlation-id.store';
 import { AnalyticsService } from './analytics.service';
 
 const DEFAULT_SUMMARY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7 días
 
 @Controller('analytics')
 export class AnalyticsController {
+  private readonly logger = new Logger(AnalyticsController.name);
+
   constructor(private readonly analyticsService: AnalyticsService) {}
 
   /**
    * Disparo manual del relay (outbox_event -> analytics_event). Mismo
    * criterio de riesgo que POST /privacy/_internal/sweep (ADR-0005):
    * infraestructura temporal de Fase 0, protegida solo por INTERNAL_OPS_KEY.
+   *
+   * Cada ejecución del relay es su propio "job", con su propio
+   * correlationId -- distinto del de la request HTTP que lo disparó, y
+   * distinto entre llamadas consecutivas (ver ADR-0007).
    */
   @Post('_internal/relay')
   @UseGuards(InternalOpsGuard)
   @HttpCode(200)
   async runRelay() {
-    return this.analyticsService.ingestPending();
+    return runWithCorrelationId(generateCorrelationId(), async () => {
+      this.logger.log('Iniciando relay de ANALYTICS');
+      return this.analyticsService.ingestPending();
+    });
   }
 
   /**

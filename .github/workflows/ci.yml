@@ -176,6 +176,34 @@ jobs:
           ANALYTICS_ACTOR_SECRET: ci-analytics-actor-secret
         run: npx tsx scripts/verify-analytics-gate.ts http://localhost:3002
 
+      # Puerto e instancia nuevos por el mismo motivo que los gates anteriores.
+      - name: Start backend for OBSERVABILITY gate (AUTH_IDENTITY_PROVIDER=stub, puerto 3003)
+        working-directory: apps/backend
+        env:
+          AUTH_IDENTITY_PROVIDER: stub
+          INTERNAL_OPS_KEY: ci-internal-ops-key
+          ANALYTICS_ACTOR_SECRET: ci-analytics-actor-secret
+          PORT: 3003
+        run: nohup node dist/main.js > backend-observability.log 2>&1 &
+
+      - name: Wait for OBSERVABILITY backend to be ready
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3003/health/live > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "El backend no respondió a tiempo"
+          exit 1
+
+      - name: Run OBSERVABILITY gate (correlación, filtro de excepciones, sanitización, serialización)
+        working-directory: apps/backend
+        env:
+          DATABASE_URL: postgresql://axioma:axioma_ci_password@localhost:5432/axioma_ci?schema=public
+          AUTH_IDENTITY_PROVIDER: stub
+          INTERNAL_OPS_KEY: ci-internal-ops-key
+          ANALYTICS_ACTOR_SECRET: ci-analytics-actor-secret
+        run: npx tsx scripts/verify-observability-gate.ts http://localhost:3003 backend-observability.log
+
       - name: Show backend logs on failure
         if: failure()
         working-directory: apps/backend
@@ -183,3 +211,4 @@ jobs:
           echo "--- backend-auth.log ---"; cat backend-auth.log || true
           echo "--- backend-privacy.log ---"; cat backend-privacy.log || true
           echo "--- backend-analytics.log ---"; cat backend-analytics.log || true
+          echo "--- backend-observability.log ---"; cat backend-observability.log || true

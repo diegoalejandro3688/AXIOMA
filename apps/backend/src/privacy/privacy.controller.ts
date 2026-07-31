@@ -1,10 +1,13 @@
-import { Controller, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
+import { Controller, HttpCode, Logger, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { InternalOpsGuard } from '../platform/internal-ops/internal-ops.guard';
+import { generateCorrelationId, runWithCorrelationId } from '../platform/observability/correlation-id.store';
 import { PrivacyService } from './privacy.service';
 
 @Controller('privacy')
 export class PrivacyController {
+  private readonly logger = new Logger(PrivacyController.name);
+
   constructor(private readonly privacyService: PrivacyService) {}
 
   /**
@@ -39,8 +42,14 @@ export class PrivacyController {
   @UseGuards(InternalOpsGuard)
   @HttpCode(200)
   async runSweeps() {
-    const deletion = await this.privacyService.runAccountDeletionSweep();
-    const sessions = await this.privacyService.runSessionCleanupSweep();
-    return { deletion, sessions };
+    // Cada ejecución del barrido es su propio "job", con su propio
+    // correlationId -- distinto del correlationId de la request HTTP que lo
+    // disparó, y distinto entre llamadas consecutivas (ver ADR-0007).
+    return runWithCorrelationId(generateCorrelationId(), async () => {
+      this.logger.log('Iniciando barrido de PRIVACY');
+      const deletion = await this.privacyService.runAccountDeletionSweep();
+      const sessions = await this.privacyService.runSessionCleanupSweep();
+      return { deletion, sessions };
+    });
   }
 }
