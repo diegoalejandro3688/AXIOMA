@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Dominio EDUCATION. Andamiaje mínimo del árbol de temas curriculares --
+/// NO es el catálogo PAES completo. Ver docs/adr/0003-postgres-prisma-foundation.md.
+model CurriculumTopic {
+  id       String  @id @default(uuid()) @db.Uuid
+  code     String  @unique
+  name     String
+  order    Int
+  parentId String? @map("parent_id") @db.Uuid
+
+  parent   CurriculumTopic?  @relation("CurriculumTopicToParent", fields: [parentId], references: [id], onDelete: Restrict)
+  children CurriculumTopic[] @relation("CurriculumTopicToParent")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("curriculum_topic")
+}

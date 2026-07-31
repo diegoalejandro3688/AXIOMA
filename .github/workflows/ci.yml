@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 jobs:
@@ -34,3 +34,56 @@ jobs:
 
       - name: Build backend
         run: pnpm --filter @axioma/backend run build
+
+  db-migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: axioma
+          POSTGRES_PASSWORD: axioma_ci_password
+          POSTGRES_DB: axioma_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U axioma -d axioma_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://axioma:axioma_ci_password@localhost:5432/axioma_ci?schema=public
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        working-directory: apps/backend
+        run: pnpm run prisma:generate
+
+      - name: Apply migrations against empty database
+        working-directory: apps/backend
+        run: pnpm run prisma:migrate:deploy
+
+      - name: Run seed (1st pass)
+        working-directory: apps/backend
+        run: pnpm run prisma:seed
+
+      - name: Run seed again (idempotency check)
+        working-directory: apps/backend
+        run: pnpm run prisma:seed
+
+      - name: Verify row count did not double (idempotency)
+        working-directory: apps/backend
+        run: pnpm run verify:curriculum-topic-count

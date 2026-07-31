@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import type { HealthResponse } from '@axioma/contracts';
+import type { HealthLiveResponse } from '@axioma/contracts';
 
 /**
  * Pantalla de laboratorio para Fase 0 (fundación técnica).
@@ -7,7 +7,7 @@ import type { HealthResponse } from '@axioma/contracts';
  * correctamente como dependencia de workspace. No es una pantalla
  * de producto — el App Map define las pantallas reales.
  */
-const exampleHealth: HealthResponse = {
+const exampleHealth: HealthLiveResponse = {
   status: 'ok',
   service: 'axioma-backend',
   timestamp: new Date().toISOString(),
