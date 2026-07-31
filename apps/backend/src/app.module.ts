@@ -8,6 +8,7 @@ import { PrismaModule } from './platform/prisma/prisma.module';
 import { EducationModule } from './education/education.module';
 import { AuthModule } from './auth/auth.module';
 import { PrivacyModule } from './privacy/privacy.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PrivacyModule } from './privacy/privacy.module';
     EducationModule,
     AuthModule,
     PrivacyModule,
+    AnalyticsModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

@@ -5,11 +5,15 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ANALYTICS_SCHEMA_VERSION } from '@axioma/contracts';
 import { AccountRepository } from './account.repository';
 import { AuthIdentityRepository } from './auth-identity.repository';
 import { AuthSessionRepository } from './auth-session.repository';
 import { IDENTITY_PROVIDER, IdentityProvider } from './identity-provider/identity-provider.interface';
+import { OutboxService } from '../platform/outbox/outbox.service';
 import type { Account, AccountStatus } from '../generated/prisma/client';
+
+const SOURCE_DOMAIN = 'AUTH';
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 días
 const PROVIDER_CODE = 'firebase';
@@ -27,6 +31,7 @@ export class AuthService {
     private readonly accountRepo: AccountRepository,
     private readonly authIdentityRepo: AuthIdentityRepository,
     private readonly authSessionRepo: AuthSessionRepository,
+    private readonly outbox: OutboxService,
   ) {}
 
   /**
@@ -56,6 +61,7 @@ export class AuthService {
 
       if (identity.emailVerified && account.status === 'PENDING') {
         account = await this.accountRepo.updateStatus(account.id, 'ACTIVE');
+        await this.publishEvent('account_verified', account.id);
       }
     } else {
       // UID nuevo -- si el email ya está vinculado a OTRA cuenta, se rechaza.
@@ -73,6 +79,7 @@ export class AuthService {
         emailNormalized,
         emailVerifiedAt: identity.emailVerified ? new Date() : null,
       });
+      await this.publishEvent('account_registered', account.id);
     }
 
     await this.accountRepo.touchLastAuthenticated(account.id);
@@ -197,5 +204,21 @@ export class AuthService {
   async cleanupExpiredSessions(): Promise<number> {
     const result = await this.authSessionRepo.deleteExpired();
     return result.count;
+  }
+
+  /**
+   * Publica un hecho ya ocurrido para ANALYTICS -- ver ADR-0006. Llamado
+   * DESPUÉS de que el cambio de estado ya confirmó; best-effort, nunca
+   * puede hacer fallar la operación de AUTH (OutboxService ya se encarga
+   * de no propagar el error).
+   */
+  private async publishEvent(eventKey: 'account_registered' | 'account_verified', accountId: string) {
+    await this.outbox.publish({
+      eventKey,
+      schemaVersion: ANALYTICS_SCHEMA_VERSION,
+      sourceDomain: SOURCE_DOMAIN,
+      aggregateId: accountId,
+      payload: { accountId },
+    });
   }
 }

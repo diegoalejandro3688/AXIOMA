@@ -8,6 +8,11 @@ const OPS_KEY_HEADER = 'x-internal-ops-key';
  * Protege endpoints operativos internos (ej. disparar barridos manualmente)
  * con una clave compartida -- no es autenticación de usuario, es una
  * herramienta de operación para el equipo, separada de AuthGuard.
+ *
+ * Movido de privacy/ a platform/ en ADR-0006: ANALYTICS también lo usa para
+ * sus propios endpoints internos (_internal/relay, _internal/summary) --
+ * es infraestructura compartida por operación interna, no propiedad de un
+ * solo dominio. Sin cambios de comportamiento respecto a ADR-0005.
  */
 @Injectable()
 export class InternalOpsGuard implements CanActivate {

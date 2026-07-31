@@ -9,9 +9,10 @@ import { AuthService } from './auth.service';
 import { FirebaseIdentityProvider } from './identity-provider/firebase-identity.provider';
 import { IDENTITY_PROVIDER } from './identity-provider/identity-provider.interface';
 import { StubIdentityProvider } from './identity-provider/stub-identity.provider';
+import { OutboxModule } from '../platform/outbox/outbox.module';
 
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, OutboxModule],
   controllers: [AuthController],
   providers: [
     AccountRepository,

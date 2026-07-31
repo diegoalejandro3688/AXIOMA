@@ -1,6 +1,6 @@
 import { Controller, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
-import { InternalOpsGuard } from './internal-ops.guard';
+import { InternalOpsGuard } from '../platform/internal-ops/internal-ops.guard';
 import { PrivacyService } from './privacy.service';
 
 @Controller('privacy')

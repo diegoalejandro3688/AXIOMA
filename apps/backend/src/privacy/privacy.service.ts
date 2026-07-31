@@ -1,10 +1,13 @@
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { ANALYTICS_SCHEMA_VERSION } from '@axioma/contracts';
 import { AuthService } from '../auth/auth.service';
+import { OutboxService } from '../platform/outbox/outbox.service';
 import { PrivacyRequestRepository } from './privacy-request.repository';
 import type { PrivacyRequest } from '../generated/prisma/client';
 
 const RECOVERY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 días, política de retención ya aprobada
 const STUCK_PROCESSING_THRESHOLD_MS = 60 * 60 * 1000; // 1 hora sin completar = atascada, candidata a reintento
+const SOURCE_DOMAIN = 'PRIVACY';
 
 /**
  * PRIVACY coordina; nunca toca las tablas de AUTH directamente -- todas las
@@ -18,6 +21,7 @@ export class PrivacyService {
   constructor(
     private readonly privacyRequestRepo: PrivacyRequestRepository,
     private readonly authService: AuthService,
+    private readonly outbox: OutboxService,
   ) {}
 
   /**
@@ -32,6 +36,7 @@ export class PrivacyService {
       scheduledFor: new Date(Date.now() + RECOVERY_WINDOW_MS),
     });
     this.logger.log(`PrivacyRequest ${request.id} creada para account ${accountId}`);
+    await this.publishEvent('account_deletion_requested', accountId);
   }
 
   /**
@@ -67,6 +72,7 @@ export class PrivacyService {
     await this.authService.reactivateAccount(accountId);
     await this.privacyRequestRepo.markCancelled(request.id);
     this.logger.log(`PrivacyRequest ${request.id} cancelada (cuenta recuperada) para account ${accountId}`);
+    await this.publishEvent('account_recovered', accountId);
   }
 
   /**
@@ -99,6 +105,7 @@ export class PrivacyService {
         this.logger.log(
           `PrivacyRequest ${request.id} completada (cierre definitivo) para account ${request.accountId}`,
         );
+        await this.publishEvent('account_deletion_completed', request.accountId);
       } catch (error) {
         failed++;
         this.logger.error(
@@ -115,5 +122,23 @@ export class PrivacyService {
   async runSessionCleanupSweep(): Promise<{ deleted: number }> {
     const deleted = await this.authService.cleanupExpiredSessions();
     return { deleted };
+  }
+
+  /**
+   * Publica un hecho ya ocurrido para ANALYTICS -- ver ADR-0006. Llamado
+   * DESPUÉS de que el cambio de estado ya confirmó; best-effort, nunca
+   * puede hacer fallar la operación de PRIVACY.
+   */
+  private async publishEvent(
+    eventKey: 'account_deletion_requested' | 'account_deletion_completed' | 'account_recovered',
+    accountId: string,
+  ) {
+    await this.outbox.publish({
+      eventKey,
+      schemaVersion: ANALYTICS_SCHEMA_VERSION,
+      sourceDomain: SOURCE_DOMAIN,
+      aggregateId: accountId,
+      payload: { accountId },
+    });
   }
 }

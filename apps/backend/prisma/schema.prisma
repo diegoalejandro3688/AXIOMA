@@ -123,3 +123,64 @@ model PrivacyRequest {
   @@index([status, processingStartedAt])
   @@map("privacy_request")
 }
+
+/// Infraestructura COMPARTIDA de plataforma, no propiedad de ningún dominio --
+/// ver docs/adr/0006-analytics-foundation.md. Cualquier dominio puede publicar
+/// (AUTH y PRIVACY hoy); ANALYTICS es el primer consumidor, pero el diseño
+/// admite consumidores futuros (Gamification, Progress, Recommendation...)
+/// leyendo la misma tabla con su propio cursor/criterio.
+enum OutboxEventStatus {
+  PENDING
+  PROCESSED
+  FAILED
+
+  @@map("outbox_event_status")
+}
+
+model OutboxEvent {
+  id              String            @id @default(uuid()) @db.Uuid
+  eventKey        String            @map("event_key")
+  schemaVersion   String            @map("schema_version")
+  sourceDomain    String            @map("source_domain")
+  aggregateId     String?           @map("aggregate_id") @db.Uuid
+  /// Versión del backend que publicó el evento (trazabilidad entre
+  /// versiones) -- ver ADR-0006, ajuste 2. Best-effort: puede faltar si la
+  /// variable de entorno no está configurada.
+  producerVersion String?           @map("producer_version")
+  occurredAt      DateTime          @map("occurred_at")
+  payload         Json
+  status          OutboxEventStatus @default(PENDING)
+  attempts        Int               @default(0)
+  lastError       String?           @map("last_error")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  processedAt     DateTime?         @map("processed_at")
+
+  @@index([status, createdAt])
+  @@map("outbox_event")
+}
+
+/// Dominio ANALYTICS. Subconjunto mínimo del Bloque 19 del Data Model -- ver
+/// docs/adr/0006-analytics-foundation.md. Analytics NUNCA escribe aquí
+/// directamente desde otro dominio: solo el relay de ANALYTICS, consumiendo
+/// OutboxEvent ya publicado. Sin FK a Account (mismo criterio que
+/// PrivacyRequest): desacople de esquema entre dominios.
+model AnalyticsEvent {
+  id                String   @id @default(uuid()) @db.Uuid
+  eventKey          String   @map("event_key")
+  schemaVersion     String   @map("schema_version")
+  sourceDomain      String   @map("source_domain")
+  /// HMAC-SHA256(accountId) -- nunca el accountId crudo. Versión mínima de
+  /// pseudonimización, no el analytics_actor completo del Data Model (sin
+  /// rotación ni ciclo de vida propio) -- ver ADR-0006.
+  analyticsActorRef String?  @map("analytics_actor_ref")
+  producerVersion   String?  @map("producer_version")
+  occurredAt        DateTime @map("occurred_at")
+  receivedAt        DateTime @default(now()) @map("received_at")
+  payload           Json
+  /// = OutboxEvent.id -- evita duplicar el mismo evento si el relay reprocesa.
+  idempotencyKey    String   @unique @map("idempotency_key")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([eventKey, occurredAt])
+  @@map("analytics_event")
+}

@@ -147,9 +147,39 @@ jobs:
           INTERNAL_OPS_KEY: ci-internal-ops-key
         run: npx tsx scripts/verify-privacy-gate.ts http://localhost:3001
 
+      # Puerto e instancia nuevos por el mismo motivo que el gate de PRIVACY
+      # (ver comentario arriba): el límite de /auth/session es por proceso.
+      - name: Start backend for ANALYTICS gate (AUTH_IDENTITY_PROVIDER=stub, puerto 3002)
+        working-directory: apps/backend
+        env:
+          AUTH_IDENTITY_PROVIDER: stub
+          INTERNAL_OPS_KEY: ci-internal-ops-key
+          ANALYTICS_ACTOR_SECRET: ci-analytics-actor-secret
+          PORT: 3002
+        run: nohup node dist/main.js > backend-analytics.log 2>&1 &
+
+      - name: Wait for ANALYTICS backend to be ready
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3002/health/live > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "El backend no respondió a tiempo"
+          exit 1
+
+      - name: Run ANALYTICS gate (outbox relay, idempotencia, validación de esquema, resumen)
+        working-directory: apps/backend
+        env:
+          DATABASE_URL: postgresql://axioma:axioma_ci_password@localhost:5432/axioma_ci?schema=public
+          AUTH_IDENTITY_PROVIDER: stub
+          INTERNAL_OPS_KEY: ci-internal-ops-key
+          ANALYTICS_ACTOR_SECRET: ci-analytics-actor-secret
+        run: npx tsx scripts/verify-analytics-gate.ts http://localhost:3002
+
       - name: Show backend logs on failure
         if: failure()
         working-directory: apps/backend
         run: |
           echo "--- backend-auth.log ---"; cat backend-auth.log || true
           echo "--- backend-privacy.log ---"; cat backend-privacy.log || true
+          echo "--- backend-analytics.log ---"; cat backend-analytics.log || true
