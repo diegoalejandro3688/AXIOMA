@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>AXIOMA — Spike renderizador matemático</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css" />
+<script src="vendor/katex/katex.min.js"></script>
+<script src="test-cases.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #111111;
+    --muted: #666666;
+    --card: #f5f5f5;
+    --border: #dddddd;
+    --accent: #2b6cb0;
+  }
+  [data-theme='dark'] {
+    --bg: #0f1115;
+    --fg: #f0f0f0;
+    --muted: #a0a0a0;
+    --card: #1a1d24;
+    --border: #2e323c;
+    --accent: #7cb3ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    margin: 0;
+    padding: 24px;
+    font-size: calc(1rem * var(--scale, 1));
+  }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  .toolbar {
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+    z-index: 10;
+  }
+  button, select {
+    background: var(--card);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 24px 0;
+  }
+  .col-header { font-weight: 600; color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .case {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow-x: auto;
+  }
+  .case svg { max-width: 100%; height: auto; color: var(--fg); }
+  .case-label { grid-column: 1 / -1; font-weight: 600; margin-top: 12px; }
+  #perf-results, #a11y-results { white-space: pre-wrap; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: monospace; font-size: 0.85rem; }
+  .scroll-box { height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: var(--card); }
+  .scroll-item { padding: 10px 0; border-bottom: 1px dashed var(--border); }
+  section { margin-bottom: 40px; }
+  .note { color: var(--muted); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <button id="toggle-theme">Alternar claro/oscuro</button>
+    <label>Escala de fuente:
+      <select id="font-scale">
+        <option value="1">100%</option>
+        <option value="1.25">125%</option>
+        <option value="1.5">150%</option>
+        <option value="2">200%</option>
+      </select>
+    </label>
+    <button id="run-perf">Ejecutar prueba de rendimiento (1/10/50)</button>
+    <button id="run-scroll-test">Poblar prueba de scroll (200 fórmulas)</button>
+  </div>
+
+  <h1>AXIOMA — Spike renderizador matemático</h1>
+  <p class="note">Candidato A = SVG pre-renderizado (MathJax, servidor). Candidato B = KaTeX en vivo (cliente, equivalente a lo que correría dentro de un WebView). Todo cargado localmente, sin CDN.</p>
+
+  <section>
+    <h2>1. Comparativa visual por caso de prueba</h2>
+    <div class="grid" id="comparison-grid">
+      <div class="col-header">Candidato A — SVG pre-renderizado</div>
+      <div class="col-header">Candidato B — KaTeX en vivo</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Prueba de rendimiento</h2>
+    <div id="perf-results">Presiona "Ejecutar prueba de rendimiento" para medir.</div>
+  </section>
+
+  <section>
+    <h2>3. Prueba de scroll prolongado (200 fórmulas mezcladas)</h2>
+    <div class="scroll-box" id="scroll-box">
+      <p class="note">Presiona "Poblar prueba de scroll" arriba.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. Accesibilidad — inspección estructural</h2>
+    <div id="a11y-results"></div>
+  </section>
+
+<script>
+  const themeBtn = document.getElementById('toggle-theme');
+  themeBtn.addEventListener('click', () => {
+    const root = document.documentElement;
+    root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+  });
+
+  document.getElementById('font-scale').addEventListener('change', (e) => {
+    document.body.style.setProperty('--scale', e.target.value);
+  });
+
+  async function loadSvg(id) {
+    const res = await fetch(`svg/${id}.svg`);
+    return res.text();
+  }
+
+  function renderKatex(latex, display) {
+    const span = document.createElement('span');
+    try {
+      katex.render(latex, span, { throwOnError: false, displayMode: display });
+    } catch (err) {
+      span.textContent = 'ERROR: ' + err.message;
+    }
+    return span;
+  }
+
+  async function buildComparisonGrid() {
+    const grid = document.getElementById('comparison-grid');
+    for (const tc of window.TEST_CASES) {
+      const label = document.createElement('div');
+      label.className = 'case-label';
+      label.textContent = tc.label + '  (' + tc.id + ')';
+      grid.appendChild(label);
+
+      const colA = document.createElement('div');
+      colA.className = 'case';
+      colA.innerHTML = await loadSvg(tc.id);
+      grid.appendChild(colA);
+
+      const colB = document.createElement('div');
+      colB.className = 'case';
+      colB.appendChild(renderKatex(tc.latex, tc.display));
+      grid.appendChild(colB);
+    }
+  }
+
+  async function runPerfTest() {
+    const out = document.getElementById('perf-results');
+    out.textContent = 'Ejecutando...';
+    const results = [];
+
+    for (const n of [1, 10, 50]) {
+      // Candidato A: insertar N SVGs pre-renderizados (fetch ya cacheado por el navegador tras la 1a carga)
+      const containerA = document.createElement('div');
+      containerA.style.display = 'none';
+      document.body.appendChild(containerA);
+      const svgTexts = [];
+      for (const tc of window.TEST_CASES) svgTexts.push(await loadSvg(tc.id));
+
+      const t0a = performance.now();
+      for (let i = 0; i < n; i++) {
+        const el = document.createElement('div');
+        el.innerHTML = svgTexts[i % svgTexts.length];
+        containerA.appendChild(el);
+      }
+      const t1a = performance.now();
+      document.body.removeChild(containerA);
+
+      // Candidato B: renderizar N fórmulas en vivo con KaTeX (parseo + layout + DOM)
+      const containerB = document.createElement('div');
+      containerB.style.display = 'none';
+      document.body.appendChild(containerB);
+      const t0b = performance.now();
+      for (let i = 0; i < n; i++) {
+        const tc = window.TEST_CASES[i % window.TEST_CASES.length];
+        containerB.appendChild(renderKatex(tc.latex, tc.display));
+      }
+      const t1b = performance.now();
+      document.body.removeChild(containerB);
+
+      results.push({
+        n,
+        svgPrerenderizado_ms: Number((t1a - t0a).toFixed(2)),
+        katexEnVivo_ms: Number((t1b - t0b).toFixed(2)),
+      });
+    }
+
+    out.textContent = JSON.stringify(results, null, 2);
+    window.__PERF_RESULTS__ = results;
+  }
+
+  function populateScrollTest() {
+    const box = document.getElementById('scroll-box');
+    box.innerHTML = '';
+    for (let i = 0; i < 200; i++) {
+      const tc = window.TEST_CASES[i % window.TEST_CASES.length];
+      const item = document.createElement('div');
+      item.className = 'scroll-item';
+      item.textContent = `#${i + 1} — ${tc.label}: `;
+      const wrap = document.createElement('span');
+      wrap.appendChild(renderKatex(tc.latex, false));
+      item.appendChild(wrap);
+      box.appendChild(item);
+    }
+  }
+
+  function inspectAccessibility() {
+    const out = document.getElementById('a11y-results');
+    const katexSample = renderKatex('\\frac{a}{b}', true);
+    const mathmlNode = katexSample.querySelector('.katex-mathml');
+    const lines = [];
+    lines.push('Candidato B (KaTeX en vivo):');
+    lines.push('  - Genera <math> MathML paralelo al HTML visual: ' + (mathmlNode ? 'SI' : 'NO'));
+    lines.push('  - MathML permite que lectores de pantalla (NVDA/JAWS/VoiceOver con soporte MathML) lean la fórmula.');
+    lines.push('  - Escala de fuente: hereda font-size del contenedor (CSS em), compatible con --scale.');
+    lines.push('');
+    lines.push('Candidato A (SVG pre-renderizado, MathJax):');
+    lines.push('  - El SVG NO incluye texto alternativo ni MathML por defecto (solo paths vectoriales).');
+    lines.push('  - Requiere agregar manualmente role="img" + aria-label con una descripcion textual de la formula');
+    lines.push('    generada en el momento de publicacion (ej. "x igual a menos b mas menos raiz de b cuadrado...").');
+    lines.push('  - Escala de fuente: VERIFICADO EMPIRICAMENTE (ver informe) - MathJax exporta ancho/alto en unidades "ex",');
+    lines.push('    una unidad CSS relativa al font-size del contenedor, asi que el SVG SI escala automaticamente junto');
+    lines.push('    con --scale, practicamente igual que KaTeX en vivo (117.08px vs 117.5px de ancho a escala 200%).');
+    out.textContent = lines.join('\n');
+  }
+
+  document.getElementById('run-perf').addEventListener('click', runPerfTest);
+  document.getElementById('run-scroll-test').addEventListener('click', populateScrollTest);
+
+  buildComparisonGrid();
+  inspectAccessibility();
+</script>
+</body>
+</html>
