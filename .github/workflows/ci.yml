@@ -87,3 +87,32 @@ jobs:
       - name: Verify row count did not double (idempotency)
         working-directory: apps/backend
         run: pnpm run verify:curriculum-topic-count
+
+      - name: Build backend
+        working-directory: apps/backend
+        run: pnpm run build
+
+      - name: Start backend (AUTH_IDENTITY_PROVIDER=stub)
+        working-directory: apps/backend
+        env:
+          AUTH_IDENTITY_PROVIDER: stub
+          PORT: 3000
+        run: nohup node dist/main.js > backend.log 2>&1 &
+
+      - name: Wait for backend to be ready
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3000/health/live > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "El backend no respondió a tiempo"
+          exit 1
+
+      - name: Run AUTH gate (creation, session ownership, deletion, rate limiting)
+        working-directory: apps/backend
+        run: npx tsx scripts/verify-auth-gate.ts http://localhost:3000
+
+      - name: Show backend log on failure
+        if: failure()
+        working-directory: apps/backend
+        run: cat backend.log || true

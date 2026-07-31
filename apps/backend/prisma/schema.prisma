@@ -24,3 +24,70 @@ model CurriculumTopic {
 
   @@map("curriculum_topic")
 }
+
+/// Dominio AUTH. Subconjunto mínimo del Data Model Bloque 5 -- ver
+/// docs/adr/0004-identity-authentication-foundation.md. Firebase es proveedor
+/// de identidad; estas tablas son la única autoridad interna sobre la cuenta.
+enum AccountStatus {
+  PENDING // correo no verificado, acceso limitado
+  ACTIVE // correo verificado
+  DELETION_PENDING
+  CLOSED
+
+  @@map("account_status")
+}
+
+model Account {
+  id                  String        @id @default(uuid()) @db.Uuid
+  status              AccountStatus @default(PENDING)
+  sessionVersion      Int           @default(1) @map("session_version")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+  lastAuthenticatedAt DateTime?     @map("last_authenticated_at")
+  deletionRequestedAt DateTime?     @map("deletion_requested_at")
+  closedAt            DateTime?     @map("closed_at")
+
+  identities AuthIdentity[]
+  sessions   AuthSession[]
+
+  @@map("account")
+}
+
+/// Vínculo con el UID de Firebase. Firebase ya fusiona métodos de acceso
+/// (correo, Google, Apple) bajo un mismo UID cuando el usuario los vincula
+/// explícitamente de su lado -- Axioma nunca fusiona dos UID distintos.
+model AuthIdentity {
+  id               String    @id @default(uuid()) @db.Uuid
+  accountId        String    @map("account_id") @db.Uuid
+  providerCode     String    @default("firebase") @map("provider_code")
+  providerSubject  String    @map("provider_subject")
+  emailNormalized  String    @map("email_normalized")
+  emailVerifiedAt  DateTime? @map("email_verified_at")
+  linkedAt         DateTime  @default(now()) @map("linked_at")
+  lastUsedAt       DateTime? @map("last_used_at")
+  unlinkedAt       DateTime? @map("unlinked_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@unique([providerCode, providerSubject])
+  @@index([emailNormalized])
+  @@map("auth_identity")
+}
+
+/// Sesión propia y revocable, independiente de la validez técnica del
+/// idToken de Firebase. El AuthGuard valida esta fila específica -- no
+/// "cualquier sesión activa de la cuenta".
+model AuthSession {
+  id             String    @id @default(uuid()) @db.Uuid
+  accountId      String    @map("account_id") @db.Uuid
+  sessionVersion Int       @map("session_version")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  lastSeenAt     DateTime? @map("last_seen_at")
+  expiresAt      DateTime  @map("expires_at")
+  revokedAt      DateTime? @map("revoked_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([accountId])
+  @@map("auth_session")
+}
