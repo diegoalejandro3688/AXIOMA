@@ -18,6 +18,7 @@
     "verify:privacy-gate": "tsx scripts/verify-privacy-gate.ts",
     "verify:analytics-gate": "tsx scripts/verify-analytics-gate.ts",
     "verify:observability-gate": "tsx scripts/verify-observability-gate.ts",
+    "verify:user-gate": "tsx scripts/verify-user-gate.ts",
     "cli:recover-account": "node dist/cli/recover-account.js",
     "db:up": "docker compose -f ../../docker-compose.yml up -d",
     "db:down": "docker compose -f ../../docker-compose.yml down"

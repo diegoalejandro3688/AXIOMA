@@ -2,6 +2,7 @@ import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { ANALYTICS_SCHEMA_VERSION } from '@axioma/contracts';
 import { AuthService } from '../auth/auth.service';
 import { OutboxService } from '../platform/outbox/outbox.service';
+import { UserService } from '../user/user.service';
 import { PrivacyRequestRepository } from './privacy-request.repository';
 import type { PrivacyRequest } from '../generated/prisma/client';
 
@@ -10,9 +11,9 @@ const STUCK_PROCESSING_THRESHOLD_MS = 60 * 60 * 1000; // 1 hora sin completar = 
 const SOURCE_DOMAIN = 'PRIVACY';
 
 /**
- * PRIVACY coordina; nunca toca las tablas de AUTH directamente -- todas las
- * validaciones y cambios sobre `account`/`auth_identity`/`auth_session`
- * pasan por los métodos públicos de AuthService, que es quien los posee.
+ * PRIVACY coordina; nunca toca las tablas de AUTH ni de USER directamente
+ * -- todas las validaciones y cambios pasan por los métodos públicos de
+ * cada dominio propietario.
  */
 @Injectable()
 export class PrivacyService {
@@ -21,6 +22,7 @@ export class PrivacyService {
   constructor(
     private readonly privacyRequestRepo: PrivacyRequestRepository,
     private readonly authService: AuthService,
+    private readonly userService: UserService,
     private readonly outbox: OutboxService,
   ) {}
 
@@ -100,6 +102,12 @@ export class PrivacyService {
 
       try {
         await this.authService.finalizeAccountClosure(request.accountId);
+        // Dato personal de USER -- se elimina por completo (no se
+        // anonimiza, no hay necesidad de conservar la fila). Dentro del
+        // mismo try: si fallara, la solicitud queda PROCESSING para
+        // reintento, igual que un fallo de finalizeAccountClosure (ver
+        // ADR-0008). Seguro si la cuenta nunca inicializó su perfil.
+        await this.userService.deleteProfileForAccountClosure(request.accountId);
         await this.privacyRequestRepo.markCompleted(request.id);
         processed++;
         this.logger.log(

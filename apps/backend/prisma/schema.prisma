@@ -184,3 +184,22 @@ model AnalyticsEvent {
   @@index([eventKey, occurredAt])
   @@map("analytics_event")
 }
+
+/// Dominio USER. Perfil privado mínimo -- equivalente reducido de
+/// `student_profile` (Data Model Bloque 6.3), NO `public_profile` (identidad
+/// pública/username, fuera de alcance hasta Fase 4). Ver
+/// docs/adr/0008-gestion-usuarios-perfil-basico.md.
+/// Sin FK a Account -- mismo criterio que PrivacyRequest: desacople de
+/// esquema entre dominios (Master Context 6.2, USER y AUTH son conceptos
+/// deliberadamente separados). `accountId` único fuerza el 1:1.
+model UserProfile {
+  id          String   @id @default(uuid()) @db.Uuid
+  accountId   String   @unique @map("account_id") @db.Uuid
+  displayName String   @map("display_name")
+  /// Default de producto (America/Santiago), no una inferencia -- ver ADR-0008.
+  timezone    String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("user_profile")
+}

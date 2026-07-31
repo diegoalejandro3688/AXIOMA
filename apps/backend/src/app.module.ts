@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module';
 import { PrivacyModule } from './privacy/privacy.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { DiagnosticsModule } from './platform/observability/diagnostics.module';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { DiagnosticsModule } from './platform/observability/diagnostics.module';
     PrivacyModule,
     AnalyticsModule,
     DiagnosticsModule,
+    UserModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
