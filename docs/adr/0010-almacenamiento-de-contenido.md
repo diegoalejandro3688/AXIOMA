@@ -1,6 +1,6 @@
 # ADR 0010 — Almacenamiento de contenido (object storage)
 
-- **Estado**: Aprobada, con los nueve ajustes obligatorios del usuario ya incorporados — gate completo verificado (19+34+34+43+33 comprobaciones heredadas de ADR-0004/0005/0006/0007/0008 re-ejecutadas sin regresiones + 21 comprobaciones nuevas de OBJECT-STORAGE), en local (Postgres de desarrollo + MinIO) y replicado como lo haría CI (Postgres y MinIO efímeros, bucket creado desde cero).
+- **Estado**: Aprobada, con los nueve ajustes obligatorios del usuario ya incorporados — gate completo verificado (19+34+38+44+40 comprobaciones heredadas de ADR-0004/0005/0006/0007/0008 re-ejecutadas sin regresiones + 22 comprobaciones nuevas de OBJECT-STORAGE — conteos corregidos en Architecture Review 1.0, 2026-08-01, para coincidir con la ejecución real del gate), en local (Postgres de desarrollo + MinIO) y replicado como lo haría CI (Postgres y MinIO efímeros, bucket creado desde cero).
 - **Fecha**: 2026-08-01
 - **Fase de aplicación**: Fase 0 — Foundation, Paso 10
 - **Responsable de aprobación**: Product Owner (usuario)
@@ -57,12 +57,12 @@ La Implementation Matrix v1.1 incluye "almacenamiento de contenido" en Fase 0. E
 - Cuando exista `educational_asset_version`, su columna `file_hash` debe poblarse con el `sha256` que `validateObjectUpload()` ya calcula hoy -- no hace falta recalcularlo.
 - El límite de tamaño/dimensiones puede ajustarse por ambiente sin desplegar código nuevo (son variables de entorno) -- útil si Education necesita un límite distinto para un tipo de asset específico en el futuro (requeriría extender la configuración, no está previsto todavía).
 
-## Validación (163 heredadas sin regresiones + 21 nuevas de OBJECT-STORAGE)
+## Validación (175 heredadas sin regresiones + 22 nuevas de OBJECT-STORAGE)
 
 Ejecutado con seis instancias del backend en puertos separados, contra Postgres de desarrollo + MinIO local, y replicando CI desde cero (Postgres y MinIO efímeros, 6 migraciones sin cambios respecto a ADR-0008, bucket creado desde cero por el propio servicio).
 
 - Gates de AUTH (19), PRIVACY (34), ANALYTICS (34), OBSERVABILITY (43) y USER (33) re-ejecutados: sin regresiones.
-- Gate de OBJECT-STORAGE (21 comprobaciones nuevas), incluyendo:
+- Gate de OBJECT-STORAGE (22 comprobaciones nuevas), incluyendo:
   - Roundtrip completo (subida → hash → URL firmada → descarga → verificación de hash → borrado) con un PNG real generado en memoria.
   - La URL firmada expira realmente pasado su TTL (verificado con una segunda petición tras esperar, no solo documentado).
   - Ningún archivo/valor de una URL firmada aparece en la respuesta del endpoint.

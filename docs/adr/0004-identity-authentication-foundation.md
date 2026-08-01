@@ -1,6 +1,6 @@
 # ADR 0004 — Identity & Authentication Foundation
 
-- **Estado**: **Aprobada formalmente** (2026-07-31) — gate completo verificado (24/24 comprobaciones) contra el backend real, en local (Postgres de desarrollo) y replicado como lo haría CI (Postgres efímero vacío). La única validación pendiente (integración con un proyecto Firebase real) es una comprobación de configuración, no un cambio de arquitectura ni de implementación — no bloquea el cierre de este paso ni la continuación de la Fase 0. Ver "Validación" para el detalle.
+- **Estado**: **Aprobada formalmente** (2026-07-31) — gate completo verificado (19/19 comprobaciones — corregido de "24/24" en Architecture Review 1.0, 2026-08-01: el número original no coincidía con el conteo real de verificaciones del script ni con lo citado en los ADR posteriores) contra el backend real, en local (Postgres de desarrollo) y replicado como lo haría CI (Postgres efímero vacío). La única validación pendiente (integración con un proyecto Firebase real) es una comprobación de configuración, no un cambio de arquitectura ni de implementación — no bloquea el cierre de este paso ni la continuación de la Fase 0. Ver "Validación" para el detalle.
 - **Fecha**: 2026-07-31
 - **Fase de aplicación**: Fase 0 — Foundation, Paso 4
 - **Responsable de aprobación**: Product Owner (usuario)
@@ -104,7 +104,7 @@ Al escribir el script de verificación del gate, `NestFactory.create()` ejecutad
 - El job de limpieza a los 30 días (Privacy Foundation) debe reutilizar `IdentityProvider.deleteUser()`/`enableUser()` — no reinventar la integración con Firebase.
 - Roles (cuando se construyan) deben decidirse siempre server-side, nunca confiando en un valor enviado por el cliente — principio ya fijado por el usuario, aplica a diseño futuro, no implementado todavía.
 
-## Validación (gate completo, 24/24)
+## Validación (gate completo, 19/19)
 
 Ejecutado dos veces de forma independiente: contra Postgres de desarrollo persistente, y replicando el job de CI desde cero (Postgres efímero vacío, ambas migraciones, seed, build, arranque del backend compilado, gate de auth). Mismo resultado ambas veces.
 

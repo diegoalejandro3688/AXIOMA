@@ -1,6 +1,6 @@
 # ADR 0007 — Logging y manejo de errores
 
-- **Estado**: Aprobada, con los ajustes obligatorios del usuario ya incorporados — gate completo verificado (19+34+34 comprobaciones heredadas de ADR-0004/0005/0006 re-ejecutadas sin regresiones + 43 comprobaciones nuevas de OBSERVABILITY), en local (Postgres de desarrollo) y replicado como lo haría CI (Postgres efímero vacío, 5 migraciones sin cambios, 4 instancias del backend en puertos separados).
+- **Estado**: Aprobada, con los ajustes obligatorios del usuario ya incorporados — gate completo verificado (19+34+38 comprobaciones heredadas de ADR-0004/0005/0006 re-ejecutadas sin regresiones + 44 comprobaciones nuevas de OBSERVABILITY — conteos corregidos en Architecture Review 1.0, 2026-08-01, para coincidir con la ejecución real del gate), en local (Postgres de desarrollo) y replicado como lo haría CI (Postgres efímero vacío, 5 migraciones sin cambios, 4 instancias del backend en puertos separados).
 - **Fecha**: 2026-08-01
 - **Fase de aplicación**: Fase 0 — Foundation, Paso 7
 - **Responsable de aprobación**: Product Owner (usuario)
@@ -73,12 +73,12 @@ Los `.parse()` de esquemas de **respuesta** (`createSessionResponseSchema.parse(
 - Los dos endpoints de diagnóstico deben seguir bloqueados en producción (`NODE_ENV=production`) — es infraestructura de verificación de Fase 0, no una capacidad operativa a futuro.
 - `LOG_LEVEL` y `APP_VERSION` se suman a las variables de entorno por ambiente (ver `.env.example`).
 
-## Validación (87 heredadas sin regresiones + 43 nuevas de OBSERVABILITY)
+## Validación (91 heredadas sin regresiones + 44 nuevas de OBSERVABILITY)
 
 Ejecutado con cuatro instancias del backend en puertos separados, contra Postgres de desarrollo y replicando CI desde cero (Postgres efímero, 5 migraciones sin cambios respecto a ADR-0006, seed, build, 4 instancias en puertos separados).
 
 - Gates de AUTH (19), PRIVACY (34) y ANALYTICS (34) re-ejecutados: sin regresiones.
-- Gate de OBSERVABILITY (43 comprobaciones nuevas), incluyendo:
+- Gate de OBSERVABILITY (44 comprobaciones nuevas), incluyendo:
   - `X-Request-Id` inválido (demasiado largo, caracteres no permitidos) se ignora; se genera un UUID válido. `X-Request-Id` válido se respeta con eco exacto.
   - El mismo `requestId` aparece en el header de respuesta, el `error.requestId` del body y la línea de log correspondiente.
   - `error.*` nunca expone campos no declarados (verificado contra la lista blanca `code, message, requestId, timestamp, issues`).

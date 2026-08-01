@@ -1,6 +1,6 @@
 # ADR 0006 — Analytics Foundation
 
-- **Estado**: Aprobada, con cuatro ajustes obligatorios del usuario ya incorporados (ver "Ajustes de aprobación") — gate completo verificado (53 comprobaciones heredadas de ADR-0004/0005 re-ejecutadas sin regresiones + 34 comprobaciones nuevas de ANALYTICS), en local (Postgres de desarrollo) con tres instancias del backend en puertos separados, igual que replica CI.
+- **Estado**: Aprobada, con cuatro ajustes obligatorios del usuario ya incorporados (ver "Ajustes de aprobación") — gate completo verificado (53 comprobaciones heredadas de ADR-0004/0005 re-ejecutadas sin regresiones + 38 comprobaciones nuevas de ANALYTICS — corregido de "34" en Architecture Review 1.0, 2026-08-01, para coincidir con el conteo real de ejecución del gate), en local (Postgres de desarrollo) con tres instancias del backend en puertos separados, igual que replica CI.
 - **Fecha**: 2026-07-31
 - **Fase de aplicación**: Fase 0 — Foundation, Paso 6
 - **Responsable de aprobación**: Product Owner (usuario)
@@ -66,13 +66,13 @@ Se agregó `producerVersion` (columna en `OutboxEvent` y en `AnalyticsEvent`) �
 - `ANALYTICS_ACTOR_SECRET` y `PRODUCER_VERSION` se suman a las variables de entorno por ambiente (ver `.env.example`) — igual que `INTERNAL_OPS_KEY`, generar valores propios por ambiente, nunca reutilizar entre dev/staging/prod.
 - El endpoint `GET /analytics/_internal/summary` y `POST /analytics/_internal/relay` comparten la misma limitación ya documentada en ADR-0005 sobre `InternalOpsGuard`: clave estática compartida, infraestructura temporal de Fase 0, reemplazar antes de cualquier despliegue con tráfico real.
 
-## Validación (53 heredadas sin regresiones + 34 nuevas de ANALYTICS)
+## Validación (53 heredadas sin regresiones + 38 nuevas de ANALYTICS)
 
 Ejecutado con tres instancias del backend en puertos separados (mismo motivo que ADR-0005: el rate limiting de `/auth/session` es por proceso), contra Postgres de desarrollo.
 
 - Gate de AUTH (19 comprobaciones, ADR-0004) re-ejecutado: sin regresiones.
 - Gate de PRIVACY (34 comprobaciones, ADR-0005) re-ejecutado: sin regresiones.
-- Gate de ANALYTICS (34 comprobaciones nuevas), incluyendo:
+- Gate de ANALYTICS (38 comprobaciones nuevas), incluyendo:
   - Los 5 eventos reales (registro, verificación, solicitud/recuperación/cierre de eliminación) dejan exactamente una fila `PENDING` en `outbox_event` con el `eventKey` correcto.
   - El relay ingiere `PENDING` → `analytics_event`, marca `PROCESSED`; correrlo dos veces no duplica filas.
   - Una fila con `eventKey` desconocido queda `FAILED` (con `attempts`/`lastError`) sin impedir que otra fila válida del mismo lote se procese.

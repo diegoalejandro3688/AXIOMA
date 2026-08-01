@@ -1,6 +1,6 @@
 # ADR 0011 — Fundación de persistencia offline / client outbox
 
-- **Estado**: Aprobada, con las condiciones del usuario incorporadas — validación automatizada principal (21 comprobaciones) ejecutada con `node:sqlite` contra la lógica real de producción (no una reimplementación), más una comprobación complementaria en navegador. **La verificación en un dispositivo/emulador Android real queda pendiente** (ver "Limitación del entorno" y el checklist manual, más abajo) — no se declara completada ni simulada.
+- **Estado**: Aprobada, con las condiciones del usuario incorporadas — validación automatizada principal (22 comprobaciones — corregido de "21" en Architecture Review 1.0, 2026-08-01) ejecutada con `node:sqlite` contra la lógica real de producción (no una reimplementación), más una comprobación complementaria en navegador. **La verificación en un dispositivo/emulador Android real queda pendiente** (ver "Limitación del entorno" y el checklist manual, más abajo) — no se declara completada ni simulada.
 - **Fecha**: 2026-08-01
 - **Fase de aplicación**: Fase 0 — Foundation, Paso 11 (último paso de implementación antes del Architecture Review 1.0)
 - **Responsable de aprobación**: Product Owner (usuario)
@@ -90,7 +90,7 @@ Este entorno de desarrollo **no tiene SDK de Android ni emulador disponible** (s
 
 ## Validación
 
-- **Principal (automatizada, `node:sqlite`)**: 21 comprobaciones, incluyendo migración inicial (tabla + CHECK + índice), monotonicidad, atomicidad ante fallo (con ROLLBACK real), rechazo controlado de versión futura, estabilidad de `id` en reintentos, `retryCount` incremental sin borrado, `listPending` filtra correctamente, rechazo de payload circular y de payload sobre el límite de tamaño, persistencia real entre apertura/cierre de archivo, y resistencia a un payload con sintaxis SQL (parámetros enlazados).
+- **Principal (automatizada, `node:sqlite`)**: 22 comprobaciones, incluyendo migración inicial (tabla + CHECK + índice), monotonicidad, atomicidad ante fallo (con ROLLBACK real), rechazo controlado de versión futura, estabilidad de `id` en reintentos, `retryCount` incremental sin borrado, `listPending` filtra correctamente, rechazo de payload circular y de payload sobre el límite de tamaño, persistencia real entre apertura/cierre de archivo, y resistencia a un payload con sintaxis SQL (parámetros enlazados).
 - **Complementaria (Browser tool, web)**: la pantalla de diagnóstico renderiza correctamente; la persistencia real vía `expo-sqlite` web quedó sin confirmar (ver limitación del entorno arriba).
 - `pnpm -r run typecheck/lint` en verde (incluye `apps/mobile/scripts/`).
 - CI: nuevo job `offline-outbox-gate` (Node 22, requerido por `node:sqlite`, separado del job `build` que sigue en Node 20).

@@ -27,8 +27,18 @@ como la arquitectura oficial de renderizado matemático de AXIOMA.
   `fontCache: 'none'` para que cada SVG sea autocontenido), no en cada lectura ni en el
   dispositivo del estudiante.
 - El SVG viaja **inline** dentro del payload de la pregunta/recurso (no una URL aparte a
-  un bucket, dado su tamaño promedio de ~6.4 KB), y se cachea junto con el resto de la
-  pregunta en la cola offline ya existente.
+  un bucket, dado su tamaño promedio de ~6.4 KB), lo que le permite cachearse junto con
+  el resto de la pregunta cuando exista un mecanismo de descarga de contenido para uso
+  offline.
+  **Corrección (Architecture Review 1.0, 2026-08-01)**: esta frase decía originalmente
+  "se cachea junto con el resto de la pregunta en la cola offline ya existente" — en
+  el momento de este ADR (Fase 0, Paso 2) no existía ningún mecanismo offline todavía.
+  La fundación de persistencia offline construida después (ADR-0011) es una cola de
+  **intenciones salientes** (respuestas del estudiante pendientes de enviar), no una
+  caché de **contenido entrante** para lectura sin conexión — son mecanismos distintos.
+  La descarga/caché de contenido (incluyendo el SVG inline de este ADR) sigue sin
+  construirse; es Master Context 8.8 ("recursos descargados"), explícitamente fuera de
+  alcance de Fase 0 (ver ADR-0011, "Fuera de alcance").
 - El cliente renderiza con `SvgXml` de `react-native-svg` — mismo componente en Android,
   iOS y Web, sin bifurcación de plataforma.
 - Cada fórmula debe llevar una descripción textual generada en publicación (accesibilidad

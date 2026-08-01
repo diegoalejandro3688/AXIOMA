@@ -1,6 +1,6 @@
 # ADR 0008 — Gestión de usuarios (perfil básico)
 
-- **Estado**: Aprobada, con los siete ajustes obligatorios del usuario ya incorporados — gate completo verificado (19+34+34+43 comprobaciones heredadas de ADR-0004/0005/0006/0007 re-ejecutadas sin regresiones + 33 comprobaciones nuevas de USER), en local (Postgres de desarrollo) y replicado como lo haría CI (Postgres efímero vacío, 6 migraciones, 5 instancias del backend en puertos separados).
+- **Estado**: Aprobada, con los siete ajustes obligatorios del usuario ya incorporados — gate completo verificado (19+34+38+44 comprobaciones heredadas de ADR-0004/0005/0006/0007 re-ejecutadas sin regresiones + 40 comprobaciones nuevas de USER — conteos corregidos en Architecture Review 1.0, 2026-08-01, para coincidir con la ejecución real del gate), en local (Postgres de desarrollo) y replicado como lo haría CI (Postgres efímero vacío, 6 migraciones, 5 instancias del backend en puertos separados).
 - **Fecha**: 2026-08-01
 - **Fase de aplicación**: Fase 0 — Foundation, Paso 8
 - **Responsable de aprobación**: Product Owner (usuario)
@@ -57,12 +57,12 @@ No se agregan `user_profile_created`/`user_profile_updated` al catálogo de ANAL
 - Si en el futuro se necesita un perfil público (`public_profile`, username, avatar) o gamificación sobre USER, esos son dominios/extensiones nuevas — no se construyen ampliando `UserProfile` retroactivamente sin una decisión explícita.
 - Cualquier campo nuevo en `UserProfile` con datos personales debe evaluarse contra el mismo criterio de eliminación completa al cierre (no queda automáticamente cubierto si el campo requiriera retención distinta).
 
-## Validación (130 heredadas sin regresiones + 33 nuevas de USER)
+## Validación (135 heredadas sin regresiones + 40 nuevas de USER)
 
 Ejecutado con cinco instancias del backend en puertos separados, contra Postgres de desarrollo y replicando CI desde cero (Postgres efímero, 6 migraciones, seed, build, 5 instancias en puertos separados).
 
 - Gates de AUTH (19), PRIVACY (34), ANALYTICS (34) y OBSERVABILITY (43) re-ejecutados: sin regresiones.
-- Gate de USER (33 comprobaciones nuevas), incluyendo (ajuste 7):
+- Gate de USER (40 comprobaciones nuevas), incluyendo (ajuste 7):
   - Creación concurrente (`Promise.all` con dos `POST` simultáneos): ningún 500, exactamente un 201 y un 200, una sola fila en `user_profile`.
   - Diferencia `201` (primera creación) vs `200` (perfil ya existente).
   - Un segundo `POST` con un `displayName` distinto NO modifica el perfil ya creado.
