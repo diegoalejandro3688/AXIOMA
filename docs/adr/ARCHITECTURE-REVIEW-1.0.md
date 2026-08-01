@@ -4,7 +4,7 @@
 - **Alcance**: revisión conjunta de todos los ADR de Fase 0 (ADR-0001 a ADR-0011), verificando terminología consistente, nombres consistentes, mismos principios, mismas decisiones, ausencia de contradicciones entre ADR, y mismos conceptos de dominio — criterio fijado explícitamente por el usuario antes de empezar Fase 0.
 - **Responsable**: Product Owner (usuario), ejecutada por Claude Code.
 - **Resultado**: 2 hallazgos materiales encontrados y corregidos en los propios ADR afectados (no en este documento aparte). 1 hallazgo cosmético observado, no corregido (ver "Hallazgos menores, no corregidos"). Gate final consolidado re-ejecutado sin regresiones (ver "Gate final consolidado").
-- **Pendiente que este review NO resuelve**: verificación manual en Android real (ver ADR-0011) — requiere un dispositivo/emulador que este entorno no tiene disponible. Sigue bloqueando el cierre formal de Fase 0, tal como el propio ADR-0011 ya establecía.
+- **Pendiente que este review NO resuelve** (resuelto después, ver "Cierre de Fase 0" abajo): verificación manual en Android real (ver ADR-0011) — requería un dispositivo/emulador que este entorno no tiene disponible.
 
 ## Hallazgos materiales encontrados y corregidos
 
@@ -74,6 +74,10 @@ Ejecutado contra infraestructura efímera desde cero (Postgres y MinIO nuevos, s
 
 1. ✅ Architecture Review 1.0 (este documento).
 2. ✅ Resolución de hallazgos materiales (ver arriba).
-3. ⬜ **Checklist manual de verificación en Android real (ADR-0011)** — no ejecutado; este entorno no tiene SDK/emulador de Android disponible. Sigue siendo un bloqueante explícito para el cierre, no una formalidad.
-4. ✅ Gate final consolidado re-ejecutado (ver arriba).
-5. ⬜ Commit/tag formal de cierre de Fase 0 — pendiente del punto 3.
+3. ✅ **Checklist manual de verificación en Android real (ADR-0011)** — ejecutado en dispositivo Android físico (Expo Go), 2026-07-31. Resultado: PASS. Ver checklist completo y hallazgo intermedio (corregido) en ADR-0011.
+4. ✅ Gate final consolidado re-ejecutado (ver arriba; el gate OFFLINE-OUTBOX pasó de 22 a 24 comprobaciones tras agregar el caso 6b de `getMostRecent` durante la corrección del hallazgo intermedio del punto 3).
+5. ✅ Commit/tag formal de cierre de Fase 0 — commit `ba64e90`, tag `phase-0-complete`.
+
+## Cierre de Fase 0
+
+**Fase 0 queda cerrada formalmente el 2026-07-31.** Los 11 pasos de la Implementation Matrix, sus 11 ADR, el Architecture Review 1.0 y el gate Android quedan todos en estado aprobado, sin pendientes bloqueantes. Las decisiones futuras explícitamente diferidas (limpieza de la cola offline al cerrar sesión, cifrado a nivel de archivo, protocolo real de sincronización, entre otras documentadas en cada ADR) quedan abiertas para Fase 1 (Vertical Slice M1), no para Fase 0.
