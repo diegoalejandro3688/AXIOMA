@@ -157,6 +157,16 @@ async function main() {
   check('la operación ya sincronizada NO aparece en pendientes', !pending.some((o) => o.id === id));
   check('la operación recién encolada SÍ aparece en pendientes', pending.some((o) => o.id === idB));
 
+  console.log('--- 6b. getMostRecent devuelve la más reciente sin filtrar por estado (usado por el diagnóstico) ---');
+  const mostRecentAfterB = await repo.getMostRecent();
+  check('getMostRecent devuelve la última encolada (idB), aunque la anterior esté SYNCED', mostRecentAfterB?.id === idB);
+  await repo.markFailed(idB, 'fallo de prueba');
+  const mostRecentAfterFail = await repo.getMostRecent();
+  check(
+    'getMostRecent sigue devolviendo la misma operación tras marcarla FAILED (no la oculta)',
+    mostRecentAfterFail?.id === idB && mostRecentAfterFail?.syncStatus === 'FAILED',
+  );
+
   console.log('--- 7. Rechazo: payload no serializable (referencia circular) ---');
   const circular: Record<string, unknown> = {};
   circular.self = circular;

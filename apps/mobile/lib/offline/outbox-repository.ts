@@ -125,6 +125,21 @@ export class OutboxRepository {
     return row ? mapRow(row) : null;
   }
 
+  /**
+   * La operación más reciente, sin importar `syncStatus` -- a diferencia de
+   * `listPending()`, no se limita a `PENDING`. Usada por la pantalla de
+   * diagnóstico para poder mostrar/operar sobre la última fila real de
+   * SQLite tras un reinicio de la app, en vez de depender de un id
+   * recordado en memoria (que no sobrevive un reinicio).
+   */
+  async getMostRecent(): Promise<OutboxOperation | null> {
+    const row = await this.driver.getFirstAsync<OutboxOperationRow>(
+      `SELECT * FROM outbox_operation ORDER BY created_at DESC LIMIT 1`,
+      [],
+    );
+    return row ? mapRow(row) : null;
+  }
+
   async markSynced(id: string): Promise<void> {
     const now = new Date().toISOString();
     await this.driver.runAsync(`UPDATE outbox_operation SET sync_status = 'SYNCED', updated_at = ? WHERE id = ?`, [

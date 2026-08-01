@@ -1,6 +1,6 @@
 # ADR 0011 — Fundación de persistencia offline / client outbox
 
-- **Estado**: Aprobada, con las condiciones del usuario incorporadas — validación automatizada principal (22 comprobaciones — corregido de "21" en Architecture Review 1.0, 2026-08-01) ejecutada con `node:sqlite` contra la lógica real de producción (no una reimplementación), más una comprobación complementaria en navegador. **La verificación en un dispositivo/emulador Android real queda pendiente** (ver "Limitación del entorno" y el checklist manual, más abajo) — no se declara completada ni simulada.
+- **Estado**: Aprobada — validación automatizada principal (24 comprobaciones, incluyendo el caso 6b de `getMostRecent` agregado durante la verificación Android) ejecutada con `node:sqlite` contra la lógica real de producción (no una reimplementación), más una comprobación complementaria en navegador. **Verificación en dispositivo Android real completada y aprobada (2026-07-31, checklist más abajo, gate = PASS)**.
 - **Fecha**: 2026-08-01
 - **Fase de aplicación**: Fase 0 — Foundation, Paso 11 (último paso de implementación antes del Architecture Review 1.0)
 - **Responsable de aprobación**: Product Owner (usuario)
@@ -51,23 +51,25 @@ Verificado no solo por inspección: el gate inserta un valor que contiene sintax
 
 ## Limitación del entorno (declarada explícitamente, no omitida)
 
-Este entorno de desarrollo **no tiene SDK de Android ni emulador disponible** (sin `adb`, sin `ANDROID_HOME`). Por decisión explícita del usuario:
+Este entorno de desarrollo **no tiene SDK de Android ni emulador disponible** (sin `adb`, sin `ANDROID_HOME`). Por decisión explícita del usuario, la verificación en Android real se hizo en un dispositivo físico del usuario (Expo Go), fuera de este entorno:
 
 - **Validación automatizada PRINCIPAL**: `node:sqlite` (Node 22+), ejecutando la lógica real de `migration-runner.ts`/`migrations.ts`/`outbox-repository.ts` -- no una reimplementación ni un mock -- contra SQLite real, incluyendo persistencia real en archivo (abrir, escribir, cerrar, reabrir el mismo archivo `.db`).
 - **Comprobación complementaria en navegador** (`expo start --web`): la pantalla de diagnóstico **renderiza correctamente** (título, botones, accesibilidad), pero el peticion del *worker* de `expo-sqlite` para web (`expo-sqlite/web/worker.bundle`) **quedó pendiente sin completar** en la verificación realizada -- consistente con que el soporte web de `expo-sqlite` es alpha y probablemente depende de cabeceras de aislamiento de origen cruzado (`Cross-Origin-Opener-Policy`/`Cross-Origin-Embedder-Policy`) que el servidor de desarrollo de Metro no envía por defecto. **No se afirma que la persistencia funcionó en web** -- se documenta el hallazgo tal como se observó, sin inventar un resultado.
-- **No se afirma en ningún lugar de este ADR ni del cierre del paso que la verificación en Android nativo fue realizada.** Queda como gate operativo pendiente, a ejecutar antes del cierre definitivo de Fase 0 o antes de almacenar cualquier dato real de usuario en esta cola -- lo que ocurra primero.
+- **Verificación en Android nativo real: completada (2026-07-31), resultado PASS.** Ver checklist ejecutado abajo.
 
-### Checklist manual reproducible para Android (pendiente, a ejecutar por el usuario o en una sesión con dispositivo/emulador disponible)
+### Checklist manual reproducible para Android — EJECUTADO, resultado PASS (2026-07-31)
 
-1. Compilar y correr una build de desarrollo en un dispositivo/emulador Android real (`expo run:android` o EAS Build de desarrollo).
-2. Navegar a `dev-offline-diagnostics` (solo alcanzable porque es una build de desarrollo, `__DEV__ === true`).
-3. Pulsar "Encolar operación de prueba" -- confirmar que aparece en la lista de pendientes.
-4. **Cerrar la app por completo** (no solo verla en segundo plano -- forzar el cierre desde el sistema operativo).
-5. Reabrir la app y volver a `dev-offline-diagnostics`.
-6. Confirmar que la operación encolada en el paso 3 **sigue apareciendo** (persistencia real en `expo-sqlite`, no en memoria).
-7. Pulsar "Marcar última fallida" -- confirmar que `retryCount` pasa de 0 a 1 y la operación **no desaparece** de la lista (aunque ya no esté en estado `PENDING`, puede confirmarse revisando el archivo de base de datos o extendiendo temporalmente la pantalla para mostrar también `FAILED`).
-8. Repetir el cierre completo + reapertura una vez más -- confirmar que el `retryCount` y el estado `FAILED` **persisten** (no se resetean).
-9. Confirmar, revisando el código fuente instalado, que la build es de desarrollo (`__DEV__`) y que intentar acceder a la misma ruta en una build de producción/release no ejecuta ninguna operación (redirige).
+1. Compilar y correr una build de desarrollo en un dispositivo/emulador Android real (`expo run:android` o EAS Build de desarrollo). — Ejecutado con Expo Go en dispositivo Android físico.
+2. Navegar a `dev-offline-diagnostics` (solo alcanzable porque es una build de desarrollo, `__DEV__ === true`). — OK (el deep link directo no abrió la ruta en este dispositivo; se usó temporalmente un enlace visible desde Inicio, ya retirado tras el gate).
+3. Pulsar "Encolar operación de prueba" -- confirmar que aparece en la lista de pendientes. — OK.
+4. **Cerrar la app por completo** (no solo verla en segundo plano -- forzar el cierre desde el sistema operativo). — OK.
+5. Reabrir la app y volver a `dev-offline-diagnostics`. — OK.
+6. Confirmar que la operación encolada en el paso 3 **sigue apareciendo** (persistencia real en `expo-sqlite`, no en memoria). — OK, mismo id (`02539864-b8c3-4500-83e7-b7add78a6a52`).
+7. Pulsar "Marcar última fallida" -- confirmar que `retryCount` pasa de 0 a 1 y la operación **no desaparece** de la lista. — OK tras diagnóstico de un hallazgo intermedio (ver abajo).
+8. Repetir el cierre completo + reapertura una vez más -- confirmar que el `retryCount` y el estado `FAILED` **persisten** (no se resetean). — OK: tras cerrar y reabrir la app, la pantalla leyó `estado=FAILED`, `retryCount=1`, mismo id, directamente desde SQLite al abrir, sin pulsar ningún botón.
+9. Confirmar, revisando el código fuente instalado, que la build es de desarrollo (`__DEV__`) y que intentar acceder a la misma ruta en una build de producción/release no ejecuta ninguna operación (redirige). — OK (guarda `if (!__DEV__) return <Redirect href="/" />` sin cambios).
+
+**Hallazgo intermedio durante el paso 7 (ya resuelto):** en un primer intento, tras pulsar únicamente "Marcar última fallida", el estado leído quedó en `SYNCED` con `retryCount=1` en vez de `FAILED`. Se descartó un bug en `markFailed()` (el gate automatizado prueba que deja `retry_count` y `sync_status='FAILED'` en el mismo `UPDATE` atómico -- caso 6b). Se añadió `getMostRecent()` a `OutboxRepository` (la pantalla dependía de un id en `useState` que no sobrevive un reinicio y de `listPending()`, que solo filtra `PENDING`), y una guarda `busy` en la pantalla de diagnóstico que deshabilita los 4 botones mientras hay una operación en curso, para eliminar la posibilidad de una invocación superpuesta (p. ej. doble-tap) sobre la misma fila. Repetido el checklist completo con la pantalla corregida: resultado consistente y correcto (pasos 6-9 arriba).
 
 ## Decisiones futuras documentadas (no resueltas aquí)
 
@@ -85,14 +87,15 @@ Este entorno de desarrollo **no tiene SDK de Android ni emulador disponible** (s
 
 - Fase 1, al construir el protocolo de sincronización real, consumirá `OutboxRepository.listPending()` y llamará `markSynced`/`markFailed` según la respuesta de un endpoint de servidor que todavía no existe -- ese endpoint, su forma de aceptación/conflicto/reintento, y la reconciliación de estado, son trabajo de ese paso, no de este.
 - Antes de que la cola contenga datos reales de estudiantes, quedan dos decisiones explícitamente pendientes: limpieza al cerrar sesión/eliminar cuenta, y necesidad de cifrado a nivel de archivo.
-- La verificación en Android real (checklist arriba) debe completarse antes del cierre definitivo de Fase 0 o antes de almacenar datos reales de usuario en esta cola -- lo que ocurra primero.
+- La verificación en Android real (checklist arriba) está completa -- gate = PASS (2026-07-31).
 - El soporte web de `expo-sqlite` mostró una limitación real (worker que no completa su carga) -- si en el futuro se necesita que la app funcione en web con persistencia local, hay que investigar la configuración de cabeceras de aislamiento de origen cruzado en el servidor de Metro; no es necesario para este paso (web es plataforma complementaria, no el objetivo de producto).
 
 ## Validación
 
-- **Principal (automatizada, `node:sqlite`)**: 22 comprobaciones, incluyendo migración inicial (tabla + CHECK + índice), monotonicidad, atomicidad ante fallo (con ROLLBACK real), rechazo controlado de versión futura, estabilidad de `id` en reintentos, `retryCount` incremental sin borrado, `listPending` filtra correctamente, rechazo de payload circular y de payload sobre el límite de tamaño, persistencia real entre apertura/cierre de archivo, y resistencia a un payload con sintaxis SQL (parámetros enlazados).
+- **Principal (automatizada, `node:sqlite`)**: 24 comprobaciones, incluyendo migración inicial (tabla + CHECK + índice), monotonicidad, atomicidad ante fallo (con ROLLBACK real), rechazo controlado de versión futura, estabilidad de `id` en reintentos, `retryCount` incremental sin borrado, `listPending` filtra correctamente, `getMostRecent` no filtra por estado (caso 6b, agregado durante la verificación Android), rechazo de payload circular y de payload sobre el límite de tamaño, persistencia real entre apertura/cierre de archivo, y resistencia a un payload con sintaxis SQL (parámetros enlazados).
 - **Complementaria (Browser tool, web)**: la pantalla de diagnóstico renderiza correctamente; la persistencia real vía `expo-sqlite` web quedó sin confirmar (ver limitación del entorno arriba).
+- **Android real (Expo Go, dispositivo físico)**: PASS (2026-07-31) -- ver checklist ejecutado arriba.
 - `pnpm -r run typecheck/lint` en verde (incluye `apps/mobile/scripts/`).
 - CI: nuevo job `offline-outbox-gate` (Node 22, requerido por `node:sqlite`, separado del job `build` que sigue en Node 20).
 
-**Pendiente no bloqueante para este ADR, pero bloqueante antes de datos reales de usuario**: verificación manual en Android real (checklist arriba).
+**Gate Android: PASS. Sin pendientes bloqueantes para el cierre de Fase 0 en este ADR.**
