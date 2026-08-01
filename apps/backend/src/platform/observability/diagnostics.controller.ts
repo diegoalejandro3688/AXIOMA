@@ -1,6 +1,41 @@
-import { Controller, Logger, NotFoundException, Post, UseGuards } from '@nestjs/common';
+import { createHash, randomUUID } from 'node:crypto';
+import { BadRequestException, Controller, Logger, NotFoundException, Post, Query, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InternalOpsGuard } from '../internal-ops/internal-ops.guard';
+import { ObjectStorageService } from '../object-storage/object-storage.service';
+import { ObjectValidationError, resolveUploadLimits, validateObjectUpload } from '../object-storage/file-validation';
+import { buildPngFixture } from '../object-storage/test-fixtures';
+
+type ObjectStorageScenario = 'valid' | 'oversized-bytes' | 'invalid-mime' | 'bad-magic-bytes' | 'oversized-dimensions';
+
+function buildScenarioFixture(
+  scenario: ObjectStorageScenario,
+  limits: { maxSizeBytes: number; maxWidthPx: number; maxHeightPx: number },
+): { body: Buffer; contentType: string } {
+  switch (scenario) {
+    case 'valid':
+      return { body: buildPngFixture({ width: 2, height: 2 }), contentType: 'image/png' };
+    case 'oversized-bytes': {
+      const base = buildPngFixture({ width: 2, height: 2 });
+      const filler = Buffer.alloc(limits.maxSizeBytes, 0x00);
+      return { body: Buffer.concat([base, filler]), contentType: 'image/png' };
+    }
+    case 'invalid-mime':
+      return { body: buildPngFixture({ width: 2, height: 2 }), contentType: 'application/pdf' };
+    case 'bad-magic-bytes': {
+      const body = buildPngFixture({ width: 2, height: 2 });
+      body[0] = 0x00; // corrompe la firma PNG deliberadamente
+      return { body, contentType: 'image/png' };
+    }
+    case 'oversized-dimensions':
+      return {
+        body: buildPngFixture({ width: limits.maxWidthPx + 1000, height: limits.maxHeightPx + 1000, realPixelData: false }),
+        contentType: 'image/png',
+      };
+    default:
+      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: `Escenario desconocido: "${scenario}".` });
+  }
+}
 
 /**
  * Endpoints de diagnóstico para verificar, con evidencia real (no solo en el
@@ -15,7 +50,10 @@ import { InternalOpsGuard } from '../internal-ops/internal-ops.guard';
 export class DiagnosticsController {
   private readonly logger = new Logger(DiagnosticsController.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly objectStorage: ObjectStorageService,
+  ) {}
 
   private rejectInProduction(): void {
     if (this.config.get<string>('NODE_ENV') === 'production') {
@@ -57,5 +95,60 @@ export class DiagnosticsController {
     });
 
     return { ok: true };
+  }
+
+  /**
+   * Prueba de extremo a extremo del almacenamiento de objetos --
+   * completamente autocontenida (genera su propio archivo de prueba en
+   * memoria, nunca depende de un archivo externo, y nunca devuelve ni
+   * loguea la URL firmada -- se usa internamente y se descarta) -- ver
+   * ADR-0010. `scenario` ejercita tanto el camino válido como cada
+   * rechazo de validación con el mismo mecanismo.
+   */
+  @Post('object-storage-roundtrip')
+  @UseGuards(InternalOpsGuard)
+  async objectStorageRoundtrip(@Query('scenario') scenarioParam = 'valid') {
+    this.rejectInProduction();
+
+    const scenario = scenarioParam as ObjectStorageScenario;
+    const limits = resolveUploadLimits(this.config);
+    const { body, contentType } = buildScenarioFixture(scenario, limits);
+
+    let validated;
+    try {
+      validated = validateObjectUpload(body, contentType, limits);
+    } catch (error) {
+      if (error instanceof ObjectValidationError) {
+        throw new BadRequestException({ code: 'VALIDATION_ERROR', message: error.message });
+      }
+      throw error;
+    }
+
+    // Si la validación pasó, solo el escenario 'valid' debería llegar
+    // aquí -- los demás ya lanzaron BadRequestException arriba.
+    const key = `diagnostics/${randomUUID()}.png`;
+    await this.objectStorage.putObject({ key, body, contentType: validated.contentType });
+
+    try {
+      const shortLivedUrl = await this.objectStorage.getSignedReadUrl(key, 2);
+      const firstFetch = await fetch(shortLivedUrl);
+      const downloaded = Buffer.from(await firstFetch.arrayBuffer());
+      const downloadedHash = createHash('sha256').update(downloaded).digest('hex');
+
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      const secondFetch = await fetch(shortLivedUrl);
+
+      return {
+        validationPassed: true,
+        sha256: validated.sha256,
+        sizeBytes: validated.sizeBytes,
+        width: validated.width,
+        height: validated.height,
+        downloadMatchesHash: firstFetch.ok && downloadedHash === validated.sha256,
+        urlExpiredAfterTtl: !secondFetch.ok,
+      };
+    } finally {
+      await this.objectStorage.deleteObject(key);
+    }
   }
 }

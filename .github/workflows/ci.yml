@@ -68,6 +68,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # MinIO (S3-compatible) para el gate de OBJECT-STORAGE -- ver ADR-0010.
+      # No se usa el bloque `services:` de GitHub Actions porque no permite
+      # pasarle el argumento `server /data` que la imagen necesita para
+      # arrancar (su CMD por defecto es solo `minio`, sin subcomando).
+      - name: Start MinIO (S3-compatible object storage)
+        run: >-
+          docker run -d --name axioma-minio-ci -p 9000:9000
+          -e MINIO_ROOT_USER=axioma -e MINIO_ROOT_PASSWORD=axioma_ci_password
+          minio/minio:latest server /data
+
+      - name: Wait for MinIO to be ready
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:9000/minio/health/live > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "MinIO no respondió a tiempo"
+          exit 1
+
       - name: Generate Prisma Client
         working-directory: apps/backend
         run: pnpm run prisma:generate
@@ -232,6 +251,39 @@ jobs:
           ANALYTICS_ACTOR_SECRET: ci-analytics-actor-secret
         run: npx tsx scripts/verify-user-gate.ts http://localhost:3004
 
+      # Puerto e instancia nuevos por el mismo motivo que los gates anteriores.
+      - name: Start backend for OBJECT-STORAGE gate (puerto 3005)
+        working-directory: apps/backend
+        env:
+          AUTH_IDENTITY_PROVIDER: stub
+          INTERNAL_OPS_KEY: ci-internal-ops-key
+          ANALYTICS_ACTOR_SECRET: ci-analytics-actor-secret
+          OBJECT_STORAGE_ENDPOINT: http://localhost:9000
+          OBJECT_STORAGE_REGION: auto
+          OBJECT_STORAGE_BUCKET: axioma-content-ci
+          OBJECT_STORAGE_ACCESS_KEY_ID: axioma
+          OBJECT_STORAGE_SECRET_ACCESS_KEY: axioma_ci_password
+          OBJECT_STORAGE_MAX_FILE_SIZE_BYTES: 5242880
+          OBJECT_STORAGE_MAX_WIDTH_PX: 4000
+          OBJECT_STORAGE_MAX_HEIGHT_PX: 4000
+          PORT: 3005
+        run: nohup node dist/main.js > backend-object-storage.log 2>&1 &
+
+      - name: Wait for OBJECT-STORAGE backend to be ready
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3005/health/live > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "El backend no respondió a tiempo"
+          exit 1
+
+      - name: Run OBJECT-STORAGE gate (validación, roundtrip firmado, expiración real)
+        working-directory: apps/backend
+        env:
+          INTERNAL_OPS_KEY: ci-internal-ops-key
+        run: npx tsx scripts/verify-object-storage-gate.ts http://localhost:3005
+
       - name: Show backend logs on failure
         if: failure()
         working-directory: apps/backend
@@ -241,3 +293,4 @@ jobs:
           echo "--- backend-analytics.log ---"; cat backend-analytics.log || true
           echo "--- backend-observability.log ---"; cat backend-observability.log || true
           echo "--- backend-user.log ---"; cat backend-user.log || true
+          echo "--- backend-object-storage.log ---"; cat backend-object-storage.log || true
