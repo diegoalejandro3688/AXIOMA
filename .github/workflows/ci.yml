@@ -35,6 +35,33 @@ jobs:
       - name: Build backend
         run: pnpm --filter @axioma/backend run build
 
+  offline-outbox-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      # node:sqlite requiere Node 22.5+ -- ver ADR-0011. Job separado del
+      # `build` principal (que sigue en Node 20) para no tener que subir la
+      # versión de Node de todos los demás jobs solo por este gate.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build contracts
+        run: pnpm --filter @axioma/contracts run build
+
+      - name: Run OFFLINE-OUTBOX gate (migraciones, repositorio, SQL real vía node:sqlite)
+        working-directory: apps/mobile
+        run: pnpm run verify:offline-outbox-gate
+
   db-migrations:
     runs-on: ubuntu-latest
     services:

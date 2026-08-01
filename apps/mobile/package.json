@@ -10,7 +10,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "lint": "eslint app lib components --ext .ts,.tsx",
-    "build": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "verify:offline-outbox-gate": "tsx scripts/verify-offline-outbox-gate.ts"
   },
   "dependencies": {
     "@axioma/contracts": "workspace:*",
@@ -18,8 +19,10 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~54.0.36",
     "expo-constants": "~18.0.13",
+    "expo-crypto": "~15.0.9",
     "expo-linking": "~8.0.12",
     "expo-router": "~6.0.24",
+    "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -31,6 +34,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.17",
+    "tsx": "4.23.1",
     "typescript": "~5.9.3"
   }
 }
