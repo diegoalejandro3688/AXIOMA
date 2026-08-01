@@ -20,6 +20,7 @@
     "verify:observability-gate": "tsx scripts/verify-observability-gate.ts",
     "verify:user-gate": "tsx scripts/verify-user-gate.ts",
     "verify:object-storage-gate": "tsx scripts/verify-object-storage-gate.ts",
+    "verify:education-gate": "tsx scripts/verify-education-gate.ts",
     "cli:recover-account": "node dist/cli/recover-account.js",
     "db:up": "docker compose -f ../../docker-compose.yml up -d",
     "db:down": "docker compose -f ../../docker-compose.yml down"

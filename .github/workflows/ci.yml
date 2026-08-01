@@ -311,6 +311,35 @@ jobs:
           INTERNAL_OPS_KEY: ci-internal-ops-key
         run: npx tsx scripts/verify-object-storage-gate.ts http://localhost:3005
 
+      - name: Seed EDUCATION content (recurso publicado + preguntas, sobre la unidad ya sembrada)
+        working-directory: apps/backend
+        run: pnpm run prisma:seed
+
+      # Puerto e instancia nuevos por el mismo motivo que los gates anteriores.
+      - name: Start backend for EDUCATION gate (puerto 3006)
+        working-directory: apps/backend
+        env:
+          AUTH_IDENTITY_PROVIDER: stub
+          INTERNAL_OPS_KEY: ci-internal-ops-key
+          ANALYTICS_ACTOR_SECRET: ci-analytics-actor-secret
+          PORT: 3006
+        run: nohup node dist/main.js > backend-education.log 2>&1 &
+
+      - name: Wait for EDUCATION backend to be ready
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3006/health/live > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "El backend no respondió a tiempo"
+          exit 1
+
+      - name: Run EDUCATION gate (invariante de materia, ciclos, huérfanos, UPDATE, isCorrect ausente)
+        working-directory: apps/backend
+        env:
+          DATABASE_URL: postgresql://axioma:axioma_ci_password@localhost:5432/axioma_ci?schema=public
+        run: npx tsx scripts/verify-education-gate.ts http://localhost:3006
+
       - name: Show backend logs on failure
         if: failure()
         working-directory: apps/backend
@@ -321,3 +350,4 @@ jobs:
           echo "--- backend-observability.log ---"; cat backend-observability.log || true
           echo "--- backend-user.log ---"; cat backend-user.log || true
           echo "--- backend-object-storage.log ---"; cat backend-object-storage.log || true
+          echo "--- backend-education.log ---"; cat backend-education.log || true

@@ -9,20 +9,203 @@ datasource db {
 
 /// Dominio EDUCATION. Andamiaje mínimo del árbol de temas curriculares --
 /// NO es el catálogo PAES completo. Ver docs/adr/0003-postgres-prisma-foundation.md.
+/// `subjectId` agregado en Bloque I (ADR-0012) -- inmutable una vez fijado,
+/// aplicado por trigger `enforce_curriculum_topic_subject_consistency` (permite
+/// solo la transición NULL -> valor del backfill, nunca un cambio posterior).
 model CurriculumTopic {
-  id       String  @id @default(uuid()) @db.Uuid
-  code     String  @unique
-  name     String
-  order    Int
-  parentId String? @map("parent_id") @db.Uuid
+  id        String  @id @default(uuid()) @db.Uuid
+  code      String  @unique
+  name      String
+  order     Int
+  parentId  String? @map("parent_id") @db.Uuid
+  subjectId String  @map("subject_id") @db.Uuid
 
+  subject  Subject           @relation(fields: [subjectId], references: [id], onDelete: Restrict)
   parent   CurriculumTopic?  @relation("CurriculumTopicToParent", fields: [parentId], references: [id], onDelete: Restrict)
   children CurriculumTopic[] @relation("CurriculumTopicToParent")
+
+  learningResourceVersions LearningResourceVersion[]
+  questionVersions         QuestionVersion[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([subjectId])
   @@map("curriculum_topic")
+}
+
+/// Dominio EDUCATION, Bloque I (Vertical Slice M1) -- ver
+/// docs/adr/0012-education-foundation.md. Categoría disciplinaria estable,
+/// SIN versión propia (no es contenido, Data Model 8.11).
+enum SubjectStatus {
+  ACTIVE
+  RETIRED
+
+  @@map("subject_status")
+}
+
+model Subject {
+  id           String        @id @default(uuid()) @db.Uuid
+  subjectKey   String        @unique @map("subject_key")
+  name         String
+  shortName    String        @map("short_name")
+  status       SubjectStatus @default(ACTIVE)
+  displayOrder Int           @map("display_order")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  curriculumTopics  CurriculumTopic[]
+  learningResources LearningResource[]
+  questions         Question[]
+
+  @@map("subject")
+}
+
+/// Ciclo de vida lógico compartido por las identidades de EDUCATION (recurso,
+/// pregunta) -- independiente del `editorialStatus` de cada versión.
+enum EducationLogicalStatus {
+  ACTIVE
+  RETIRED
+
+  @@map("education_logical_status")
+}
+
+/// Estado editorial de una VERSIÓN -- ver Data Model 9.6/10.6. Solo
+/// `PUBLISHED` es servible a estudiantes (ver EducationService).
+enum EditorialStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  PUBLISHED
+  DEPRECATED
+  ARCHIVED
+
+  @@map("editorial_status")
+}
+
+/// Identidad estable de un recurso educativo (Data Model 9.4, subconjunto
+/// mínimo). `primarySubjectId` es INMUTABLE una vez fijado (trigger
+/// `enforce_learning_resource_subject_immutable`) -- ver ADR-0012.
+/// `resourceType` acotado a 2 valores para M1 (no los 12 del Data Model).
+enum LearningResourceType {
+  LESSON
+  CONCEPT_EXPLANATION
+
+  @@map("learning_resource_type")
+}
+
+model LearningResource {
+  id               String                  @id @default(uuid()) @db.Uuid
+  resourceKey      String                  @unique @map("resource_key")
+  primarySubjectId String                  @map("primary_subject_id") @db.Uuid
+  resourceType     LearningResourceType    @map("resource_type")
+  status           EducationLogicalStatus  @default(ACTIVE)
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
+
+  primarySubject Subject                   @relation(fields: [primarySubjectId], references: [id], onDelete: Restrict)
+  versions       LearningResourceVersion[]
+
+  @@index([primarySubjectId])
+  @@map("learning_resource")
+}
+
+/// Versión inmutable una vez publicada (Data Model 9.6, subconjunto mínimo).
+/// `curriculumTopicId` vive AQUÍ (no en la identidad) -- es la clasificación
+/// editorial fina, trazable por versión. Ver ADR-0012, invariante 1.
+model LearningResourceVersion {
+  id                 String          @id @default(uuid()) @db.Uuid
+  learningResourceId String          @map("learning_resource_id") @db.Uuid
+  curriculumTopicId  String          @map("curriculum_topic_id") @db.Uuid
+  title              String
+  /// `ResourceContentBlock[]` -- validado por Zod (packages/contracts), no por Postgres. Ver ADR-0012, punto 4.
+  contentBlocks      Json            @map("content_blocks")
+  editorialStatus    EditorialStatus @default(DRAFT) @map("editorial_status")
+  publishedAt        DateTime?       @map("published_at")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  learningResource LearningResource @relation(fields: [learningResourceId], references: [id], onDelete: Restrict)
+  curriculumTopic  CurriculumTopic  @relation(fields: [curriculumTopicId], references: [id], onDelete: Restrict)
+
+  @@index([learningResourceId])
+  @@index([curriculumTopicId])
+  @@index([editorialStatus])
+  @@map("learning_resource_version")
+}
+
+/// Identidad estable de una pregunta (Data Model 10.5, subconjunto mínimo).
+/// `questionType` vive en la IDENTIDAD, no en la versión -- ver ADR-0012,
+/// punto 4 de precisiones: cambiar de tipo no es una revisión editorial del
+/// mismo concepto, es conceptualmente otra pregunta. M1 solo admite
+/// SINGLE_CHOICE (PRD 11.6.1, Data Model DM-D124); habilitar otros tipos es
+/// una decisión Nivel 2/3 futura y separada, no una extensión silenciosa del enum.
+enum QuestionType {
+  SINGLE_CHOICE
+
+  @@map("question_type")
+}
+
+model Question {
+  id               String                 @id @default(uuid()) @db.Uuid
+  questionKey      String                 @unique @map("question_key")
+  primarySubjectId String                 @map("primary_subject_id") @db.Uuid
+  questionType     QuestionType           @default(SINGLE_CHOICE) @map("question_type")
+  status           EducationLogicalStatus @default(ACTIVE)
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+
+  primarySubject Subject           @relation(fields: [primarySubjectId], references: [id], onDelete: Restrict)
+  versions       QuestionVersion[]
+
+  @@index([primarySubjectId])
+  @@map("question")
+}
+
+/// Versión inmutable una vez publicada (Data Model 10.6, subconjunto mínimo).
+/// `curriculumTopicId` vive aquí, igual que en LearningResourceVersion.
+/// `explanationContent` absorbe `answer_explanation` (Data Model 10.12) como
+/// campo, sin tabla ni tipificación por alternativa -- ver ADR-0012.
+model QuestionVersion {
+  id                 String          @id @default(uuid()) @db.Uuid
+  questionId         String          @map("question_id") @db.Uuid
+  curriculumTopicId  String          @map("curriculum_topic_id") @db.Uuid
+  /// `ResourceContentBlock[]` (enunciado) -- validado por Zod.
+  stemContent        Json            @map("stem_content")
+  /// `ExplanationContentBlock[]` (subconjunto paragraph/formula/image) -- validado por Zod.
+  explanationContent Json            @map("explanation_content")
+  editorialStatus    EditorialStatus @default(DRAFT) @map("editorial_status")
+  publishedAt        DateTime?       @map("published_at")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  question        Question        @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  curriculumTopic CurriculumTopic @relation(fields: [curriculumTopicId], references: [id], onDelete: Restrict)
+  answerOptions   AnswerOption[]
+
+  @@index([questionId])
+  @@index([curriculumTopicId])
+  @@index([editorialStatus])
+  @@map("question_version")
+}
+
+/// Absorbe `answer_key` (Data Model 10.10) como campo `isCorrect` -- sin tabla
+/// propia, ver ADR-0012. `isCorrect` NUNCA se serializa hacia el cliente
+/// (packages/contracts: `answerOptionPublicResponseSchema` lo omite) -- no hay
+/// endpoint de envío de respuesta en Bloque I, así que la exclusión es total.
+model AnswerOption {
+  id                String   @id @default(uuid()) @db.Uuid
+  questionVersionId String   @map("question_version_id") @db.Uuid
+  /// Bloque único (paragraph|formula) -- validado por Zod.
+  content           Json
+  displayOrder      Int      @map("display_order")
+  isCorrect         Boolean  @default(false) @map("is_correct")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  questionVersion QuestionVersion @relation(fields: [questionVersionId], references: [id], onDelete: Cascade)
+
+  @@index([questionVersionId])
+  @@map("answer_option")
 }
 
 /// Dominio AUTH. Subconjunto mínimo del Data Model Bloque 5 -- ver
