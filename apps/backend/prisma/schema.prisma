@@ -26,6 +26,7 @@ model CurriculumTopic {
 
   learningResourceVersions LearningResourceVersion[]
   questionVersions         QuestionVersion[]
+  topicProgress            CurriculumTopicProgress[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -182,6 +183,7 @@ model QuestionVersion {
   question        Question        @relation(fields: [questionId], references: [id], onDelete: Restrict)
   curriculumTopic CurriculumTopic @relation(fields: [curriculumTopicId], references: [id], onDelete: Restrict)
   answerOptions   AnswerOption[]
+  studentResponses StudentResponse[]
 
   @@index([questionId])
   @@index([curriculumTopicId])
@@ -190,9 +192,11 @@ model QuestionVersion {
 }
 
 /// Absorbe `answer_key` (Data Model 10.10) como campo `isCorrect` -- sin tabla
-/// propia, ver ADR-0012. `isCorrect` NUNCA se serializa hacia el cliente
-/// (packages/contracts: `answerOptionPublicResponseSchema` lo omite) -- no hay
-/// endpoint de envío de respuesta en Bloque I, así que la exclusión es total.
+/// propia, ver ADR-0012. `isCorrect` NUNCA se serializa hacia el cliente desde
+/// los endpoints de EDUCATION (packages/contracts: `answerOptionPublicResponseSchema`
+/// lo omite). Desde Bloque III (ADR-0014), PROGRESS lo revela -- pero solo en
+/// la respuesta de `POST /progress/topics/:topicId/responses`, nunca en un
+/// endpoint de EDUCATION.
 model AnswerOption {
   id                String   @id @default(uuid()) @db.Uuid
   questionVersionId String   @map("question_version_id") @db.Uuid
@@ -203,9 +207,61 @@ model AnswerOption {
   createdAt         DateTime @default(now()) @map("created_at")
 
   questionVersion QuestionVersion @relation(fields: [questionVersionId], references: [id], onDelete: Cascade)
+  studentResponses StudentResponse[]
 
   @@index([questionVersionId])
   @@map("answer_option")
+}
+
+/// Dominio PROGRESS (Bloque III, Vertical Slice M1) -- ver
+/// docs/adr/0014-progress-foundation.md. Avance de CONTENIDO (PROGRESS-001):
+/// NO evidencia académica ni dominio estimado (Data Model Bloques 12/13,
+/// fuera de alcance). `NOT_STARTED` es la ausencia de fila -- nunca un valor
+/// almacenado. Transición estrictamente monotónica hacia adelante, aplicada
+/// por el trigger `enforce_curriculum_topic_progress_monotonic`.
+enum TopicProgressStatus {
+  IN_PROGRESS
+  COMPLETED
+
+  @@map("topic_progress_status")
+}
+
+model CurriculumTopicProgress {
+  id                String              @id @default(uuid()) @db.Uuid
+  accountId         String              @map("account_id") @db.Uuid
+  curriculumTopicId String              @map("curriculum_topic_id") @db.Uuid
+  status            TopicProgressStatus @default(IN_PROGRESS)
+  startedAt         DateTime            @default(now()) @map("started_at")
+  lastActivityAt    DateTime            @default(now()) @map("last_activity_at")
+  completedAt       DateTime?           @map("completed_at")
+
+  curriculumTopic CurriculumTopic @relation(fields: [curriculumTopicId], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, curriculumTopicId])
+  @@index([accountId])
+  @@map("curriculum_topic_progress")
+}
+
+/// Inmutable tras crearse -- aplicado por el trigger
+/// `enforce_student_response_immutable` (ningún `UPDATE` permitido). La
+/// idempotencia de negocio real es `(accountId, questionVersionId)`;
+/// `operationId` es la clave de idempotencia de transporte (= id de la
+/// operación en la cola offline del cliente, ADR-0011) -- ver ADR-0014, punto 4.
+model StudentResponse {
+  id                String   @id @default(uuid()) @db.Uuid
+  accountId         String   @map("account_id") @db.Uuid
+  questionVersionId String   @map("question_version_id") @db.Uuid
+  answerOptionId    String   @map("answer_option_id") @db.Uuid
+  isCorrect         Boolean  @map("is_correct")
+  respondedAt       DateTime @default(now()) @map("responded_at")
+  operationId       String   @unique @map("operation_id") @db.Uuid
+
+  questionVersion QuestionVersion @relation(fields: [questionVersionId], references: [id], onDelete: Restrict)
+  answerOption    AnswerOption    @relation(fields: [answerOptionId], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, questionVersionId])
+  @@index([accountId])
+  @@map("student_response")
 }
 
 /// Dominio AUTH. Subconjunto mínimo del Data Model Bloque 5 -- ver

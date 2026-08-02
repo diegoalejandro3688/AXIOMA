@@ -351,6 +351,40 @@ jobs:
           DATABASE_URL: postgresql://axioma:axioma_ci_password@localhost:5432/axioma_ci?schema=public
         run: npx tsx scripts/verify-education-gate.ts http://localhost:3006
 
+      # Puerto e instancia nuevos por el mismo motivo que los gates anteriores.
+      - name: Start backend for PROGRESS gate (puerto 3007)
+        working-directory: apps/backend
+        env:
+          AUTH_IDENTITY_PROVIDER: stub
+          INTERNAL_OPS_KEY: ci-internal-ops-key
+          ANALYTICS_ACTOR_SECRET: ci-analytics-actor-secret
+          OBJECT_STORAGE_ENDPOINT: http://localhost:9000
+          OBJECT_STORAGE_REGION: auto
+          OBJECT_STORAGE_BUCKET: axioma-content-ci
+          OBJECT_STORAGE_ACCESS_KEY_ID: axioma
+          OBJECT_STORAGE_SECRET_ACCESS_KEY: axioma_ci_password
+          OBJECT_STORAGE_MAX_FILE_SIZE_BYTES: 5242880
+          OBJECT_STORAGE_MAX_WIDTH_PX: 4000
+          OBJECT_STORAGE_MAX_HEIGHT_PX: 4000
+          PORT: 3007
+        run: nohup node dist/main.js > backend-progress.log 2>&1 &
+
+      - name: Wait for PROGRESS backend to be ready
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3007/health/live > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "El backend no respondió a tiempo"
+          exit 1
+
+      - name: Run PROGRESS gate (idempotencia, validaciones, COMPLETED monotónico, Privacy, separación de dominio)
+        working-directory: apps/backend
+        env:
+          DATABASE_URL: postgresql://axioma:axioma_ci_password@localhost:5432/axioma_ci?schema=public
+          INTERNAL_OPS_KEY: ci-internal-ops-key
+        run: npx tsx scripts/verify-progress-gate.ts http://localhost:3007
+
       - name: Show backend logs on failure
         if: failure()
         working-directory: apps/backend
@@ -362,3 +396,4 @@ jobs:
           echo "--- backend-user.log ---"; cat backend-user.log || true
           echo "--- backend-object-storage.log ---"; cat backend-object-storage.log || true
           echo "--- backend-education.log ---"; cat backend-education.log || true
+          echo "--- backend-progress.log ---"; cat backend-progress.log || true

@@ -11,6 +11,7 @@ import { PrivacyModule } from './privacy/privacy.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { DiagnosticsModule } from './platform/observability/diagnostics.module';
 import { UserModule } from './user/user.module';
+import { ProgressModule } from './progress/progress.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { UserModule } from './user/user.module';
     AnalyticsModule,
     DiagnosticsModule,
     UserModule,
+    ProgressModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

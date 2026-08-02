@@ -1,8 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AppState } from 'react-native';
 import { createIdentityClient } from './identity-client-factory';
 import { loadSession, saveSession, clearSession } from './session-storage';
 import { setUnauthorizedHandler } from '../api/client';
 import { createSession, getMe, logout as logoutRequest } from '../api/auth';
+import { syncPendingOperations } from '../offline/sync-worker';
 
 export type AuthStatus = 'loading' | 'unauthenticated' | 'authenticated';
 export type AuthActionResult = { ok: true } | { ok: false; message: string };
@@ -63,6 +65,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => setUnauthorizedHandler(null);
   }, []);
+
+  // Disparador "AppState -> active" del worker de sincronización (ADR-0014,
+  // punto 5) -- solo mientras hay sesión (sin sesión, el intento fallaría
+  // con 401 sin motivo). Corre también una vez al autenticarse, cubriendo
+  // el caso "quedaron operaciones pendientes de una sesión anterior".
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+
+    void syncPendingOperations();
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') void syncPendingOperations();
+    });
+    return () => subscription.remove();
+  }, [status]);
 
   async function establishSession(idToken: string): Promise<AuthActionResult> {
     const sessionResult = await createSession(idToken);

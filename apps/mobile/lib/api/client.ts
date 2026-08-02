@@ -15,7 +15,7 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3
 export type ApiResult<T> =
   | { ok: true; data: T }
   | { ok: false; kind: 'network'; message: string }
-  | { ok: false; kind: 'http'; status: number; code?: string; message: string };
+  | { ok: false; kind: 'http'; status: number; code?: string; message: string; body?: unknown };
 
 let unauthorizedHandler: (() => void) | null = null;
 
@@ -69,14 +69,20 @@ export async function apiRequest<T = void>(
   if (!response.ok) {
     let code: string | undefined;
     let message = `Error ${response.status}`;
+    let body: unknown;
     try {
-      const errorBody = (await response.json()) as { error?: { code?: string; message?: string } };
+      body = await response.json();
+      const errorBody = body as { error?: { code?: string; message?: string } };
       code = errorBody?.error?.code;
       message = errorBody?.error?.message ?? message;
     } catch {
       // Cuerpo de error no-JSON o vacío -- se conserva el mensaje genérico.
     }
-    return { ok: false, kind: 'http', status: response.status, code, message };
+    // `body` completo se conserva (no solo `error.*`) -- algunos endpoints
+    // (ej. 409 de PROGRESS, ADR-0014) incluyen datos adicionales junto al
+    // envelope de error estándar (`existingResponse`), que el llamador
+    // puede necesitar leer explícitamente con su propio esquema.
+    return { ok: false, kind: 'http', status: response.status, code, message, body };
   }
 
   if (response.status === 204) {

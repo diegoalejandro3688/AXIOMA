@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import type { SubjectResponse, CurriculumTopicResponse } from '@axioma/contracts';
+import type { SubjectResponse, CurriculumTopicResponse, TopicProgressStatus } from '@axioma/contracts';
 import { listSubjects, listRootTopics } from '../../../lib/api/education';
+import { getTopicProgress } from '../../../lib/api/progress';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
 import { EmptyState } from '../../../components/empty-state';
@@ -10,11 +11,17 @@ import { EmptyState } from '../../../components/empty-state';
 type ScreenState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; subject: SubjectResponse | null; topics: CurriculumTopicResponse[] };
+  | {
+      status: 'ready';
+      subject: SubjectResponse | null;
+      topics: CurriculumTopicResponse[];
+      progressByTopic: Record<string, TopicProgressStatus>;
+    };
 
 /**
- * Estudio real -- ver ADR-0013 (reemplaza el placeholder de ADR-0009).
- * Selecciona la materia sembrada (M1 tiene una sola) y lista sus unidades.
+ * Estudio real -- ver ADR-0013/ADR-0014. Selecciona la materia sembrada (M1
+ * tiene una sola) y lista sus unidades con su estado de avance (PROGRESS,
+ * ADR-0014) -- nunca mezclado con los datos de contenido de EDUCATION.
  * Recorrido: materia -> unidad -> [topicId] (recurso + preguntas).
  */
 export default function EstudioIndexScreen() {
@@ -30,7 +37,7 @@ export default function EstudioIndexScreen() {
     }
     const subject = subjectsResult.data[0] ?? null;
     if (!subject) {
-      setState({ status: 'ready', subject: null, topics: [] });
+      setState({ status: 'ready', subject: null, topics: [], progressByTopic: {} });
       return;
     }
     const topicsResult = await listRootTopics(subject.id);
@@ -38,7 +45,17 @@ export default function EstudioIndexScreen() {
       setState({ status: 'error', message: topicsResult.message });
       return;
     }
-    setState({ status: 'ready', subject, topics: topicsResult.data });
+
+    // M1 tiene un puñado de unidades raíz -- una consulta de progreso por
+    // unidad es suficiente; un endpoint de resumen en lote se justificará
+    // si el catálogo crece (ver ADR-0014, "Consecuencias").
+    const progressResults = await Promise.all(topicsResult.data.map((topic) => getTopicProgress(topic.id)));
+    const progressByTopic: Record<string, TopicProgressStatus> = {};
+    progressResults.forEach((result, index) => {
+      if (result.ok) progressByTopic[topicsResult.data[index].id] = result.data.status;
+    });
+
+    setState({ status: 'ready', subject, topics: topicsResult.data, progressByTopic });
   }, []);
 
   useEffect(() => {
@@ -66,6 +83,7 @@ export default function EstudioIndexScreen() {
             onPress={() => router.push({ pathname: '/(tabs)/estudio/[topicId]', params: { topicId: item.id } })}
           >
             <Text style={styles.topicName}>{item.name}</Text>
+            <Text style={styles.topicStatus}>{topicStatusLabel(state.progressByTopic[item.id] ?? 'NOT_STARTED')}</Text>
           </Pressable>
         )}
         contentContainerStyle={styles.list}
@@ -74,10 +92,22 @@ export default function EstudioIndexScreen() {
   );
 }
 
+function topicStatusLabel(status: TopicProgressStatus): string {
+  switch (status) {
+    case 'COMPLETED':
+      return 'Completada';
+    case 'IN_PROGRESS':
+      return 'En progreso';
+    default:
+      return 'Sin comenzar';
+  }
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, gap: 12 },
   subjectName: { fontSize: 22, fontWeight: '700' },
   list: { gap: 12 },
-  topicCard: { padding: 16, borderRadius: 8, backgroundColor: '#f2f2f2' },
+  topicCard: { padding: 16, borderRadius: 8, backgroundColor: '#f2f2f2', gap: 4 },
   topicName: { fontSize: 16, fontWeight: '600' },
+  topicStatus: { fontSize: 12, color: '#666' },
 });

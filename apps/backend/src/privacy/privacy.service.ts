@@ -3,6 +3,7 @@ import { ANALYTICS_SCHEMA_VERSION } from '@axioma/contracts';
 import { AuthService } from '../auth/auth.service';
 import { OutboxService } from '../platform/outbox/outbox.service';
 import { UserService } from '../user/user.service';
+import { ProgressService } from '../progress/progress.service';
 import { PrivacyRequestRepository } from './privacy-request.repository';
 import type { PrivacyRequest } from '../generated/prisma/client';
 
@@ -23,6 +24,7 @@ export class PrivacyService {
     private readonly privacyRequestRepo: PrivacyRequestRepository,
     private readonly authService: AuthService,
     private readonly userService: UserService,
+    private readonly progressService: ProgressService,
     private readonly outbox: OutboxService,
   ) {}
 
@@ -108,6 +110,11 @@ export class PrivacyService {
         // reintento, igual que un fallo de finalizeAccountClosure (ver
         // ADR-0008). Seguro si la cuenta nunca inicializó su perfil.
         await this.userService.deleteProfileForAccountClosure(request.accountId);
+        // Dato personal de PROGRESS (respuestas y avance) -- mismo criterio
+        // que USER arriba: dentro del mismo try, antes de markCompleted. Si
+        // falla, la solicitud queda PROCESSING para reintento -- nunca se
+        // marca completada con una eliminación parcial (ver ADR-0014, punto 2).
+        await this.progressService.deleteProgressForAccountClosure(request.accountId);
         await this.privacyRequestRepo.markCompleted(request.id);
         processed++;
         this.logger.log(
