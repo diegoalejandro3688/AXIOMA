@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { ObjectStorageModule } from '../platform/object-storage/object-storage.module';
 import { CurriculumTopicRepository } from './curriculum-topic.repository';
 import { SubjectRepository } from './subject.repository';
 import { LearningResourceRepository } from './learning-resource.repository';
@@ -11,7 +12,7 @@ import { EducationService } from './education.service';
 import { EducationController } from './education.controller';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, ObjectStorageModule],
   controllers: [EducationController],
   providers: [
     CurriculumTopicRepository,

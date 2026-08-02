@@ -316,12 +316,23 @@ jobs:
         run: pnpm run prisma:seed
 
       # Puerto e instancia nuevos por el mismo motivo que los gates anteriores.
+      # Variables OBJECT_STORAGE_* necesarias desde ADR-0013: EducationService
+      # resuelve `objectKey` -> URL firmada vía ObjectStorageService (MinIO ya
+      # arriba desde el paso OBJECT-STORAGE, mismo bucket).
       - name: Start backend for EDUCATION gate (puerto 3006)
         working-directory: apps/backend
         env:
           AUTH_IDENTITY_PROVIDER: stub
           INTERNAL_OPS_KEY: ci-internal-ops-key
           ANALYTICS_ACTOR_SECRET: ci-analytics-actor-secret
+          OBJECT_STORAGE_ENDPOINT: http://localhost:9000
+          OBJECT_STORAGE_REGION: auto
+          OBJECT_STORAGE_BUCKET: axioma-content-ci
+          OBJECT_STORAGE_ACCESS_KEY_ID: axioma
+          OBJECT_STORAGE_SECRET_ACCESS_KEY: axioma_ci_password
+          OBJECT_STORAGE_MAX_FILE_SIZE_BYTES: 5242880
+          OBJECT_STORAGE_MAX_WIDTH_PX: 4000
+          OBJECT_STORAGE_MAX_HEIGHT_PX: 4000
           PORT: 3006
         run: nohup node dist/main.js > backend-education.log 2>&1 &
 

@@ -6,6 +6,7 @@ import {
   answerOptionContentSchema,
 } from '@axioma/contracts';
 import { PrismaClient } from '../src/generated/prisma/client';
+import { renderLatexToSvg } from '../src/education/formula-rendering';
 
 /**
  * Seed idempotente: correr este script N veces produce el mismo estado final,
@@ -59,7 +60,14 @@ async function seedResource(input: { unidadId: string; subjectId: string }) {
       order: 1,
       text: 'Un porcentaje expresa una cantidad como parte de 100. Para calcular el p% de un valor v, se multiplica v por p y se divide por 100.',
     },
-    { type: 'formula', order: 2, latex: '\\text{porcentaje} = \\frac{v \\times p}{100}' },
+    {
+      type: 'formula',
+      order: 2,
+      latex: '\\text{porcentaje} = \\frac{v \\times p}{100}',
+      // Generado UNA vez, en este mismo momento de "publicación" (ver ADR-0002 y
+      // ADR-0013) -- nunca se regenera en cada lectura ni en el dispositivo.
+      svg: renderLatexToSvg('\\text{porcentaje} = \\frac{v \\times p}{100}', true),
+    },
     {
       type: 'paragraph',
       order: 3,

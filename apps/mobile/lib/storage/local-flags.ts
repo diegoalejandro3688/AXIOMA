@@ -3,9 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 /**
  * Capa centralizada de acceso a AsyncStorage -- ver ADR-0009. Únicamente
  * para estado local NO sensible (ej. "ya vio el onboarding"). Nunca para
- * credenciales ni estado de autenticación real -- eso lo maneja el
- * proveedor de auth (hoy MockAuthProvider, en memoria; ver
- * lib/auth/mock-auth-provider.tsx).
+ * credenciales ni estado de autenticación real -- eso usa
+ * `expo-secure-store` vía `lib/auth/session-storage.ts` (ver ADR-0013).
  *
  * Claves versionadas (`axioma.v1.*`): si el formato almacenado cambiara de
  * forma incompatible, se sube el número de versión en vez de mutar la

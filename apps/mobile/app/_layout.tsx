@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import { FullScreenLoader } from '../components/full-screen-loader';
-import { MockAuthProvider, useAuth } from '../lib/auth/mock-auth-provider';
+import { AuthProvider, useAuth } from '../lib/auth/auth-provider';
 import { OnboardingProvider, useOnboarding } from '../lib/onboarding/onboarding-provider';
 
 /**
@@ -17,11 +17,11 @@ import { OnboardingProvider, useOnboarding } from '../lib/onboarding/onboarding-
  */
 export default function RootLayout() {
   return (
-    <MockAuthProvider>
+    <AuthProvider>
       <OnboardingProvider>
         <RootNavigator />
       </OnboardingProvider>
-    </MockAuthProvider>
+    </AuthProvider>
   );
 }
 

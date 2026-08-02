@@ -6,6 +6,16 @@
 - **Responsable de aprobación**: Product Owner (usuario)
 - **Nivel de decisión** (protocolo Master Context 11.9): Nivel 2 — introduce estructuras de persistencia nuevas y fija el límite práctico entre EDUCATION y PROGRESS.
 
+## Enmienda (2026-08-02, ver ADR-0013)
+
+Al proponer Bloque II se detectó una contradicción real entre este ADR y **ADR-0002** (arquitectura oficial de renderizado matemático, aprobada y cerrada formalmente antes de este ADR): ADR-0002 exige que toda fórmula lleve, desde el diseño de sus entidades, tanto el LaTeX fuente como el SVG generado en el momento de publicación, versionados juntos — el `formulaBlockSchema` original de este ADR solo tenía `latex`. Por decisión explícita del usuario, **ADR-0002 no se reabre**; se corrige este ADR para ser coherente con él:
+
+- `formulaBlockSchema` (`packages/contracts/src/education.ts`) ahora incluye `svg: string` obligatorio junto a `latex`.
+- Infraestructura mínima agregada (`apps/backend/src/education/formula-rendering.ts`, función pura `renderLatexToSvg()` con `mathjax-full`, mismo patrón validado en el spike de ADR-0002) — **no** el pipeline editorial completo, que sigue fuera de alcance. Hoy la invoca únicamente `prisma/seed.ts`, el único punto que "publica" contenido en M1.
+- Adicionalmente (ADR-0013, punto 4): los bloques `image` ya no exponen `objectKey` en la respuesta de la API — `EducationService` lo resuelve a una URL firmada vía `ObjectStorageService` (ADR-0010) antes de responder. `imageBlockSchema` (almacenamiento, con `objectKey`) y `imageBlockResponseSchema` (respuesta, con `url`) quedan como esquemas separados.
+
+Ninguna entidad ni el modelo identidad/versión cambia — es una corrección de forma dentro de los campos `Json` ya existentes (`contentBlocks`/`stemContent`/`explanationContent`), sin migración de esquema Prisma. El gate de EDUCATION se amplió con comprobaciones para ambos puntos (ver ADR-0013).
+
 ## Contexto
 
 El Phase 1 Kickoff (2026-08-01) abre la Vertical Slice M1 y define su Bloque I como "construir el dominio Education mínimo que permita representar materias, unidades, recursos educativos y preguntas dentro del sistema". Fase 0 dejó únicamente el andamiaje mínimo de `CurriculumTopic` (ADR-0003: `id, code, name, order, parentId`, sin materia, sin recursos, sin preguntas) y la infraestructura de almacenamiento de objetos (ADR-0010, `ObjectStorageService`) que este bloque debe reutilizar sin extender.

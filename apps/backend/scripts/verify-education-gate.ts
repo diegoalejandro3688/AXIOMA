@@ -84,6 +84,22 @@ async function main() {
       ['heading', 'paragraph', 'formula', 'image'].includes(b.type),
     ),
   );
+  const formulaBlocks = rResource.body.contentBlocks.filter((b: { type: string }) => b.type === 'formula');
+  check('el recurso sembrado tiene al menos un bloque formula', formulaBlocks.length > 0);
+  check(
+    'todo bloque formula trae latex Y svg (ADR-0002/ADR-0013) -- nunca solo uno de los dos',
+    formulaBlocks.every((b: { latex?: string; svg?: string }) => !!b.latex && !!b.svg),
+  );
+  check(
+    'ningún bloque image expone objectKey -- solo url firmada (ADR-0013, punto 4)',
+    rResource.body.contentBlocks
+      .filter((b: { type: string }) => b.type === 'image')
+      .every((b: Record<string, unknown>) => !('objectKey' in b) && typeof b.url === 'string'),
+  );
+  check(
+    'la respuesta cruda del recurso NO contiene la cadena "objectKey"',
+    !JSON.stringify(rResource.body).includes('objectKey'),
+  );
 
   const rQuestions = await req('GET', `/education/topics/${unidad.id}/questions`, authHeaders);
   check('GET preguntas publicadas -> 200', rQuestions.status === 200);
@@ -123,6 +139,29 @@ async function main() {
   const rResourceAfterDraft = await req('GET', `/education/topics/${unidad.id}/resource`, authHeaders);
   check('el borrador recién insertado NO se sirve', rResourceAfterDraft.body?.versionId !== draftId);
   check('sigue sirviéndose la versión publicada original', rResourceAfterDraft.body?.versionId === rResource.body.versionId);
+
+  // --- 5b. Bloque image se resuelve a URL firmada (ADR-0013, punto 4) ---
+  console.log('--- 5b. Bloque image: objectKey nunca sale, url firmada sí ---');
+  const imageVersionId = randomUUID();
+  await pg.query(
+    `INSERT INTO learning_resource_version (id, learning_resource_id, curriculum_topic_id, title, content_blocks, editorial_status, published_at, created_at, updated_at)
+     VALUES ($1, $2, $3, 'Versión con imagen (gate)',
+       '[{"type":"image","order":0,"objectKey":"gate/fixture-image.png","altText":"Imagen de prueba del gate"}]',
+       'PUBLISHED', now(), now(), now())`,
+    [imageVersionId, learningResourceId, unidad.id],
+  );
+  const rResourceWithImage = await req('GET', `/education/topics/${unidad.id}/resource`, authHeaders);
+  check('la versión con imagen (más reciente) pasa a ser la servida', rResourceWithImage.body?.versionId === imageVersionId);
+  const imageBlock = rResourceWithImage.body?.contentBlocks?.[0];
+  check('el bloque image de la respuesta NO tiene objectKey', imageBlock && !('objectKey' in imageBlock));
+  check('el bloque image de la respuesta SÍ tiene url (string)', typeof imageBlock?.url === 'string' && imageBlock.url.length > 0);
+  check('la url es una URL firmada real (contiene parámetros de firma S3)', /X-Amz-Signature|Signature=/.test(imageBlock?.url ?? ''));
+  // Revierte a DRAFT -- deja la base en el mismo estado que antes de este check.
+  await pg.query(`UPDATE learning_resource_version SET editorial_status = 'DRAFT', published_at = NULL WHERE id = $1`, [
+    imageVersionId,
+  ]);
+  const rResourceRestored = await req('GET', `/education/topics/${unidad.id}/resource`, authHeaders);
+  check('tras revertir, vuelve a servirse la versión publicada original', rResourceRestored.body?.versionId === rResource.body.versionId);
 
   // --- 6. questionType restringido a SINGLE_CHOICE a nivel de base de datos ---
   console.log('--- 6. question_type distinto de SINGLE_CHOICE es rechazado por Postgres ---');
