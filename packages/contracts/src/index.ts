@@ -5,3 +5,4 @@ export * from './analytics';
 export * from './user';
 export * from './education';
 export * from './progress';
+export * from './gamification';

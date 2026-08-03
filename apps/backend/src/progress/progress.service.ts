@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import {
   topicProgressResponseSchema,
   submitResponseResponseSchema,
+  GAMIFICATION_SCHEMA_VERSION,
   type TopicProgressResponse,
   type SubmitResponseResponse,
 } from '@axioma/contracts';
@@ -12,6 +13,7 @@ import { StudentResponseRepository } from './student-response.repository';
 import { CurriculumTopicRepository } from '../education/curriculum-topic.repository';
 import { QuestionVersionRepository } from '../education/question-version.repository';
 import { AnswerOptionRepository } from '../education/answer-option.repository';
+import { OutboxService } from '../platform/outbox/outbox.service';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
@@ -48,6 +50,7 @@ export class ProgressService {
     private readonly topicRepo: CurriculumTopicRepository,
     private readonly questionVersionRepo: QuestionVersionRepository,
     private readonly answerOptionRepo: AnswerOptionRepository,
+    private readonly outbox: OutboxService,
   ) {}
 
   /**
@@ -126,7 +129,49 @@ export class ProgressService {
         isCorrect: answerOption.isCorrect,
         operationId: input.operationId,
       });
-      const status = await this.recordActivityAndMaybeComplete(accountId, topicId);
+      const { status, justCompleted, completedAt } = await this.recordActivityAndMaybeComplete(accountId, topicId);
+
+      // Publicación best-effort al Outbox de plataforma -- ver
+      // docs/adr/0016-gamificacion-fundacion.md. SOLO en este camino: se
+      // acaba de crear un StudentResponse real, nunca en replay,
+      // idempotencia de negocio o conflicto (esos caminos no crean ningún
+      // hecho académico nuevo). `studentResponseId` es la base de la
+      // deduplicación de negocio en GAMIFICATION -- ver el mismo ADR.
+      await this.outbox.publish({
+        eventKey: 'student_response_recorded',
+        schemaVersion: GAMIFICATION_SCHEMA_VERSION,
+        sourceDomain: 'PROGRESS',
+        aggregateId: accountId,
+        occurredAt: created.respondedAt,
+        payload: {
+          accountId,
+          studentResponseId: created.id,
+          questionVersionId: created.questionVersionId,
+          curriculumTopicId: topicId,
+          isCorrect: created.isCorrect,
+          respondedAt: created.respondedAt.toISOString(),
+        },
+      });
+
+      // SOLO cuando ESTA llamada es la que transiciona a COMPLETED por
+      // primera vez -- nunca en llamadas posteriores mientras el tema ya
+      // estaba COMPLETED (evita republicar el mismo hecho en cada
+      // respuesta subsiguiente a una unidad ya completada).
+      if (justCompleted && completedAt) {
+        await this.outbox.publish({
+          eventKey: 'curriculum_topic_completed',
+          schemaVersion: GAMIFICATION_SCHEMA_VERSION,
+          sourceDomain: 'PROGRESS',
+          aggregateId: accountId,
+          occurredAt: completedAt,
+          payload: {
+            accountId,
+            curriculumTopicId: topicId,
+            completedAt: completedAt.toISOString(),
+          },
+        });
+      }
+
       return { data: this.toSubmitResponse(created, status), created: true };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION) {
@@ -165,8 +210,12 @@ export class ProgressService {
    * puede pasar de IN_PROGRESS a COMPLETED, nunca al revés (reforzado además
    * por el trigger `enforce_curriculum_topic_progress_monotonic`).
    */
-  private async recordActivityAndMaybeComplete(accountId: string, topicId: string): Promise<'IN_PROGRESS' | 'COMPLETED'> {
+  private async recordActivityAndMaybeComplete(
+    accountId: string,
+    topicId: string,
+  ): Promise<{ status: 'IN_PROGRESS' | 'COMPLETED'; justCompleted: boolean; completedAt: Date | null }> {
     const progress = await this.topicProgressRepo.createIfMissing(accountId, topicId);
+    const wasAlreadyCompleted = progress.status === 'COMPLETED';
     const [totalPublished, answeredCount] = await Promise.all([
       this.questionVersionRepo.countPublishedByTopicId(topicId),
       this.responseRepo.countDistinctByAccountAndTopic(accountId, topicId),
@@ -178,7 +227,8 @@ export class ProgressService {
     const completedAt = nextStatus === 'COMPLETED' ? (progress.completedAt ?? new Date()) : null;
 
     const updated = await this.topicProgressRepo.touchActivity(progress.id, nextStatus, completedAt);
-    return updated.status;
+    const justCompleted = !wasAlreadyCompleted && updated.status === 'COMPLETED';
+    return { status: updated.status, justCompleted, completedAt: updated.completedAt };
   }
 
   private toSubmitResponse(response: StudentResponse, topicStatus: 'IN_PROGRESS' | 'COMPLETED'): SubmitResponseResponse {
