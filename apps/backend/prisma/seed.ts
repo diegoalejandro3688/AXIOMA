@@ -134,7 +134,29 @@ async function seedQuestion(input: {
   return { question, version };
 }
 
+/**
+ * Escalera de niveles del incremento "Progresión visible" (Bloque II) --
+ * ver docs/adr/BLOCK-II-DEFINITION.md. Umbrales de referencia, sin ADR
+ * propio (no es una decisión arquitectónica -- ver definición del bloque,
+ * §6): progresión creciente simple, nivel 1 en 0 XP (invariante que
+ * ProgressionService asume: toda cuenta tiene un nivel actual válido).
+ * Upsert por `levelNumber` -- correr este script N veces no duplica filas.
+ */
+async function seedLevelLadder() {
+  const thresholds = [0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700];
+  for (const [index, minimumLifetimeXp] of thresholds.entries()) {
+    const levelNumber = index + 1;
+    await prisma.levelDefinition.upsert({
+      where: { levelNumber },
+      update: { minimumLifetimeXp },
+      create: { levelNumber, minimumLifetimeXp, levelName: null },
+    });
+  }
+}
+
 async function main() {
+  await seedLevelLadder();
+
   const subject = await prisma.subject.upsert({
     where: { subjectKey: 'matematica' },
     update: {},

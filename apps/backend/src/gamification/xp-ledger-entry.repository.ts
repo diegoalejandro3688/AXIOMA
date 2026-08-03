@@ -93,6 +93,25 @@ export class XpLedgerEntryRepository {
   }
 
   /**
+   * Historial paginado para el incremento "Progresión visible" (Bloque II)
+   * -- descendente (más reciente primero), cursor por `recordedAt` (nunca
+   * por offset numérico, para no desalinearse si se insertan filas entre
+   * páginas). Es una lectura directa del ledger, no una proyección --
+   * satisface por construcción el Decision Gate de reconstructibilidad del
+   * historial.
+   */
+  findByAccountIdPaginated(accountId: string, options: { limit: number; beforeRecordedAt?: Date }): Promise<XpLedgerEntry[]> {
+    return this.prisma.xpLedgerEntry.findMany({
+      where: {
+        accountId,
+        ...(options.beforeRecordedAt ? { recordedAt: { lt: options.beforeRecordedAt } } : {}),
+      },
+      orderBy: { recordedAt: 'desc' },
+      take: options.limit,
+    });
+  }
+
+  /**
    * Recalcula el XP neto de una cuenta directamente desde el ledger --
    * NUNCA desde xp_balance. Esta es la capacidad estructural que garantiza
    * que xp_balance sea una proyección reconstruible y no una segunda

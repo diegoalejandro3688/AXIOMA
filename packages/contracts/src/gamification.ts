@@ -64,3 +64,63 @@ export const gamificationEventPayloadSchemas: Record<
   student_response_recorded: studentResponseRecordedPayloadSchema,
   curriculum_topic_completed: curriculumTopicCompletedPayloadSchema,
 };
+
+/**
+ * Contratos de autoservicio del incremento "Progresión visible" (Bloque
+ * II, Learning Experience Foundation) -- ver
+ * docs/adr/BLOCK-II-DEFINITION.md. Todos sirven `request.accountId`
+ * (AuthGuard), nunca un id recibido del cliente -- mismo criterio que
+ * PROGRESS (ADR-0014).
+ */
+
+// --- GET /gamification/me/level ---
+
+export const levelSummarySchema = z.object({
+  levelNumber: z.number().int().positive(),
+  levelName: z.string().nullable(),
+  minimumLifetimeXp: z.number().int().nonnegative(),
+});
+export type LevelSummary = z.infer<typeof levelSummarySchema>;
+
+export const levelProgressResponseSchema = z.object({
+  lifetimeXp: z.number().int().nonnegative(),
+  currentLevel: levelSummarySchema,
+  nextLevel: levelSummarySchema.nullable(),
+  xpIntoLevel: z.number().int().nonnegative(),
+  xpForNextLevel: z.number().int().nonnegative().nullable(),
+  progressRatio: z.number().min(0).max(1),
+});
+export type LevelProgressResponse = z.infer<typeof levelProgressResponseSchema>;
+
+// --- GET /gamification/me/streak ---
+
+/**
+ * Deliberadamente sin persistencia propia (`streak_definition`/
+ * `account_streak`) -- se deriva de `xp_ledger_entry` en tiempo de lectura.
+ * `lastActiveLocalDate` usa el mismo criterio de día calendario UTC que
+ * `daily_cap` (ver streak-calculator.ts), no zona horaria del estudiante.
+ */
+export const streakResponseSchema = z.object({
+  currentStreak: z.number().int().nonnegative(),
+  longestStreak: z.number().int().nonnegative(),
+  lastActiveLocalDate: z.string().nullable(),
+});
+export type StreakResponse = z.infer<typeof streakResponseSchema>;
+
+// --- GET /gamification/me/xp-history ---
+
+export const xpHistoryEntrySchema = z.object({
+  id: entityId,
+  entryType: z.enum(['OTORGAMIENTO', 'BONO', 'REVERSO', 'AJUSTE']),
+  xpAmount: z.number().int(),
+  reasonCode: z.string().nullable(),
+  occurredAt: isoDateTime,
+});
+export type XpHistoryEntry = z.infer<typeof xpHistoryEntrySchema>;
+
+/** `nextCursor`: pasar como `?before=` en la siguiente página; `null` significa que no hay más páginas. */
+export const xpHistoryResponseSchema = z.object({
+  entries: z.array(xpHistoryEntrySchema),
+  nextCursor: z.string().nullable(),
+});
+export type XpHistoryResponse = z.infer<typeof xpHistoryResponseSchema>;

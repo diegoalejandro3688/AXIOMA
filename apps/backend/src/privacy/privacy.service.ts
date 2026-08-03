@@ -39,6 +39,11 @@ export class PrivacyService {
       accountId,
       scheduledFor: new Date(Date.now() + RECOVERY_WINDOW_MS),
     });
+    // ADR-0018 §5: retiro INMEDIATO al solicitar, no al completarse --
+    // excluye el perfil público de toda superficie desde ya, sin esperar
+    // los 30 días de plazo de recuperación. No libera el username todavía
+    // (ver anonymizePublicProfileForAccountClosure, en el barrido).
+    await this.userService.retirePublicProfileForAccountClosureRequest(accountId);
     this.logger.log(`PrivacyRequest ${request.id} creada para account ${accountId}`);
     await this.publishEvent('account_deletion_requested', accountId);
   }
@@ -74,6 +79,11 @@ export class PrivacyService {
     // (esta solicitud) y el estado de AUTH (la cuenta), cada uno desde su
     // propio dominio.
     await this.authService.reactivateAccount(accountId);
+    // ADR-0018 §5: reactivación en espejo -- el perfil público (si existía
+    // y quedó RETIRED al solicitar el cierre) vuelve a ACTIVE. Permanece
+    // PRIVATE (ver UserService.reactivatePublicProfileForAccountRecovery),
+    // nunca se restaura VISIBLE automáticamente.
+    await this.userService.reactivatePublicProfileForAccountRecovery(accountId);
     await this.privacyRequestRepo.markCancelled(request.id);
     this.logger.log(`PrivacyRequest ${request.id} cancelada (cuenta recuperada) para account ${accountId}`);
     await this.publishEvent('account_recovered', accountId);
@@ -110,6 +120,15 @@ export class PrivacyService {
         // reintento, igual que un fallo de finalizeAccountClosure (ver
         // ADR-0008). Seguro si la cuenta nunca inicializó su perfil.
         await this.userService.deleteProfileForAccountClosure(request.accountId);
+        // public_profile (ADR-0018) NO se elimina -- se ANONIMIZA (terminal,
+        // no reversible): a diferencia de UserProfile, es una identidad
+        // pública referenciada por bloques futuros (Competir, Gamificación
+        // Avanzada); conserva la fila para integridad referencial, limpia
+        // avatarReference, y deja el username sujeto a su ventana de
+        // reserva (ver comentario de deuda diferida en el modelo Prisma).
+        // Mismo criterio de "dentro del mismo try, antes de markCompleted"
+        // que el resto de este bloque.
+        await this.userService.anonymizePublicProfileForAccountClosure(request.accountId);
         // Dato personal de PROGRESS (respuestas y avance) -- mismo criterio
         // que USER arriba: dentro del mismo try, antes de markCompleted. Si
         // falla, la solicitud queda PROCESSING para reintento -- nunca se

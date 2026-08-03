@@ -490,6 +490,85 @@ model UserProfile {
   @@map("user_profile")
 }
 
+/// §6.5 del Data Model -- ver docs/adr/0018-public-profile-foundation.md
+/// (incremento "Public Profile Foundation", Bloque II). Primitiva de
+/// identidad pública, distinta de `UserProfile` (privado). Creación
+/// perezosa e idempotente (`UserService.ensurePublicProfile`), SIEMPRE con
+/// `visibilityStatus = PRIVATE` -- ninguna ruta de creación produce un
+/// perfil visible por defecto (precisión obligatoria del Product Owner).
+///
+/// `visibilityStatus` y `lifecycleStatus` son atributos INDEPENDIENTES a
+/// propósito (ver ADR-0018 §4): ocultar visibilidad nunca implica retiro
+/// ni anonimización, y viceversa.
+///
+/// `usernameNormalized` es único de forma PERMANENTE en esta tabla -- solo
+/// protege el valor ACTUAL de cada perfil. La ventana de reserva de 30
+/// días sobre un username REEMPLAZADO o huérfano (cuenta cerrada) se
+/// aplica en la capa de aplicación consultando `profile_username_history`
+/// (`PublicProfileRepository.findRecentRelease`), no mediante una
+/// restricción de esquema -- un valor liberado deja de estar en esta
+/// columna (pasa a otro valor o el perfil queda ANONYMIZED reteniéndolo),
+/// pero sigue bloqueado para otra cuenta mientras exista una fila de
+/// historial reciente que lo mencione como `previousUsernameNormalized`.
+model PublicProfile {
+  id                 String                        @id @default(uuid()) @db.Uuid
+  accountId          String                        @unique @map("account_id") @db.Uuid
+  usernameNormalized String                        @unique @map("username_normalized")
+  avatarReference    String?                       @map("avatar_reference")
+  visibilityStatus   PublicProfileVisibilityStatus  @default(PRIVATE) @map("visibility_status")
+  lifecycleStatus    PublicProfileLifecycleStatus   @default(ACTIVE) @map("lifecycle_status")
+  usernameChangedAt  DateTime                       @default(now()) @map("username_changed_at")
+  retiredAt          DateTime?                      @map("retired_at")
+  anonymizedAt       DateTime?                      @map("anonymized_at")
+  createdAt          DateTime                       @default(now()) @map("created_at")
+  updatedAt          DateTime                       @updatedAt @map("updated_at")
+
+  usernameHistory ProfileUsernameHistory[]
+
+  @@map("public_profile")
+}
+
+enum PublicProfileVisibilityStatus {
+  PRIVATE
+  VISIBLE
+
+  @@map("public_profile_visibility_status")
+}
+
+enum PublicProfileLifecycleStatus {
+  ACTIVE
+  RETIRED
+  ANONYMIZED
+
+  @@map("public_profile_lifecycle_status")
+}
+
+/// §6.7 del Data Model. Append-only -- ningún código actualiza o borra una
+/// fila existente, solo agrega. `changeReason` documenta el origen del
+/// cambio para auditoría (nunca se usa para mostrar públicamente nombres
+/// anteriores -- Data Model §6.7).
+model ProfileUsernameHistory {
+  id                          String                     @id @default(uuid()) @db.Uuid
+  publicProfileId             String                     @map("public_profile_id") @db.Uuid
+  previousUsernameNormalized  String?                    @map("previous_username_normalized")
+  newUsernameNormalized       String                     @map("new_username_normalized")
+  changeReason                ProfileUsernameChangeReason @map("change_reason")
+  changedAt                   DateTime                   @default(now()) @map("changed_at")
+
+  publicProfile PublicProfile @relation(fields: [publicProfileId], references: [id], onDelete: Restrict)
+
+  @@index([publicProfileId])
+  @@map("profile_username_history")
+}
+
+enum ProfileUsernameChangeReason {
+  INITIAL_CLAIM
+  USER_CHANGE
+  ACCOUNT_CLOSURE
+
+  @@map("profile_username_change_reason")
+}
+
 /// Dominio GAMIFICATION, Bloque I de Learning Experience Foundation (Fase
 /// 2) -- ver docs/adr/0016-gamificacion-fundacion.md. Solo persistencia y
 /// contratos internos: SIN productor (PROGRESS no publica todavía), SIN
@@ -737,4 +816,31 @@ model XpBalance {
   lastLedgerEntry XpLedgerEntry? @relation(fields: [lastLedgerEntryId], references: [id], onDelete: Restrict)
 
   @@map("xp_balance")
+}
+
+/// §16.11. Escalera de niveles, Bloque II (Progresión Visible) --
+/// ver docs/adr/BLOCK-II-DEFINITION.md. Simplificación deliberada frente al
+/// Data Model: sin `program_version_id` (sin workflow de aprobación
+/// versionada para la escalera en este incremento -- mismo criterio de
+/// alcance mínimo que XpBalance omitiendo currentLevelXp/seasonXp en el
+/// Bloque I). `account_level_history` NO se persiste: el nivel actual se
+/// deriva siempre en tiempo de lectura desde xp_balance.lifetimeXp contra
+/// estos umbrales -- no hay proyección que reconciliar ni que pueda
+/// divergir.
+model LevelDefinition {
+  id                 String              @id @default(uuid()) @db.Uuid
+  levelNumber        Int                 @unique @map("level_number")
+  levelName          String?             @map("level_name")
+  minimumLifetimeXp  Int                 @map("minimum_lifetime_xp")
+  status             LevelDefinitionStatus @default(ACTIVE)
+  createdAt          DateTime            @default(now()) @map("created_at")
+
+  @@map("level_definition")
+}
+
+enum LevelDefinitionStatus {
+  ACTIVE
+  RETIRED
+
+  @@map("level_definition_status")
 }
