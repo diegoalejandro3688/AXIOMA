@@ -69,10 +69,18 @@ async function main() {
   check('accountA creada', Boolean(accountA));
 
   const registeredRow = await pg.query(
-    "SELECT status FROM outbox_event WHERE aggregate_id = $1 AND event_key = 'account_registered'",
+    "SELECT oe.id FROM outbox_event oe WHERE oe.aggregate_id = $1 AND oe.event_key = 'account_registered'",
     [accountA],
   );
-  check('account_registered: exactamente 1 fila PENDING', registeredRow.rowCount === 1 && registeredRow.rows[0].status === 'PENDING');
+  check('account_registered: exactamente 1 fila en outbox_event', registeredRow.rowCount === 1);
+  const registeredDeliveryBefore = await pg.query(
+    "SELECT 1 FROM outbox_event_delivery WHERE outbox_event_id = $1 AND consumer_name = 'ANALYTICS'",
+    [registeredRow.rows[0]?.id],
+  );
+  check(
+    'account_registered: pendiente para ANALYTICS (ninguna fila de entrega todavía) -- ADR-0017',
+    registeredDeliveryBefore.rowCount === 0,
+  );
 
   const uidB = `an-b-${Date.now()}`;
   const emailB = `an-b-${Date.now()}@example.com`;
@@ -83,10 +91,10 @@ async function main() {
   await post('/auth/session', { idToken: tokenBVerified });
 
   const verifiedRow = await pg.query(
-    "SELECT status FROM outbox_event WHERE aggregate_id = $1 AND event_key = 'account_verified'",
+    "SELECT id FROM outbox_event WHERE aggregate_id = $1 AND event_key = 'account_verified'",
     [accountB],
   );
-  check('account_verified: exactamente 1 fila PENDING', verifiedRow.rowCount === 1 && verifiedRow.rows[0].status === 'PENDING');
+  check('account_verified: exactamente 1 fila en outbox_event', verifiedRow.rowCount === 1);
 
   const rSessionAForDeletion = await post('/auth/session', { idToken: tokenA });
   const sessionAForDeletion = rSessionAForDeletion.body?.sessionId;
@@ -96,21 +104,18 @@ async function main() {
     { authorization: `Bearer ${tokenA}`, 'x-session-id': sessionAForDeletion },
   );
   const deletionRequestedRow = await pg.query(
-    "SELECT status FROM outbox_event WHERE aggregate_id = $1 AND event_key = 'account_deletion_requested'",
+    "SELECT id FROM outbox_event WHERE aggregate_id = $1 AND event_key = 'account_deletion_requested'",
     [accountA],
   );
-  check(
-    'account_deletion_requested: exactamente 1 fila PENDING',
-    deletionRequestedRow.rowCount === 1 && deletionRequestedRow.rows[0].status === 'PENDING',
-  );
+  check('account_deletion_requested: exactamente 1 fila en outbox_event', deletionRequestedRow.rowCount === 1);
 
   const recovery = recoverAccountViaCli(accountA);
   check('recuperación vía CLI exitosa', recovery.ok);
   const recoveredRow = await pg.query(
-    "SELECT status FROM outbox_event WHERE aggregate_id = $1 AND event_key = 'account_recovered'",
+    "SELECT id FROM outbox_event WHERE aggregate_id = $1 AND event_key = 'account_recovered'",
     [accountA],
   );
-  check('account_recovered: exactamente 1 fila PENDING', recoveredRow.rowCount === 1 && recoveredRow.rows[0].status === 'PENDING');
+  check('account_recovered: exactamente 1 fila en outbox_event', recoveredRow.rowCount === 1);
 
   const uidD = `an-d-${Date.now()}`;
   const emailD = `an-d-${Date.now()}@example.com`;
@@ -129,13 +134,10 @@ async function main() {
   const rSweep = await post('/privacy/_internal/sweep', {}, { 'x-internal-ops-key': opsKey });
   check('sweep procesó la cuenta D', rSweep.body?.deletion?.processed >= 1);
   const completedRow = await pg.query(
-    "SELECT status FROM outbox_event WHERE aggregate_id = $1 AND event_key = 'account_deletion_completed'",
+    "SELECT id FROM outbox_event WHERE aggregate_id = $1 AND event_key = 'account_deletion_completed'",
     [accountD],
   );
-  check(
-    'account_deletion_completed: exactamente 1 fila PENDING',
-    completedRow.rowCount === 1 && completedRow.rows[0].status === 'PENDING',
-  );
+  check('account_deletion_completed: exactamente 1 fila en outbox_event', completedRow.rowCount === 1);
 
   console.log('--- 2. El relay ingiere PENDING -> analytics_event, marca PROCESSED; no duplica en un segundo run ---');
   const rRelay1 = await post('/analytics/_internal/relay', {}, { 'x-internal-ops-key': opsKey });
@@ -148,11 +150,22 @@ async function main() {
   );
   check('analytics_event creado para account_registered', registeredAnalytics.rowCount === 1);
 
-  const registeredOutboxAfter = await pg.query(
+  const registeredDeliveryAfter = await pg.query(
+    "SELECT oed.status FROM outbox_event_delivery oed JOIN outbox_event oe ON oe.id = oed.outbox_event_id WHERE oe.aggregate_id = $1 AND oe.event_key = 'account_registered' AND oed.consumer_name = 'ANALYTICS'",
+    [accountA],
+  );
+  check(
+    'outbox_event_delivery(ANALYTICS) marcado PROCESSED -- ADR-0017',
+    registeredDeliveryAfter.rowCount === 1 && registeredDeliveryAfter.rows[0].status === 'PROCESSED',
+  );
+  const registeredOutboxStatusUnchanged = await pg.query(
     "SELECT status FROM outbox_event WHERE aggregate_id = $1 AND event_key = 'account_registered'",
     [accountA],
   );
-  check('outbox_event marcado PROCESSED', registeredOutboxAfter.rows[0]?.status === 'PROCESSED');
+  check(
+    'OutboxEvent.status deprecado: sigue en PENDING de inserción, nadie lo mutó -- ADR-0017',
+    registeredOutboxStatusUnchanged.rows[0]?.status === 'PENDING',
+  );
 
   const rRelay2 = await post('/analytics/_internal/relay', {}, { 'x-internal-ops-key': opsKey });
   check('segundo relay inmediato: 0 procesados (nada pendiente)', rRelay2.body?.processed === 0);
@@ -189,15 +202,53 @@ async function main() {
   check('relay reporta al menos 1 fallo (fila rota)', rRelay3.body?.failed >= 1);
   check('relay igual procesó la fila buena del mismo batch', rRelay3.body?.processed >= 1);
 
-  const brokenRowAfter = await pg.query('SELECT status, attempts, last_error FROM outbox_event WHERE id = $1', [
-    brokenOutboxId,
-  ]);
-  check('fila con eventKey desconocido queda FAILED', brokenRowAfter.rows[0]?.status === 'FAILED');
-  check('attempts incrementado', Number(brokenRowAfter.rows[0]?.attempts) >= 1);
-  check('last_error registrado', Boolean(brokenRowAfter.rows[0]?.last_error));
+  const brokenDeliveryAfter = await pg.query(
+    "SELECT status, attempts, last_error FROM outbox_event_delivery WHERE outbox_event_id = $1 AND consumer_name = 'ANALYTICS'",
+    [brokenOutboxId],
+  );
+  check('fila con eventKey desconocido queda FAILED en outbox_event_delivery', brokenDeliveryAfter.rows[0]?.status === 'FAILED');
+  check('attempts incrementado (por consumidor)', Number(brokenDeliveryAfter.rows[0]?.attempts) >= 1);
+  check('last_error registrado (por consumidor)', Boolean(brokenDeliveryAfter.rows[0]?.last_error));
 
-  const goodRowAfter = await pg.query('SELECT status FROM outbox_event WHERE id = $1', [goodOutboxId]);
-  check('la fila buena del mismo batch sí se procesó (PROCESSED)', goodRowAfter.rows[0]?.status === 'PROCESSED');
+  const goodDeliveryAfter = await pg.query(
+    "SELECT status FROM outbox_event_delivery WHERE outbox_event_id = $1 AND consumer_name = 'ANALYTICS'",
+    [goodOutboxId],
+  );
+  check('la fila buena del mismo batch sí se procesó (PROCESSED)', goodDeliveryAfter.rows[0]?.status === 'PROCESSED');
+
+  console.log('--- 3b. Reintento independiente por consumidor (ADR-0017): un segundo consumidor sobre el MISMO evento roto no interfiere con ANALYTICS ---');
+  await pg.query(
+    `INSERT INTO outbox_event_delivery (id, outbox_event_id, consumer_name, status, attempts, last_error)
+     VALUES ($1, $2, 'GAMIFICATION_GATE_PROBE', 'FAILED', 1, 'fallo simulado, consumidor de prueba')`,
+    [randomUUID(), brokenOutboxId],
+  );
+  const secondRelayOnBroken = await post('/analytics/_internal/relay', {}, { 'x-internal-ops-key': opsKey });
+  check('un segundo consumidor con su propia fila FAILED no afecta al relay de ANALYTICS', secondRelayOnBroken.status === 200);
+  const analyticsAttemptsAfterProbe = await pg.query(
+    "SELECT attempts FROM outbox_event_delivery WHERE outbox_event_id = $1 AND consumer_name = 'ANALYTICS'",
+    [brokenOutboxId],
+  );
+  const probeAttemptsAfter = await pg.query(
+    "SELECT attempts FROM outbox_event_delivery WHERE outbox_event_id = $1 AND consumer_name = 'GAMIFICATION_GATE_PROBE'",
+    [brokenOutboxId],
+  );
+  check(
+    'attempts de ANALYTICS avanzó de forma independiente al del consumidor de prueba',
+    Number(analyticsAttemptsAfterProbe.rows[0]?.attempts) >= 2 && Number(probeAttemptsAfter.rows[0]?.attempts) === 1,
+  );
+
+  console.log('--- 3c. Deduplicación (outboxEventId, consumerName) a nivel de base de datos (ADR-0017) ---');
+  let duplicateInsertRejected = false;
+  try {
+    await pg.query(
+      `INSERT INTO outbox_event_delivery (id, outbox_event_id, consumer_name, status, attempts)
+       VALUES ($1, $2, 'ANALYTICS', 'PROCESSED', 1)`,
+      [randomUUID(), goodOutboxId],
+    );
+  } catch (error) {
+    duplicateInsertRejected = (error as { code?: string }).code === '23505';
+  }
+  check('una segunda fila (mismo evento, mismo consumidor) es rechazada por la restricción única', duplicateInsertRejected);
 
   console.log('--- 4. Payload con propiedad no declarada (ej. email) es rechazado antes de llegar a analytics_event ---');
   const leakyOutboxId = randomUUID();
@@ -210,11 +261,14 @@ async function main() {
   const rRelay4 = await post('/analytics/_internal/relay', {}, { 'x-internal-ops-key': opsKey });
   check('relay reporta el fallo del payload con email', rRelay4.body?.failed >= 1);
 
-  const leakyRowAfter = await pg.query('SELECT status, last_error FROM outbox_event WHERE id = $1', [leakyOutboxId]);
-  check('fila con email en el payload queda FAILED', leakyRowAfter.rows[0]?.status === 'FAILED');
+  const leakyDeliveryAfter = await pg.query(
+    "SELECT status, last_error FROM outbox_event_delivery WHERE outbox_event_id = $1 AND consumer_name = 'ANALYTICS'",
+    [leakyOutboxId],
+  );
+  check('fila con email en el payload queda FAILED en outbox_event_delivery', leakyDeliveryAfter.rows[0]?.status === 'FAILED');
   check(
     'el error menciona payload inválido',
-    String(leakyRowAfter.rows[0]?.last_error ?? '').includes('payload inválido'),
+    String(leakyDeliveryAfter.rows[0]?.last_error ?? '').includes('payload inválido'),
   );
 
   const leakyAnalyticsRow = await pg.query('SELECT id FROM analytics_event WHERE idempotency_key = $1', [
@@ -259,8 +313,14 @@ async function main() {
   );
   const rRelay5 = await post('/analytics/_internal/relay', {}, { 'x-internal-ops-key': opsKey });
   check('relay no falla ante el registro ya existente', rRelay5.status === 200);
-  const crashOutboxAfter = await pg.query('SELECT status FROM outbox_event WHERE id = $1', [crashOutboxId]);
-  check('la fila "atrasada" queda PROCESSED (no reintenta indefinidamente)', crashOutboxAfter.rows[0]?.status === 'PROCESSED');
+  const crashDeliveryAfter = await pg.query(
+    "SELECT status FROM outbox_event_delivery WHERE outbox_event_id = $1 AND consumer_name = 'ANALYTICS'",
+    [crashOutboxId],
+  );
+  check(
+    'la fila "atrasada" queda PROCESSED en outbox_event_delivery (no reintenta indefinidamente)',
+    crashDeliveryAfter.rows[0]?.status === 'PROCESSED',
+  );
   const crashAnalyticsCount = await pg.query('SELECT count(*)::int AS n FROM analytics_event WHERE idempotency_key = $1', [
     crashOutboxId,
   ]);

@@ -2,7 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type { OutboxEvent, Prisma } from '../../generated/prisma/client';
 
-/** Único punto de acceso a la tabla `outbox_event` -- infraestructura compartida de plataforma. */
+/**
+ * Único punto de acceso a la tabla `outbox_event` -- infraestructura
+ * compartida de plataforma. Solo publicación (`create`): la lectura/consumo
+ * ya NO vive aquí -- ver `OutboxEventDeliveryRepository` (ADR-0017). Los
+ * métodos `findPending`/`markProcessed`/`markFailed` que existían en este
+ * repositorio se retiraron junto con la migración de ANALYTICS: operaban
+ * sobre `OutboxEvent.status`, un campo global que no admite múltiples
+ * consumidores (ver ADR-0017, "alternativa nula" -- demostración del fallo).
+ */
 @Injectable()
 export class OutboxEventRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -17,27 +25,5 @@ export class OutboxEventRepository {
     payload: Prisma.InputJsonValue;
   }): Promise<OutboxEvent> {
     return this.prisma.outboxEvent.create({ data: input });
-  }
-
-  findPending(limit: number): Promise<OutboxEvent[]> {
-    return this.prisma.outboxEvent.findMany({
-      where: { status: 'PENDING' },
-      orderBy: { createdAt: 'asc' },
-      take: limit,
-    });
-  }
-
-  markProcessed(id: string): Promise<OutboxEvent> {
-    return this.prisma.outboxEvent.update({
-      where: { id },
-      data: { status: 'PROCESSED', processedAt: new Date() },
-    });
-  }
-
-  markFailed(id: string, attempts: number, lastError: string): Promise<OutboxEvent> {
-    return this.prisma.outboxEvent.update({
-      where: { id },
-      data: { status: 'FAILED', attempts, lastError },
-    });
   }
 }

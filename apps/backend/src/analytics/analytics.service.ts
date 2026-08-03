@@ -8,10 +8,12 @@ import {
 } from '@axioma/contracts';
 import { analyticsActorRef } from './analytics-actor-ref';
 import { AnalyticsEventRepository } from './analytics-event.repository';
-import { OutboxEventRepository } from '../platform/outbox/outbox-event.repository';
+import { OutboxEventDeliveryRepository } from '../platform/outbox/outbox-event-delivery.repository';
 import type { OutboxEvent } from '../generated/prisma/client';
 
 const RELAY_BATCH_SIZE = 100;
+const CONSUMER_NAME = 'ANALYTICS';
+const MAX_DELIVERY_ATTEMPTS = 10;
 
 function isKnownEventKey(eventKey: string): eventKey is AnalyticsEventKey {
   return (ANALYTICS_EVENT_KEYS as readonly string[]).includes(eventKey);
@@ -21,24 +23,33 @@ function isKnownEventKey(eventKey: string): eventKey is AnalyticsEventKey {
  * ANALYTICS no produce eventos: consume Domain Events ya publicados por otros
  * dominios en el Outbox de plataforma -- ver docs/adr/0006-analytics-foundation.md.
  * `ingestPending` es el único método que escribe en `analytics_event`.
+ *
+ * Desde ADR-0017, ANALYTICS es un consumidor más entre varios posibles: el
+ * estado de entrega (qué eventos ya procesó, cuáles fallaron, cuántos
+ * intentos) vive en `outbox_event_delivery`, con `consumerName = 'ANALYTICS'`
+ * -- ya NO en `OutboxEvent.status` (deprecado, ver schema.prisma). Esto es
+ * lo que permite que GAMIFICATION (Bloque I, Learning Experience Foundation)
+ * consuma el mismo `outbox_event` de forma completamente independiente, sin
+ * competir por las mismas filas.
  */
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
 
   constructor(
-    private readonly outboxRepo: OutboxEventRepository,
+    private readonly deliveryRepo: OutboxEventDeliveryRepository,
     private readonly analyticsEventRepo: AnalyticsEventRepository,
     private readonly config: ConfigService,
   ) {}
 
   /**
-   * Procesa un lote de OutboxEvent PENDING. Cada fila se procesa de forma
-   * independiente -- un fallo en una NO detiene el resto del lote (ver gate
-   * de aceptación, punto 3).
+   * Procesa un lote de OutboxEvent pendientes para ANALYTICS (sin fila de
+   * entrega propia todavía, o con una fila FAILED que no agotó reintentos).
+   * Cada fila se procesa de forma independiente -- un fallo en una NO
+   * detiene el resto del lote (ver gate de aceptación, punto 3).
    */
   async ingestPending(): Promise<{ processed: number; failed: number }> {
-    const pending = await this.outboxRepo.findPending(RELAY_BATCH_SIZE);
+    const pending = await this.deliveryRepo.findPendingFor(CONSUMER_NAME, RELAY_BATCH_SIZE, MAX_DELIVERY_ATTEMPTS);
 
     let processed = 0;
     let failed = 0;
@@ -46,13 +57,13 @@ export class AnalyticsService {
     for (const outboxEvent of pending) {
       try {
         await this.ingestOne(outboxEvent);
-        await this.outboxRepo.markProcessed(outboxEvent.id);
+        await this.deliveryRepo.recordOutcome(outboxEvent.id, CONSUMER_NAME, { status: 'PROCESSED' });
         processed++;
       } catch (error) {
         failed++;
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error(`OutboxEvent ${outboxEvent.id} ("${outboxEvent.eventKey}") no se pudo ingerir: ${message}`);
-        await this.outboxRepo.markFailed(outboxEvent.id, outboxEvent.attempts + 1, message);
+        await this.deliveryRepo.recordOutcome(outboxEvent.id, CONSUMER_NAME, { status: 'FAILED', lastError: message });
       }
     }
 
@@ -61,8 +72,8 @@ export class AnalyticsService {
 
   private async ingestOne(outboxEvent: OutboxEvent): Promise<void> {
     // Idempotencia ante reintento tras un crash entre el insert de
-    // analytics_event y el markProcessed del outbox: si ya existe, se
-    // considera éxito en vez de fallo -- no se reprocesa ni se duplica.
+    // analytics_event y el registro de la entrega (recordOutcome): si ya
+    // existe, se considera éxito en vez de fallo -- no se reprocesa ni se duplica.
     const alreadyIngested = await this.analyticsEventRepo.existsByIdempotencyKey(outboxEvent.id);
     if (alreadyIngested) return;
 

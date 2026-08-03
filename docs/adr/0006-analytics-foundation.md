@@ -83,3 +83,7 @@ Ejecutado con tres instancias del backend en puertos separados (mismo motivo que
 - `pnpm -r run typecheck/lint`, build de los 3 paquetes, en verde.
 
 **Pendiente no bloqueante**: como en ADR-0004/0005, validación end-to-end con proyecto Firebase real queda fuera de este paso (cambio de configuración, no de arquitectura).
+
+## Enmienda (ver ADR-0017, 2026-08-03)
+
+La afirmación de la sección "Decisión" — *"cada uno leyendo la misma tabla con su propio cursor/criterio, sin que esto implique ningún cambio de esquema"* — queda **corregida**: el esquema real de `outbox_event` (un único campo `status` global) no admite múltiples consumidores concurrentes sin pérdida estructural de eventos para todos menos el primero en procesarlos. ADR-0017 introduce `outbox_event_delivery` (una fila por combinación evento×consumidor) como mecanismo real de multi-consumidor, y migra `AnalyticsService` a usarlo en su Paso 1, con re-ejecución obligatoria del gate de este ADR (38 comprobaciones) sin regresiones. El resto de esta decisión —principio "ANALYTICS consume, nunca produce", Outbox como infraestructura de plataforma compartida, publicación best-effort, catálogo de eventos, pseudonimización— permanece vigente sin cambios.

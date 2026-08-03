@@ -388,14 +388,61 @@ model OutboxEvent {
   producerVersion String?           @map("producer_version")
   occurredAt      DateTime          @map("occurred_at")
   payload         Json
+  /// @deprecated (ADR-0017): ya NO representa el estado de consumo -- un
+  /// esquema con un único `status` no admite múltiples consumidores (ver
+  /// ADR-0017, "alternativa nula"). Queda congelado en el valor de inserción
+  /// (PENDING), sin uso por ningún consumidor. El estado de consumo real
+  /// vive en `OutboxEventDelivery`, una fila por combinación evento×consumidor.
+  /// No se elimina todavía (valor forense durante la transición) -- ver
+  /// ADR-0017, "OutboxEvent.status -- decisión formal".
   status          OutboxEventStatus @default(PENDING)
+  /// @deprecated (ADR-0017): ver `status`. Reemplazado por
+  /// `OutboxEventDelivery.attempts`, por consumidor.
   attempts        Int               @default(0)
+  /// @deprecated (ADR-0017): ver `status`. Reemplazado por
+  /// `OutboxEventDelivery.lastError`, por consumidor.
   lastError       String?           @map("last_error")
   createdAt       DateTime          @default(now()) @map("created_at")
+  /// @deprecated (ADR-0017): ver `status`. Reemplazado por
+  /// `OutboxEventDelivery.processedAt`, por consumidor.
   processedAt     DateTime?         @map("processed_at")
+
+  deliveries OutboxEventDelivery[]
 
   @@index([status, createdAt])
   @@map("outbox_event")
+}
+
+/// Estado de entrega de un OutboxEvent a UN consumidor concreto -- ver
+/// docs/adr/0017-entrega-multiconsumidor-outbox.md. "Pendiente" es la
+/// AUSENCIA de fila (mismo criterio que `CurriculumTopicProgress`,
+/// ADR-0014: "NOT_STARTED = ausencia de fila") -- por eso el enum de estado
+/// no tiene un valor PENDING persistido, solo resultados terminales.
+enum OutboxDeliveryStatus {
+  PROCESSED
+  FAILED
+
+  @@map("outbox_delivery_status")
+}
+
+model OutboxEventDelivery {
+  id            String               @id @default(uuid()) @db.Uuid
+  outboxEventId String               @map("outbox_event_id") @db.Uuid
+  /// 'ANALYTICS' | 'GAMIFICATION' | futuros -- sin tabla de catálogo todavía,
+  /// mismo criterio de alcance mínimo que ADR-0006 aplicó a los eventKey de
+  /// ANALYTICS (registro en código, no en base de datos).
+  consumerName  String               @map("consumer_name")
+  status        OutboxDeliveryStatus
+  attempts      Int                  @default(0)
+  lastError     String?              @map("last_error")
+  processedAt   DateTime?            @map("processed_at")
+  createdAt     DateTime             @default(now()) @map("created_at")
+
+  outboxEvent OutboxEvent @relation(fields: [outboxEventId], references: [id], onDelete: Cascade)
+
+  @@unique([outboxEventId, consumerName])
+  @@index([consumerName, createdAt])
+  @@map("outbox_event_delivery")
 }
 
 /// Dominio ANALYTICS. Subconjunto mínimo del Bloque 19 del Data Model -- ver
