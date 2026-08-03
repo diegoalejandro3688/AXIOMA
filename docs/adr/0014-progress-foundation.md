@@ -176,7 +176,9 @@ Verificado empíricamente con el Browser tool: en el target Web, `getOutboxRepos
 
 Esto obligó a un segundo ajuste en la pantalla (`estudio/[topicId].tsx`): el manejo de un fallo de red ya NO puede tratarse igual en las dos plataformas. En nativo, un fallo de red tras encolar significa "ya está guardado localmente, se sincronizará solo" (`isCorrect: null`, UI bloqueada esperando sync). En Web, como nunca se encoló nada, un fallo de red significa que la respuesta **no quedó guardada en ningún lado** -- la pregunta permanece respondible y se muestra un mensaje de error explícito, en vez de simular una cola que no existe en ese target. Verificado en el Browser tool: backend detenido → error visible, pregunta sigue habilitada → backend restaurado → reintento exitoso con el mismo resultado real (`isCorrect`, explicación, estado de la unidad).
 
-Esto no cambia el diseño aprobado para nativo (que sigue sin verificarse en un dispositivo/emulador físico -- mismo pendiente no bloqueante que ADR-0011 dejó para su propio gate), pero deja Web -- la superficie que este proyecto usa para iterar y verificar rápido -- completamente funcional sin depender de una pieza que no funciona ahí.
+Esto no cambia el diseño aprobado para nativo, pero deja Web -- la superficie que este proyecto usa para iterar y verificar rápido -- completamente funcional sin depender de una pieza que no funciona ahí.
+
+**Cierre del pendiente (Bloque V, 2026-08-03)**: la verificación de punta a punta en dispositivo Android físico (Expo Go), pendiente desde este punto y desde ADR-0011, se ejecutó siguiendo el protocolo de 17 pasos de `docs/BLOCK-V-OFFLINE-E2E-PROTOCOL.md` -- **PASS**. Responder offline, recuperar red, sincronización automática (`AppState` → activo), progreso actualizado y unidad completada, reinicio de la app con conexión sin pérdida ni alteración del progreso, y verificación explícita de idempotencia (segundo disparador de sincronización sin efecto, sin operaciones ni progreso duplicados). Sin hallazgos -- el diseño aprobado se comportó como esperado en condiciones reales. Punto 17 del gate de este ADR queda cerrado, sin pendientes no bloqueantes restantes.
 
 ## Validación (resultado real, 2026-08-02 — 34 comprobaciones)
 
@@ -213,7 +215,7 @@ Esto no cambia el diseño aprobado para nativo (que sigue sin verificarse en un 
 14. **Web** (Browser tool, backend detenido): la respuesta NO se guarda en ningún lado (no hay cola en ese target) -- se muestra un error explícito, la pregunta permanece respondible, sin marcar un `isCorrect` inventado. Verificado real.
 15. **Web**, backend restaurado → reintentar el mismo tap tiene éxito, con el resultado real (`isCorrect`, explicación, estado de la unidad). Verificado real.
 16. `operationId` como clave de idempotencia de transporte: reenviar la misma petición HTTP con el mismo `operationId` devuelve la misma respuesta sin duplicar -- verificado a nivel de servidor (gate, punto 16 numerado arriba).
-17. **Nativo** (iOS/Android): el diseño de encolar/drenar/`markSynced`/`markFailed` no cambió -- sigue verificado a nivel de lógica por el gate de OFFLINE-OUTBOX (24 comprobaciones, `node:sqlite`) sin regresión, pero **no se ejercitó de punta a punta en un dispositivo/emulador físico** -- mismo pendiente no bloqueante que ADR-0011 ya dejó para su propio gate (sin SDK de Android en este entorno).
+17. **Nativo** (iOS/Android): el diseño de encolar/drenar/`markSynced`/`markFailed` no cambió -- verificado a nivel de lógica por el gate de OFFLINE-OUTBOX (24 comprobaciones, `node:sqlite`) sin regresión, **y verificado de punta a punta en dispositivo Android físico (Bloque V, 2026-08-03, protocolo de 17 pasos, PASS)** -- incluyendo idempotencia explícita ante un segundo disparador de sincronización.
 
 **Privacy**
 18. Cierre definitivo de cuenta → `StudentResponse` y `CurriculumTopicProgress` de esa cuenta eliminados por completo.

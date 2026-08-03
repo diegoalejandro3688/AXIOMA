@@ -43,7 +43,7 @@ export default function InicioScreen() {
     load();
   }, [load]);
 
-  if (state.status === 'loading') return <LoadingState message="Cargando…" />;
+  if (state.status === 'loading') return <LoadingState message="Cargando tu progreso…" />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
 
   function goToTarget() {

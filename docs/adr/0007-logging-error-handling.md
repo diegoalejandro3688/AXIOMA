@@ -92,3 +92,5 @@ Ejecutado con cuatro instancias del backend en puertos separados, contra Postgre
 - `pnpm -r run typecheck/lint`, build de los 3 paquetes, en verde.
 
 **Pendiente no bloqueante**: como en pasos anteriores, no aplica aquí (este paso no depende de Firebase).
+
+**Nota histórica (Bloque V, 2026-08-03)**: el gate de OBSERVABILITY se re-ejecutó como parte del gate consolidado de Bloque V (`scripts/verify-block-v-gate.mjs`, ver `docs/adr/BLOCK-V-CLOSURE-REPORT.md`) y en un primer intento falló en casi todas sus comprobaciones dependientes de log (clasificación warn/error, redacción, serialización, correlación). La investigación con evidencia real (archivo `backend-observability.log` capturado) confirmó que `StructuredLogger` y este gate seguían cumpliendo el contrato exactamente como se describe arriba -- el defecto era que el ORQUESTADOR invocaba el script del gate con `spawnSync` (bloqueante), lo que congelaba su propio *event loop* y le impedía drenar el pipe de stdout/stderr del backend mientras el gate corría, cortando el log justo después del arranque. Corregido en el orquestador (`spawn` asíncrono); ni `StructuredLogger` ni este ADR cambiaron.

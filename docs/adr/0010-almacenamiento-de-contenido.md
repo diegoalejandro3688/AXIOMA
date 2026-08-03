@@ -72,3 +72,5 @@ Ejecutado con seis instancias del backend en puertos separados, contra Postgres 
 - `pnpm -r run typecheck/lint`, build de los 3 paquetes, en verde.
 
 **Pendiente no bloqueante**: aprovisionamiento de la cuenta/bucket real de Cloudflare R2 -- explícitamente diferido, no forma parte de este ADR.
+
+**Nota histórica (Bloque V, 2026-08-03)**: el gate de OBJECT-STORAGE, ejecutado dentro del gate consolidado de Bloque V (`scripts/verify-block-v-gate.mjs`, ver `docs/adr/BLOCK-V-CLOSURE-REPORT.md`), falló con `SignatureDoesNotMatch` de MinIO en el escenario válido completo. La investigación con evidencia real (log del backend + comparación explícita contra `docker-compose.yml`) confirmó que `ObjectStorageService` construye el `S3Client` correctamente a partir del entorno, sin lógica propia que romper -- el defecto era que el ORQUESTADOR usaba como *fallback* de `OBJECT_STORAGE_SECRET_ACCESS_KEY` un valor (`axioma_local_password`) que nunca coincidió con `MINIO_ROOT_PASSWORD` real de `docker-compose.yml` (`axioma_dev_password`). Corregido en el orquestador; ni `ObjectStorageService` ni `docker-compose.yml` cambiaron.

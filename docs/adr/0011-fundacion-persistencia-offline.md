@@ -99,3 +99,5 @@ Este entorno de desarrollo **no tiene SDK de Android ni emulador disponible** (s
 - CI: nuevo job `offline-outbox-gate` (Node 22, requerido por `node:sqlite`, separado del job `build` que sigue en Node 20).
 
 **Gate Android: PASS. Sin pendientes bloqueantes para el cierre de Fase 0 en este ADR.**
+
+**Nota de cierre posterior (Bloque V, 2026-08-03)**: este gate validó la mecánica genérica de la cola (fixture de diagnóstico) porque en Fase 0 todavía no existía ningún flujo de dominio real que la usara. El primer consumidor real (`submit_response`, ADR-0014) quedó con su propia verificación nativa de punta a punta pendiente hasta Bloque V -- ver ADR-0014, "Cierre del pendiente" y `docs/BLOCK-V-OFFLINE-E2E-PROTOCOL.md` (PASS, incluyendo idempotencia explícita).
