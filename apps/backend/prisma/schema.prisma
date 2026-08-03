@@ -489,3 +489,205 @@ model UserProfile {
 
   @@map("user_profile")
 }
+
+/// Dominio GAMIFICATION, Bloque I de Learning Experience Foundation (Fase
+/// 2) -- ver docs/adr/0016-gamificacion-fundacion.md. Solo persistencia y
+/// contratos internos: SIN productor (PROGRESS no publica todavía), SIN
+/// GamificationRelayWorker, SIN cálculo efectivo de XP. Data Model Bloque
+/// 16, subconjunto mínimo (§16.4/16.5/16.7/16.8/16.9) -- niveles, rachas,
+/// logros, títulos, desafíos, temporadas y ligas (§16.11-16.20) quedan
+/// fuera hasta los bloques que los necesiten (Kickoff Learning Experience
+/// Foundation, roadmap de 8 bloques).
+enum GamificationProgramStatus {
+  ACTIVE
+  RETIRED
+
+  @@map("gamification_program_status")
+}
+
+/// §16.4. Representa un sistema lógico de progresión (hoy solo XP -- racha,
+/// liga u otro program_type llegarán con sus propios bloques).
+model GamificationProgram {
+  id          String                    @id @default(uuid()) @db.Uuid
+  programKey  String                    @unique @map("program_key")
+  name        String
+  description String?
+  /// Abierto ("XP, racha, liga u otro" -- Data Model §16.4): String, no
+  /// enum, mismo criterio que OutboxEventDelivery.consumerName (ADR-0017).
+  programType String                    @map("program_type")
+  status      GamificationProgramStatus @default(ACTIVE)
+  createdAt   DateTime                  @default(now()) @map("created_at")
+  retiredAt   DateTime?                 @map("retired_at")
+
+  versions GamificationProgramVersion[]
+
+  @@map("gamification_program")
+}
+
+enum GamificationProgramVersionApprovalStatus {
+  DRAFT
+  APPROVED
+  RETIRED
+
+  @@map("gamification_program_version_approval_status")
+}
+
+/// §16.4. "Todo cambio material en XP, rachas, ligas o recompensas
+/// requerirá una versión nueva" -- versionLabel único por programa.
+model GamificationProgramVersion {
+  id                     String                                    @id @default(uuid()) @db.Uuid
+  gamificationProgramId  String                                    @map("gamification_program_id") @db.Uuid
+  versionLabel           String                                    @map("version_label")
+  ruleSetReference       String?                                   @map("rule_set_reference")
+  effectiveFrom          DateTime?                                 @map("effective_from")
+  effectiveUntil         DateTime?                                 @map("effective_until")
+  changeSummary          String?                                   @map("change_summary")
+  approvalStatus         GamificationProgramVersionApprovalStatus  @default(DRAFT) @map("approval_status")
+  createdAt              DateTime                                  @default(now()) @map("created_at")
+  approvedAt             DateTime?                                 @map("approved_at")
+
+  program GamificationProgram @relation(fields: [gamificationProgramId], references: [id], onDelete: Restrict)
+  xpRules XpRule[]
+
+  @@unique([gamificationProgramId, versionLabel])
+  @@map("gamification_program_version")
+}
+
+enum XpRuleStatus {
+  ACTIVE
+  RETIRED
+
+  @@map("xp_rule_status")
+}
+
+/// §16.9. Única por (versión, tipo de actividad) -- decisión propia de este
+/// incremento (no citada textualmente en el Data Model) para impedir reglas
+/// ambiguas duplicadas dentro de una misma versión.
+model XpRule {
+  id               String       @id @default(uuid()) @db.Uuid
+  programVersionId String       @map("program_version_id") @db.Uuid
+  /// Abierto -- mismo criterio que GamificationProgram.programType.
+  activityType     String       @map("activity_type")
+  repeatDecayRule  String?      @map("repeat_decay_rule")
+  qualityCondition String?      @map("quality_condition")
+  baseXp           Int          @map("base_xp")
+  multiplierPolicy String?      @map("multiplier_policy")
+  dailyCap         Int?         @map("daily_cap")
+  effectiveFrom    DateTime?    @map("effective_from")
+  effectiveUntil   DateTime?    @map("effective_until")
+  status           XpRuleStatus @default(ACTIVE)
+
+  programVersion GamificationProgramVersion @relation(fields: [programVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([programVersionId, activityType])
+  @@map("xp_rule")
+}
+
+/// §16.5. "Gamificación no leerá respuestas crudas para inventar
+/// recompensas. Consumirá hechos publicados por los dominios propietarios."
+/// `accountId` SIN FK a Account -- mismo criterio que
+/// CurriculumTopicProgress/StudentResponse (ADR-0014): desacople de esquema
+/// entre dominios. `sourceEntityId` es una referencia estable genérica (el
+/// hecho originador puede vivir en StudentResponse, CurriculumTopicProgress
+/// u otro dominio futuro) -- sin FK dura, mismo motivo que AnalyticsEvent no
+/// la tiene hacia Account.
+model ValidatedGamificationActivity {
+  id                    String   @id @default(uuid()) @db.Uuid
+  accountId             String   @map("account_id") @db.Uuid
+  sourceDomain          String   @map("source_domain")
+  /// "Intento, recurso, objetivo u otro" (§16.5) -- abierto, String.
+  sourceEntityType      String   @map("source_entity_type")
+  sourceEntityId         String  @map("source_entity_id") @db.Uuid
+  /// Abierto -- mismo criterio que GamificationProgram.programType.
+  activityType          String   @map("activity_type")
+  /// Sin enum todavía: ningún servicio de este incremento decide su
+  /// conjunto de valores real (el relay que lo hará no existe aún) -- ver
+  /// brief de este incremento.
+  validationStatus      String   @map("validation_status")
+  validationRuleVersion String   @map("validation_rule_version")
+  occurredAt            DateTime @map("occurred_at")
+  validatedAt           DateTime @default(now()) @map("validated_at")
+  /// "Prevención de duplicados" (§16.5) -- única, es su propósito declarado.
+  deduplicationKey       String  @unique @map("deduplication_key")
+  /// Mismo criterio que validationStatus: String, sin enum todavía.
+  integrityStatus        String  @map("integrity_status")
+
+  ledgerEntries XpLedgerEntry[]
+
+  @@index([accountId])
+  @@map("validated_gamification_activity")
+}
+
+/// §16.7: "Otorgamiento, bono, reverso o ajuste" -- 4 valores explícitos en
+/// el Data Model, a diferencia de los campos "abiertos" de arriba.
+enum XpLedgerEntryType {
+  OTORGAMIENTO
+  BONO
+  REVERSO
+  AJUSTE
+
+  @@map("xp_ledger_entry_type")
+}
+
+/// §16.7: "Sistema o administrador autorizado" -- 2 valores explícitos.
+enum XpLedgerActorType {
+  SYSTEM
+  ADMIN
+
+  @@map("xp_ledger_actor_type")
+}
+
+/// §16.7. Libro mayor INMUTABLE (trigger `enforce_xp_ledger_entry_immutable`,
+/// mismo patrón que `student_response`/ADR-0014 -- ningún UPDATE permitido).
+/// "Reversible" (ADR-0016) = entrada compensatoria únicamente: CHECK a nivel
+/// de base de datos aplica que entryType = REVERSO exija reversesEntryId, y
+/// que cualquier otro tipo lo prohíba -- ver migración.
+/// `accountId` sin FK a Account, mismo criterio que ValidatedGamificationActivity.
+model XpLedgerEntry {
+  id                  String            @id @default(uuid()) @db.Uuid
+  accountId           String            @map("account_id") @db.Uuid
+  /// Nullable: obligatorio a nivel de aplicación para OTORGAMIENTO (cuando
+  /// exista el servicio que lo escriba); REVERSO no lo usa, referencia la
+  /// entrada original vía reversesEntryId.
+  validatedActivityId String?           @map("validated_activity_id") @db.Uuid
+  entryType           XpLedgerEntryType @map("entry_type")
+  xpAmount             Int              @map("xp_amount")
+  baseXpAmount         Int?             @map("base_xp_amount")
+  multiplierReference  String?          @map("multiplier_reference")
+  ruleVersion          String?          @map("rule_version")
+  reasonCode           String?          @map("reason_code")
+  /// Idempotencia de escritura -- única, mismo criterio que StudentResponse.operationId.
+  idempotencyKey        String          @unique @map("idempotency_key")
+  occurredAt             DateTime       @map("occurred_at")
+  recordedAt             DateTime       @default(now()) @map("recorded_at")
+  reversesEntryId         String?       @map("reverses_entry_id") @db.Uuid
+  createdByActorType       XpLedgerActorType @default(SYSTEM) @map("created_by_actor_type")
+
+  validatedActivity ValidatedGamificationActivity? @relation(fields: [validatedActivityId], references: [id], onDelete: Restrict)
+  reversesEntry     XpLedgerEntry?                 @relation("XpLedgerEntryReversal", fields: [reversesEntryId], references: [id], onDelete: Restrict)
+  reversedBy        XpLedgerEntry[]                @relation("XpLedgerEntryReversal")
+  balances          XpBalance[]
+
+  @@index([accountId])
+  @@map("xp_ledger_entry")
+}
+
+/// §16.8. "Representa una proyección materializada [...] deberá poder
+/// reconstruirse completamente desde xp_ledger_entry" -- en este incremento
+/// la tabla existe con su forma correcta, pero NINGÚN código escribe
+/// valores reales todavía (cálculo de XP fuera de alcance). `currentLevelId`
+/// (depende de level_definition, Bloque III) y `seasonXp` (depende de
+/// game_season, Bloque II) quedan deliberadamente fuera -- ninguno de esos
+/// dominios existe todavía (ver brief de este incremento).
+model XpBalance {
+  id                String    @id @default(uuid()) @db.Uuid
+  accountId         String    @unique @map("account_id") @db.Uuid
+  lifetimeXp        Int       @default(0) @map("lifetime_xp")
+  balanceVersion    Int       @default(0) @map("balance_version")
+  lastLedgerEntryId String?   @map("last_ledger_entry_id") @db.Uuid
+  calculatedAt      DateTime  @default(now()) @map("calculated_at")
+
+  lastLedgerEntry XpLedgerEntry? @relation(fields: [lastLedgerEntryId], references: [id], onDelete: Restrict)
+
+  @@map("xp_balance")
+}

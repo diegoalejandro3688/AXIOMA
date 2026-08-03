@@ -12,6 +12,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { DiagnosticsModule } from './platform/observability/diagnostics.module';
 import { UserModule } from './user/user.module';
 import { ProgressModule } from './progress/progress.module';
+import { GamificationModule } from './gamification/gamification.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ProgressModule } from './progress/progress.module';
     DiagnosticsModule,
     UserModule,
     ProgressModule,
+    GamificationModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
