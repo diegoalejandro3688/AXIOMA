@@ -11,9 +11,12 @@ import type { OutboxOperation, OutboxRepository } from './outbox-repository';
  *
  * Disparadores documentados (ADR-0014): justo después de encolar (este
  * archivo, vía `flushOperation` llamado directamente), `AppState` -> active
- * y montaje de `estudio/[topicId].tsx` (`app/_layout.tsx` y esa pantalla,
- * llamando `syncPendingOperations()`), y el botón "Reintentar" de
- * `ErrorState`. Ningún temporizador ni polling periódico.
+ * y montaje de `estudio/topic/[topicId]/ejercicio.tsx` (Bloque IV dividió la
+ * pantalla combinada de Bloque III en Recurso/Ejercicio -- ver ADR-0015; el
+ * disparador de montaje se conserva en Ejercicio, que es donde vuelven a
+ * evaluarse las respuestas pendientes, llamando `syncPendingOperations()`),
+ * y el botón "Reintentar" de `ErrorState`. Ningún temporizador ni polling
+ * periódico.
  */
 
 interface SubmitResponsePayload {

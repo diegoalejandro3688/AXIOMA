@@ -1,4 +1,6 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { useThemedStyles } from '../theme';
+import type { ThemeTokens } from '../theme';
 
 interface ComingSoonPlaceholderProps {
   title: string;
@@ -9,8 +11,13 @@ interface ComingSoonPlaceholderProps {
  * posterior de la Implementation Matrix (ver ADR-0009) -- la pestaña
  * existe, la funcionalidad todavía no. Deliberadamente sin datos ni
  * métricas simuladas.
+ *
+ * Consume solo `background`/`text.primary`/`text.secondary` (ver ADR-0015,
+ * corrección de contraste fuera del alcance de M1) -- sin migrar el resto
+ * de la arquitectura visual de Competir/IA, que sigue diferida.
  */
 export function ComingSoonPlaceholder({ title }: ComingSoonPlaceholderProps) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.container}>
       <Text style={styles.title} accessibilityRole="header">
@@ -21,20 +28,17 @@ export function ComingSoonPlaceholder({ title }: ComingSoonPlaceholderProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: 24,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  message: {
-    fontSize: 14,
-    color: '#666',
-  },
-});
+function createStyles(t: ThemeTokens) {
+  return {
+    container: {
+      flex: 1,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: 8,
+      padding: 24,
+      backgroundColor: t.color.background.default,
+    },
+    title: { fontSize: 20, fontWeight: '700' as const, color: t.color.text.primary },
+    message: { fontSize: 14, color: t.color.text.secondary },
+  };
+}

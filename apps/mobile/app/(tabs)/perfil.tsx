@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import type { UserProfileResponse } from '@axioma/contracts';
 import { useAuth } from '../../lib/auth/auth-provider';
 import { getProfile, initializeProfile, updateProfile } from '../../lib/api/user';
 import { LoadingState } from '../../components/loading-state';
 import { ErrorState } from '../../components/error-state';
+import { useTheme, useThemedStyles } from '../../theme';
+import type { ThemeTokens } from '../../theme';
 
 type ScreenState =
   | { status: 'loading' }
@@ -15,6 +17,8 @@ type ScreenState =
 /** Perfil real -- ver ADR-0013 (reemplaza el placeholder de ADR-0009). GET/POST/PATCH /user/profile (ADR-0008). */
 export default function PerfilScreen() {
   const auth = useAuth();
+  const tokens = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
   const [displayName, setDisplayName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -69,6 +73,9 @@ export default function PerfilScreen() {
       <TextInput
         accessibilityLabel="Nombre a mostrar"
         placeholder="Nombre a mostrar"
+        placeholderTextColor={tokens.color.text.muted}
+        selectionColor={tokens.color.accent.default}
+        cursorColor={tokens.color.accent.default}
         value={displayName}
         onChangeText={setDisplayName}
         style={styles.input}
@@ -110,24 +117,40 @@ export default function PerfilScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, gap: 12 },
-  title: { fontSize: 24, fontWeight: '700', marginBottom: 8 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, fontSize: 15 },
-  error: { color: '#c00', fontSize: 13 },
-  meta: { fontSize: 13, color: '#666' },
-  saveButton: { backgroundColor: '#111', paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
-  buttonDisabled: { opacity: 0.5 },
-  saveButtonText: { color: '#fff', fontWeight: '600' },
-  logoutButton: {
-    marginTop: 'auto',
-    alignSelf: 'center',
-    marginBottom: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#c00',
-  },
-  logoutButtonText: { color: '#c00', fontWeight: '600' },
-});
+/**
+ * Alcance mínimo (ver ADR-0015, corrección de contraste fuera de M1): solo
+ * `container`/`title`/`meta` pasan por tokens -- el resto de esta pantalla
+ * (input, botones, logout) no se rediseña ni se migra, queda igual que antes.
+ */
+function createStyles(t: ThemeTokens) {
+  return {
+    container: { flex: 1, padding: 24, gap: 12, backgroundColor: t.color.background.default },
+    title: { fontSize: 24, fontWeight: '700' as const, marginBottom: 8, color: t.color.text.primary },
+    input: {
+      borderWidth: 1,
+      borderColor: t.color.border.default,
+      backgroundColor: t.color.background.surface,
+      color: t.color.text.primary,
+      borderRadius: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      fontSize: 15,
+    },
+    error: { color: '#c00', fontSize: 13 },
+    meta: { fontSize: 13, color: t.color.text.secondary },
+    saveButton: { backgroundColor: '#111', paddingVertical: 12, borderRadius: 8, alignItems: 'center' as const },
+    buttonDisabled: { opacity: 0.5 },
+    saveButtonText: { color: '#fff', fontWeight: '600' as const },
+    logoutButton: {
+      marginTop: 'auto' as const,
+      alignSelf: 'center' as const,
+      marginBottom: 16,
+      paddingVertical: 10,
+      paddingHorizontal: 24,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: '#c00',
+    },
+    logoutButtonText: { color: '#c00', fontWeight: '600' as const },
+  };
+}

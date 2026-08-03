@@ -1,7 +1,11 @@
+import { useMemo } from 'react';
 import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { FullScreenLoader } from '../components/full-screen-loader';
 import { AuthProvider, useAuth } from '../lib/auth/auth-provider';
 import { OnboardingProvider, useOnboarding } from '../lib/onboarding/onboarding-provider';
+import { ThemeProvider, useTheme, useColorSchemeName } from '../theme';
 
 /**
  * Máquina de estados de navegación (ver ADR-0009):
@@ -14,14 +18,49 @@ import { OnboardingProvider, useOnboarding } from '../lib/onboarding/onboarding-
  * guard es falso -- no quedan en el historial de navegación, por lo que un
  * enlace directo a una ruta protegida sin sesión, o "volver atrás" desde
  * onboarding hacia login, no aterrizan en un estado inválido.
+ *
+ * `ThemeProvider` (ver ADR-0015) envuelve todo el árbol -- header/fondo de
+ * navegación y `StatusBar` quedan derivados de los mismos tokens que las
+ * pantallas, para evitar el "flash" claro en modo oscuro al navegar.
  */
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <OnboardingProvider>
-        <RootNavigator />
-      </OnboardingProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <OnboardingProvider>
+          <ThemedRootNavigator />
+        </OnboardingProvider>
+      </AuthProvider>
+    </ThemeProvider>
+  );
+}
+
+function ThemedRootNavigator() {
+  const tokens = useTheme();
+  const scheme = useColorSchemeName();
+
+  const navigationTheme = useMemo(() => {
+    const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      dark: scheme === 'dark',
+      colors: {
+        ...base.colors,
+        background: tokens.color.background.default,
+        card: tokens.color.background.surface,
+        text: tokens.color.text.primary,
+        border: tokens.color.border.default,
+        primary: tokens.color.accent.default,
+        notification: tokens.color.state.error.text,
+      },
+    };
+  }, [scheme, tokens]);
+
+  return (
+    <NavigationThemeProvider value={navigationTheme}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+      <RootNavigator />
+    </NavigationThemeProvider>
   );
 }
 

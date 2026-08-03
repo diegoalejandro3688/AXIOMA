@@ -1,5 +1,7 @@
 import { Link, Stack } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { useThemedStyles } from '../theme';
+import type { ThemeTokens } from '../theme';
 
 /**
  * Ruta desconocida -- ver ADR-0009. El enlace vuelve a "/", que re-evalúa
@@ -7,6 +9,7 @@ import { StyleSheet, Text, View } from 'react-native';
  * (login, onboarding o tabs) según corresponda, en vez de asumir una.
  */
 export default function NotFoundScreen() {
+  const styles = useThemedStyles(createStyles);
   return (
     <>
       <Stack.Screen options={{ title: 'No encontrado' }} />
@@ -22,8 +25,11 @@ export default function NotFoundScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 },
-  title: { fontSize: 18, fontWeight: '600' },
-  link: { fontSize: 14, color: '#0a58ca' },
-});
+/** Alcance mínimo (ver ADR-0015): solo `container`/`title` pasan por tokens. */
+function createStyles(t: ThemeTokens) {
+  return {
+    container: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 16, padding: 24, backgroundColor: t.color.background.default },
+    title: { fontSize: 18, fontWeight: '600' as const, color: t.color.text.primary },
+    link: { fontSize: 14, color: '#0a58ca' },
+  };
+}

@@ -1,61 +1,39 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import type { SubjectResponse, CurriculumTopicResponse, TopicProgressStatus } from '@axioma/contracts';
-import { listSubjects, listRootTopics } from '../../../lib/api/education';
-import { getTopicProgress } from '../../../lib/api/progress';
+import type { SubjectResponse } from '@axioma/contracts';
+import { listSubjects } from '../../../lib/api/education';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
 import { EmptyState } from '../../../components/empty-state';
+import { useThemedStyles } from '../../../theme';
+import type { ThemeTokens } from '../../../theme';
 
 type ScreenState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | {
-      status: 'ready';
-      subject: SubjectResponse | null;
-      topics: CurriculumTopicResponse[];
-      progressByTopic: Record<string, TopicProgressStatus>;
-    };
+  | { status: 'ready'; subjects: SubjectResponse[] };
 
 /**
- * Estudio real -- ver ADR-0013/ADR-0014. Selecciona la materia sembrada (M1
- * tiene una sola) y lista sus unidades con su estado de avance (PROGRESS,
- * ADR-0014) -- nunca mezclado con los datos de contenido de EDUCATION.
- * Recorrido: materia -> unidad -> [topicId] (recurso + preguntas).
+ * Grilla de materias -- ver aprobación de alcance de Bloque IV. Renderiza
+ * únicamente lo que devuelve `GET /education/subjects`: si solo existe
+ * Matemática, se muestra solo Matemática; nunca se hardcodea una materia
+ * inexistente. Recorrido: materia -> `estudio/[subjectId]` (detalle) ->
+ * `estudio/[subjectId]/unidades` -> `estudio/topic/[topicId]/...`.
  */
 export default function EstudioIndexScreen() {
   const router = useRouter();
+  const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
 
   const load = useCallback(async () => {
     setState({ status: 'loading' });
-    const subjectsResult = await listSubjects();
-    if (!subjectsResult.ok) {
-      setState({ status: 'error', message: subjectsResult.message });
+    const result = await listSubjects();
+    if (!result.ok) {
+      setState({ status: 'error', message: result.message });
       return;
     }
-    const subject = subjectsResult.data[0] ?? null;
-    if (!subject) {
-      setState({ status: 'ready', subject: null, topics: [], progressByTopic: {} });
-      return;
-    }
-    const topicsResult = await listRootTopics(subject.id);
-    if (!topicsResult.ok) {
-      setState({ status: 'error', message: topicsResult.message });
-      return;
-    }
-
-    // M1 tiene un puñado de unidades raíz -- una consulta de progreso por
-    // unidad es suficiente; un endpoint de resumen en lote se justificará
-    // si el catálogo crece (ver ADR-0014, "Consecuencias").
-    const progressResults = await Promise.all(topicsResult.data.map((topic) => getTopicProgress(topic.id)));
-    const progressByTopic: Record<string, TopicProgressStatus> = {};
-    progressResults.forEach((result, index) => {
-      if (result.ok) progressByTopic[topicsResult.data[index].id] = result.data.status;
-    });
-
-    setState({ status: 'ready', subject, topics: topicsResult.data, progressByTopic });
+    setState({ status: 'ready', subjects: result.data });
   }, []);
 
   useEffect(() => {
@@ -64,50 +42,63 @@ export default function EstudioIndexScreen() {
 
   if (state.status === 'loading') return <LoadingState message="Cargando materias…" />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
-  if (!state.subject) return <EmptyState message="Todavía no hay materias disponibles." />;
-  if (state.topics.length === 0) return <EmptyState message={`${state.subject.name} todavía no tiene unidades disponibles.`} />;
+  if (state.subjects.length === 0) return <EmptyState message="Todavía no hay materias disponibles." />;
 
   return (
     <View style={styles.container}>
-      <Text style={styles.subjectName} accessibilityRole="header">
-        {state.subject.name}
+      <Text style={styles.title} accessibilityRole="header">
+        Estudiar
       </Text>
       <FlatList
-        data={state.topics}
-        keyExtractor={(topic) => topic.id}
+        data={state.subjects}
+        keyExtractor={(subject) => subject.id}
+        numColumns={2}
+        columnWrapperStyle={styles.row}
+        contentContainerStyle={styles.list}
         renderItem={({ item }) => (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Abrir unidad ${item.name}`}
-            style={styles.topicCard}
-            onPress={() => router.push({ pathname: '/(tabs)/estudio/[topicId]', params: { topicId: item.id } })}
+            accessibilityLabel={`Abrir materia ${item.name}`}
+            style={styles.card}
+            onPress={() =>
+              router.push({ pathname: '/(tabs)/estudio/[subjectId]', params: { subjectId: item.id, name: item.name } })
+            }
           >
-            <Text style={styles.topicName}>{item.name}</Text>
-            <Text style={styles.topicStatus}>{topicStatusLabel(state.progressByTopic[item.id] ?? 'NOT_STARTED')}</Text>
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{item.shortName.slice(0, 2).toUpperCase()}</Text>
+            </View>
+            <Text style={styles.cardName}>{item.name}</Text>
           </Pressable>
         )}
-        contentContainerStyle={styles.list}
       />
     </View>
   );
 }
 
-function topicStatusLabel(status: TopicProgressStatus): string {
-  switch (status) {
-    case 'COMPLETED':
-      return 'Completada';
-    case 'IN_PROGRESS':
-      return 'En progreso';
-    default:
-      return 'Sin comenzar';
-  }
+function createStyles(t: ThemeTokens) {
+  return {
+    container: { flex: 1, padding: 16, gap: 16, backgroundColor: t.color.background.default },
+    title: { fontSize: 22, fontWeight: '700' as const, color: t.color.text.primary },
+    list: { gap: 12 },
+    row: { gap: 12 },
+    card: {
+      flex: 1,
+      backgroundColor: t.color.background.surface,
+      borderWidth: 1,
+      borderColor: t.color.border.default,
+      borderRadius: 14,
+      padding: 16,
+      gap: 10,
+    },
+    badge: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      backgroundColor: t.color.accent.subtleBg,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
+    badgeText: { fontSize: 13, fontWeight: '700' as const, color: t.color.accent.strong },
+    cardName: { fontSize: 14, fontWeight: '500' as const, color: t.color.text.primary },
+  };
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, gap: 12 },
-  subjectName: { fontSize: 22, fontWeight: '700' },
-  list: { gap: 12 },
-  topicCard: { padding: 16, borderRadius: 8, backgroundColor: '#f2f2f2', gap: 4 },
-  topicName: { fontSize: 16, fontWeight: '600' },
-  topicStatus: { fontSize: 12, color: '#666' },
-});

@@ -1,6 +1,8 @@
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import type { ResourceContentBlockResponse } from '@axioma/contracts';
+import { useTheme, useThemedStyles } from '../theme';
+import type { ThemeTokens } from '../theme';
 
 /**
  * Renderiza los bloques de contenido de un recurso/pregunta -- ver
@@ -11,16 +13,17 @@ import type { ResourceContentBlockResponse } from '@axioma/contracts';
  */
 export function ContentBlockRenderer({ blocks }: { blocks: ResourceContentBlockResponse[] }) {
   const sorted = [...blocks].sort((a, b) => a.order - b.order);
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.container}>
       {sorted.map((block, index) => (
-        <ContentBlock key={index} block={block} />
+        <ContentBlock key={index} block={block} styles={styles} />
       ))}
     </View>
   );
 }
 
-function ContentBlock({ block }: { block: ResourceContentBlockResponse }) {
+function ContentBlock({ block, styles }: { block: ResourceContentBlockResponse; styles: ReturnType<typeof createStyles> }) {
   switch (block.type) {
     case 'heading':
       return (
@@ -31,11 +34,7 @@ function ContentBlock({ block }: { block: ResourceContentBlockResponse }) {
     case 'paragraph':
       return <Text style={styles.paragraph}>{block.text}</Text>;
     case 'formula':
-      return (
-        <View style={styles.formulaContainer} accessibilityLabel={`Fórmula: ${block.latex}`}>
-          <SvgXml xml={extractSvgElement(block.svg)} height={40} />
-        </View>
-      );
+      return <FormulaBlock latex={block.latex} svg={block.svg} styles={styles} />;
     case 'image':
       return (
         <Image
@@ -46,6 +45,22 @@ function ContentBlock({ block }: { block: ResourceContentBlockResponse }) {
         />
       );
   }
+}
+
+/**
+ * MathJax SVG output dibuja los glifos con `fill="currentColor"` en el nodo
+ * raíz (comportamiento estándar de `mathjax-full`'s `SVG` output, ver
+ * `formula-rendering.ts`) -- por eso SÍ es tematizable sin tocar ADR-0002 ni
+ * regenerar nada en el servidor: `SvgXml` (react-native-svg) resuelve
+ * `currentColor` a partir de su prop `color`, igual que `color` en CSS.
+ */
+function FormulaBlock({ latex, svg, styles }: { latex: string; svg: string; styles: ReturnType<typeof createStyles> }) {
+  const tokens = useTheme();
+  return (
+    <View style={styles.formulaContainer} accessibilityLabel={`Fórmula: ${latex}`}>
+      <SvgXml xml={extractSvgElement(svg)} height={40} color={tokens.color.text.primary} />
+    </View>
+  );
 }
 
 /**
@@ -61,10 +76,20 @@ function extractSvgElement(mjxOutput: string): string {
   return match ? match[0] : mjxOutput;
 }
 
-const styles = StyleSheet.create({
-  container: { gap: 12 },
-  heading: { fontSize: 20, fontWeight: '700' },
-  paragraph: { fontSize: 15, lineHeight: 22, color: '#222' },
-  formulaContainer: { paddingVertical: 4 },
-  image: { width: '100%', height: 200, borderRadius: 8 },
-});
+/**
+ * Solo el color de texto está tematizado (ver ADR-0015) -- el resto del
+ * componente queda fuera del alcance de migración de Bloque IV, pero un
+ * `paragraph`/`heading` con color fijo quedaría ilegible sobre un fondo
+ * oscuro (gate de ADR-0015, punto 7). El `svg` de fórmulas y las imágenes
+ * ya vienen resueltos del servidor -- no son "color de interfaz" (ver
+ * ADR-0015, "cero color hardcodeado sin justificación").
+ */
+function createStyles(t: ThemeTokens) {
+  return {
+    container: { gap: 12 },
+    heading: { fontSize: 20, fontWeight: '700' as const, color: t.color.text.primary },
+    paragraph: { fontSize: 15, lineHeight: 22, color: t.color.text.primary },
+    formulaContainer: { paddingVertical: 4 },
+    image: { width: '100%' as const, height: 200, borderRadius: 8 },
+  };
+}
