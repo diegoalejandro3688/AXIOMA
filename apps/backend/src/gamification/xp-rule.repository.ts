@@ -31,4 +31,19 @@ export class XpRuleRepository {
       where: { programVersionId_activityType: { programVersionId, activityType } },
     });
   }
+
+  /** Regla ACTIVE y vigente en `at` para (versión, tipo de actividad). */
+  findActiveForVersionAndType(programVersionId: string, activityType: string, at: Date): Promise<XpRule | null> {
+    return this.prisma.xpRule.findFirst({
+      where: {
+        programVersionId,
+        activityType,
+        status: 'ACTIVE',
+        AND: [
+          { OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: at } }] },
+          { OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: at } }] },
+        ],
+      },
+    });
+  }
 }

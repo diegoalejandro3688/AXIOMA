@@ -37,4 +37,24 @@ export class ValidatedGamificationActivityRepository {
   findByAccountId(accountId: string): Promise<ValidatedGamificationActivity[]> {
     return this.prisma.validatedGamificationActivity.findMany({ where: { accountId }, orderBy: { occurredAt: 'asc' } });
   }
+
+  /**
+   * "Pendiente de otorgar XP" = sin xp_ledger_entry de tipo OTORGAMIENTO
+   * asociado -- NUNCA un campo mutado en esta tabla (condición
+   * arquitectónica explícita, ver docs/adr/0016-gamificacion-fundacion.md).
+   * Excluye actividades en backoff (xp_grant_attempt.nextEligibleAt en el
+   * futuro) -- así una actividad sin regla activa no compite por el cupo
+   * de cada ciclo indefinidamente, y nunca bloquea a una actividad nueva
+   * (sin intento todavía, siempre elegible).
+   */
+  findPendingGrant(limit: number, now: Date = new Date()): Promise<ValidatedGamificationActivity[]> {
+    return this.prisma.validatedGamificationActivity.findMany({
+      where: {
+        ledgerEntries: { none: { entryType: 'OTORGAMIENTO' } },
+        OR: [{ grantAttempt: null }, { grantAttempt: { nextEligibleAt: { lte: now } } }],
+      },
+      orderBy: { occurredAt: 'asc' },
+      take: limit,
+    });
+  }
 }

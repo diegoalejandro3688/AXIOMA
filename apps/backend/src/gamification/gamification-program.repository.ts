@@ -24,4 +24,10 @@ export class GamificationProgramRepository {
   findByProgramKey(programKey: string): Promise<GamificationProgram | null> {
     return this.prisma.gamificationProgram.findUnique({ where: { programKey } });
   }
+
+  /** Solo programas ACTIVE pueden otorgar XP -- ver docs/adr/0016-gamificacion-fundacion.md. */
+  async findActiveByProgramKey(programKey: string): Promise<GamificationProgram | null> {
+    const program = await this.findByProgramKey(programKey);
+    return program && program.status === 'ACTIVE' ? program : null;
+  }
 }

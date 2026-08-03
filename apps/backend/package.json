@@ -24,6 +24,7 @@
     "verify:progress-gate": "tsx scripts/verify-progress-gate.ts",
     "verify:gamification-schema-gate": "tsx scripts/verify-gamification-schema-gate.ts",
     "verify:gamification-integration-gate": "tsx scripts/verify-gamification-integration-gate.ts",
+    "verify:gamification-xp-grant-gate": "tsx scripts/verify-gamification-xp-grant-gate.ts",
     "cli:recover-account": "node dist/cli/recover-account.js",
     "db:up": "docker compose -f ../../docker-compose.yml up -d",
     "db:down": "docker compose -f ../../docker-compose.yml down"

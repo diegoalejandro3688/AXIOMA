@@ -578,6 +578,7 @@ model XpRule {
   status           XpRuleStatus @default(ACTIVE)
 
   programVersion GamificationProgramVersion @relation(fields: [programVersionId], references: [id], onDelete: Restrict)
+  ledgerEntries  XpLedgerEntry[]
 
   @@unique([programVersionId, activityType])
   @@map("xp_rule")
@@ -613,9 +614,40 @@ model ValidatedGamificationActivity {
   integrityStatus        String  @map("integrity_status")
 
   ledgerEntries XpLedgerEntry[]
+  grantAttempt  XpGrantAttempt?
 
   @@index([accountId])
   @@map("validated_gamification_activity")
+}
+
+/// Seguimiento de intentos de otorgamiento -- NUNCA modifica
+/// validated_gamification_activity (condición arquitectónica explícita del
+/// incremento de otorgamiento): es una tabla auxiliar propia, mismo patrón
+/// ya usado por outbox_event_delivery (ADR-0017) para no mutar la tabla de
+/// hechos. Existe solo para resultados TRANSITORIOS (sin regla activa, tope
+/// diario alcanzado) -- un otorgamiento exitoso no necesita seguimiento
+/// aquí: la propia xp_ledger_entry ya es el registro terminal.
+///
+/// Previene "polling perpetuo" y starvation: una actividad con intentos
+/// fallidos deja de competir por el cupo de cada ciclo hasta
+/// `nextEligibleAt` (backoff creciente y acotado para NO_ACTIVE_RULE;
+/// exactamente la medianoche UTC siguiente para DAILY_CAP_REACHED) -- así
+/// las actividades nuevas, sin intento todavía, nunca quedan bloqueadas
+/// detrás de un backlog viejo sin regla.
+model XpGrantAttempt {
+  id                  String   @id @default(uuid()) @db.Uuid
+  validatedActivityId String   @unique @map("validated_activity_id") @db.Uuid
+  attempts            Int      @default(0)
+  /// 'NO_ACTIVE_RULE' | 'DAILY_CAP_REACHED' -- solo resultados transitorios.
+  lastOutcome         String   @map("last_outcome")
+  lastAttemptedAt     DateTime @map("last_attempted_at")
+  nextEligibleAt      DateTime @map("next_eligible_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  validatedActivity ValidatedGamificationActivity @relation(fields: [validatedActivityId], references: [id], onDelete: Restrict)
+
+  @@index([nextEligibleAt])
+  @@map("xp_grant_attempt")
 }
 
 /// §16.7: "Otorgamiento, bono, reverso o ajuste" -- 4 valores explícitos en
@@ -641,7 +673,15 @@ enum XpLedgerActorType {
 /// mismo patrón que `student_response`/ADR-0014 -- ningún UPDATE permitido).
 /// "Reversible" (ADR-0016) = entrada compensatoria únicamente: CHECK a nivel
 /// de base de datos aplica que entryType = REVERSO exija reversesEntryId, y
-/// que cualquier otro tipo lo prohíba -- ver migración.
+/// que cualquier otro tipo lo prohíba. `reversesEntryId` es además ÚNICO
+/// (a lo sumo un reverso por entrada original) y un trigger de integridad
+/// (`enforce_xp_ledger_entry_reversal_integrity`) valida contra la entrada
+/// original: debe ser OTORGAMIENTO, misma cuenta, y xpAmount exactamente su
+/// negativo -- ver migración y brief del incremento de otorgamiento.
+/// `xpRuleId` es la referencia ESTABLE a la regla que determinó el
+/// otorgamiento (obligatoria para OTORGAMIENTO, exigido por CHECK); la
+/// versión del programa se deriva vía `xpRule.programVersionId`, sin
+/// duplicar la columna.
 /// `accountId` sin FK a Account, mismo criterio que ValidatedGamificationActivity.
 model XpLedgerEntry {
   id                  String            @id @default(uuid()) @db.Uuid
@@ -650,6 +690,9 @@ model XpLedgerEntry {
   /// exista el servicio que lo escriba); REVERSO no lo usa, referencia la
   /// entrada original vía reversesEntryId.
   validatedActivityId String?           @map("validated_activity_id") @db.Uuid
+  /// Referencia estable a la regla aplicada -- obligatoria para OTORGAMIENTO
+  /// (CHECK `xp_ledger_entry_otorgamiento_requires_rule`), ausente en REVERSO.
+  xpRuleId            String?           @map("xp_rule_id") @db.Uuid
   entryType           XpLedgerEntryType @map("entry_type")
   xpAmount             Int              @map("xp_amount")
   baseXpAmount         Int?             @map("base_xp_amount")
@@ -660,12 +703,16 @@ model XpLedgerEntry {
   idempotencyKey        String          @unique @map("idempotency_key")
   occurredAt             DateTime       @map("occurred_at")
   recordedAt             DateTime       @default(now()) @map("recorded_at")
-  reversesEntryId         String?       @map("reverses_entry_id") @db.Uuid
+  /// Único: a lo sumo un reverso por entrada original (protección de base de
+  /// datos, además de la idempotencyKey `reverse:${originalEntryId}` del
+  /// servicio).
+  reversesEntryId         String?       @unique @map("reverses_entry_id") @db.Uuid
   createdByActorType       XpLedgerActorType @default(SYSTEM) @map("created_by_actor_type")
 
   validatedActivity ValidatedGamificationActivity? @relation(fields: [validatedActivityId], references: [id], onDelete: Restrict)
+  xpRule            XpRule?                        @relation(fields: [xpRuleId], references: [id], onDelete: Restrict)
   reversesEntry     XpLedgerEntry?                 @relation("XpLedgerEntryReversal", fields: [reversesEntryId], references: [id], onDelete: Restrict)
-  reversedBy        XpLedgerEntry[]                @relation("XpLedgerEntryReversal")
+  reversedBy        XpLedgerEntry?                 @relation("XpLedgerEntryReversal")
   balances          XpBalance[]
 
   @@index([accountId])

@@ -5,16 +5,22 @@ import type { XpLedgerEntry, XpLedgerEntryType, XpLedgerActorType } from '../gen
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
+type Client = PrismaService | Prisma.TransactionClient;
+
 /**
  * Único punto de acceso a `xp_ledger_entry` -- ver
  * docs/adr/0016-gamificacion-fundacion.md. Libro mayor INMUTABLE (trigger
  * `enforce_xp_ledger_entry_immutable`) -- este repositorio nunca expone un
- * `update`. "Reversible" = entrada compensatoria nueva únicamente.
+ * `update`. "Reversible" = entrada compensatoria nueva únicamente, con
+ * integridad de reverso reforzada en base de datos (mismo original,
+ * OTORGAMIENTO, misma cuenta, monto negativo exacto -- trigger
+ * `enforce_xp_ledger_entry_reversal_integrity`, ver migración
+ * `xp_grant_integrity`).
  *
- * Sin cálculo de XP en este incremento: `create`/`createIdempotent` son
- * plumbing estructural (idempotencia de escritura), no deciden el
- * `xpAmount` de ningún hecho real -- eso pertenece al incremento que
- * conecte PROGRESS -> GAMIFICATION.
+ * Todos los métodos aceptan un cliente Prisma opcional (`tx`) para poder
+ * ejecutarse dentro de la transacción SERIALIZABLE del servicio de
+ * otorgamiento -- por defecto usan `this.prisma` (mismo comportamiento que
+ * el incremento anterior cuando se omite).
  */
 @Injectable()
 export class XpLedgerEntryRepository {
@@ -24,27 +30,47 @@ export class XpLedgerEntryRepository {
    * Idempotencia ante reintento: un segundo `create` con el mismo
    * `idempotencyKey` -> P2002, capturado explícitamente, devuelve la fila
    * ya creada -- mismo patrón que UserService.initializeProfile (ADR-0008).
+   * `created` distingue explícitamente creación real de preexistencia --
+   * el llamador solo debe incrementar xp_balance cuando `created === true`.
+   *
+   * Fuera de una transacción explícita (`tx` omitido): captura el P2002 y
+   * vuelve a consultar con el mismo cliente -- seguro, porque cada llamada
+   * sin `tx` es su propia transacción implícita independiente.
+   *
+   * DENTRO de una transacción explícita (`tx` presente): un P2002 dentro de
+   * `$transaction` deja el resto de esa transacción ABORTADA a nivel de
+   * Postgres (25P02) -- cualquier consulta posterior con el mismo `tx`
+   * fallaría también. Por eso aquí el error se RELANZA tal cual, sin
+   * intentar re-consultar -- el llamador (XpGrantService) debe manejar la
+   * idempotencia FUERA de la transacción, con una consulta nueva.
    */
-  async createIdempotent(input: {
-    accountId: string;
-    validatedActivityId?: string | null;
-    entryType: XpLedgerEntryType;
-    xpAmount: number;
-    baseXpAmount?: number | null;
-    multiplierReference?: string | null;
-    ruleVersion?: string | null;
-    reasonCode?: string | null;
-    idempotencyKey: string;
-    occurredAt: Date;
-    reversesEntryId?: string | null;
-    createdByActorType?: XpLedgerActorType;
-  }): Promise<XpLedgerEntry> {
+  async createIdempotent(
+    input: {
+      accountId: string;
+      validatedActivityId?: string | null;
+      xpRuleId?: string | null;
+      entryType: XpLedgerEntryType;
+      xpAmount: number;
+      baseXpAmount?: number | null;
+      multiplierReference?: string | null;
+      ruleVersion?: string | null;
+      reasonCode?: string | null;
+      idempotencyKey: string;
+      occurredAt: Date;
+      reversesEntryId?: string | null;
+      createdByActorType?: XpLedgerActorType;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ entry: XpLedgerEntry; created: boolean }> {
+    const client: Client = tx ?? this.prisma;
     try {
-      return await this.prisma.xpLedgerEntry.create({ data: input });
+      const entry = await client.xpLedgerEntry.create({ data: input });
+      return { entry, created: true };
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION) {
-        const existing = await this.findByIdempotencyKey(input.idempotencyKey);
-        if (existing) return existing;
+      const isUniqueViolation = error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION;
+      if (isUniqueViolation && !tx) {
+        const existing = await client.xpLedgerEntry.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
+        if (existing) return { entry: existing, created: false };
       }
       throw error;
     }
@@ -58,6 +84,10 @@ export class XpLedgerEntryRepository {
     return this.prisma.xpLedgerEntry.findUnique({ where: { idempotencyKey } });
   }
 
+  findByReversesEntryId(reversesEntryId: string): Promise<XpLedgerEntry | null> {
+    return this.prisma.xpLedgerEntry.findUnique({ where: { reversesEntryId } });
+  }
+
   findByAccountId(accountId: string): Promise<XpLedgerEntry[]> {
     return this.prisma.xpLedgerEntry.findMany({ where: { accountId }, orderBy: { recordedAt: 'asc' } });
   }
@@ -66,12 +96,32 @@ export class XpLedgerEntryRepository {
    * Recalcula el XP neto de una cuenta directamente desde el ledger --
    * NUNCA desde xp_balance. Esta es la capacidad estructural que garantiza
    * que xp_balance sea una proyección reconstruible y no una segunda
-   * fuente de verdad (ver brief del incremento). Ningún llamador de este
-   * incremento la invoca para escribir xp_balance todavía.
+   * fuente de verdad.
    */
   async sumNetXpForAccount(accountId: string): Promise<number> {
     const result = await this.prisma.xpLedgerEntry.aggregate({
       where: { accountId },
+      _sum: { xpAmount: true },
+    });
+    return result._sum.xpAmount ?? 0;
+  }
+
+  /**
+   * Suma de OTORGAMIENTO ya concedidos hoy, para una regla concreta --
+   * base del control de daily_cap. Filtra estrictamente `entryType:
+   * OTORGAMIENTO`: un REVERSO nunca participa aquí, por lo que revertir un
+   * otorgamiento NO libera cupo del día (política ya aprobada). Debe
+   * ejecutarse DENTRO de la transacción SERIALIZABLE del otorgamiento --
+   * por eso exige `tx` explícito, sin valor por defecto.
+   */
+  async sumGrantedTodayForRule(tx: Prisma.TransactionClient, accountId: string, xpRuleId: string, dayStart: Date, dayEnd: Date): Promise<number> {
+    const result = await tx.xpLedgerEntry.aggregate({
+      where: {
+        accountId,
+        xpRuleId,
+        entryType: 'OTORGAMIENTO',
+        occurredAt: { gte: dayStart, lt: dayEnd },
+      },
       _sum: { xpAmount: true },
     });
     return result._sum.xpAmount ?? 0;

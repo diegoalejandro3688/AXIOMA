@@ -29,4 +29,26 @@ export class GamificationProgramVersionRepository {
       where: { gamificationProgramId_versionLabel: { gamificationProgramId, versionLabel } },
     });
   }
+
+  /**
+   * Única versión que puede otorgar XP: `approvalStatus = APPROVED`,
+   * vigente en `at` (condición arquitectónica explícita -- ver
+   * docs/adr/0016-gamificacion-fundacion.md). Desempate: `effectiveFrom`
+   * más reciente, determinista.
+   */
+  findApprovedEffectiveAt(gamificationProgramId: string, at: Date): Promise<GamificationProgramVersion | null> {
+    return this.prisma.gamificationProgramVersion.findFirst({
+      where: {
+        gamificationProgramId,
+        approvalStatus: 'APPROVED',
+        // effectiveFrom nulo = sin límite inferior (vigente desde siempre);
+        // effectiveUntil nulo = sin límite superior (vigente indefinidamente).
+        AND: [
+          { OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: at } }] },
+          { OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: at } }] },
+        ],
+      },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+  }
 }

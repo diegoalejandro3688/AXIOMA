@@ -152,31 +152,41 @@ async function main() {
   const grant = await ledgerRepo.createIdempotent({
     accountId,
     validatedActivityId: activity.id,
+    xpRuleId: rule.id,
     entryType: 'OTORGAMIENTO',
     xpAmount: 10,
     baseXpAmount: 10,
     idempotencyKey: grantKey,
     occurredAt: new Date(),
   });
-  check('entrada de otorgamiento creada', Boolean(grant.id));
+  check('entrada de otorgamiento creada', Boolean(grant.entry.id));
+  check('createIdempotent reporta created=true en la primera creación', grant.created === true);
 
   const grantRetry = await ledgerRepo.createIdempotent({
     accountId,
     validatedActivityId: activity.id,
+    xpRuleId: rule.id,
     entryType: 'OTORGAMIENTO',
     xpAmount: 10,
     baseXpAmount: 10,
     idempotencyKey: grantKey,
     occurredAt: new Date(),
   });
-  check('reintento con mismo idempotencyKey devuelve la misma fila, no duplica', grantRetry.id === grant.id);
+  check('reintento con mismo idempotencyKey devuelve la misma fila, no duplica', grantRetry.entry.id === grant.entry.id);
+  check('createIdempotent reporta created=false en el reintento (no se incrementa el balance dos veces)', grantRetry.created === false);
 
+  // Nota: desde xp_grant_integrity, un INSERT con entry_type=REVERSO dispara
+  // primero el trigger de integridad de reverso (enforce_xp_ledger_entry_
+  // reversal_integrity, SQLSTATE por defecto P0001) antes de que la base
+  // llegue a evaluar el CHECK original (23514) -- ambos códigos se aceptan
+  // aquí porque ambos significan "rechazado correctamente"; la prueba
+  // específica del trigger nuevo vive en verify-gamification-xp-grant-gate.ts.
   let otorgamientoConReversesRejected = false;
   try {
     await pg.query(
-      `INSERT INTO xp_ledger_entry (id, account_id, entry_type, xp_amount, idempotency_key, occurred_at, reverses_entry_id)
-       VALUES ($1, $2, 'OTORGAMIENTO', 5, $3, now(), $4)`,
-      [randomUUID(), accountId, `bad-otorgamiento-${suffix}`, grant.id],
+      `INSERT INTO xp_ledger_entry (id, account_id, entry_type, xp_amount, idempotency_key, occurred_at, reverses_entry_id, xp_rule_id)
+       VALUES ($1, $2, 'OTORGAMIENTO', 5, $3, now(), $4, $5)`,
+      [randomUUID(), accountId, `bad-otorgamiento-${suffix}`, grant.entry.id, rule.id],
     );
   } catch (error) {
     otorgamientoConReversesRejected = (error as { code?: string }).code === '23514';
@@ -191,7 +201,7 @@ async function main() {
       [randomUUID(), accountId, `bad-reverso-${suffix}`],
     );
   } catch (error) {
-    reversoSinReversesRejected = (error as { code?: string }).code === '23514';
+    reversoSinReversesRejected = ['23514', 'P0001'].includes((error as { code?: string }).code ?? '');
   }
   check('CHECK rechaza REVERSO sin reverses_entry_id', reversoSinReversesRejected);
 
@@ -201,13 +211,13 @@ async function main() {
     xpAmount: -10,
     idempotencyKey: `reversal-${suffix}`,
     occurredAt: new Date(),
-    reversesEntryId: grant.id,
+    reversesEntryId: grant.entry.id,
   });
-  check('entrada de reverso (compensatoria) válida creada', Boolean(reversal.id));
+  check('entrada de reverso (compensatoria) válida creada', Boolean(reversal.entry.id));
 
   let immutabilityRejected = false;
   try {
-    await pg.query('UPDATE xp_ledger_entry SET xp_amount = 999 WHERE id = $1', [grant.id]);
+    await pg.query('UPDATE xp_ledger_entry SET xp_amount = 999 WHERE id = $1', [grant.entry.id]);
   } catch (error) {
     immutabilityRejected = String((error as Error).message ?? '').includes('inmutable');
   }
