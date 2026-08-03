@@ -88,6 +88,10 @@ async function main() {
     await pg.query(`SELECT id FROM answer_option WHERE question_version_id = $1 AND is_correct = false LIMIT 1`, [qv2])
   ).rows[0].id;
 
+  console.log('--- -1. Decision Gate 5 (Bloque I): autoridad exclusiva de servidor -- sin clave de operaciones -> 401 ---');
+  const relayNoKey = await req('POST', '/gamification/_internal/relay');
+  check('POST /gamification/_internal/relay sin INTERNAL_OPS_KEY -> 401', relayNoKey.status === 401);
+
   console.log('--- 0. Drenar backlog previo de outbox_event para el consumidor GAMIFICATION ---');
   const drainedIn = await drainGamificationBacklog();
   check('backlog drenado sin error (loop convergió)', true);

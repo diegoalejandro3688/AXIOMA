@@ -8,6 +8,8 @@
 // ni aunque quisiera.
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { Client } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
@@ -223,6 +225,17 @@ async function main() {
   }
   check('UPDATE sobre xp_ledger_entry rechazado por el trigger de inmutabilidad', immutabilityRejected);
 
+  console.log('--- 5b. Decision Gate 3 (Bloque I): DELETE sobre xp_ledger_entry también rechazado ---');
+  let deleteRejected = false;
+  try {
+    await pg.query('DELETE FROM xp_ledger_entry WHERE id = $1', [grant.entry.id]);
+  } catch (error) {
+    deleteRejected = String((error as Error).message ?? '').includes('no admite DELETE');
+  }
+  check('DELETE sobre xp_ledger_entry rechazado por trigger dedicado (Decision Gate 3)', deleteRejected);
+  const stillThere = await pg.query('SELECT id FROM xp_ledger_entry WHERE id = $1', [grant.entry.id]);
+  check('la fila sigue existiendo tras el intento de DELETE', stillThere.rowCount === 1);
+
   console.log('--- 6. Reconstructibilidad: sumNetXpForAccount coincide con SUM directo sobre xp_ledger_entry ---');
   const sumFromRepo = await ledgerRepo.sumNetXpForAccount(accountId);
   const sumFromSql = await pg.query('SELECT COALESCE(SUM(xp_amount), 0)::int AS total FROM xp_ledger_entry WHERE account_id = $1', [
@@ -246,6 +259,25 @@ async function main() {
     duplicateBalanceAccountRejected = (error as { code?: string }).code === '23505';
   }
   check('segunda fila de balance para la misma cuenta rechazada', duplicateBalanceAccountRejected);
+
+  console.log('--- 8. Decision Gate 2 (Bloque I): no-autoridad académica -- verificación estática de frontera de dominio ---');
+  const gamificationDir = join(__dirname, '..', 'src', 'gamification');
+  const gamificationFiles = readdirSync(gamificationDir).filter((f) => f.endsWith('.ts'));
+  const forbiddenReferences = ['StudentResponseRepository', 'CurriculumTopicProgressRepository', 'prisma.studentResponse', 'prisma.curriculumTopicProgress'];
+  const offendingFiles: string[] = [];
+  for (const file of gamificationFiles) {
+    const content = readFileSync(join(gamificationDir, file), 'utf-8');
+    if (forbiddenReferences.some((ref) => content.includes(ref))) {
+      offendingFiles.push(file);
+    }
+  }
+  check(
+    `ningún archivo de src/gamification/ (${gamificationFiles.length} revisados) referencia StudentResponse/CurriculumTopicProgress -- GAMIFICATION no puede escribir evidencia académica`,
+    offendingFiles.length === 0,
+  );
+  if (offendingFiles.length > 0) {
+    console.error(`  archivos que violan la frontera de dominio: ${offendingFiles.join(', ')}`);
+  }
 
   await pg.end();
   await prisma.$disconnect();

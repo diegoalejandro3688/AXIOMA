@@ -60,6 +60,15 @@ async function main() {
 
   const suffix = Date.now();
 
+  console.log('--- -1. Decision Gate 5 (Bloque I): autoridad exclusiva de servidor -- sin clave de operaciones -> 401 ---');
+  const anyId = randomUUID();
+  const grantNoKey = await req('POST', '/gamification/_internal/grant-xp');
+  check('POST /gamification/_internal/grant-xp sin INTERNAL_OPS_KEY -> 401', grantNoKey.status === 401);
+  const reverseNoKey = await req('POST', `/gamification/_internal/xp-ledger-entries/${anyId}/reverse`, {}, { reasonCode: 'x' });
+  check('POST .../reverse sin INTERNAL_OPS_KEY -> 401 (el guard rechaza antes de tocar la entrada)', reverseNoKey.status === 401);
+  const reconcileNoKey = await req('POST', `/gamification/_internal/accounts/${anyId}/reconcile-balance`);
+  check('POST .../reconcile-balance sin INTERNAL_OPS_KEY -> 401', reconcileNoKey.status === 401);
+
   console.log('--- 0. Fixtures: programa xp-core (ACTIVE), versión APPROVED + regla, y versión DRAFT + regla ---');
   let program = await programRepo.findByProgramKey('xp-core');
   if (!program) {

@@ -1,6 +1,6 @@
 # ADR 0016 — Gamificación: Fundación (Bloque I, Learning Experience Foundation)
 
-- **Estado**: Aprobada como decisión de arquitectura — pendiente de implementación y de gate de validación (ver "Validación"). No incluye código todavía.
+- **Estado**: **Aprobada e implementada — Bloque I cerrado formalmente (2026-08-03).** Gate consolidado del Bloque I en PASS (ver "Validación" y `docs/adr/BLOCK-I-CLOSURE-REPORT.md`).
 - **Fecha**: 2026-08-03
 - **Fase de aplicación**: Fase 2 — Learning Experience Foundation, Bloque I (Roadmap Learning Experience Foundation, 8 bloques)
 - **Responsable de aprobación**: Product Owner (usuario)
@@ -64,7 +64,15 @@ Toda corrección sobre `xp_ledger_entry` se realiza mediante una nueva fila con 
 
 ## Validación
 
-**Pendiente.** Este ADR fija la decisión de arquitectura; no se ha iniciado implementación. El gate de este bloque (`GAMIFICATION-CORE`, ver definición formal del Bloque I) se ejecutará y documentará aquí una vez completados los pasos 6–8 del ciclo de bloque (Kickoff §4.2): implementación, validación técnica y actualización documental, antes del cierre formal del Bloque I.
+**Completa — Bloque I cerrado (2026-08-03).** Implementado en tres incrementos, cada uno con su propio commit y gate en PASS:
+
+1. **Fundación de persistencia** (`5f9a1878`): esquema, restricciones de integridad, repositorios mínimos — gate estructural (`verify:gamification-schema-gate`).
+2. **Integración asíncrona PROGRESS → GAMIFICATION** (`54bac14a`): publicación condicionada de ambos eventos, `GamificationRelayWorker`, deduplicación de negocio — gate de integración (`verify:gamification-integration-gate`).
+3. **Otorgamiento transaccional de XP** (`19d7261b`): reglas versionadas, aislamiento serializable para `daily_cap`, reversos compensatorios en dos capas, `reconcile()` — gate de otorgamiento (`verify:gamification-xp-grant-gate`).
+
+Los ocho Decision Gates del Bloque I quedaron todos cubiertos con evidencia real (integridad de origen, no-autoridad académica —incluida verificación estática de frontera de dominio—, inmutabilidad del ledger —`UPDATE` y `DELETE` ambos bloqueados—, reconstructibilidad del saldo, autoridad exclusiva de servidor —401 sin `INTERNAL_OPS_KEY` en los cuatro endpoints internos—, aislamiento de fallo, idempotencia/deduplicación, y antifraude mínimo dentro del alcance real de este incremento). Detalle completo, clasificación gate por gate y evidencia numérica: `docs/adr/BLOCK-I-CLOSURE-REPORT.md`.
+
+Gate consolidado del Bloque I (`verify:block-i-gate`, orquesta el gate consolidado de M1 completo + los tres gates propios de GAMIFICATION): **PASS**. `typecheck`/`lint`/`build` (3 paquetes): PASS.
 
 ## Enmienda (ver ADR-0017, 2026-08-03)
 

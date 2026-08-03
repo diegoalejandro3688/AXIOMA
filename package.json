@@ -11,7 +11,8 @@
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",
-    "verify:block-v-gate": "node scripts/verify-block-v-gate.mjs"
+    "verify:block-v-gate": "node scripts/verify-block-v-gate.mjs",
+    "verify:block-i-gate": "node scripts/verify-block-i-gate.mjs"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.18.0",
