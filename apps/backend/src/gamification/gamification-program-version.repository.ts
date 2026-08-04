@@ -2,7 +2,18 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../platform/prisma/prisma.service';
 import type { GamificationProgramVersion, GamificationProgramVersionApprovalStatus } from '../generated/prisma/client';
 
-/** Único punto de acceso a `gamification_program_version` -- ver docs/adr/0016-gamificacion-fundacion.md. */
+/**
+ * Único punto de acceso a `gamification_program_version` -- ver
+ * docs/adr/0016-gamificacion-fundacion.md.
+ *
+ * Corrección de secuenciación (2026-08-05, ver ADR-0016 "Corrección:
+ * selección de regla aplicable"): `findApprovedEffectiveAt` (elegía la
+ * versión más reciente del PROGRAMA, sin considerar si contenía la regla
+ * del `activityType` evaluado) se retiró -- `XpGrantService` ahora
+ * resuelve la regla aplicable directamente vía
+ * `XpRuleRepository.findApplicableRule`, sin un paso intermedio de
+ * "elegir la versión primero".
+ */
 @Injectable()
 export class GamificationProgramVersionRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -27,28 +38,6 @@ export class GamificationProgramVersionRepository {
   findByProgramAndLabel(gamificationProgramId: string, versionLabel: string): Promise<GamificationProgramVersion | null> {
     return this.prisma.gamificationProgramVersion.findUnique({
       where: { gamificationProgramId_versionLabel: { gamificationProgramId, versionLabel } },
-    });
-  }
-
-  /**
-   * Única versión que puede otorgar XP: `approvalStatus = APPROVED`,
-   * vigente en `at` (condición arquitectónica explícita -- ver
-   * docs/adr/0016-gamificacion-fundacion.md). Desempate: `effectiveFrom`
-   * más reciente, determinista.
-   */
-  findApprovedEffectiveAt(gamificationProgramId: string, at: Date): Promise<GamificationProgramVersion | null> {
-    return this.prisma.gamificationProgramVersion.findFirst({
-      where: {
-        gamificationProgramId,
-        approvalStatus: 'APPROVED',
-        // effectiveFrom nulo = sin límite inferior (vigente desde siempre);
-        // effectiveUntil nulo = sin límite superior (vigente indefinidamente).
-        AND: [
-          { OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: at } }] },
-          { OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: at } }] },
-        ],
-      },
-      orderBy: { effectiveFrom: 'desc' },
     });
   }
 }

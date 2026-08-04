@@ -3,7 +3,6 @@ import { TransactionRunnerService } from '../platform/prisma/transaction-runner.
 import { Prisma } from '../generated/prisma/client';
 import type { ValidatedGamificationActivity, XpLedgerEntry } from '../generated/prisma/client';
 import { GamificationProgramRepository } from './gamification-program.repository';
-import { GamificationProgramVersionRepository } from './gamification-program-version.repository';
 import { XpRuleRepository } from './xp-rule.repository';
 import { ValidatedGamificationActivityRepository } from './validated-gamification-activity.repository';
 import { XpLedgerEntryRepository } from './xp-ledger-entry.repository';
@@ -76,7 +75,6 @@ export class XpGrantService {
   constructor(
     private readonly txRunner: TransactionRunnerService,
     private readonly programRepo: GamificationProgramRepository,
-    private readonly versionRepo: GamificationProgramVersionRepository,
     private readonly ruleRepo: XpRuleRepository,
     private readonly activityRepo: ValidatedGamificationActivityRepository,
     private readonly ledgerRepo: XpLedgerEntryRepository,
@@ -112,8 +110,7 @@ export class XpGrantService {
     const at = activity.occurredAt;
 
     const program = await this.programRepo.findActiveByProgramKey(PROGRAM_KEY);
-    const version = program ? await this.versionRepo.findApprovedEffectiveAt(program.id, at) : null;
-    const rule = version ? await this.ruleRepo.findActiveForVersionAndType(version.id, activity.activityType, at) : null;
+    const rule = program ? await this.ruleRepo.findApplicableRule(program.id, activity.activityType, at) : null;
 
     if (!rule) {
       await this.recordNoActiveRule(activity.id);
@@ -148,7 +145,7 @@ export class XpGrantService {
             entryType: 'OTORGAMIENTO',
             xpAmount: rule.baseXp,
             baseXpAmount: rule.baseXp,
-            ruleVersion: version!.versionLabel,
+            ruleVersion: rule.programVersion.versionLabel,
             idempotencyKey,
             occurredAt: at,
           },

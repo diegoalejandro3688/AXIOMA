@@ -163,6 +163,57 @@ async function main() {
     draftLedgerAfter.rowCount === 1 && draftLedgerAfter.rows[0]?.xp_amount === 7,
   );
 
+  console.log('--- 1c. Corrección de secuenciación (2026-08-05): una versión MÁS RECIENTE sin regla para este activityType NO oculta una versión anterior que sí la tiene ---');
+  // Reproduce exactamente el escenario que rompía verify-gamification-progression-gate.ts:
+  // una versión aprobada, MÁS RECIENTE que `approvedVersion`, que solo
+  // define la regla de OTRO activityType. Con el diseño anterior (elegir
+  // la versión más reciente del PROGRAMA primero, buscar la regla DESPUÉS
+  // solo dentro de esa versión), esta versión más nueva "ganaba" y la
+  // actividad de `activityType` quedaba en NO_ACTIVE_RULE aunque
+  // `approvedVersion` (más antigua) sí tuviera su regla vigente. Ver
+  // docs/adr/0016-gamificacion-fundacion.md, "Corrección: selección de
+  // regla aplicable".
+  const newerUnrelatedVersion = await versionRepo.create({
+    gamificationProgramId: program.id,
+    versionLabel: `gate-newer-unrelated-${suffix}`,
+    approvalStatus: 'APPROVED',
+    effectiveFrom: new Date(Date.now() - 30 * 60 * 1000), // más reciente que approvedVersion (60 min atrás)
+    effectiveUntil: null,
+    approvedAt: new Date(),
+  });
+  await ruleRepo.create({
+    programVersionId: newerUnrelatedVersion.id,
+    activityType: `GATE_ACTIVITY_UNRELATED_${suffix}`, // NUNCA el activityType que se prueba abajo
+    baseXp: 999,
+    dailyCap: null,
+  });
+
+  const shadowTestAccount = randomUUID();
+  const shadowTestActivity = await activityRepo.create({
+    accountId: shadowTestAccount,
+    sourceDomain: 'PROGRESS',
+    sourceEntityType: 'StudentResponse',
+    sourceEntityId: randomUUID(),
+    activityType, // el MISMO activityType de approvedVersion (la versión más antigua)
+    validationStatus: 'PENDING',
+    occurredAt: new Date(),
+    validationRuleVersion: 'v1',
+    deduplicationKey: `shadow-test-${suffix}`,
+    integrityStatus: 'NOT_EVALUATED',
+  });
+  await runGrant();
+  const shadowTestLedger = await pg.query('SELECT xp_amount, rule_version FROM xp_ledger_entry WHERE validated_activity_id = $1', [
+    shadowTestActivity.id,
+  ]);
+  check(
+    'la actividad SÍ se otorga (10 XP) pese a existir una versión más reciente sin esta regla',
+    shadowTestLedger.rowCount === 1 && shadowTestLedger.rows[0]?.xp_amount === BASE_XP,
+  );
+  check(
+    'rule_version referencia la versión ANTIGUA correcta (la que realmente tiene la regla), no la más reciente',
+    shadowTestLedger.rows[0]?.rule_version === approvedVersion.versionLabel,
+  );
+
   console.log('--- 2. Otorgamiento correcto + idempotencia + referencia estable a xp_rule ---');
   const accountA = randomUUID();
   const activityA = await activityRepo.create({
