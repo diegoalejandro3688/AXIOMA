@@ -96,13 +96,13 @@ enum LearningResourceType {
 }
 
 model LearningResource {
-  id               String                  @id @default(uuid()) @db.Uuid
-  resourceKey      String                  @unique @map("resource_key")
-  primarySubjectId String                  @map("primary_subject_id") @db.Uuid
-  resourceType     LearningResourceType    @map("resource_type")
-  status           EducationLogicalStatus  @default(ACTIVE)
-  createdAt        DateTime                @default(now()) @map("created_at")
-  updatedAt        DateTime                @updatedAt @map("updated_at")
+  id               String                 @id @default(uuid()) @db.Uuid
+  resourceKey      String                 @unique @map("resource_key")
+  primarySubjectId String                 @map("primary_subject_id") @db.Uuid
+  resourceType     LearningResourceType   @map("resource_type")
+  status           EducationLogicalStatus @default(ACTIVE)
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
 
   primarySubject Subject                   @relation(fields: [primarySubjectId], references: [id], onDelete: Restrict)
   versions       LearningResourceVersion[]
@@ -180,9 +180,9 @@ model QuestionVersion {
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
-  question        Question        @relation(fields: [questionId], references: [id], onDelete: Restrict)
-  curriculumTopic CurriculumTopic @relation(fields: [curriculumTopicId], references: [id], onDelete: Restrict)
-  answerOptions   AnswerOption[]
+  question         Question          @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  curriculumTopic  CurriculumTopic   @relation(fields: [curriculumTopicId], references: [id], onDelete: Restrict)
+  answerOptions    AnswerOption[]
   studentResponses StudentResponse[]
 
   @@index([questionId])
@@ -206,7 +206,7 @@ model AnswerOption {
   isCorrect         Boolean  @default(false) @map("is_correct")
   createdAt         DateTime @default(now()) @map("created_at")
 
-  questionVersion QuestionVersion @relation(fields: [questionVersionId], references: [id], onDelete: Cascade)
+  questionVersion  QuestionVersion   @relation(fields: [questionVersionId], references: [id], onDelete: Cascade)
   studentResponses StudentResponse[]
 
   @@index([questionVersionId])
@@ -296,15 +296,15 @@ model Account {
 /// (correo, Google, Apple) bajo un mismo UID cuando el usuario los vincula
 /// explícitamente de su lado -- Axioma nunca fusiona dos UID distintos.
 model AuthIdentity {
-  id               String    @id @default(uuid()) @db.Uuid
-  accountId        String    @map("account_id") @db.Uuid
-  providerCode     String    @default("firebase") @map("provider_code")
-  providerSubject  String    @map("provider_subject")
-  emailNormalized  String    @map("email_normalized")
-  emailVerifiedAt  DateTime? @map("email_verified_at")
-  linkedAt         DateTime  @default(now()) @map("linked_at")
-  lastUsedAt       DateTime? @map("last_used_at")
-  unlinkedAt       DateTime? @map("unlinked_at")
+  id              String    @id @default(uuid()) @db.Uuid
+  accountId       String    @map("account_id") @db.Uuid
+  providerCode    String    @default("firebase") @map("provider_code")
+  providerSubject String    @map("provider_subject")
+  emailNormalized String    @map("email_normalized")
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  linkedAt        DateTime  @default(now()) @map("linked_at")
+  lastUsedAt      DateTime? @map("last_used_at")
+  unlinkedAt      DateTime? @map("unlinked_at")
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
 
@@ -515,13 +515,13 @@ model PublicProfile {
   accountId          String                        @unique @map("account_id") @db.Uuid
   usernameNormalized String                        @unique @map("username_normalized")
   avatarReference    String?                       @map("avatar_reference")
-  visibilityStatus   PublicProfileVisibilityStatus  @default(PRIVATE) @map("visibility_status")
-  lifecycleStatus    PublicProfileLifecycleStatus   @default(ACTIVE) @map("lifecycle_status")
-  usernameChangedAt  DateTime                       @default(now()) @map("username_changed_at")
-  retiredAt          DateTime?                      @map("retired_at")
-  anonymizedAt       DateTime?                      @map("anonymized_at")
-  createdAt          DateTime                       @default(now()) @map("created_at")
-  updatedAt          DateTime                       @updatedAt @map("updated_at")
+  visibilityStatus   PublicProfileVisibilityStatus @default(PRIVATE) @map("visibility_status")
+  lifecycleStatus    PublicProfileLifecycleStatus  @default(ACTIVE) @map("lifecycle_status")
+  usernameChangedAt  DateTime                      @default(now()) @map("username_changed_at")
+  retiredAt          DateTime?                     @map("retired_at")
+  anonymizedAt       DateTime?                     @map("anonymized_at")
+  createdAt          DateTime                      @default(now()) @map("created_at")
+  updatedAt          DateTime                      @updatedAt @map("updated_at")
 
   usernameHistory ProfileUsernameHistory[]
 
@@ -548,12 +548,12 @@ enum PublicProfileLifecycleStatus {
 /// cambio para auditoría (nunca se usa para mostrar públicamente nombres
 /// anteriores -- Data Model §6.7).
 model ProfileUsernameHistory {
-  id                          String                     @id @default(uuid()) @db.Uuid
-  publicProfileId             String                     @map("public_profile_id") @db.Uuid
-  previousUsernameNormalized  String?                    @map("previous_username_normalized")
-  newUsernameNormalized       String                     @map("new_username_normalized")
-  changeReason                ProfileUsernameChangeReason @map("change_reason")
-  changedAt                   DateTime                   @default(now()) @map("changed_at")
+  id                         String                      @id @default(uuid()) @db.Uuid
+  publicProfileId            String                      @map("public_profile_id") @db.Uuid
+  previousUsernameNormalized String?                     @map("previous_username_normalized")
+  newUsernameNormalized      String                      @map("new_username_normalized")
+  changeReason               ProfileUsernameChangeReason @map("change_reason")
+  changedAt                  DateTime                    @default(now()) @map("changed_at")
 
   publicProfile PublicProfile @relation(fields: [publicProfileId], references: [id], onDelete: Restrict)
 
@@ -614,16 +614,16 @@ enum GamificationProgramVersionApprovalStatus {
 /// §16.4. "Todo cambio material en XP, rachas, ligas o recompensas
 /// requerirá una versión nueva" -- versionLabel único por programa.
 model GamificationProgramVersion {
-  id                     String                                    @id @default(uuid()) @db.Uuid
-  gamificationProgramId  String                                    @map("gamification_program_id") @db.Uuid
-  versionLabel           String                                    @map("version_label")
-  ruleSetReference       String?                                   @map("rule_set_reference")
-  effectiveFrom          DateTime?                                 @map("effective_from")
-  effectiveUntil         DateTime?                                 @map("effective_until")
-  changeSummary          String?                                   @map("change_summary")
-  approvalStatus         GamificationProgramVersionApprovalStatus  @default(DRAFT) @map("approval_status")
-  createdAt              DateTime                                  @default(now()) @map("created_at")
-  approvedAt             DateTime?                                 @map("approved_at")
+  id                    String                                   @id @default(uuid()) @db.Uuid
+  gamificationProgramId String                                   @map("gamification_program_id") @db.Uuid
+  versionLabel          String                                   @map("version_label")
+  ruleSetReference      String?                                  @map("rule_set_reference")
+  effectiveFrom         DateTime?                                @map("effective_from")
+  effectiveUntil        DateTime?                                @map("effective_until")
+  changeSummary         String?                                  @map("change_summary")
+  approvalStatus        GamificationProgramVersionApprovalStatus @default(DRAFT) @map("approval_status")
+  createdAt             DateTime                                 @default(now()) @map("created_at")
+  approvedAt            DateTime?                                @map("approved_at")
 
   program GamificationProgram @relation(fields: [gamificationProgramId], references: [id], onDelete: Restrict)
   xpRules XpRule[]
@@ -677,7 +677,7 @@ model ValidatedGamificationActivity {
   sourceDomain          String   @map("source_domain")
   /// "Intento, recurso, objetivo u otro" (§16.5) -- abierto, String.
   sourceEntityType      String   @map("source_entity_type")
-  sourceEntityId         String  @map("source_entity_id") @db.Uuid
+  sourceEntityId        String   @map("source_entity_id") @db.Uuid
   /// Abierto -- mismo criterio que GamificationProgram.programType.
   activityType          String   @map("activity_type")
   /// Sin enum todavía: ningún servicio de este incremento decide su
@@ -688,9 +688,9 @@ model ValidatedGamificationActivity {
   occurredAt            DateTime @map("occurred_at")
   validatedAt           DateTime @default(now()) @map("validated_at")
   /// "Prevención de duplicados" (§16.5) -- única, es su propósito declarado.
-  deduplicationKey       String  @unique @map("deduplication_key")
+  deduplicationKey      String   @unique @map("deduplication_key")
   /// Mismo criterio que validationStatus: String, sin enum todavía.
-  integrityStatus        String  @map("integrity_status")
+  integrityStatus       String   @map("integrity_status")
 
   ledgerEntries XpLedgerEntry[]
   grantAttempt  XpGrantAttempt?
@@ -773,20 +773,20 @@ model XpLedgerEntry {
   /// (CHECK `xp_ledger_entry_otorgamiento_requires_rule`), ausente en REVERSO.
   xpRuleId            String?           @map("xp_rule_id") @db.Uuid
   entryType           XpLedgerEntryType @map("entry_type")
-  xpAmount             Int              @map("xp_amount")
-  baseXpAmount         Int?             @map("base_xp_amount")
-  multiplierReference  String?          @map("multiplier_reference")
-  ruleVersion          String?          @map("rule_version")
-  reasonCode           String?          @map("reason_code")
+  xpAmount            Int               @map("xp_amount")
+  baseXpAmount        Int?              @map("base_xp_amount")
+  multiplierReference String?           @map("multiplier_reference")
+  ruleVersion         String?           @map("rule_version")
+  reasonCode          String?           @map("reason_code")
   /// Idempotencia de escritura -- única, mismo criterio que StudentResponse.operationId.
-  idempotencyKey        String          @unique @map("idempotency_key")
-  occurredAt             DateTime       @map("occurred_at")
-  recordedAt             DateTime       @default(now()) @map("recorded_at")
+  idempotencyKey      String            @unique @map("idempotency_key")
+  occurredAt          DateTime          @map("occurred_at")
+  recordedAt          DateTime          @default(now()) @map("recorded_at")
   /// Único: a lo sumo un reverso por entrada original (protección de base de
   /// datos, además de la idempotencyKey `reverse:${originalEntryId}` del
   /// servicio).
-  reversesEntryId         String?       @unique @map("reverses_entry_id") @db.Uuid
-  createdByActorType       XpLedgerActorType @default(SYSTEM) @map("created_by_actor_type")
+  reversesEntryId     String?           @unique @map("reverses_entry_id") @db.Uuid
+  createdByActorType  XpLedgerActorType @default(SYSTEM) @map("created_by_actor_type")
 
   validatedActivity ValidatedGamificationActivity? @relation(fields: [validatedActivityId], references: [id], onDelete: Restrict)
   xpRule            XpRule?                        @relation(fields: [xpRuleId], references: [id], onDelete: Restrict)
@@ -806,12 +806,12 @@ model XpLedgerEntry {
 /// game_season, Bloque II) quedan deliberadamente fuera -- ninguno de esos
 /// dominios existe todavía (ver brief de este incremento).
 model XpBalance {
-  id                String    @id @default(uuid()) @db.Uuid
-  accountId         String    @unique @map("account_id") @db.Uuid
-  lifetimeXp        Int       @default(0) @map("lifetime_xp")
-  balanceVersion    Int       @default(0) @map("balance_version")
-  lastLedgerEntryId String?   @map("last_ledger_entry_id") @db.Uuid
-  calculatedAt      DateTime  @default(now()) @map("calculated_at")
+  id                String   @id @default(uuid()) @db.Uuid
+  accountId         String   @unique @map("account_id") @db.Uuid
+  lifetimeXp        Int      @default(0) @map("lifetime_xp")
+  balanceVersion    Int      @default(0) @map("balance_version")
+  lastLedgerEntryId String?  @map("last_ledger_entry_id") @db.Uuid
+  calculatedAt      DateTime @default(now()) @map("calculated_at")
 
   lastLedgerEntry XpLedgerEntry? @relation(fields: [lastLedgerEntryId], references: [id], onDelete: Restrict)
 
@@ -828,18 +828,18 @@ model XpBalance {
 /// estos umbrales -- no hay proyección que reconciliar ni que pueda
 /// divergir.
 model LevelDefinition {
-  id                 String              @id @default(uuid()) @db.Uuid
-  levelNumber        Int                 @unique @map("level_number")
-  levelName          String?             @map("level_name")
-  minimumLifetimeXp  Int                 @map("minimum_lifetime_xp")
-  status             LevelDefinitionStatus @default(ACTIVE)
-  createdAt          DateTime            @default(now()) @map("created_at")
+  id                String                @id @default(uuid()) @db.Uuid
+  levelNumber       Int                   @unique @map("level_number")
+  levelName         String?               @map("level_name")
+  minimumLifetimeXp Int                   @map("minimum_lifetime_xp")
+  status            LevelDefinitionStatus @default(ACTIVE)
+  createdAt         DateTime              @default(now()) @map("created_at")
   /// Bloque III, sub-incremento 1.c (ADR-0019, BLOCK-III-DEFINITION.md
   /// §4.1 -- trasladado desde el Incremento 5, ver nota histórica).
   /// Nullable: no todo nivel otorga recompensa. Añadido DESPUÉS de que
   /// `verify:gamification-progression-gate` (Bloque II) ya estaba en PASS
   /// -- columna aditiva, ese gate no se modifica ni se re-escribe.
-  rewardBundleId     String?             @map("reward_bundle_id") @db.Uuid
+  rewardBundleId    String?               @map("reward_bundle_id") @db.Uuid
 
   rewardBundle RewardBundle? @relation(fields: [rewardBundleId], references: [id], onDelete: Restrict)
 
@@ -871,10 +871,12 @@ model RewardBundle {
   status    RewardBundleStatus @default(ACTIVE)
   createdAt DateTime           @default(now()) @map("created_at")
 
-  items  RewardBundleItem[]
-  grants RewardGrant[]
+  items               RewardBundleItem[]
+  grants              RewardGrant[]
   /// Bloque III, sub-incremento 1.c -- lado inverso de LevelDefinition.rewardBundleId.
-  levelDefinitions LevelDefinition[]
+  levelDefinitions    LevelDefinition[]
+  /// Bloque III, sub-incremento 2.a -- lado inverso de AchievementVersion.rewardBundleId.
+  achievementVersions AchievementVersion[]
 
   @@map("reward_bundle")
 }
@@ -1005,4 +1007,91 @@ model RewardEvaluationCursor {
   updatedAt               DateTime  @updatedAt @map("updated_at")
 
   @@map("reward_evaluation_cursor")
+}
+
+/// Bloque III, sub-incremento 2.a ("Fundación de persistencia de logros")
+/// -- ver docs/adr/BLOCK-III-DEFINITION.md (Incremento 2) y ADR-0019 (el
+/// mecanismo de entrega que este logro consumirá ya está resuelto, no se
+/// rediseña aquí). Data Model §16.15. SOLO esquema/repositorios de
+/// solo-lectura+creación en 2.a -- SIN worker, SIN cálculo de progreso,
+/// SIN `achievement_progress`/`achievement_unlock` (dependen de la
+/// excepción controlada fijada en §4.7 -- ver esos modelos cuando se
+/// autorice 2.b), SIN entrega de recompensas, SIN exposición pública.
+/// `achievementCategory`/`progressTrackingType` quedan `String` abiertos
+/// -- mismo criterio que `GamificationProgram.programType`/
+/// `XpRule.activityType` (Data Model da ejemplos, no un enum cerrado).
+model AchievementDefinition {
+  id                   String                      @id @default(uuid()) @db.Uuid
+  achievementKey       String                      @unique @map("achievement_key")
+  name                 String
+  description          String?
+  achievementCategory  String                      @map("achievement_category")
+  visibilityClass      AchievementVisibilityClass  @map("visibility_class")
+  repeatability        AchievementRepeatability
+  progressTrackingType String                      @map("progress_tracking_type")
+  status               AchievementDefinitionStatus @default(ACTIVE)
+  createdAt            DateTime                    @default(now()) @map("created_at")
+  retiredAt            DateTime?                   @map("retired_at")
+
+  versions AchievementVersion[]
+
+  @@map("achievement_definition")
+}
+
+enum AchievementVisibilityClass {
+  PRIVATE
+  PUBLIC
+
+  @@map("achievement_visibility_class")
+}
+
+enum AchievementRepeatability {
+  UNIQUE
+  REPEATABLE
+
+  @@map("achievement_repeatability")
+}
+
+enum AchievementDefinitionStatus {
+  ACTIVE
+  RETIRED
+
+  @@map("achievement_definition_status")
+}
+
+/// `unlockRule` -- texto OPACO, sin gramática ni interpretación en 2.a --
+/// mismo criterio que `XpRule.multiplierPolicy`/`repeatDecayRule`/
+/// `qualityCondition` (Bloque I): campos de "regla" nombrados por el Data
+/// Model sin esquema propio, nunca leídos por ninguna lógica todavía. El
+/// motor de evaluación (2.b) decide su gramática cuando exista.
+/// `iconAssetVersionId` -- SIN FK: no existe todavía ninguna entidad de
+/// versionado de assets en el schema (mismo criterio que
+/// `RewardBundleItem.referenceId` en 1.a, sin FK a title/cosmetic).
+model AchievementVersion {
+  id                      String                           @id @default(uuid()) @db.Uuid
+  achievementDefinitionId String                           @map("achievement_definition_id") @db.Uuid
+  versionLabel            String                           @map("version_label")
+  unlockRule              String                           @map("unlock_rule")
+  rewardBundleId          String?                          @map("reward_bundle_id") @db.Uuid
+  iconAssetVersionId      String?                          @map("icon_asset_version_id") @db.Uuid
+  effectiveFrom           DateTime?                        @map("effective_from")
+  effectiveUntil          DateTime?                        @map("effective_until")
+  approvalStatus          AchievementVersionApprovalStatus @default(DRAFT) @map("approval_status")
+  createdAt               DateTime                         @default(now()) @map("created_at")
+  approvedAt              DateTime?                        @map("approved_at")
+
+  achievementDefinition AchievementDefinition @relation(fields: [achievementDefinitionId], references: [id], onDelete: Restrict)
+  rewardBundle          RewardBundle?         @relation(fields: [rewardBundleId], references: [id], onDelete: Restrict)
+
+  @@unique([achievementDefinitionId, versionLabel])
+  @@index([rewardBundleId])
+  @@map("achievement_version")
+}
+
+enum AchievementVersionApprovalStatus {
+  DRAFT
+  APPROVED
+  RETIRED
+
+  @@map("achievement_version_approval_status")
 }

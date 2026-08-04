@@ -114,7 +114,16 @@ El Data Model no modela una entidad "milestone" separada — lo más cercano es 
 
 ### 4.7 Logros: progreso y desbloqueo referencian siempre `achievement_version_id`
 
-Data Model ya modela `achievement_version` correctamente (con `unlock_rule`, `effective_from`/`until`, `approval_status` — mismo patrón que `xp_rule`/`gamification_program_version`). Se fija explícitamente que `achievement_progress`/`achievement_unlock` referencian **`achievement_version_id`**, nunca `achievement_definition_id` directamente — así, una versión nueva del criterio no reinterpreta progreso ya evaluado bajo la versión anterior. Ver Decision Gate 8 (§5).
+Data Model ya modela `achievement_version` correctamente (con `unlock_rule`, `effective_from`/`until`, `approval_status` — mismo patrón que `xp_rule`/`gamification_program_version`). Se fija explícitamente que `achievement_progress`/`achievement_unlock` referencian **`achievement_version_id`** como única autoridad semántica para evaluar reglas e interpretar progreso — así, una versión nueva del criterio no reinterpreta progreso ya evaluado bajo la versión anterior. Ver Decision Gate 11 (§5) — la referencia previa a "Decision Gate 8" era un cruce erróneo (Gate 8 es sobre `LEVEL`, sin relación con logros); corregido en esta revisión.
+
+**Excepción controlada (2026-08-04, auditoría previa a 2.a):** el Data Model no incluye `achievement_definition_id` en `achievement_progress`, lo cual impide expresar con un `UNIQUE` de Postgres la invariante real de este mecanismo — una fila de progreso por (cuenta, logro), para siempre, sin importar cuántas versiones se aprueben después. Se añade `achievement_definition_id` a `achievement_progress` y a `achievement_unlock` **exclusivamente como columna denormalizada para integridad/unicidad** — nunca como autoridad para evaluar reglas ni interpretar progreso, que sigue siendo `achievement_version_id` en exclusiva. Esto no contradice el espíritu de esta sección (ninguna versión nueva reinterpreta progreso existente), solo reconoce que el Data Model, tal como lista los atributos, dejaba esa invariante sin respaldo estructural.
+
+Diseño aprobado:
+- `achievement_progress`: `UNIQUE(account_id, achievement_definition_id)` — una sola fila de progreso por logro y cuenta, para siempre.
+- `achievement_unlock`: `UNIQUE(account_id, achievement_definition_id, unlock_instance)` — `unlock_instance` comienza en 1; logros únicos siempre usan la instancia 1, los repetibles incrementan.
+- Garantía compuesta: `achievement_version_id` debe pertenecer al `achievement_definition_id` de la misma fila (verificable — la versión referenciada nunca es de un logro distinto al denormalizado).
+- `achievement_definition`/`achievement_version` quedan inmutables después de creadas (mismo criterio que `reward_bundle`/`level_definition`: sin `update()` expuesto).
+- Una versión nueva de un logro nunca migra ni reinterpreta progreso ya existente bajo una versión anterior (sin cambio respecto a la regla original de esta sección).
 
 ### 4.8 Desafíos: `challenge_definition` es inmutable por fila, sin campo de versión propio
 

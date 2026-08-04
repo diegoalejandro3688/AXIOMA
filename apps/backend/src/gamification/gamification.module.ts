@@ -23,6 +23,8 @@ import { RewardGrantComponentRepository } from './reward-grant-component.reposit
 import { RewardEvaluationCursorRepository } from './reward-evaluation-cursor.repository';
 import { RewardEvaluationWorker } from './reward-evaluation.worker';
 import { RewardEvaluationScheduler } from './reward-evaluation.scheduler';
+import { AchievementDefinitionRepository } from './achievement-definition.repository';
+import { AchievementVersionRepository } from './achievement-version.repository';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -50,6 +52,17 @@ import { RewardEvaluationScheduler } from './reward-evaluation.scheduler';
  * `reward_grant`, SIN entrega de XP/títulos/cosméticos, SIN escritura
  * sobre inventario ni `public_profile` todavía -- eso llega en el
  * sub-incremento 1.c y en los Incrementos 2-5.
+ *
+ * Sub-incremento 1.c: `RewardEvaluationWorker.evaluateAccount` deja de ser
+ * un no-op para la fuente `LEVEL`, entrega ÚNICAMENTE componentes
+ * `XP_BONUS` -- ver docs/adr/BLOCK-III-DEFINITION.md §4.1.
+ *
+ * Incremento 2, sub-incremento 2.a ("Fundación de persistencia de
+ * logros"): esquema y repositorios mínimos de `achievement_definition`/
+ * `achievement_version` -- SIN `achievement_progress`/`achievement_unlock`
+ * (dependen de la excepción controlada fijada en §4.7), SIN integración
+ * con `RewardEvaluationWorker`, SIN cálculo de progreso, SIN entrega, SIN
+ * exposición pública.
  */
 @Module({
   imports: [AuthModule, InternalOpsModule, OutboxModule],
@@ -74,6 +87,8 @@ import { RewardEvaluationScheduler } from './reward-evaluation.scheduler';
     RewardEvaluationCursorRepository,
     RewardEvaluationWorker,
     RewardEvaluationScheduler,
+    AchievementDefinitionRepository,
+    AchievementVersionRepository,
   ],
   exports: [
     GamificationProgramRepository,
@@ -91,6 +106,8 @@ import { RewardEvaluationScheduler } from './reward-evaluation.scheduler';
     RewardGrantRepository,
     RewardGrantComponentRepository,
     RewardEvaluationCursorRepository,
+    AchievementDefinitionRepository,
+    AchievementVersionRepository,
   ],
 })
 export class GamificationModule {}
