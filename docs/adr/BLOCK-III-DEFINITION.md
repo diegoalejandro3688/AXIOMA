@@ -28,7 +28,7 @@ El bloque se compone de **cinco incrementos**:
 2. **Logros** — `achievement_definition`/`version`/`progress`/`unlock`, evaluados sobre señales que GAMIFICATION ya produce (XP, nivel, racha). Progreso/desbloqueo referencian siempre `achievement_version_id` (§4.7).
 3. **Títulos** — `title_definition`/`account_title`/`equipped_title`, otorgados como recompensa, equipables públicamente sobre `public_profile` (Bloque II). Propiedad y equipamiento son capas separadas con una invariante de sincronización explícita (§4.3).
 4. **Desafíos** — `challenge_definition`/`account_challenge` (diario/semanal), con las reglas antifraude de Data Model §16.18 desglosadas en verificaciones concretas (§5, Incremento 4) — cierra el Decision Gate 8 que el Bloque I dejó pendiente.
-5. **Cosméticos (entrega directa)** — `cosmetic_item`/`inventory_item`/`equipped_cosmetic`, modelo de slots **normalizado** (§4.8 — decisión tomada tras analizar probabilidad de expansión, no simplificado a un slot único). Incluye extender `LevelDefinition` con `reward_bundle_id` (vacío encontrado en auditoría, ver §4.1).
+5. **Cosméticos (entrega directa)** — `cosmetic_item`/`inventory_item`/`equipped_cosmetic`, modelo de slots **normalizado** (§4.8 — decisión tomada tras analizar probabilidad de expansión, no simplificado a un slot único). La relación `LevelDefinition.reward_bundle_id` (vacío encontrado en auditoría) se trasladó al sub-incremento 1.c — ver §4.1, nota histórica — este incremento entrega únicamente los títulos/cosméticos que ese bundle referencie, sin volver a tocar la columna.
 
 ## 2. Objetivo
 
@@ -47,7 +47,7 @@ Este bloque **no** introduce competencia entre estudiantes (Bloque IV) ni una vi
 | Títulos (propiedad + equipamiento separados) | `title_definition`, `account_title`, `equipped_title` | 3 |
 | Desafíos (definición inmutable por fila, antifraude real) | `challenge_definition`, `account_challenge` | 4 |
 | Cosméticos por entrega directa (slots normalizados, múltiples simultáneos) | `cosmetic_item`, `inventory_item`, `equipped_cosmetic` | 5 |
-| Niveles como fuente de recompensa | `LevelDefinition.reward_bundle_id` (extensión aditiva sobre el Bloque II) | 5 |
+| Niveles como fuente de recompensa | `LevelDefinition.reward_bundle_id` (extensión aditiva sobre el Bloque II) | 1 (sub-incremento 1.c) |
 | Worker de evaluación (logros/desafíos), aislado del `XpGrantService` cerrado | Nuevo componente, sin tabla propia adicional a las de arriba | 1–4 |
 
 ### Fuera de alcance (explícito)
@@ -73,7 +73,9 @@ Este bloque **no** introduce competencia entre estudiantes (Bloque IV) ni una vi
 
 ### 4.1 Vacío propio: `LevelDefinition` sin `reward_bundle_id`
 
-El Bloque II construyó `LevelDefinition` como escalera mínima, omitiendo `reward_bundle_id` (Data Model §16.11) por no ser necesario entonces. Resuelto en Incremento 5: columna nullable, migración aditiva, sin tocar `verify:gamification-progression-gate` (debe seguir en PASS sin modificarse).
+El Bloque II construyó `LevelDefinition` como escalera mínima, omitiendo `reward_bundle_id` (Data Model §16.11) por no ser necesario entonces. **Resuelto en el sub-incremento 1.c** (corregido — ver nota histórica abajo): columna nullable, migración aditiva, sin tocar `verify:gamification-progression-gate` (debe seguir en PASS sin modificarse).
+
+**Nota histórica (corrección de secuenciación, 2026-08-04):** las revisiones previas de este documento asignaban esta columna al Incremento 5, junto con cosméticos/slots. Al autorizar la implementación del sub-incremento 1.c ("Entrega de XP_BONUS y convergencia" — primer camino real de entrega dentro del Incremento 1), se detectó que 1.c no puede demostrar el ciclo completo `nivel alcanzado → reward_bundle → XP_BONUS → nuevo XP → reevaluación` sin que `LevelDefinition` ya tenga con qué `reward_bundle` asociarse: 1.c es el primer consumidor real de esa relación, no el Incremento 5 (que solo entrega títulos/cosméticos usando la relación, no la crea). Se traslada la migración de la columna a 1.c; el Incremento 5 conserva únicamente la entrega de títulos/cosméticos vinculados a niveles (componentes `TITLE`/`COSMETIC` de un `reward_bundle` ya asociado a un nivel desde 1.c), sin volver a tocar `LevelDefinition`. El Gate 25 se traslada junto con la columna — ver §5, tabla del Incremento 1.
 
 ### 4.2 Decisión de alcance ya resuelta: entrega directa, no economía comprable
 
@@ -163,6 +165,7 @@ Revisado el listado completo de Data Model (DM-OQ001–054): ninguna pregunta ab
 | 6 | Snapshot, no referencia viva (§4.5) | Editar un `reward_bundle`/`reward_bundle_item` después de un `reward_grant` no cambia lo que ese `reward_grant`/`reward_grant_component` reporta haber entregado. |
 | 7 | Sin revocación retroactiva por retiro de bundle | Retirar (`status`) un `reward_bundle` no afecta `inventory_item`/`account_title` ya otorgados por él. |
 | 8 | Nivel: no se re-otorga ni se revoca por fluctuación de XP | Un reverso que baja el XP por debajo del umbral de un nivel ya alcanzado no revoca su recompensa; volver a cruzar el umbral no la duplica (§4.4, fuente `LEVEL`). |
+| 25 | Extensión de `LevelDefinition` sin regresión, y recompensa por nivel entregada correctamente (trasladado desde Incremento 5 — ver §4.1, nota histórica) | Añadir `reward_bundle_id` no rompe `verify:gamification-progression-gate` (Bloque II) — mismo gate, sin modificar, debe seguir en PASS. Además: una cuenta que cruza `minimumLifetimeXp` de un `LevelDefinition` con `reward_bundle_id` configurado recibe un `reward_grant` cuyos componentes `XP_BONUS` quedan `DELIVERED`, vía el mismo mecanismo idempotente de §4.4 (fuente `LEVEL`). |
 
 ### Incremento 2 — Logros
 
@@ -192,14 +195,15 @@ Revisado el listado completo de Data Model (DM-OQ001–054): ninguna pregunta ab
 | 20 | Antifraude — sin castigo por no participar | No completar un desafío no afecta XP, racha ni nivel — mismo aislamiento que el diseño no punitivo de rachas (Bloque II). |
 | 21 | Antifraude — tope de repetición (cierra el Gate 8 pendiente del Bloque I) | Reutiliza el patrón `daily_cap` ya validado en el Bloque I como tope de completions elegibles por desafío/día — mecanismo real, no una declaración cualitativa. |
 
-### Incremento 5 — Cosméticos, slots y niveles con recompensa
+### Incremento 5 — Cosméticos y slots (títulos/cosméticos vinculados a niveles vía `reward_bundle_id` ya añadido en 1.c)
 
 | # | Gate | Qué verifica |
 |---|---|---|
 | 22 | Un ítem por slot, solo si poseído y activo | `equipped_cosmetic` rechaza equipar un ítem no poseído, revocado, o en un slot incompatible. |
 | 23 | Múltiples slots simultáneos sin interferencia (§4.10) | Equipar un cosmético en el slot `marco` no afecta lo equipado en `avatar`/`banner`/`insignia` de la misma cuenta — cada slot es independiente. |
 | 24 | Cosméticos no alteran nada funcional | Ningún cosmético cambia dificultad, corrección o XP base. |
-| 25 | Extensión de `LevelDefinition` sin regresión | Añadir `reward_bundle_id` no rompe `verify:gamification-progression-gate` (Bloque II) — mismo gate, sin modificar, debe seguir en PASS. |
+
+**Gate 25** (extensión de `LevelDefinition` con `reward_bundle_id`) se trasladó al Incremento 1, tabla de arriba en §5 (sub-incremento 1.c) — ver §4.1, nota histórica. Este incremento no vuelve a tocar `LevelDefinition`; solo añade componentes `TITLE`/`COSMETIC` al `reward_bundle` que un nivel ya referencia desde 1.c.
 
 ### Worker de evaluación (transversal a Incrementos 1–4, §4.9)
 

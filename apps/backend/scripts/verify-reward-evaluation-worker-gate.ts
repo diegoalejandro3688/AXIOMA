@@ -241,7 +241,12 @@ async function main() {
   const { readFileSync } = await import('node:fs');
   const { join } = await import('node:path');
   const filesToCheck = ['reward-evaluation.worker.ts', 'reward-evaluation.scheduler.ts', 'reward-evaluation-cursor.repository.ts'];
-  const forbiddenSymbols = ['StudentResponse', 'CurriculumTopicProgress', 'PublicProfile', 'equippedTitle', 'equippedCosmetic', 'RewardGrantRepository'];
+  // 'RewardGrantRepository' se retiró de esta lista en el sub-incremento
+  // 1.c -- ese sub-incremento extendió, con autorización formal (ver nota
+  // histórica en BLOCK-III-DEFINITION.md §4.1), el propio worker para
+  // crear reward_grant de fuente LEVEL. La frontera que SIGUE vigente
+  // (PROGRESS/Public Profile/equipamiento) no cambió y se verifica igual.
+  const forbiddenSymbols = ['StudentResponse', 'CurriculumTopicProgress', 'PublicProfile', 'equippedTitle', 'equippedCosmetic'];
   let boundaryViolationFound = false;
   for (const file of filesToCheck) {
     const contents = readFileSync(join(__dirname, '..', 'src', 'gamification', file), 'utf8');
@@ -252,10 +257,7 @@ async function main() {
       }
     }
   }
-  check(
-    'el worker no referencia PROGRESS/Public Profile/equipamiento NI RewardGrantRepository (sin creación de grants todavía)',
-    !boundaryViolationFound,
-  );
+  check('el worker no referencia PROGRESS/Public Profile/equipamiento', !boundaryViolationFound);
 
   await pg.end();
   await prisma.$disconnect();

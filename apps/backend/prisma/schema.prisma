@@ -834,7 +834,16 @@ model LevelDefinition {
   minimumLifetimeXp  Int                 @map("minimum_lifetime_xp")
   status             LevelDefinitionStatus @default(ACTIVE)
   createdAt          DateTime            @default(now()) @map("created_at")
+  /// Bloque III, sub-incremento 1.c (ADR-0019, BLOCK-III-DEFINITION.md
+  /// §4.1 -- trasladado desde el Incremento 5, ver nota histórica).
+  /// Nullable: no todo nivel otorga recompensa. Añadido DESPUÉS de que
+  /// `verify:gamification-progression-gate` (Bloque II) ya estaba en PASS
+  /// -- columna aditiva, ese gate no se modifica ni se re-escribe.
+  rewardBundleId     String?             @map("reward_bundle_id") @db.Uuid
 
+  rewardBundle RewardBundle? @relation(fields: [rewardBundleId], references: [id], onDelete: Restrict)
+
+  @@index([rewardBundleId])
   @@map("level_definition")
 }
 
@@ -847,11 +856,14 @@ enum LevelDefinitionStatus {
 
 /// Sub-incremento 1.a del Bloque III ("Fundación de persistencia") -- ver
 /// ADR-0019 y docs/adr/BLOCK-III-DEFINITION.md. Data Model §16.36.
-/// SOLO esquema/repositorios de solo-lectura+creación en este incremento --
-/// SIN worker, SIN cron, SIN endpoint interno, SIN lectura de
-/// xp_ledger_entry, SIN evaluación de niveles/logros/desafíos, SIN entrega
-/// real de títulos/cosméticos/bonos, SIN escritura sobre inventario ni
+/// SOLO esquema/repositorios de solo-lectura+creación en 1.a -- SIN worker,
+/// SIN cron, SIN endpoint interno, SIN lectura de xp_ledger_entry, SIN
+/// evaluación de niveles/logros/desafíos, SIN entrega real de
+/// títulos/cosméticos/bonos, SIN escritura sobre inventario ni
 /// public_profile (ver ADR-0019 "Alcance de este ADR").
+/// Sub-incremento 1.c extiende esto SOLO para XP_BONUS vía nivel
+/// (LevelDefinition.rewardBundleId, abajo) -- TITLE/COSMETIC siguen sin
+/// entrega real (Incrementos 3/5).
 model RewardBundle {
   id        String             @id @default(uuid()) @db.Uuid
   bundleKey String             @unique @map("bundle_key")
@@ -861,6 +873,8 @@ model RewardBundle {
 
   items  RewardBundleItem[]
   grants RewardGrant[]
+  /// Bloque III, sub-incremento 1.c -- lado inverso de LevelDefinition.rewardBundleId.
+  levelDefinitions LevelDefinition[]
 
   @@map("reward_bundle")
 }
