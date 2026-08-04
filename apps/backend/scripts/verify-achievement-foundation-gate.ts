@@ -36,6 +36,17 @@ async function main() {
   const versionRepo = new AchievementVersionRepository(prisma);
   const bundleRepo = new RewardBundleRepository(prisma);
 
+  // achievement_definition no admite DELETE (sin método expuesto, mismo
+  // criterio que reward_bundle/level_definition) -- las filas ACTIVE que
+  // dejan corridas anteriores de ESTE gate nunca desaparecen, y desde 2.b
+  // `RewardEvaluationWorker.evaluateAchievements` las evalúa para TODA
+  // cuenta con actividad de XP (no solo las de este gate) -- una fila
+  // vieja con un `unlockRule` ya inválido (de antes de fijar la gramática)
+  // rompería la evaluación de logros de CUALQUIER otro gate. Se retiran
+  // aquí, al principio, mismo patrón que el retiro de `level_definition`
+  // de prueba en verify-reward-delivery-xp-bonus-gate.ts (1.c).
+  await pg.query("UPDATE achievement_definition SET status = 'RETIRED' WHERE achievement_key LIKE 'first-unit-mastered-%' OR achievement_key LIKE 'other-achievement-%'");
+
   const suffix = Date.now();
 
   console.log('--- 1. achievement_definition: creación, achievement_category/progress_tracking_type abiertos ---');
@@ -67,7 +78,7 @@ async function main() {
   }
   check('UNIQUE rechaza achievement_key duplicado', duplicateKeyRejected);
 
-  console.log('--- 2. achievement_version: versionado por definición, unlock_rule opaco, vínculo a reward_bundle ---');
+  console.log('--- 2. achievement_version: versionado por definición, unlockRule validado (gramática XP_THRESHOLD de 2.b), vínculo a reward_bundle ---');
   const bundle = await bundleRepo.create({
     bundleKey: `achievement-gate-bundle-${suffix}`,
     name: 'Recompensa de logro (gate)',
@@ -77,7 +88,7 @@ async function main() {
   const v1 = await versionRepo.create({
     achievementDefinitionId: definition.id,
     versionLabel: 'v1',
-    unlockRule: 'CURRICULUM_TOPIC_MASTERED:unit-1', // texto opaco, sin gramática en 2.a
+    unlockRule: { schemaVersion: 'v1', type: 'XP_THRESHOLD', value: 1000 },
     rewardBundleId: bundle.id,
     approvalStatus: 'APPROVED',
     effectiveFrom: new Date(Date.now() - 60_000),
@@ -85,20 +96,35 @@ async function main() {
   });
   check('versión v1 creada', v1.id !== undefined);
   check('approvalStatus == APPROVED', v1.approvalStatus === 'APPROVED');
-  check('unlockRule persistida tal cual (sin parseo)', v1.unlockRule === 'CURRICULUM_TOPIC_MASTERED:unit-1');
+  check(
+    'unlockRule persistida en forma canónica (orden de claves fijo)',
+    v1.unlockRule === '{"schemaVersion":"v1","type":"XP_THRESHOLD","value":1000}',
+  );
   check('rewardBundleId referencia el bundle real', v1.rewardBundleId === bundle.id);
 
-  let emptyUnlockRuleRejected = false;
+  let invalidGrammarRejected = false;
   try {
-    await versionRepo.create({ achievementDefinitionId: definition.id, versionLabel: 'v-empty', unlockRule: '   ' });
+    await versionRepo.create({ achievementDefinitionId: definition.id, versionLabel: 'v-invalid', unlockRule: { schemaVersion: 'v1', type: 'STREAK_DAYS', value: 7 } });
   } catch (error) {
-    emptyUnlockRuleRejected = error instanceof Error && error.message.includes('unlockRule');
+    invalidGrammarRejected = (error as { name?: string }).name === 'ZodError';
   }
-  check('unlockRule vacío/solo-espacios rechazado por el repositorio (validación mínima de forma)', emptyUnlockRuleRejected);
+  check('unlockRule con un `type` distinto de XP_THRESHOLD rechazado por Zod -- 2.b no admite otros tipos', invalidGrammarRejected);
+
+  let nonPositiveValueRejected = false;
+  try {
+    await versionRepo.create({ achievementDefinitionId: definition.id, versionLabel: 'v-zero', unlockRule: { schemaVersion: 'v1', type: 'XP_THRESHOLD', value: 0 } });
+  } catch (error) {
+    nonPositiveValueRejected = (error as { name?: string }).name === 'ZodError';
+  }
+  check('unlockRule con value <= 0 rechazado por Zod', nonPositiveValueRejected);
 
   let duplicateVersionLabelRejected = false;
   try {
-    await versionRepo.create({ achievementDefinitionId: definition.id, versionLabel: 'v1', unlockRule: 'OTRA_REGLA' });
+    await versionRepo.create({
+      achievementDefinitionId: definition.id,
+      versionLabel: 'v1',
+      unlockRule: { schemaVersion: 'v1', type: 'XP_THRESHOLD', value: 2000 },
+    });
   } catch (error) {
     duplicateVersionLabelRejected = (error as { code?: string }).code === 'P2002';
   }
@@ -112,7 +138,11 @@ async function main() {
     repeatability: 'REPEATABLE',
     progressTrackingType: 'STREAK_DAYS',
   });
-  const otherV1 = await versionRepo.create({ achievementDefinitionId: otherDefinition.id, versionLabel: 'v1', unlockRule: 'STREAK:7' });
+  const otherV1 = await versionRepo.create({
+    achievementDefinitionId: otherDefinition.id,
+    versionLabel: 'v1',
+    unlockRule: { schemaVersion: 'v1', type: 'XP_THRESHOLD', value: 500 },
+  });
   check(
     'el MISMO versionLabel ("v1") SÍ se permite bajo un achievement_definition_id distinto (unicidad es por par, no global)',
     otherV1.id !== undefined,
@@ -123,7 +153,7 @@ async function main() {
     await versionRepo.create({
       achievementDefinitionId: definition.id,
       versionLabel: 'v-bad-bundle',
-      unlockRule: 'X',
+      unlockRule: { schemaVersion: 'v1', type: 'XP_THRESHOLD', value: 10 },
       rewardBundleId: randomUUID(),
     });
   } catch (error) {
@@ -133,7 +163,11 @@ async function main() {
 
   let fkRejectedForUnknownDefinition = false;
   try {
-    await versionRepo.create({ achievementDefinitionId: randomUUID(), versionLabel: 'v1', unlockRule: 'X' });
+    await versionRepo.create({
+      achievementDefinitionId: randomUUID(),
+      versionLabel: 'v1',
+      unlockRule: { schemaVersion: 'v1', type: 'XP_THRESHOLD', value: 10 },
+    });
   } catch (error) {
     fkRejectedForUnknownDefinition = (error as { code?: string }).code === 'P2003';
   }
@@ -143,7 +177,7 @@ async function main() {
   const pastVersion = await versionRepo.create({
     achievementDefinitionId: definition.id,
     versionLabel: 'v0-past',
-    unlockRule: 'ANTIGUA',
+    unlockRule: { schemaVersion: 'v1', type: 'XP_THRESHOLD', value: 300 },
     approvalStatus: 'APPROVED',
     effectiveFrom: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
     effectiveUntil: new Date(Date.now() - 60_000),
@@ -152,7 +186,7 @@ async function main() {
   const draftVersion = await versionRepo.create({
     achievementDefinitionId: definition.id,
     versionLabel: 'v2-draft',
-    unlockRule: 'BORRADOR',
+    unlockRule: { schemaVersion: 'v1', type: 'XP_THRESHOLD', value: 5000 },
     approvalStatus: 'DRAFT',
   });
 
@@ -171,15 +205,18 @@ async function main() {
   check('AchievementVersionRepository no expone update/delete', !('update' in versionRepo) && !('delete' in versionRepo));
 
   console.log('--- 5. Sin efecto sobre progreso, desbloqueo, entrega, XP o PROGRESS ---');
-  const achievementProgressTableExists = await pg.query(
-    "SELECT to_regclass('public.achievement_progress') AS reg",
-  );
-  check(
-    'achievement_progress NO existe todavía (2.a no la crea -- depende de la excepción controlada de §4.7)',
-    achievementProgressTableExists.rows[0].reg === null,
-  );
-  const achievementUnlockTableExists = await pg.query("SELECT to_regclass('public.achievement_unlock') AS reg");
-  check('achievement_unlock NO existe todavía', achievementUnlockTableExists.rows[0].reg === null);
+  // achievement_progress/achievement_unlock ya existen desde el
+  // sub-incremento 2.b (autorizado, ver excepción controlada A1) -- este
+  // gate (2.a) no las crea NI las toca: comprobación relevante es que
+  // ninguna fila referencia las definiciones/versiones de ESTE gate.
+  const progressRowsForDefinition = await pg.query('SELECT count(*)::int AS n FROM achievement_progress WHERE achievement_definition_id = ANY($1)', [
+    [definition.id, otherDefinition.id],
+  ]);
+  check('ninguna achievement_progress creada a partir de las definiciones de este gate (2.a no calcula progreso)', progressRowsForDefinition.rows[0].n === 0);
+  const unlockRowsForDefinition = await pg.query('SELECT count(*)::int AS n FROM achievement_unlock WHERE achievement_definition_id = ANY($1)', [
+    [definition.id, otherDefinition.id],
+  ]);
+  check('ningún achievement_unlock creado a partir de las definiciones de este gate (2.a no desbloquea nada)', unlockRowsForDefinition.rows[0].n === 0);
 
   // 2.a no involucra ninguna cuenta (achievement_definition/version no
   // tienen account_id) -- la comprobación relevante es que el bundle

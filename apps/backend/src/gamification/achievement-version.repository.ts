@@ -1,16 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../platform/prisma/prisma.service';
 import type { AchievementVersion, AchievementVersionApprovalStatus } from '../generated/prisma/client';
+import { XpThresholdUnlockRuleSchema, serializeUnlockRule } from './achievement-unlock-rule';
 
 /**
  * Único punto de acceso a `achievement_version` -- ver
- * docs/adr/BLOCK-III-DEFINITION.md (Incremento 2, sub-incremento 2.a).
+ * docs/adr/BLOCK-III-DEFINITION.md (Incremento 2, sub-incremento 2.a/2.b).
  * Deliberadamente SIN `update()`/`delete()`: cabecera de versión inmutable
  * una vez creada -- mismo criterio que `GamificationProgramVersion`
- * (Bloque I). `unlockRule` es texto OPACO en este sub-incremento: sin
- * gramática ni interpretación (ver comentario en schema.prisma) -- este
- * repositorio no valida su contenido más allá de "no vacío" (ver
- * `create()`), la evaluación real es responsabilidad de 2.b.
+ * (Bloque I). Cambiar el umbral exige crear una versión nueva, nunca
+ * editar `unlockRule` de una fila existente.
+ *
+ * `unlockRule` se valida con el mismo esquema Zod (`XpThresholdUnlockRuleSchema`,
+ * 2.b) que usa el evaluador -- una sola fuente de verdad para la gramática.
+ * Acepta el objeto de la regla (no un string) para que el llamador nunca
+ * pueda pasar JSON con orden de claves distinto -- el repositorio serializa
+ * a la forma canónica siempre.
  */
 @Injectable()
 export class AchievementVersionRepository {
@@ -19,7 +24,7 @@ export class AchievementVersionRepository {
   create(input: {
     achievementDefinitionId: string;
     versionLabel: string;
-    unlockRule: string;
+    unlockRule: unknown;
     rewardBundleId?: string | null;
     iconAssetVersionId?: string | null;
     effectiveFrom?: Date | null;
@@ -27,10 +32,8 @@ export class AchievementVersionRepository {
     approvalStatus?: AchievementVersionApprovalStatus;
     approvedAt?: Date | null;
   }): Promise<AchievementVersion> {
-    if (input.unlockRule.trim().length === 0) {
-      throw new Error('unlockRule no puede estar vacío.');
-    }
-    return this.prisma.achievementVersion.create({ data: input });
+    const rule = XpThresholdUnlockRuleSchema.parse(input.unlockRule);
+    return this.prisma.achievementVersion.create({ data: { ...input, unlockRule: serializeUnlockRule(rule) } });
   }
 
   findById(id: string): Promise<AchievementVersion | null> {

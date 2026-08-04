@@ -788,11 +788,15 @@ model XpLedgerEntry {
   reversesEntryId     String?           @unique @map("reverses_entry_id") @db.Uuid
   createdByActorType  XpLedgerActorType @default(SYSTEM) @map("created_by_actor_type")
 
-  validatedActivity ValidatedGamificationActivity? @relation(fields: [validatedActivityId], references: [id], onDelete: Restrict)
-  xpRule            XpRule?                        @relation(fields: [xpRuleId], references: [id], onDelete: Restrict)
-  reversesEntry     XpLedgerEntry?                 @relation("XpLedgerEntryReversal", fields: [reversesEntryId], references: [id], onDelete: Restrict)
-  reversedBy        XpLedgerEntry?                 @relation("XpLedgerEntryReversal")
-  balances          XpBalance[]
+  validatedActivity       ValidatedGamificationActivity? @relation(fields: [validatedActivityId], references: [id], onDelete: Restrict)
+  xpRule                  XpRule?                        @relation(fields: [xpRuleId], references: [id], onDelete: Restrict)
+  reversesEntry           XpLedgerEntry?                 @relation("XpLedgerEntryReversal", fields: [reversesEntryId], references: [id], onDelete: Restrict)
+  reversedBy              XpLedgerEntry?                 @relation("XpLedgerEntryReversal")
+  balances                XpBalance[]
+  /// Bloque III, sub-incremento 2.b -- lado inverso de AchievementProgress.lastActivityId.
+  achievementProgressRows AchievementProgress[]
+  /// Bloque III, sub-incremento 2.b -- lado inverso de AchievementUnlock.triggerActivityId.
+  achievementUnlocks      AchievementUnlock[]
 
   @@index([accountId])
   @@map("xp_ledger_entry")
@@ -940,8 +944,10 @@ model RewardGrant {
   idempotencyKey   String                 @unique @map("idempotency_key")
   createdAt        DateTime               @default(now()) @map("created_at")
 
-  rewardBundle RewardBundle           @relation(fields: [rewardBundleId], references: [id], onDelete: Restrict)
-  components   RewardGrantComponent[]
+  rewardBundle      RewardBundle           @relation(fields: [rewardBundleId], references: [id], onDelete: Restrict)
+  components        RewardGrantComponent[]
+  /// Bloque III, sub-incremento 2.b -- lado inverso de AchievementUnlock.rewardGrantId (@unique -- a lo sumo un unlock por grant).
+  achievementUnlock AchievementUnlock?
 
   @@index([accountId])
   @@map("reward_grant")
@@ -1033,7 +1039,9 @@ model AchievementDefinition {
   createdAt            DateTime                    @default(now()) @map("created_at")
   retiredAt            DateTime?                   @map("retired_at")
 
-  versions AchievementVersion[]
+  versions     AchievementVersion[]
+  progressRows AchievementProgress[]
+  unlocks      AchievementUnlock[]
 
   @@map("achievement_definition")
 }
@@ -1059,11 +1067,15 @@ enum AchievementDefinitionStatus {
   @@map("achievement_definition_status")
 }
 
-/// `unlockRule` -- texto OPACO, sin gramática ni interpretación en 2.a --
-/// mismo criterio que `XpRule.multiplierPolicy`/`repeatDecayRule`/
-/// `qualityCondition` (Bloque I): campos de "regla" nombrados por el Data
-/// Model sin esquema propio, nunca leídos por ninguna lógica todavía. El
-/// motor de evaluación (2.b) decide su gramática cuando exista.
+/// `unlockRule` -- almacena la FORMA CANÓNICA (JSON.stringify con orden de
+/// claves fijo) de `XpThresholdUnlockRuleSchema` (2.b,
+/// achievement-unlock-rule.ts) -- único `type` soportado:
+/// `{schemaVersion:"v1",type:"XP_THRESHOLD",value:N}`. Sigue siendo
+/// `String` a nivel de Postgres (sin migración de tipo) -- la validación
+/// vive en `AchievementVersionRepository.create`, reutilizada por el
+/// evaluador (`RewardEvaluationWorker`). `schemaVersion` versiona la
+/// gramática técnica, nunca el criterio de negocio -- cambiar el umbral
+/// exige una `achievement_version` nueva.
 /// `iconAssetVersionId` -- SIN FK: no existe todavía ninguna entidad de
 /// versionado de assets en el schema (mismo criterio que
 /// `RewardBundleItem.referenceId` en 1.a, sin FK a title/cosmetic).
@@ -1082,6 +1094,8 @@ model AchievementVersion {
 
   achievementDefinition AchievementDefinition @relation(fields: [achievementDefinitionId], references: [id], onDelete: Restrict)
   rewardBundle          RewardBundle?         @relation(fields: [rewardBundleId], references: [id], onDelete: Restrict)
+  progressRows          AchievementProgress[]
+  unlocks               AchievementUnlock[]
 
   @@unique([achievementDefinitionId, versionLabel])
   @@index([rewardBundleId])
@@ -1094,4 +1108,86 @@ enum AchievementVersionApprovalStatus {
   RETIRED
 
   @@map("achievement_version_approval_status")
+}
+
+/// Bloque III, sub-incremento 2.b ("Progreso y desbloqueo de logros") --
+/// ver docs/adr/BLOCK-III-DEFINITION.md §4.7 (excepción controlada A1,
+/// aprobada 2026-08-04) y ADR-0019. `achievementDefinitionId` es una
+/// columna DENORMALIZADA exclusivamente para integridad/unicidad en
+/// Postgres -- `achievementVersionId` sigue siendo la única autoridad
+/// semántica para evaluar reglas e interpretar progreso, nunca
+/// reinterpretado vía `achievementDefinitionId`. Consistencia entre ambas
+/// columnas reforzada por trigger (`enforce_achievement_progress_definition_version_consistency`),
+/// no solo por disciplina de aplicación. `achievementVersionId` y
+/// `progressStatus = COMPLETED` son INMUTABLES una vez fijados -- trigger
+/// `enforce_achievement_progress_immutable` rechaza cualquier UPDATE que
+/// cambie `achievement_version_id` o que parta de `COMPLETED`. Sin
+/// DELETE bajo ninguna circunstancia (mismo trigger).
+model AchievementProgress {
+  id                      String                    @id @default(uuid()) @db.Uuid
+  accountId               String                    @map("account_id") @db.Uuid
+  achievementDefinitionId String                    @map("achievement_definition_id") @db.Uuid
+  achievementVersionId    String                    @map("achievement_version_id") @db.Uuid
+  currentValue            Int                       @map("current_value")
+  targetValue             Int                       @map("target_value")
+  progressStatus          AchievementProgressStatus @default(IN_PROGRESS) @map("progress_status")
+  /// Último `xp_ledger_entry` leído para este recómputo -- única entrada
+  /// que el worker consume (ADR-0019 §2), nunca `validated_gamification_activity`.
+  lastActivityId          String?                   @map("last_activity_id") @db.Uuid
+  updatedAt               DateTime                  @updatedAt @map("updated_at")
+
+  achievementDefinition AchievementDefinition @relation(fields: [achievementDefinitionId], references: [id], onDelete: Restrict)
+  achievementVersion    AchievementVersion    @relation(fields: [achievementVersionId], references: [id], onDelete: Restrict)
+  lastActivity          XpLedgerEntry?        @relation(fields: [lastActivityId], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, achievementDefinitionId])
+  @@index([achievementVersionId])
+  @@map("achievement_progress")
+}
+
+enum AchievementProgressStatus {
+  IN_PROGRESS
+  COMPLETED
+
+  @@map("achievement_progress_status")
+}
+
+/// `unlockInstance` empieza en 1 -- 2.b solo produce la instancia 1
+/// (`repeatability = UNIQUE`); `REPEATABLE` queda explícitamente fuera de
+/// este sub-incremento (el reinicio de progreso tras desbloquear no está
+/// definido por ningún documento -- vacío para un incremento futuro).
+/// `rewardGrantId` nace NULL -- necesita el `id` propio de esta fila para
+/// la clave `reward:ACHIEVEMENT_UNLOCK:{id}` (§4.4), así que el grant se
+/// crea DESPUÉS del unlock, nunca antes. Única transición permitida:
+/// `reward_grant_id` NULL -> valor, con el resto de columnas sin cambiar
+/// -- trigger `enforce_achievement_unlock_immutable` rechaza cualquier
+/// otra modificación y todo DELETE. `status = REVERSED` reservado para una
+/// futura herramienta de moderación -- este mecanismo NUNCA lo produce
+/// (mismo criterio que `RewardGrant.grantStatus = REVERSED`, ADR-0019).
+model AchievementUnlock {
+  id                      String                  @id @default(uuid()) @db.Uuid
+  accountId               String                  @map("account_id") @db.Uuid
+  achievementDefinitionId String                  @map("achievement_definition_id") @db.Uuid
+  achievementVersionId    String                  @map("achievement_version_id") @db.Uuid
+  unlockInstance          Int                     @map("unlock_instance")
+  unlockedAt              DateTime                @map("unlocked_at")
+  triggerActivityId       String?                 @map("trigger_activity_id") @db.Uuid
+  rewardGrantId           String?                 @unique @map("reward_grant_id") @db.Uuid
+  status                  AchievementUnlockStatus @default(ACTIVE)
+  reversedAt              DateTime?               @map("reversed_at")
+
+  achievementDefinition AchievementDefinition @relation(fields: [achievementDefinitionId], references: [id], onDelete: Restrict)
+  achievementVersion    AchievementVersion    @relation(fields: [achievementVersionId], references: [id], onDelete: Restrict)
+  triggerActivity       XpLedgerEntry?        @relation(fields: [triggerActivityId], references: [id], onDelete: Restrict)
+  rewardGrant           RewardGrant?          @relation(fields: [rewardGrantId], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, achievementDefinitionId, unlockInstance])
+  @@map("achievement_unlock")
+}
+
+enum AchievementUnlockStatus {
+  ACTIVE
+  REVERSED
+
+  @@map("achievement_unlock_status")
 }

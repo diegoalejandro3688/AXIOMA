@@ -19,6 +19,10 @@ import { RewardGrantRepository } from '../src/gamification/reward-grant.reposito
 import { RewardGrantComponentRepository } from '../src/gamification/reward-grant-component.repository';
 import { RewardEvaluationCursorRepository } from '../src/gamification/reward-evaluation-cursor.repository';
 import { RewardEvaluationWorker } from '../src/gamification/reward-evaluation.worker';
+import { AchievementDefinitionRepository } from '../src/gamification/achievement-definition.repository';
+import { AchievementVersionRepository } from '../src/gamification/achievement-version.repository';
+import { AchievementProgressRepository } from '../src/gamification/achievement-progress.repository';
+import { AchievementUnlockRepository } from '../src/gamification/achievement-unlock.repository';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
 
@@ -72,6 +76,10 @@ async function main() {
   const componentRepo = new RewardGrantComponentRepository(prisma);
   const cursorRepo = new RewardEvaluationCursorRepository(prisma);
   const txRunner = new TransactionRunnerService(prisma);
+  const achievementDefinitionRepo = new AchievementDefinitionRepository(prisma);
+  const achievementVersionRepo = new AchievementVersionRepository(prisma);
+  const achievementProgressRepo = new AchievementProgressRepository(prisma);
+  const achievementUnlockRepo = new AchievementUnlockRepository(prisma);
   const worker = new RewardEvaluationWorker(
     prisma,
     ledgerRepo,
@@ -83,7 +91,20 @@ async function main() {
     grantRepo,
     componentRepo,
     txRunner,
+    achievementDefinitionRepo,
+    achievementVersionRepo,
+    achievementProgressRepo,
+    achievementUnlockRepo,
   );
+
+  // Este gate no ejercita logros -- pero desde 2.b, RewardEvaluationWorker
+  // evalúa TODO achievement_definition ACTIVO para CUALQUIER cuenta con
+  // actividad de XP, sin importar qué gate la creó. Una fila ACTIVE
+  // dejada por otro gate (achievement_definition no admite DELETE) con un
+  // unlockRule inválido rompería la evaluación de CADA cuenta de este
+  // gate -- se retira defensivamente antes de empezar, mismo criterio que
+  // el retiro de level_definition de prueba (§ más abajo).
+  await pg.query("UPDATE achievement_definition SET status = 'RETIRED' WHERE status = 'ACTIVE'");
 
   const suffix = Date.now();
   let entrySeq = 0;
@@ -240,6 +261,10 @@ async function main() {
     grantRepo,
     componentRepo,
     txRunner,
+    achievementDefinitionRepo,
+    achievementVersionRepo,
+    achievementProgressRepo,
+    achievementUnlockRepo,
   );
 
   const accountC = randomUUID();
@@ -297,13 +322,17 @@ async function main() {
   const { readFileSync } = await import('node:fs');
   const { join } = await import('node:path');
   const filesToCheck = ['reward-evaluation.worker.ts'];
+  // 'AchievementDefinition' se retiró de esta lista en el sub-incremento
+  // 2.b -- ese sub-incremento extendió, con autorización formal, el
+  // worker para evaluar logros `repeatability = UNIQUE`. La frontera que
+  // SIGUE vigente (desafíos, títulos, inventario -- Incrementos 3-5) no
+  // cambió y se verifica igual.
   const forbiddenSymbols = [
     'StudentResponse',
     'CurriculumTopicProgress',
     'PublicProfile',
     'equippedTitle',
     'equippedCosmetic',
-    'AchievementDefinition',
     'ChallengeDefinition',
     'inventoryItem',
     'accountTitle',
@@ -319,7 +348,7 @@ async function main() {
     }
   }
   check(
-    'el worker no referencia PROGRESS/Public Profile/equipamiento/logros/desafíos/inventario (SOLO LEVEL + XP_BONUS en 1.c)',
+    'el worker no referencia PROGRESS/Public Profile/equipamiento/desafíos/inventario (fuera de alcance de 1.c y 2.b)',
     !boundaryViolationFound,
   );
 

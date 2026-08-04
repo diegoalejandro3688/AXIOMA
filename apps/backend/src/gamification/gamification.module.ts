@@ -25,6 +25,8 @@ import { RewardEvaluationWorker } from './reward-evaluation.worker';
 import { RewardEvaluationScheduler } from './reward-evaluation.scheduler';
 import { AchievementDefinitionRepository } from './achievement-definition.repository';
 import { AchievementVersionRepository } from './achievement-version.repository';
+import { AchievementProgressRepository } from './achievement-progress.repository';
+import { AchievementUnlockRepository } from './achievement-unlock.repository';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -63,6 +65,19 @@ import { AchievementVersionRepository } from './achievement-version.repository';
  * (dependen de la excepción controlada fijada en §4.7), SIN integración
  * con `RewardEvaluationWorker`, SIN cálculo de progreso, SIN entrega, SIN
  * exposición pública.
+ *
+ * Sub-incremento 2.b ("Progreso y desbloqueo de logros"): gramática
+ * mínima `XP_THRESHOLD` (achievement-unlock-rule.ts, validada con Zod),
+ * `achievement_progress`/`achievement_unlock` (excepción A1 aplicada),
+ * integración en `RewardEvaluationWorker.evaluateAccount` -- SOLO
+ * `repeatability = UNIQUE` (REPEATABLE queda fuera). Completar el umbral y
+ * crear el `achievement_unlock` es una única transacción atómica
+ * (precisión obligatoria del Product Owner: nunca existe `COMPLETED` sin
+ * su unlock); la entrega del `reward_grant`/componentes sigue siendo
+ * recuperable por separado, con capacidad de reparar la cadena si el
+ * grant falta o quedan componentes `XP_BONUS` sin entregar. SIN exposición
+ * pública todavía (Gate 12 se satisface aquí solo por ausencia de
+ * superficie pública, no evaluado funcionalmente).
  */
 @Module({
   imports: [AuthModule, InternalOpsModule, OutboxModule],
@@ -89,6 +104,8 @@ import { AchievementVersionRepository } from './achievement-version.repository';
     RewardEvaluationScheduler,
     AchievementDefinitionRepository,
     AchievementVersionRepository,
+    AchievementProgressRepository,
+    AchievementUnlockRepository,
   ],
   exports: [
     GamificationProgramRepository,
@@ -108,6 +125,8 @@ import { AchievementVersionRepository } from './achievement-version.repository';
     RewardEvaluationCursorRepository,
     AchievementDefinitionRepository,
     AchievementVersionRepository,
+    AchievementProgressRepository,
+    AchievementUnlockRepository,
   ],
 })
 export class GamificationModule {}
