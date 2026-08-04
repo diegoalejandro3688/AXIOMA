@@ -1191,3 +1191,89 @@ enum AchievementUnlockStatus {
 
   @@map("achievement_unlock_status")
 }
+
+/// Bloque III, Incremento 3, sub-incremento 3.a ("Fundación de
+/// persistencia y entrega de títulos") -- ver
+/// docs/adr/BLOCK-III-DEFINITION.md (Incremento 3) y ADR-0019 (el
+/// mecanismo de entrega genérico no se rediseña, se reutiliza). Data Model
+/// §16.17. `rarityClass`/`unlockSourceType` quedan `String` abiertos --
+/// mismo criterio que `AchievementDefinition.achievementCategory` (Data
+/// Model no los enumera; `cosmetic_item.rarity_class`, §16.33, aclara
+/// explícitamente "clasificación visual... no implicará probabilidades
+/// ocultas"). `unlockSourceType` es metadato descriptivo -- NUNCA gatea la
+/// entrega, que ya resuelve `reward_grant`/`reward_grant_component`
+/// genéricamente; la fuente autoritativa de adquisición vive en
+/// `AccountTitle.acquisitionSourceType`/`acquisitionSourceId`, no aquí.
+/// SOLO esquema/repositorios/entrega en 3.a -- SIN `equipped_title`, SIN
+/// endpoints, SIN tocar `public_profile` (ver 3.b).
+model TitleDefinition {
+  id               String                @id @default(uuid()) @db.Uuid
+  titleKey         String                @unique @map("title_key")
+  displayText      String                @map("display_text")
+  description      String?
+  rarityClass      String                @map("rarity_class")
+  unlockSourceType String                @map("unlock_source_type")
+  visibilityStatus TitleVisibilityStatus @map("visibility_status")
+  status           TitleDefinitionStatus @default(ACTIVE)
+  createdAt        DateTime              @default(now()) @map("created_at")
+  retiredAt        DateTime?             @map("retired_at")
+
+  accountTitles AccountTitle[]
+
+  @@map("title_definition")
+}
+
+enum TitleVisibilityStatus {
+  PRIVATE
+  PUBLIC
+
+  @@map("title_visibility_status")
+}
+
+enum TitleDefinitionStatus {
+  ACTIVE
+  RETIRED
+
+  @@map("title_definition_status")
+}
+
+/// Estructura calcada de `inventory_item` (§16.34, entidad paralela para
+/// cosméticos) -- Data Model no da tabla de atributos para `account_title`
+/// (solo prosa: "Cuenta, Título, Fecha de obtención, Fuente, Estado, Fecha
+/// de revocación"), pero fija el mismo criterio de idempotencia
+/// explícitamente para su análoga ("La adquisición será idempotente. Un
+/// artículo único no deberá duplicarse accidentalmente.") --
+/// `@@unique([accountId, titleDefinitionId])` es esa garantía.
+/// `acquisitionSourceType`/`acquisitionSourceId` son SNAPSHOT del
+/// `reward_grant` que entregó este título en el momento de la entrega
+/// (mismo criterio de snapshot que `reward_grant_component`, ADR-0019
+/// §4.5) -- es la fuente AUTORITATIVA de adquisición, no
+/// `TitleDefinition.unlockSourceType` (metadato descriptivo del catálogo).
+/// `ownershipStatus`: 3.a produce ÚNICAMENTE `ACTIVE` -- `REVOKED`/
+/// `SUPERSEDED` (mismos tres valores que `inventory_item.ownership_status`)
+/// quedan reservados para una herramienta de moderación futura, igual
+/// criterio que `RewardGrant.grantStatus = REVERSED`/
+/// `AchievementUnlock.status = REVERSED`.
+model AccountTitle {
+  id                    String                      @id @default(uuid()) @db.Uuid
+  accountId             String                      @map("account_id") @db.Uuid
+  titleDefinitionId     String                      @map("title_definition_id") @db.Uuid
+  acquisitionSourceType RewardSourceEntityType      @map("acquisition_source_type")
+  acquisitionSourceId   String                      @map("acquisition_source_id")
+  acquiredAt            DateTime                    @map("acquired_at")
+  ownershipStatus       AccountTitleOwnershipStatus @default(ACTIVE) @map("ownership_status")
+  revokedAt             DateTime?                   @map("revoked_at")
+
+  titleDefinition TitleDefinition @relation(fields: [titleDefinitionId], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, titleDefinitionId])
+  @@map("account_title")
+}
+
+enum AccountTitleOwnershipStatus {
+  ACTIVE
+  REVOKED
+  SUPERSEDED
+
+  @@map("account_title_ownership_status")
+}

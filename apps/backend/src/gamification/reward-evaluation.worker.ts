@@ -19,13 +19,14 @@ import { RewardEvaluationCursorRepository } from './reward-evaluation-cursor.rep
 import { ProgressionService } from './progression.service';
 import { LevelDefinitionRepository } from './level-definition.repository';
 import { RewardBundleRepository } from './reward-bundle.repository';
-import { RewardGrantRepository } from './reward-grant.repository';
+import { RewardGrantRepository, type RewardGrantWithComponents } from './reward-grant.repository';
 import { RewardGrantComponentRepository } from './reward-grant-component.repository';
 import { AchievementDefinitionRepository } from './achievement-definition.repository';
 import { AchievementVersionRepository } from './achievement-version.repository';
 import { AchievementProgressRepository } from './achievement-progress.repository';
 import { AchievementUnlockRepository } from './achievement-unlock.repository';
 import { parseUnlockRule, type XpThresholdUnlockRule } from './achievement-unlock-rule';
+import { AccountTitleRepository } from './account-title.repository';
 
 /**
  * Bloque III (ADR-0019). Sub-incremento 1.b: descubrimiento de cuentas
@@ -107,6 +108,7 @@ export class RewardEvaluationWorker {
     private readonly achievementVersionRepo: AchievementVersionRepository,
     private readonly achievementProgressRepo: AchievementProgressRepository,
     private readonly achievementUnlockRepo: AchievementUnlockRepository,
+    private readonly accountTitleRepo: AccountTitleRepository,
   ) {}
 
   /**
@@ -176,10 +178,10 @@ export class RewardEvaluationWorker {
   /**
    * Crea (idempotentemente) el `reward_grant` de un bundle para CUALQUIER
    * fuente (`LEVEL`/`ACHIEVEMENT_UNLOCK`) y entrega sus componentes
-   * `XP_BONUS` -- único camino de entrega, compartido, mismo criterio
-   * "reutilizar el mecanismo genérico" que ADR-0019 exige. `TITLE`/
-   * `COSMETIC` en el mismo bundle quedan `PENDING`, a la espera de los
-   * Incrementos 3/5 -- no cuentan como fallo. `idempotencyKey =
+   * `XP_BONUS`/`TITLE` -- único camino de entrega, compartido, mismo
+   * criterio "reutilizar el mecanismo genérico" que ADR-0019 exige.
+   * `COSMETIC` en el mismo bundle queda `PENDING`, a la espera del
+   * Incremento 5 -- no cuenta como fallo. `idempotencyKey =
    * reward:{sourceEntityType}:{sourceEntityId}` (§4.4).
    */
   private async deliverBundleComponents(
@@ -203,12 +205,48 @@ export class RewardEvaluationWorker {
 
     let allResolved = true;
     for (const component of grant.components) {
-      if (component.componentType !== 'XP_BONUS') continue; // TITLE/COSMETIC: fuera de alcance de este sub-incremento
       if (component.deliveryStatus === 'DELIVERED') continue;
-      const delivered = await this.deliverXpBonusComponent(accountId, component);
-      if (!delivered) allResolved = false;
+      if (component.componentType === 'XP_BONUS') {
+        const delivered = await this.deliverXpBonusComponent(accountId, component);
+        if (!delivered) allResolved = false;
+      } else if (component.componentType === 'TITLE') {
+        const delivered = await this.deliverTitleComponent(accountId, grant, component);
+        if (!delivered) allResolved = false;
+      }
+      // COSMETIC: fuera de alcance hasta el Incremento 5 -- queda PENDING, no cuenta como fallo.
     }
     return { grant, allResolved };
+  }
+
+  /**
+   * Entrega real de UN componente `TITLE`: crea `account_title`
+   * idempotentemente (por `UNIQUE(accountId, titleDefinitionId)`) --
+   * `component.referenceId` ya está garantizado por el trigger de base de
+   * datos (`enforce_reward_grant_component_title_reference`, 3.a) a
+   * existir en `title_definition`, así que este método no necesita
+   * validarlo de nuevo. `acquisitionSourceType`/`acquisitionSourceId` son
+   * snapshot de la cabecera `grant` que entrega este componente -- fuente
+   * autoritativa de adquisición (nunca `TitleDefinition.unlockSourceType`,
+   * solo metadato descriptivo). Operación de PROPIEDAD únicamente -- nunca
+   * equipa (`equipped_title` pertenece a 3.b, fuera de alcance aquí).
+   */
+  private async deliverTitleComponent(accountId: string, grant: RewardGrantWithComponents, component: RewardGrantComponent): Promise<boolean> {
+    try {
+      await this.accountTitleRepo.createIdempotent({
+        accountId,
+        titleDefinitionId: component.referenceId!,
+        acquisitionSourceType: grant.sourceEntityType,
+        acquisitionSourceId: grant.sourceEntityId,
+        acquiredAt: new Date(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Fallo entregando componente TITLE ${component.id} (cuenta ${accountId}): ${message}`);
+      await this.componentRepo.markFailed(component.id);
+      return false;
+    }
+    await this.componentRepo.markDelivered(component.id);
+    return true;
   }
 
   /**
@@ -424,10 +462,15 @@ export class RewardEvaluationWorker {
     }
     let allResolved = true;
     for (const component of grant.components) {
-      if (component.componentType !== 'XP_BONUS') continue;
       if (component.deliveryStatus === 'DELIVERED') continue;
-      const delivered = await this.deliverXpBonusComponent(accountId, component);
-      if (!delivered) allResolved = false;
+      if (component.componentType === 'XP_BONUS') {
+        const delivered = await this.deliverXpBonusComponent(accountId, component);
+        if (!delivered) allResolved = false;
+      } else if (component.componentType === 'TITLE') {
+        const delivered = await this.deliverTitleComponent(accountId, grant, component);
+        if (!delivered) allResolved = false;
+      }
+      // COSMETIC: fuera de alcance hasta el Incremento 5.
     }
     return allResolved;
   }

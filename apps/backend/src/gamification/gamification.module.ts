@@ -27,6 +27,8 @@ import { AchievementDefinitionRepository } from './achievement-definition.reposi
 import { AchievementVersionRepository } from './achievement-version.repository';
 import { AchievementProgressRepository } from './achievement-progress.repository';
 import { AchievementUnlockRepository } from './achievement-unlock.repository';
+import { TitleDefinitionRepository } from './title-definition.repository';
+import { AccountTitleRepository } from './account-title.repository';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -78,6 +80,12 @@ import { AchievementUnlockRepository } from './achievement-unlock.repository';
  * grant falta o quedan componentes `XP_BONUS` sin entregar. SIN exposición
  * pública todavía (Gate 12 se satisface aquí solo por ausencia de
  * superficie pública, no evaluado funcionalmente).
+ *
+ * Incremento 3, sub-incremento 3.a ("Fundación de persistencia y entrega
+ * de títulos"): `title_definition`/`account_title`, entrega idempotente
+ * de componentes `TITLE` reutilizando `deliverBundleComponents` (sin
+ * camino paralelo) -- SIN `equipped_title`, SIN endpoints, SIN tocar
+ * `public_profile` (ver 3.b).
  */
 @Module({
   imports: [AuthModule, InternalOpsModule, OutboxModule],
@@ -106,6 +114,8 @@ import { AchievementUnlockRepository } from './achievement-unlock.repository';
     AchievementVersionRepository,
     AchievementProgressRepository,
     AchievementUnlockRepository,
+    TitleDefinitionRepository,
+    AccountTitleRepository,
   ],
   exports: [
     GamificationProgramRepository,
@@ -127,6 +137,8 @@ import { AchievementUnlockRepository } from './achievement-unlock.repository';
     AchievementVersionRepository,
     AchievementProgressRepository,
     AchievementUnlockRepository,
+    TitleDefinitionRepository,
+    AccountTitleRepository,
   ],
 })
 export class GamificationModule {}

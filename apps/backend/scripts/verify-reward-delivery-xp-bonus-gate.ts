@@ -3,8 +3,9 @@
 // directamente los componentes reales (worker, repositorios) contra
 // Postgres real, mismo criterio que verify-reward-foundation-gate.ts (1.a)
 // y verify-reward-evaluation-worker-gate.ts (1.b). ÚNICAMENTE fuente LEVEL
-// y componente XP_BONUS -- logros/desafíos/títulos/cosméticos siguen fuera
-// de alcance, verificado explícitamente en la sección final.
+// y componente XP_BONUS -- desafíos/cosméticos siguen fuera de alcance
+// (logros y títulos ya se sumaron en 2.b/3.a, sin tocar esta prueba),
+// verificado explícitamente en la sección final.
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
@@ -23,6 +24,7 @@ import { AchievementDefinitionRepository } from '../src/gamification/achievement
 import { AchievementVersionRepository } from '../src/gamification/achievement-version.repository';
 import { AchievementProgressRepository } from '../src/gamification/achievement-progress.repository';
 import { AchievementUnlockRepository } from '../src/gamification/achievement-unlock.repository';
+import { AccountTitleRepository } from '../src/gamification/account-title.repository';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
 
@@ -80,6 +82,7 @@ async function main() {
   const achievementVersionRepo = new AchievementVersionRepository(prisma);
   const achievementProgressRepo = new AchievementProgressRepository(prisma);
   const achievementUnlockRepo = new AchievementUnlockRepository(prisma);
+  const accountTitleRepo = new AccountTitleRepository(prisma);
   const worker = new RewardEvaluationWorker(
     prisma,
     ledgerRepo,
@@ -95,6 +98,7 @@ async function main() {
     achievementVersionRepo,
     achievementProgressRepo,
     achievementUnlockRepo,
+    accountTitleRepo,
   );
 
   // Este gate no ejercita logros -- pero desde 2.b, RewardEvaluationWorker
@@ -163,7 +167,7 @@ async function main() {
     name: 'Recompensa de gate -- nivel 3 (dos componentes)',
     items: [
       { componentType: 'XP_BONUS', xpAmount: 20 },
-      { componentType: 'TITLE', referenceId: randomUUID() }, // fuera de alcance de 1.c -- debe quedar PENDING
+      { componentType: 'COSMETIC', referenceId: randomUUID() }, // fuera de alcance hasta el Incremento 5 -- debe quedar PENDING
     ],
   });
   await levelDefRepo.create({ levelNumber: levelBase + 1, minimumLifetimeXp: thresholdBase });
@@ -212,7 +216,7 @@ async function main() {
   check('CERO reward_grant nuevos en el reintento', grantCountAfterRerun === grantCountBeforeRerun);
   check('CERO xp_ledger_entry nuevas en el reintento (converge a punto fijo)', ledgerCountAfterRerun === ledgerCountBeforeRerun);
 
-  console.log('--- 3. Cascada: un solo otorgamiento que cruza DOS niveles otorga AMBOS, y el segundo bundle deja el TITLE fuera de alcance en PENDING ---');
+  console.log('--- 3. Cascada: un solo otorgamiento que cruza DOS niveles otorga AMBOS, y el segundo bundle deja el COSMETIC fuera de alcance en PENDING ---');
   const accountB = randomUUID();
   await createEntry(accountB, thresholdBase + 250); // cruza nivel 2 (+100) Y nivel 3 (+200) en una sola pasada
 
@@ -226,27 +230,27 @@ async function main() {
   check('nivel 2: componente XP_BONUS DELIVERED', grantB2?.components[0]?.deliveryStatus === 'DELIVERED');
 
   const xpBonusComponentB3 = grantB3?.components.find((c) => c.componentType === 'XP_BONUS');
-  const titleComponentB3 = grantB3?.components.find((c) => c.componentType === 'TITLE');
+  const cosmeticComponentB3 = grantB3?.components.find((c) => c.componentType === 'COSMETIC');
   check('nivel 3: componente XP_BONUS DELIVERED', xpBonusComponentB3?.deliveryStatus === 'DELIVERED');
-  check('nivel 3: componente TITLE sigue PENDING -- fuera de alcance de 1.c, no lo entrega este worker', titleComponentB3?.deliveryStatus === 'PENDING');
+  check('nivel 3: componente COSMETIC sigue PENDING -- fuera de alcance hasta el Incremento 5, no lo entrega este worker', cosmeticComponentB3?.deliveryStatus === 'PENDING');
 
   const balanceB1 = await balanceRepo.findByAccountId(accountB);
   check('xp_balance.lifetimeXp == AJUSTE + 30 (nivel 2) + 20 (nivel 3)', balanceB1?.lifetimeXp === thresholdBase + 250 + 30 + 20);
 
   // Dos BONO nuevos (nivel 2 + nivel 3) quedan por encima del cursor --
-  // la cuenta reaparece pendiente por ELLOS, no por el TITLE (que nunca
+  // la cuenta reaparece pendiente por ELLOS, no por el COSMETIC (que nunca
   // escribe xp_ledger_entry). Una pasada más sobre esos BONO no encuentra
-  // XP_BONUS nuevo que otorgar (ya entregados, idempotentes) y el TITLE
-  // sigue PENDING para siempre en este incremento -- correcto (Incremento
-  // 3), no bloquea la convergencia de XP_BONUS.
+  // XP_BONUS nuevo que otorgar (ya entregados, idempotentes) y el
+  // COSMETIC sigue PENDING para siempre en este incremento -- correcto
+  // (Incremento 5), no bloquea la convergencia de XP_BONUS.
   const pendingAfterB1 = await worker.discoverPendingAccounts();
-  check('la cuenta B SÍ aparece pendiente -- por los BONO propios, no por el TITLE (que no escribe ledger)', pendingAfterB1.includes(accountB));
+  check('la cuenta B SÍ aparece pendiente -- por los BONO propios, no por el COSMETIC (que no escribe ledger)', pendingAfterB1.includes(accountB));
 
   const grantCountBeforeRerunB = (await pg.query('SELECT count(*)::int AS n FROM reward_grant WHERE account_id = $1', [accountB])).rows[0].n as number;
   const outcomeB2 = await worker.processAccount(accountB);
   check('pasada disparada por los BONO -> PROCESSED, sin nada nuevo que otorgar', outcomeB2 === 'PROCESSED');
   const grantCountAfterRerunB = (await pg.query('SELECT count(*)::int AS n FROM reward_grant WHERE account_id = $1', [accountB])).rows[0].n as number;
-  check('CERO reward_grant nuevos (el TITLE PENDING no genera reintentos infinitos ni bloquea la convergencia de XP_BONUS)', grantCountAfterRerunB === grantCountBeforeRerunB);
+  check('CERO reward_grant nuevos (el COSMETIC PENDING no genera reintentos infinitos ni bloquea la convergencia de XP_BONUS)', grantCountAfterRerunB === grantCountBeforeRerunB);
 
   console.log('--- 4. Fallo real de entrega: cursor NO avanza, componente FAILED, retry entrega sin re-incrementar balance ---');
   const poisonedLedgerRepo = new PoisonOnceLedgerRepository(prisma);
@@ -265,6 +269,7 @@ async function main() {
     achievementVersionRepo,
     achievementProgressRepo,
     achievementUnlockRepo,
+    accountTitleRepo,
   );
 
   const accountC = randomUUID();
@@ -322,11 +327,11 @@ async function main() {
   const { readFileSync } = await import('node:fs');
   const { join } = await import('node:path');
   const filesToCheck = ['reward-evaluation.worker.ts'];
-  // 'AchievementDefinition' se retiró de esta lista en el sub-incremento
-  // 2.b -- ese sub-incremento extendió, con autorización formal, el
-  // worker para evaluar logros `repeatability = UNIQUE`. La frontera que
-  // SIGUE vigente (desafíos, títulos, inventario -- Incrementos 3-5) no
-  // cambió y se verifica igual.
+  // 'AchievementDefinition' se retiró en 2.b (evalúa logros UNIQUE) y
+  // 'accountTitle' se retiró en 3.a (entrega componentes TITLE) -- ambos
+  // sub-incrementos extendieron el worker con autorización formal. La
+  // frontera que SIGUE vigente (desafíos, equipamiento, inventario --
+  // Incrementos 3.b/4/5) no cambió y se verifica igual.
   const forbiddenSymbols = [
     'StudentResponse',
     'CurriculumTopicProgress',
@@ -335,7 +340,6 @@ async function main() {
     'equippedCosmetic',
     'ChallengeDefinition',
     'inventoryItem',
-    'accountTitle',
   ];
   let boundaryViolationFound = false;
   for (const file of filesToCheck) {
@@ -348,7 +352,7 @@ async function main() {
     }
   }
   check(
-    'el worker no referencia PROGRESS/Public Profile/equipamiento/desafíos/inventario (fuera de alcance de 1.c y 2.b)',
+    'el worker no referencia PROGRESS/Public Profile/equipamiento/desafíos/inventario (fuera de alcance de 1.c, 2.b y 3.a)',
     !boundaryViolationFound,
   );
 

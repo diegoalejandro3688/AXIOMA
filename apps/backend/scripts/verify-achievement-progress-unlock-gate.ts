@@ -22,6 +22,7 @@ import { AchievementDefinitionRepository } from '../src/gamification/achievement
 import { AchievementVersionRepository } from '../src/gamification/achievement-version.repository';
 import { AchievementProgressRepository } from '../src/gamification/achievement-progress.repository';
 import { AchievementUnlockRepository } from '../src/gamification/achievement-unlock.repository';
+import { AccountTitleRepository } from '../src/gamification/account-title.repository';
 import { RewardEvaluationWorker } from '../src/gamification/reward-evaluation.worker';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
@@ -83,6 +84,7 @@ async function main() {
   const achievementVersionRepo = new AchievementVersionRepository(prisma);
   const achievementProgressRepo = new AchievementProgressRepository(prisma);
   const achievementUnlockRepo = new AchievementUnlockRepository(prisma);
+  const accountTitleRepo = new AccountTitleRepository(prisma);
 
   function buildWorker(ledger: XpLedgerEntryRepository) {
     return new RewardEvaluationWorker(
@@ -100,6 +102,7 @@ async function main() {
       achievementVersionRepo,
       achievementProgressRepo,
       achievementUnlockRepo,
+      accountTitleRepo,
     );
   }
   const worker = buildWorker(ledgerRepo);
@@ -400,7 +403,9 @@ async function main() {
   const { join } = await import('node:path');
   const gamificationDir = join(__dirname, '..', 'src', 'gamification');
   const filesToCheck = ['reward-evaluation.worker.ts', 'achievement-progress.repository.ts', 'achievement-unlock.repository.ts'];
-  const forbiddenSymbols = ['StudentResponse', 'CurriculumTopicProgress', 'PublicProfile', 'equippedTitle', 'equippedCosmetic', 'ChallengeDefinition', 'inventoryItem', 'accountTitle'];
+  // 'accountTitle' se retiró en 3.a -- el worker ahora entrega
+  // componentes TITLE legítimamente, con autorización formal.
+  const forbiddenSymbols = ['StudentResponse', 'CurriculumTopicProgress', 'PublicProfile', 'equippedTitle', 'equippedCosmetic', 'ChallengeDefinition', 'inventoryItem'];
   let boundaryViolationFound = false;
   for (const file of filesToCheck) {
     const contents = readFileSync(join(gamificationDir, file), 'utf8');

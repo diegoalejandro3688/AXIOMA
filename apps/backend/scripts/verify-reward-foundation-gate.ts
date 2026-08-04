@@ -17,6 +17,7 @@ import { RewardBundleRepository } from '../src/gamification/reward-bundle.reposi
 import { RewardGrantRepository } from '../src/gamification/reward-grant.repository';
 import { RewardGrantComponentRepository } from '../src/gamification/reward-grant-component.repository';
 import { RewardEvaluationCursorRepository } from '../src/gamification/reward-evaluation-cursor.repository';
+import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
 import { deriveGrantStatus } from '../src/gamification/reward-status';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
 
@@ -40,8 +41,22 @@ async function main() {
   const grantRepo = new RewardGrantRepository(prisma);
   const componentRepo = new RewardGrantComponentRepository(prisma);
   const cursorRepo = new RewardEvaluationCursorRepository(prisma);
+  const titleDefinitionRepo = new TitleDefinitionRepository(prisma);
 
   const suffix = Date.now();
+
+  // Desde 3.a, un componente TITLE con reference_id inexistente en
+  // title_definition es rechazado por un trigger de base de datos (cierra
+  // la promesa de 1.a de añadir esta FK cuando title_definition
+  // existiera) -- este gate necesita un title_definition real, no un
+  // randomUUID() suelto.
+  const titleDefinitionFixture = await titleDefinitionRepo.create({
+    titleKey: `reward-foundation-gate-title-${suffix}`,
+    displayText: 'Título de prueba (gate 1.a)',
+    rarityClass: 'COMMON',
+    unlockSourceType: 'LEVEL',
+    visibilityStatus: 'PUBLIC',
+  });
 
   console.log('--- 1. reward_bundle/reward_bundle_item: creación y CHECK de coherencia del snapshot ---');
   const bundle = await bundleRepo.create({
@@ -49,7 +64,7 @@ async function main() {
     name: 'Recompensa de nivel (gate)',
     items: [
       { componentType: 'XP_BONUS', xpAmount: 50 },
-      { componentType: 'TITLE', referenceId: randomUUID() },
+      { componentType: 'TITLE', referenceId: titleDefinitionFixture.id },
     ],
   });
   check('bundle creado con 2 items', bundle.id !== undefined);
@@ -166,7 +181,17 @@ async function main() {
 
   console.log('--- 3. Snapshot independiente de cambios posteriores en reward_bundle_item ---');
   const titleItem = bundleWithItems!.items.find((i) => i.componentType === 'TITLE')!;
-  const newReferenceId = randomUUID();
+  // Debe ser OTRO title_definition real -- desde 3.a, el trigger de
+  // referencia rechaza un reference_id que no exista en title_definition,
+  // incluso en UPDATE.
+  const otherTitleDefinition = await titleDefinitionRepo.create({
+    titleKey: `reward-foundation-gate-title-other-${suffix}`,
+    displayText: 'Otro título de prueba (gate 1.a)',
+    rarityClass: 'COMMON',
+    unlockSourceType: 'LEVEL',
+    visibilityStatus: 'PUBLIC',
+  });
+  const newReferenceId = otherTitleDefinition.id;
   await pg.query('UPDATE reward_bundle_item SET reference_id = $1 WHERE id = $2', [newReferenceId, titleItem.id]);
   const componentsAfterBundleEdit = await componentRepo.findByRewardGrantId(firstAttempt.grant.id);
   const titleComponent = componentsAfterBundleEdit.find((c) => c.componentType === 'TITLE')!;
