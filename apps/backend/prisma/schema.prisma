@@ -844,3 +844,145 @@ enum LevelDefinitionStatus {
 
   @@map("level_definition_status")
 }
+
+/// Sub-incremento 1.a del Bloque III ("Fundación de persistencia") -- ver
+/// ADR-0019 y docs/adr/BLOCK-III-DEFINITION.md. Data Model §16.36.
+/// SOLO esquema/repositorios de solo-lectura+creación en este incremento --
+/// SIN worker, SIN cron, SIN endpoint interno, SIN lectura de
+/// xp_ledger_entry, SIN evaluación de niveles/logros/desafíos, SIN entrega
+/// real de títulos/cosméticos/bonos, SIN escritura sobre inventario ni
+/// public_profile (ver ADR-0019 "Alcance de este ADR").
+model RewardBundle {
+  id        String             @id @default(uuid()) @db.Uuid
+  bundleKey String             @unique @map("bundle_key")
+  name      String
+  status    RewardBundleStatus @default(ACTIVE)
+  createdAt DateTime           @default(now()) @map("created_at")
+
+  items  RewardBundleItem[]
+  grants RewardGrant[]
+
+  @@map("reward_bundle")
+}
+
+enum RewardBundleStatus {
+  ACTIVE
+  RETIRED
+
+  @@map("reward_bundle_status")
+}
+
+/// Configuración de lo que UN reward_bundle PUEDE entregar -- mutable
+/// (sin versión propia, ADR-0019 §5/§3 de BLOCK-III-DEFINITION.md). Nunca
+/// se lee en vivo al momento de entregar: reward_grant_component copia
+/// (snapshot) estos valores, no los referencia. `referenceId` SIN FK a
+/// title_definition/cosmetic_item -- esas tablas no existen todavía
+/// (Incrementos 3/5); se añadirá la restricción cuando existan, mismo
+/// criterio que LevelDefinition.reward_bundle_id (sin FK primero).
+/// CHECK de coherencia por component_type añadido a mano en la migración
+/// (Prisma no expresa esta validación condicional de forma nativa).
+model RewardBundleItem {
+  id             String              @id @default(uuid()) @db.Uuid
+  rewardBundleId String              @map("reward_bundle_id") @db.Uuid
+  componentType  RewardComponentType @map("component_type")
+  /// Obligatorio y > 0 si componentType = XP_BONUS; NULL en cualquier otro caso (CHECK).
+  xpAmount       Int?                @map("xp_amount")
+  /// Obligatorio si componentType = TITLE/COSMETIC; NULL si XP_BONUS (CHECK).
+  referenceId    String?             @map("reference_id") @db.Uuid
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  rewardBundle RewardBundle @relation(fields: [rewardBundleId], references: [id], onDelete: Restrict)
+
+  @@index([rewardBundleId])
+  @@map("reward_bundle_item")
+}
+
+enum RewardComponentType {
+  XP_BONUS
+  TITLE
+  COSMETIC
+
+  @@map("reward_component_type")
+}
+
+/// Cabecera de una entrega -- INMUTABLE por completo (ningún campo se
+/// actualiza tras crearse; sin `grantStatus` persistido a propósito --
+/// precisión obligatoria del Product Owner: el estado se deriva SIEMPRE de
+/// `components` mediante una función pura, nunca se guarda como una
+/// segunda representación que podría desalinearse). `idempotencyKey =
+/// "reward:{sourceEntityType}:{sourceEntityId}"` (ADR-0019 §5/§4.4 de
+/// BLOCK-III-DEFINITION.md). `accountId` SIN FK a `account` -- mismo
+/// desacoplamiento de dominio que el resto de GAMIFICATION y que
+/// `PrivacyRequest` (ADR-0005). `sourceEntityId` es `String`, no `Uuid`:
+/// la fuente LEVEL usa la clave compuesta "{accountId}:{levelNumber}".
+model RewardGrant {
+  id               String                 @id @default(uuid()) @db.Uuid
+  accountId        String                 @map("account_id") @db.Uuid
+  rewardBundleId   String                 @map("reward_bundle_id") @db.Uuid
+  sourceEntityType RewardSourceEntityType @map("source_entity_type")
+  sourceEntityId   String                 @map("source_entity_id")
+  idempotencyKey   String                 @unique @map("idempotency_key")
+  createdAt        DateTime               @default(now()) @map("created_at")
+
+  rewardBundle RewardBundle           @relation(fields: [rewardBundleId], references: [id], onDelete: Restrict)
+  components   RewardGrantComponent[]
+
+  @@index([accountId])
+  @@map("reward_grant")
+}
+
+enum RewardSourceEntityType {
+  LEVEL
+  ACHIEVEMENT_UNLOCK
+  CHALLENGE_CLAIM
+
+  @@map("reward_source_entity_type")
+}
+
+/// Snapshot desnormalizado de UN componente ya entregado (o en curso de
+/// entrega) -- NUNCA una referencia viva a `reward_bundle_item` (ADR-0019
+/// §5). `DELIVERED` es terminal: trigger de base de datos rechaza UPDATE
+/// cuando `OLD.delivery_status = 'DELIVERED'`, y rechaza DELETE
+/// incondicionalmente (mismo criterio que `xp_ledger_entry`, Bloque I).
+/// Mismo CHECK de coherencia por `component_type` que `reward_bundle_item`.
+model RewardGrantComponent {
+  id             String               @id @default(uuid()) @db.Uuid
+  rewardGrantId  String               @map("reward_grant_id") @db.Uuid
+  componentType  RewardComponentType  @map("component_type")
+  xpAmount       Int?                 @map("xp_amount")
+  referenceId    String?              @map("reference_id") @db.Uuid
+  deliveryStatus RewardDeliveryStatus @default(PENDING) @map("delivery_status")
+  deliveredAt    DateTime?            @map("delivered_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  rewardGrant RewardGrant @relation(fields: [rewardGrantId], references: [id], onDelete: Restrict)
+
+  @@index([rewardGrantId])
+  @@map("reward_grant_component")
+}
+
+enum RewardDeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+
+  @@map("reward_delivery_status")
+}
+
+/// Cursor POR CUENTA (clave primaria account_id, no fila única) -- ADR-0019
+/// §1, corrección obligatoria del Product Owner sobre un diseño inicial de
+/// cursor global que podía omitir una cuenta con fallo de forma permanente.
+/// `lastProcessedRecordedAt` es NULLABLE: NULL significa "nunca procesada
+/// con éxito todavía" -- una cuenta puede tener fila propia (para registrar
+/// `attempts`/`nextEligibleAt` de un primer intento fallido) sin haber
+/// completado nunca una pasada exitosa. Sin uso todavía en este
+/// sub-incremento (sin worker) -- solo el esquema.
+model RewardEvaluationCursor {
+  accountId               String    @id @map("account_id") @db.Uuid
+  lastProcessedRecordedAt DateTime? @map("last_processed_recorded_at")
+  attempts                Int       @default(0)
+  nextEligibleAt          DateTime  @default(now()) @map("next_eligible_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  @@map("reward_evaluation_cursor")
+}
