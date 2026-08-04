@@ -21,6 +21,8 @@ import { RewardBundleRepository } from './reward-bundle.repository';
 import { RewardGrantRepository } from './reward-grant.repository';
 import { RewardGrantComponentRepository } from './reward-grant-component.repository';
 import { RewardEvaluationCursorRepository } from './reward-evaluation-cursor.repository';
+import { RewardEvaluationWorker } from './reward-evaluation.worker';
+import { RewardEvaluationScheduler } from './reward-evaluation.scheduler';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -39,10 +41,15 @@ import { RewardEvaluationCursorRepository } from './reward-evaluation-cursor.rep
  *
  * Bloque III, sub-incremento 1.a ("Fundación de persistencia", ADR-0019):
  * esquema y repositorios mínimos de `reward_bundle`/`reward_grant`/
- * `reward_grant_component`/`reward_evaluation_cursor`. SIN worker, SIN
- * cron, SIN endpoint interno, SIN entrega real de títulos/cosméticos/
- * bonos, SIN escritura sobre inventario ni `public_profile` todavía --
- * eso llega en los sub-incrementos 1.b/1.c y en los Incrementos 2-5.
+ * `reward_grant_component`/`reward_evaluation_cursor`.
+ *
+ * Sub-incremento 1.b (`RewardEvaluationWorker`/`RewardEvaluationScheduler`):
+ * descubrimiento de cuentas pendientes, exclusión mutua por cuenta
+ * (advisory lock), aislamiento de fallo, backoff, cron + endpoint interno.
+ * SIN evaluación real de niveles/logros/desafíos, SIN creación de
+ * `reward_grant`, SIN entrega de XP/títulos/cosméticos, SIN escritura
+ * sobre inventario ni `public_profile` todavía -- eso llega en el
+ * sub-incremento 1.c y en los Incrementos 2-5.
  */
 @Module({
   imports: [AuthModule, InternalOpsModule, OutboxModule],
@@ -65,6 +72,8 @@ import { RewardEvaluationCursorRepository } from './reward-evaluation-cursor.rep
     RewardGrantRepository,
     RewardGrantComponentRepository,
     RewardEvaluationCursorRepository,
+    RewardEvaluationWorker,
+    RewardEvaluationScheduler,
   ],
   exports: [
     GamificationProgramRepository,

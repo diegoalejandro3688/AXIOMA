@@ -3,6 +3,7 @@ import { InternalOpsGuard } from '../platform/internal-ops/internal-ops.guard';
 import { generateCorrelationId, runWithCorrelationId } from '../platform/observability/correlation-id.store';
 import { GamificationService } from './gamification.service';
 import { XpGrantService } from './xp-grant.service';
+import { RewardEvaluationWorker } from './reward-evaluation.worker';
 
 @Controller('gamification')
 export class GamificationController {
@@ -11,6 +12,7 @@ export class GamificationController {
   constructor(
     private readonly gamificationService: GamificationService,
     private readonly xpGrantService: XpGrantService,
+    private readonly rewardEvaluationWorker: RewardEvaluationWorker,
   ) {}
 
   /**
@@ -56,6 +58,21 @@ export class GamificationController {
   async reconcileBalance(@Param('accountId') accountId: string) {
     return runWithCorrelationId(generateCorrelationId(), async () => {
       return this.xpGrantService.reconcileBalance(accountId);
+    });
+  }
+
+  /**
+   * Disparo manual de RewardEvaluationWorker (Bloque III, sub-incremento
+   * 1.b, ADR-0019) -- permite operar y probar sin esperar al cron. SIN
+   * evaluación real todavía (ver RewardEvaluationWorker.evaluateAccount).
+   */
+  @Post('_internal/evaluate-rewards')
+  @UseGuards(InternalOpsGuard)
+  @HttpCode(200)
+  async runEvaluateRewards() {
+    return runWithCorrelationId(generateCorrelationId(), async () => {
+      this.logger.log('Iniciando evaluación de recompensas');
+      return this.rewardEvaluationWorker.run();
     });
   }
 }

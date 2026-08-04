@@ -219,22 +219,44 @@ async function main() {
 
   console.log('--- 5. Frontera de día calendario UTC (Decision Gate 5) ---');
   const boundaryAccount = await createSession('boundary');
-  const dayStartUtc = (offsetDays: number, hh: number, mm: number, ss: number, ms: number) => {
-    const d = new Date(now);
+  // Pivote FIJO (10 días antes de "ahora"), no la medianoche real de hoy --
+  // fragilidad temporal preexistente del fixture (no de streak-calculator.ts
+  // ni de XpGrantService, sin cambios): anclar este escenario al día
+  // calendario real hacía que, cuanto más avanzada la sesión, "hoy" quedara
+  // más lejos del "ahora" en que se registra la versión de xp-core,
+  // cayendo en una ventana donde una versión residual de OTRO gate
+  // (p. ej. verify-gamification-xp-grant-gate.ts, mismo programKey
+  // 'xp-core' porque XpGrantService lo tiene fijo) podía ganar la
+  // selección de "versión vigente más reciente" para ese instante exacto
+  // y no tener la regla de este gate -> NO_ACTIVE_RULE. Un pivote fijo,
+  // suficientemente atrás, queda cubierto sin ambigüedad por la versión
+  // "pastVersion" (effectiveFrom = -60 días) ya registrada más abajo, sin
+  // competir con la contaminación de otros gates (concentrada cerca del
+  // "ahora" real de esta sesión).
+  //
+  // currentStreak exige que el último día activo sea HOY/AYER real
+  // (streak-calculator.ts, deliberadamente no se toca) -- como este
+  // escenario ya no usa el día real, se observa vía longestStreak, que
+  // ejercita EXACTAMENTE el mismo mecanismo bajo prueba (mismo día UTC =
+  // un solo día; cruce a un día distinto = día consecutivo) sin depender
+  // del reloj de pared.
+  const boundaryPivot = new Date(now.getTime() - 10 * dayMs);
+  const dayStartAtPivot = (offsetDays: number, hh: number, mm: number, ss: number, ms: number) => {
+    const d = new Date(boundaryPivot);
     d.setUTCDate(d.getUTCDate() + offsetDays);
     d.setUTCHours(hh, mm, ss, ms);
     return d;
   };
   // Dos instantes en el MISMO día calendario UTC (madrugada y noche) -> un solo día para la racha.
-  await grant(boundaryAccount.accountId, dayStartUtc(-1, 0, 0, 1, 0), 'boundary-early');
-  await grant(boundaryAccount.accountId, dayStartUtc(-1, 23, 59, 59, 0), 'boundary-late');
-  // Instante justo al cruzar a HOY (00:00:00.000 UTC) -> día distinto, consecutivo.
-  await grant(boundaryAccount.accountId, dayStartUtc(0, 0, 0, 0, 0), 'boundary-today');
+  await grant(boundaryAccount.accountId, dayStartAtPivot(0, 0, 0, 1, 0), 'boundary-early');
+  await grant(boundaryAccount.accountId, dayStartAtPivot(0, 23, 59, 59, 0), 'boundary-late');
+  // Instante justo al cruzar al día SIGUIENTE del pivote (00:00:00.000 UTC) -> día distinto, consecutivo.
+  await grant(boundaryAccount.accountId, dayStartAtPivot(1, 0, 0, 0, 0), 'boundary-next-day');
   await runGrant();
   const boundaryStreakResponse = await req('GET', '/gamification/me/streak', boundaryAccount.headers);
   check(
-    'dos otorgamientos el mismo día calendario UTC cuentan como UN solo día (currentStreak == 2, no 3)',
-    boundaryStreakResponse.body?.currentStreak === 2,
+    'dos otorgamientos el mismo día calendario UTC cuentan como UN solo día (longestStreak == 2, no 3)',
+    boundaryStreakResponse.body?.longestStreak === 2,
   );
 
   console.log('--- 6. Reconstructibilidad e integridad del historial paginado (Decision Gate 6) ---');

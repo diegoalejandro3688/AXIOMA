@@ -223,7 +223,7 @@ async function main() {
   const cursorAccountFailing = randomUUID();
   const now = new Date();
 
-  await cursorRepo.upsertSuccess(cursorAccountOk, now);
+  await cursorRepo.upsertSuccess(cursorAccountOk, now, randomUUID());
   await cursorRepo.upsertFailure(cursorAccountFailing, new Date(now.getTime() + 60_000));
 
   const cursorOk = await cursorRepo.findByAccountId(cursorAccountOk);

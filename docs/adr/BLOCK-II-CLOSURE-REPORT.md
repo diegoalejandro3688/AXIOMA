@@ -120,3 +120,17 @@ Siguiente paso del roadmap: **Bloque III — Gamificación Avanzada**, a definir
 ---
 
 **Bloque II — Progresión Visible y Public Profile Foundation: implementado, validado y cerrado (2026-08-03).**
+
+## 11. Enmienda (2026-08-04) — fragilidad temporal del fixture de `verify:gamification-progression-gate` (Gate 5)
+
+**No reabre el bloque, no cambia su estado final.** Documentada aquí porque el gate afectado pertenece a este cierre, no al Bloque III donde se descubrió.
+
+Durante la regresión del sub-incremento 1.b del Bloque III, `verify:gamification-progression-gate` empezó a fallar de forma reproducible en su Decision Gate 5 ("frontera de día calendario UTC"). **Causa raíz, confirmada, no es un defecto de `progression.service.ts`, `streak-calculator.ts` ni `XpGrantService`** (los tres permanecen exactamente como se cerraron en este bloque, verificado con `git diff` antes y después del hallazgo):
+
+El fixture de ese gate anclaba su escenario de prueba a la medianoche UTC **real** del día en que se ejecutaba, registrando la regla de XP en dos versiones de `xp-core` (una "reciente", `effectiveFrom = ahora − 1h`; una "antigua", `effectiveFrom = ahora − 60 días`). Mientras la sesión de trabajo avanzaba a lo largo del mismo día, "medianoche de hoy" quedaba cada vez más lejos de "ahora", entrando en una franja horaria que ninguna de las dos versiones cubría con margen — y que una versión residual de `verify-gamification-xp-grant-gate.ts` (mismo `programKey` `'xp-core'`, porque `XpGrantService.PROGRAM_KEY` está fijo y no admite aislamiento por gate) sí podía ocupar, sin tener la regla de este gate. Resultado: `NO_ACTIVE_RULE` para las actividades de la frontera, sin que ninguna lógica de producto hubiera cambiado.
+
+**Corrección aplicada, exclusivamente en el fixture** (`scripts/verify-gamification-progression-gate.ts`, Gate 5): el escenario ahora usa un pivote fijo (`ahora − 10 días`) en vez de la medianoche real, cubierto sin ambigüedad por la versión "antigua" ya existente, fuera del alcance de cualquier contaminación de sesión. Como `currentStreak` exige por diseño que el último día activo sea hoy/ayer real (regla de `streak-calculator.ts`, no tocada), la aserción de ese caso pasó a observarse vía `longestStreak` — mismo mecanismo de agrupación por día UTC y de cruce de frontera bajo prueba, sin depender del reloj de pared. Ninguna aserción de los otros Decision Gates cambió.
+
+**Evidencia de la corrección**: `verify:gamification-progression-gate` corrido dos veces seguidas en procesos de backend limpios e independientes tras el ajuste — PASS completo ambas veces. `verify:block-ii-gate` (Bloque I + M1 + este bloque) y `verify:learning-experience-foundation-gate` (alias de fase) también re-ejecutados completos tras el ajuste — PASS.
+
+**Clasificación**: fragilidad temporal preexistente del fixture de este bloque, expuesta por el paso del tiempo dentro de una sesión de trabajo larga — no un defecto de producto, no una regresión introducida por el Bloque III.

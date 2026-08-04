@@ -980,6 +980,12 @@ enum RewardDeliveryStatus {
 model RewardEvaluationCursor {
   accountId               String    @id @map("account_id") @db.Uuid
   lastProcessedRecordedAt DateTime? @map("last_processed_recorded_at")
+  /// Orden compuesto (recordedAt, id) -- ADR-0019 §1, precisión obligatoria
+  /// del Product Owner (sub-incremento 1.b): evita omitir entradas que
+  /// comparten `recordedAt` exacto. Ambos campos nulos juntos = nunca
+  /// procesada con éxito; ambos no nulos juntos tras el primer éxito --
+  /// nunca uno sin el otro (CHECK añadido a mano en la migración).
+  lastProcessedEntryId    String?   @map("last_processed_entry_id") @db.Uuid
   attempts                Int       @default(0)
   nextEligibleAt          DateTime  @default(now()) @map("next_eligible_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")

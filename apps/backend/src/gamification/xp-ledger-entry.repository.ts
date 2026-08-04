@@ -145,4 +145,46 @@ export class XpLedgerEntryRepository {
     });
     return result._sum.xpAmount ?? 0;
   }
+
+  /**
+   * Bloque III, sub-incremento 1.b (`RewardEvaluationWorker`, ADR-0019 §1)
+   * -- lectura pura, no modifica nada. Orden COMPUESTO (`recordedAt`, `id`),
+   * nunca solo `recordedAt`: evita omitir entradas que comparten
+   * `recordedAt` exacto (precisión obligatoria del Product Owner).
+   * `cursor = null` significa "esta cuenta nunca se procesó con éxito" --
+   * cualquier entrada existente cuenta como pendiente.
+   */
+  hasEntryAfter(accountId: string, cursor: { recordedAt: Date; entryId: string } | null, tx?: Prisma.TransactionClient): Promise<XpLedgerEntry | null> {
+    const client: Client = tx ?? this.prisma;
+    if (!cursor) {
+      return client.xpLedgerEntry.findFirst({ where: { accountId } });
+    }
+    return client.xpLedgerEntry.findFirst({
+      where: {
+        accountId,
+        OR: [{ recordedAt: { gt: cursor.recordedAt } }, { recordedAt: cursor.recordedAt, id: { gt: cursor.entryId } }],
+      },
+    });
+  }
+
+  /**
+   * Mismo criterio de orden compuesto que `hasEntryAfter` -- devuelve TODAS
+   * las entradas pendientes de la cuenta, ordenadas (`recordedAt` asc,
+   * `id` asc), para que el llamador procese el lote completo y avance el
+   * cursor a la posición exacta de la ÚLTIMA fila realmente procesada
+   * (nunca a "lo último que exista ahora").
+   */
+  findPendingSince(accountId: string, cursor: { recordedAt: Date; entryId: string } | null, tx?: Prisma.TransactionClient): Promise<XpLedgerEntry[]> {
+    const client: Client = tx ?? this.prisma;
+    if (!cursor) {
+      return client.xpLedgerEntry.findMany({ where: { accountId }, orderBy: [{ recordedAt: 'asc' }, { id: 'asc' }] });
+    }
+    return client.xpLedgerEntry.findMany({
+      where: {
+        accountId,
+        OR: [{ recordedAt: { gt: cursor.recordedAt } }, { recordedAt: cursor.recordedAt, id: { gt: cursor.entryId } }],
+      },
+      orderBy: [{ recordedAt: 'asc' }, { id: 'asc' }],
+    });
+  }
 }
