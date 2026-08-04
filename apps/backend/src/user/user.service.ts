@@ -3,6 +3,8 @@ import { DEFAULT_USER_TIMEZONE } from '@axioma/contracts';
 import { UserProfileRepository } from './user-profile.repository';
 import { PublicProfileRepository } from './public-profile.repository';
 import { isReservedOrOffensive } from './reserved-usernames';
+import { TitleEquipmentService } from '../gamification/title-equipment.service';
+import type { EquippedTitleWithDetails } from '../gamification/equipped-title.repository';
 import { Prisma } from '../generated/prisma/client';
 import type { UserProfile, PublicProfile } from '../generated/prisma/client';
 
@@ -21,6 +23,7 @@ export class UserService {
   constructor(
     private readonly profileRepo: UserProfileRepository,
     private readonly publicProfileRepo: PublicProfileRepository,
+    private readonly titleEquipmentService: TitleEquipmentService,
   ) {}
 
   /**
@@ -216,6 +219,41 @@ export class UserService {
     const existing = await this.publicProfileRepo.findByAccountId(accountId);
     if (!existing || existing.lifecycleStatus === 'ANONYMIZED') return;
     await this.publicProfileRepo.anonymize(accountId);
+  }
+
+  // --- equipped_title -- ver docs/adr/BLOCK-III-DEFINITION.md (Incremento 3, sub-incremento 3.b) ---
+
+  /**
+   * Gate 13 (exige perfil existente, vía `getPublicProfile` -- 404 si no
+   * hay) + condición explícita del Product Owner: el perfil debe estar
+   * `ACTIVE` para EQUIPAR (un `RETIRED` conserva lo ya equipado, pero no
+   * admite una nueva selección). `visibilityStatus` NO es una condición
+   * aquí -- un perfil `PRIVATE` puede equipar y conservar el título,
+   * mismo criterio ya fijado. La validación de propiedad/elegibilidad del
+   * título (Gate 14) es responsabilidad de `TitleEquipmentService`
+   * (dominio GAMIFICATION, dueño de esos datos).
+   */
+  async equipTitle(accountId: string, accountTitleId: string): Promise<EquippedTitleWithDetails> {
+    const profile = await this.getPublicProfile(accountId);
+    if (profile.lifecycleStatus !== 'ACTIVE') {
+      throw new ConflictException('Esta identidad pública no está activa.');
+    }
+    return this.titleEquipmentService.equipTitle(profile.id, accountId, accountTitleId);
+  }
+
+  /** Quitar el título equipado es siempre una acción explícita y válida -- no exige que haya uno equipado (no-op seguro). */
+  async unequipTitle(accountId: string): Promise<void> {
+    const profile = await this.getPublicProfile(accountId);
+    if (profile.lifecycleStatus !== 'ACTIVE') {
+      throw new ConflictException('Esta identidad pública no está activa.');
+    }
+    await this.titleEquipmentService.unequipTitle(profile.id);
+  }
+
+  /** Lectura propia -- sin exigir `lifecycleStatus = ACTIVE` (consultar lo que ya se tiene equipado no es una acción de escritura). */
+  async getEquippedTitle(accountId: string): Promise<EquippedTitleWithDetails | null> {
+    const profile = await this.getPublicProfile(accountId);
+    return this.titleEquipmentService.getEquippedTitle(profile.id);
   }
 
   /**

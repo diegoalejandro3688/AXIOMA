@@ -123,3 +123,22 @@ export const publicProfileResponseSchema = z.object({
   updatedAt: isoDateTime,
 });
 export type PublicProfileResponse = z.infer<typeof publicProfileResponseSchema>;
+
+/**
+ * Equipamiento de títulos -- ver docs/adr/BLOCK-III-DEFINITION.md
+ * (Incremento 3, sub-incremento 3.b). `accountTitleId: null` es una
+ * acción explícita ("quitar el título equipado"), distinta de omitir el
+ * campo -- por eso `nullable()`, no `optional()`.
+ */
+export const equipTitleRequestSchema = z.object({ accountTitleId: entityId.nullable() });
+export type EquipTitleRequest = z.infer<typeof equipTitleRequestSchema>;
+
+export const equippedTitleResponseSchema = z.object({
+  accountTitleId: entityId,
+  titleDefinitionId: entityId,
+  titleKey: z.string(),
+  displayText: z.string(),
+  rarityClass: z.string(),
+  equippedAt: isoDateTime,
+});
+export type EquippedTitleResponse = z.infer<typeof equippedTitleResponseSchema>;

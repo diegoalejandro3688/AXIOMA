@@ -301,9 +301,15 @@ async function main() {
   const unlockM = await achievementUnlockRepo.findByAccountDefinitionInstance(accountM, achievementDefinition.id, 1);
   check('acquisitionSourceId == achievement_unlock.id (§4.4)', accountTitleM?.acquisitionSourceId === unlockM?.id);
 
-  console.log('--- 8. Fuera de alcance: sin equipped_title, sin endpoints, sin tocar public_profile ---');
-  const equippedTitleTableExists = await pg.query("SELECT to_regclass('public.equipped_title') AS reg");
-  check('equipped_title NO existe todavía (3.a no la crea -- eso es 3.b)', equippedTitleTableExists.rows[0].reg === null);
+  console.log('--- 8. Fuera de alcance: sin uso de equipped_title, sin endpoints, sin tocar public_profile ---');
+  // equipped_title ya existe desde el sub-incremento 3.b (autorizado) --
+  // este gate (3.a) no la crea NI la usa: la comprobación relevante es
+  // que ninguna fila referencia los account_title de ESTE gate.
+  const equippedTitleRowsForAccounts = await pg.query(
+    'SELECT count(*)::int AS n FROM equipped_title WHERE account_title_id IN (SELECT id FROM account_title WHERE account_id = ANY($1))',
+    [[accountX, accountL, accountM]],
+  );
+  check('ningún equipped_title creado a partir de las account_title de este gate (3.a no equipa nada)', equippedTitleRowsForAccounts.rows[0].n === 0);
   const accountsTouched = [accountX, accountL, accountM];
   const publicProfileTouched = await pg.query('SELECT count(*)::int AS n FROM public_profile WHERE account_id = ANY($1)', [accountsTouched]);
   check('ningún public_profile creado/tocado', publicProfileTouched.rows[0].n === 0);

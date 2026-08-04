@@ -29,6 +29,8 @@ import { AchievementProgressRepository } from './achievement-progress.repository
 import { AchievementUnlockRepository } from './achievement-unlock.repository';
 import { TitleDefinitionRepository } from './title-definition.repository';
 import { AccountTitleRepository } from './account-title.repository';
+import { EquippedTitleRepository } from './equipped-title.repository';
+import { TitleEquipmentService } from './title-equipment.service';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -86,6 +88,13 @@ import { AccountTitleRepository } from './account-title.repository';
  * de componentes `TITLE` reutilizando `deliverBundleComponents` (sin
  * camino paralelo) -- SIN `equipped_title`, SIN endpoints, SIN tocar
  * `public_profile` (ver 3.b).
+ *
+ * Sub-incremento 3.b ("Equipamiento de títulos"): `equipped_title` +
+ * `TitleEquipmentService` (exportado -- `UserModule` lo consume para el
+ * endpoint de autoservicio, mismo criterio de frontera que
+ * `PrivacyModule` llamando a `UserService`, nunca repositorios ajenos
+ * directamente). Consistencia (cuenta, propiedad activa, definición
+ * activa/pública, perfil `ACTIVE`) respaldada por trigger -- Gates 13-15.
  */
 @Module({
   imports: [AuthModule, InternalOpsModule, OutboxModule],
@@ -116,6 +125,8 @@ import { AccountTitleRepository } from './account-title.repository';
     AchievementUnlockRepository,
     TitleDefinitionRepository,
     AccountTitleRepository,
+    EquippedTitleRepository,
+    TitleEquipmentService,
   ],
   exports: [
     GamificationProgramRepository,
@@ -139,6 +150,7 @@ import { AccountTitleRepository } from './account-title.repository';
     AchievementUnlockRepository,
     TitleDefinitionRepository,
     AccountTitleRepository,
+    TitleEquipmentService,
   ],
 })
 export class GamificationModule {}

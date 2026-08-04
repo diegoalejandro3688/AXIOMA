@@ -524,6 +524,8 @@ model PublicProfile {
   updatedAt          DateTime                      @updatedAt @map("updated_at")
 
   usernameHistory ProfileUsernameHistory[]
+  /// Bloque III, sub-incremento 3.b -- lado inverso de EquippedTitle.publicProfileId.
+  equippedTitle   EquippedTitle?
 
   @@map("public_profile")
 }
@@ -1265,6 +1267,7 @@ model AccountTitle {
   revokedAt             DateTime?                   @map("revoked_at")
 
   titleDefinition TitleDefinition @relation(fields: [titleDefinitionId], references: [id], onDelete: Restrict)
+  equippedTitle   EquippedTitle?
 
   @@unique([accountId, titleDefinitionId])
   @@map("account_title")
@@ -1276,4 +1279,42 @@ enum AccountTitleOwnershipStatus {
   SUPERSEDED
 
   @@map("account_title_ownership_status")
+}
+
+/// Bloque III, Incremento 3, sub-incremento 3.b ("Equipamiento de
+/// títulos") -- ver docs/adr/BLOCK-III-DEFINITION.md (Incremento 3) y
+/// ADR-0018 (public_profile). Data Model §16.17 (prosa, sin tabla de
+/// atributos: "Mantiene el título seleccionado públicamente. Equipar un
+/// título no cambia propiedad ni progreso.") -- estructura calcada de
+/// `equipped_cosmetic` (§16.35, entidad paralela), sin concepto de slot
+/// (un título es de selección única, no multi-slot como los cosméticos).
+/// `publicProfileId` como PK: a lo sumo una fila por perfil, upsert al
+/// cambiar selección. `accountTitleId` único: un título poseído nunca
+/// equipado en dos perfiles a la vez.
+///
+/// Consistencia (cuenta, propiedad activa, definición activa/pública,
+/// perfil ACTIVE) reforzada por trigger
+/// (`enforce_equipped_title_account_consistency`) -- respaldo real en
+/// base de datos, no solo en la aplicación (Gates 13/14). Precisión
+/// obligatoria del Product Owner: el trigger exige
+/// `public_profile.lifecycle_status = ACTIVE` pero NO exige
+/// `visibility_status = VISIBLE` -- un perfil `PRIVATE` puede equipar y
+/// conservar el título, simplemente no lo expone (mecanismo ya existente
+/// de ADR-0018, ninguna superficie pública muestra nada sin
+/// `visibilityStatus = VISIBLE`).
+///
+/// SIN trigger de inmutabilidad/no-DELETE (a diferencia de
+/// `xp_ledger_entry`/`reward_grant_component`): des-equipar (elegir
+/// "ningún título") y el borrado por anonimización (§4.10) son
+/// operaciones legítimas de esta tabla.
+model EquippedTitle {
+  publicProfileId String   @id @map("public_profile_id") @db.Uuid
+  accountTitleId  String   @unique @map("account_title_id") @db.Uuid
+  equippedAt      DateTime @map("equipped_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  publicProfile PublicProfile @relation(fields: [publicProfileId], references: [id], onDelete: Restrict)
+  accountTitle  AccountTitle  @relation(fields: [accountTitleId], references: [id], onDelete: Restrict)
+
+  @@map("equipped_title")
 }

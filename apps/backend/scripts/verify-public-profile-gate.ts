@@ -19,6 +19,10 @@ import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identit
 import { UserService } from '../src/user/user.service';
 import { UserProfileRepository } from '../src/user/user-profile.repository';
 import { PublicProfileRepository } from '../src/user/public-profile.repository';
+import { TitleEquipmentService } from '../src/gamification/title-equipment.service';
+import { AccountTitleRepository } from '../src/gamification/account-title.repository';
+import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
+import { EquippedTitleRepository } from '../src/gamification/equipped-title.repository';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
 
 const base = process.argv[2] ?? 'http://127.0.0.1:3000';
@@ -77,7 +81,12 @@ async function main() {
   // gates (ver verify-gamification-xp-grant-gate.ts).
   const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
   const prisma = new PrismaClient({ adapter }) as unknown as PrismaService;
-  const userService = new UserService(new UserProfileRepository(prisma), new PublicProfileRepository(prisma));
+  const titleEquipmentService = new TitleEquipmentService(
+    new AccountTitleRepository(prisma),
+    new TitleDefinitionRepository(prisma),
+    new EquippedTitleRepository(prisma),
+  );
+  const userService = new UserService(new UserProfileRepository(prisma), new PublicProfileRepository(prisma), titleEquipmentService);
 
   const suffix = Date.now();
   // Username permite máximo 20 caracteres (ADR-0018 §2) -- Date.now() completo

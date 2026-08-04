@@ -116,6 +116,11 @@ export class PublicProfileRepository {
    * deuda diferida documentada en el modelo (ver comentario de
    * `PublicProfile` en schema.prisma): la liberación real para otra cuenta
    * requeriría un job de limpieza no construido en este incremento.
+   *
+   * Extendido en el sub-incremento 3.b (Bloque III, BLOCK-III-DEFINITION.md
+   * §4.10) para también borrar `equipped_title` en la MISMA transacción --
+   * la propiedad (`account_title`) nunca se toca, solo la presentación
+   * pública, mismo criterio ya aplicado aquí a `avatarReference`.
    */
   anonymize(accountId: string): Promise<PublicProfile> {
     return this.prisma.$transaction(async (tx) => {
@@ -123,6 +128,7 @@ export class PublicProfileRepository {
         where: { accountId },
         data: { lifecycleStatus: 'ANONYMIZED', anonymizedAt: new Date(), avatarReference: null },
       });
+      await tx.equippedTitle.deleteMany({ where: { publicProfileId: profile.id } });
       await tx.profileUsernameHistory.create({
         data: {
           publicProfileId: profile.id,
