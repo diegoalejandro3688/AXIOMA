@@ -36,6 +36,8 @@ import { AccountChallengeRepository } from './account-challenge.repository';
 import { AccountChallengeDailyProgressRepository } from './account-challenge-daily-progress.repository';
 import { AccountChallengeConsumedEventRepository } from './account-challenge-consumed-event.repository';
 import { DailyActivitySignalReader } from './daily-activity-signal.reader';
+import { ChallengeService } from './challenge.service';
+import { ChallengeController } from './challenge.controller';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -118,10 +120,16 @@ import { DailyActivitySignalReader } from './daily-activity-signal.reader';
  * (gramática `hasEligibleActivity`/`countActiveDays`, Gate 33) se gatea de
  * forma independiente -- no lo invoca el worker en 4.b (los desafíos de
  * "días activos" usan el mismo mecanismo genérico con `daily_cap = 1`).
+ *
+ * Sub-incremento 4.c ("Reclamación explícita", §4.17): `ChallengeService`/
+ * `ChallengeController` (`/gamification/me/challenges`) -- únicamente
+ * `COMPLETED -> CLAIMED`, reutilizando `RewardEvaluationWorker.deliverBundleComponents`
+ * (visibilidad ampliada a pública) con fuente `CHALLENGE_CLAIM`. Superficie
+ * móvil diferida a 4.d.
  */
 @Module({
   imports: [AuthModule, InternalOpsModule, OutboxModule],
-  controllers: [GamificationController, ProgressionController],
+  controllers: [GamificationController, ProgressionController, ChallengeController],
   providers: [
     GamificationProgramRepository,
     GamificationProgramVersionRepository,
@@ -155,6 +163,7 @@ import { DailyActivitySignalReader } from './daily-activity-signal.reader';
     AccountChallengeDailyProgressRepository,
     AccountChallengeConsumedEventRepository,
     DailyActivitySignalReader,
+    ChallengeService,
   ],
   exports: [
     GamificationProgramRepository,
@@ -184,6 +193,7 @@ import { DailyActivitySignalReader } from './daily-activity-signal.reader';
     AccountChallengeDailyProgressRepository,
     AccountChallengeConsumedEventRepository,
     DailyActivitySignalReader,
+    ChallengeService,
   ],
 })
 export class GamificationModule {}

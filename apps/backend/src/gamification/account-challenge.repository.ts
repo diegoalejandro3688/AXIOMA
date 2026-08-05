@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../platform/prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
-import type { AccountChallenge } from '../generated/prisma/client';
+import type { AccountChallenge, ChallengeDefinition } from '../generated/prisma/client';
+
+export type AccountChallengeWithDefinition = AccountChallenge & { challengeDefinition: ChallengeDefinition };
 
 /**
  * Único punto de acceso a `account_challenge` -- ver
@@ -29,12 +31,14 @@ import type { AccountChallenge } from '../generated/prisma/client';
  * de una misma cuenta dentro de este worker, así que verificar-antes-de-crear
  * no reabre una ventana de carrera real en este flujo.
  *
- * `advanceProgress` es la ÚNICA vía de escritura de `progressValue`/
- * `challengeStatus` -- permite EXCLUSIVAMENTE `ACCEPTED -> IN_PROGRESS` y
- * `IN_PROGRESS -> COMPLETED` (nunca `CLAIMED`, eso es un sub-incremento
- * posterior). El trigger de Gate 17 (4.a) es la segunda barrera: rechaza
- * cualquier otra transición aunque este método intentara producirla.
- * Deliberadamente SIN `update()` genérico más allá de esto.
+ * `advanceProgress` (4.b) permite EXCLUSIVAMENTE `ACCEPTED -> IN_PROGRESS`
+ * y `IN_PROGRESS -> COMPLETED`. `claim` (4.c, §4.17) permite EXCLUSIVAMENTE
+ * `COMPLETED -> CLAIMED` -- lo invoca únicamente `ChallengeService.claim`,
+ * y solo DESPUÉS de confirmar que la entrega de recompensa se resolvió por
+ * completo (nunca antes). El trigger de Gate 17 (4.a) es la segunda
+ * barrera en ambos casos: rechaza cualquier otra transición aunque estos
+ * métodos intentaran producirla. Deliberadamente SIN `update()` genérico
+ * más allá de estos dos métodos.
  */
 @Injectable()
 export class AccountChallengeRepository {
@@ -90,6 +94,22 @@ export class AccountChallengeRepository {
     });
   }
 
+  /**
+   * Única transición hacia `CLAIMED` (§4.17) -- el llamador (`ChallengeService`)
+   * ya verificó `challengeStatus == 'COMPLETED'` y que la entrega de
+   * recompensa se resolvió por completo ANTES de invocar esto. Sin `tx`
+   * explícito: se invoca DESPUÉS de que `deliverBundleComponents` ya
+   * confirmó y committeó la entrega (mismo criterio de dos pasos separados
+   * que el resto de este dominio -- completar y entregar nunca comparten
+   * una única transacción todo-o-nada aquí, a diferencia de logros).
+   */
+  claim(id: string): Promise<AccountChallenge> {
+    return this.prisma.accountChallenge.update({
+      where: { id },
+      data: { challengeStatus: 'CLAIMED', claimedAt: new Date() },
+    });
+  }
+
   findById(id: string): Promise<AccountChallenge | null> {
     return this.prisma.accountChallenge.findUnique({ where: { id } });
   }
@@ -107,5 +127,14 @@ export class AccountChallengeRepository {
 
   findByAccountId(accountId: string): Promise<AccountChallenge[]> {
     return this.prisma.accountChallenge.findMany({ where: { accountId } });
+  }
+
+  /** §4.17 -- lista con `challenge_definition` ya unida, para el endpoint de listado. */
+  findByAccountIdWithDefinition(accountId: string): Promise<AccountChallengeWithDefinition[]> {
+    return this.prisma.accountChallenge.findMany({
+      where: { accountId },
+      include: { challengeDefinition: true },
+      orderBy: { acceptedAt: 'desc' },
+    });
   }
 }

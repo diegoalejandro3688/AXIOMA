@@ -4,7 +4,7 @@
 **Fase**: Fase 2 — Learning Experience Foundation
 **Bloque**: III de VIII (Roadmap Learning Experience Foundation)
 **Documentos relacionados**: `docs/adr/BLOCK-II-CLOSURE-REPORT.md`, `docs/adr/BLOCK-II-DEFINITION.md`, `docs/adr/0016-gamificacion-fundacion.md`, `docs/adr/0018-public-profile-foundation.md`
-**Estado**: Definición revisada (4ª pasada, 2026-08-05 — correcciones previas a 4.b en §4.16: día calendario UTC en vez de zona horaria de cuenta, gramáticas mínimas `CUMULATIVE_COUNT`/`ALL_ACCOUNTS`, `TransactionClient` único, semántica de evento consumido bajo `daily_cap` agotado). Incremento 4, sub-incrementos 4.a y 4.b **implementados y gateados** (4.a: commit `d476b63`; 4.b: ver Evidencia de validación más abajo). Reclamación (`CLAIMED`), endpoints y superficie móvil quedan para un sub-incremento posterior.
+**Estado**: Definición revisada (5ª pasada, 2026-08-05 — añade §4.17, reclamación explícita de desafíos). Incremento 4, sub-incrementos 4.a, 4.b y 4.c **implementados y gateados** (4.a: commit `d476b63`; 4.b: commit `8dacc71`; 4.c: ver Evidencia de validación más abajo). Solo queda pendiente 4.d (superficie móvil de consumo/presentación) para cerrar el Incremento 4 completo.
 
 ---
 
@@ -273,6 +273,28 @@ Corrección del Product Owner (2026-08-04): `AVATAR` y `AVATAR_FRAME` son slots 
 
 **e) Un evento bloqueado por `daily_cap` sigue siendo un evento CONSUMIDO**: la fila en `account_challenge_consumed_event` se inserta siempre que el evento sea elegible para la definición (dentro de su ventana, `eligibility_rule` satisfecha) — incluso cuando esa contribución específica no incrementa nada porque el `daily_cap` del día ya se agotó. "Consumido" (no se vuelve a evaluar) y "contribuyó" (incrementó `contribution_count`/`progress_value`) son hechos independientes. Si el registro de consumo dependiera de haber contribuido, un reintento del mismo evento volvería a competir por el cupo del día contra el resultado de otros eventos ya procesados en ese reintento — el resultado dejaría de ser determinista, rompiendo la idempotencia de lote (Gate 27).
 
+### 4.17 Sub-incremento 4.c: reclamación explícita (2026-08-05)
+
+Cierra el flujo de un desafío ya `COMPLETED` (4.b) — endpoints de autoservicio, autorización de propiedad, y la única transición `COMPLETED -> CLAIMED` que 4.b dejó fuera. Superficie móvil diferida a 4.d.
+
+**Semántica del claim** (orden fijo, cada paso condición del siguiente):
+
+1. Verificar que `account_challenge.id` pertenece a `request.accountId` (AuthGuard) — si no existe o pertenece a otra cuenta, **404** (nunca 403): mismo criterio que `TitleEquipmentService.equipTitle`, evita que el código de error filtre si un id ajeno existe.
+2. Verificar `challengeStatus`: `ACCEPTED`/`IN_PROGRESS` → **409** ("todavía no completado"); `CLAIMED` → **200** con el estado actual, sin re-entregar nada (idempotencia real de la solicitud, no solo del `reward_grant` interno — punto 5).
+3. Si `challenge_definition.reward_bundle_id` es `NULL` (desafío sin recompensa configurada, permitido desde 4.a), no hay nada que entregar — transicionar directo a `CLAIMED` (paso 6).
+4. Si hay bundle: reutilizar `RewardEvaluationWorker.deliverBundleComponents` (visibilidad ampliada de `private` a pública en 4.c — mismo mecanismo genérico de entrega, ADR-0019 §5/§6, sin camino paralelo) con `sourceEntityType = 'CHALLENGE_CLAIM'`, `sourceEntityId = account_challenge.id` — clave `reward:CHALLENGE_CLAIM:{account_challenge.id}` (§4.4, ya reservada desde 1.a).
+5. Idempotencia ante doble solicitud CONCURRENTE (no solo secuencial): `reward_grant.idempotencyKey` es único — dos solicitudes simultáneas del mismo claim producen como máximo un `reward_grant`, la segunda recupera la fila ya creada (mismo patrón P2002 ya usado en `RewardGrantRepository.createIdempotent`, que SÍ es seguro aquí porque gestiona su propia transacción interna, a diferencia de `AccountChallengeRepository.createIdempotent` corregido en 4.b — ver evidencia de 4.b).
+6. Solo si `deliverBundleComponents` devuelve `allResolved = true` (o no había bundle, paso 3), transicionar `challengeStatus` a `CLAIMED` con `claimedAt = now()` — nunca antes.
+7. Si algún componente queda `FAILED`/`PENDING` (`allResolved = false`), `account_challenge` conserva `COMPLETED` — el endpoint responde **503** (reintentable: una nueva solicitud de claim vuelve a intentar los componentes no entregados, mismo mecanismo de recuperación de dos capas que nivel/logros).
+
+**Nueva capacidad de escritura, alcance angosto**: `AccountChallengeRepository.claim(tx, id)` es la única vía que produce `CLAIMED` — transición reforzada por el trigger de Gate 17 (4.a) como segunda barrera. El worker periódico (`RewardEvaluationWorker.run`/`processAccount`) sigue sin tocar `CLAIMED` — la reclamación es siempre una acción síncrona iniciada por el estudiante vía HTTP, nunca automática.
+
+**Endpoints** (`/gamification/me/challenges`, mismo prefijo y criterio de autoservicio que `ProgressionController`):
+- `GET /gamification/me/challenges` — lista `account_challenge` de `request.accountId` con los datos de su `challenge_definition` (nombre, descripción, tipo) ya unidos — sin exponer el catálogo completo de definiciones no materializadas (§4.14 no introduce descubrimiento).
+- `POST /gamification/me/challenges/:accountChallengeId/claim` — sin cuerpo de solicitud.
+
+**Sin ADR nuevo**: reutiliza íntegramente el mecanismo de entrega de ADR-0019 (§6, mismo criterio de confirmación incremento a incremento que 4.a/4.b).
+
 ## 5. Decision Gates
 
 ### Incremento 1 — Entrega de recompensas
@@ -319,6 +341,11 @@ Corrección del Product Owner (2026-08-04): `AVATAR` y `AVATAR_FRAME` son slots 
 | 31 | Deduplicación de evento independiente del `daily_cap` (§4.12) | Reprocesar el mismo evento de origen dos veces no incrementa `contribution_count` ni el progreso agregado — la deduplicación por evento y el tope diario son mecanismos independientes, ambos exigidos. |
 | 32 | Asignación automática y materialización perezosa (§4.14) | `account_challenge` se crea sin acción explícita del estudiante, solo al abrir la sección o al primer evento elegible del período — `UNIQUE(account_id, challenge_definition_id, period_start)` impide duplicados y preexistencia para cuentas sin actividad. |
 | 33 | Señal de "días activos" vía `DailyActivitySignalReader` (§4.13) | Un desafío de días activos cuenta fechas únicas dentro de su propio período (misma mecánica que Gate 21, `daily_cap = 1`) — nunca lee `currentStreak` de presentación. |
+| 37 | Propiedad exclusiva del claim (§4.17) | `POST .../claim` sobre un `account_challenge` inexistente o de otra cuenta responde 404 — nunca 403, nunca filtra existencia. |
+| 38 | Solo `COMPLETED` es reclamable (§4.17) | `ACCEPTED`/`IN_PROGRESS` responde 409; `CLAIMED` responde 200 idempotente, sin re-entregar. |
+| 39 | Idempotencia real del claim, secuencial y concurrente (§4.17) | Reclamar dos veces (secuencial o concurrente) produce como máximo un `reward_grant` y transiciona a `CLAIMED` una sola vez. |
+| 40 | `CHALLENGE_CLAIM` como fuente de recompensa (§4.4/§4.17) | El `reward_grant` de un claim usa `sourceEntityType = CHALLENGE_CLAIM`, `sourceEntityId = account_challenge.id`, clave `reward:CHALLENGE_CLAIM:{id}`. |
+| 41 | Sin `CLAIMED` sin entrega confirmada (§4.17) | Si algún componente de la recompensa falla, `account_challenge` conserva `COMPLETED` (nunca `CLAIMED`) y el endpoint responde 503, reintentable. |
 
 ### Incremento 5 — Cosméticos y slots (títulos/cosméticos vinculados a niveles vía `reward_bundle_id` ya añadido en 1.c)
 
@@ -411,6 +438,30 @@ Gates ejecutados y su resultado:
 | `node scripts/verify-block-ii-gate.mjs` (consolidado Bloque I + II) | PASS, sin regresión |
 | `verify:title-equipment-gate` (3.b) | **NO EJECUTADO** — misma excepción de entorno que 4.a (requiere servidor HTTP activo); 4.b tampoco toca `equipped_title`/`public_profile`/HTTP. |
 
+### Evidencia de validación — Incremento 4, sub-incremento 4.c ("Reclamación explícita", 2026-08-05)
+
+Implementado, contra el diseño fijado en §4.17: `ChallengeService`/`ChallengeController` (`GET`/`POST /gamification/me/challenges[...]`), `AccountChallengeRepository.claim` (única vía de `COMPLETED -> CLAIMED`), gramática de contrato `challengeSummarySchema`/`listChallengesResponseSchema`/`claimChallengeResponseSchema` (`@axioma/contracts`), y `RewardEvaluationWorker.deliverBundleComponents` con visibilidad ampliada a pública (sin camino de entrega paralelo).
+
+**Corrección encontrada durante la implementación** (no anticipada en el diseño, resuelta antes de cerrar 4.c): `deliverXpBonusComponent`/`deliverTitleComponent` (worker, 1.c/3.a) asumen serialización externa por el advisory lock POR CUENTA de `processAccount` (ADR-0019 §1) — nunca se diseñaron para tolerar dos llamadas verdaderamente concurrentes sobre el MISMO componente. El endpoint HTTP de claim no tenía ese lock: dos solicitudes de claim simultáneas para el mismo `account_challenge` podían ambas ver un componente `PENDING` y la segunda en confirmar `markDelivered` chocaba contra el trigger de inmutabilidad de `reward_grant_component` (ya `DELIVERED`), devolviendo 500 en vez de resolverse idempotentemente. Corregido con un advisory lock BLOQUEANTE (`pg_advisory_xact_lock`, namespace `20`, distinto del `19` de ADR-0019) por `account_challenge.id` al entrar a `ChallengeService.claim` — una segunda solicitud concurrente espera en vez de fallar, y encuentra el estado ya `CLAIMED` al continuar (Gate 39). No se modificó el mecanismo de entrega ya cerrado (1.c/3.a).
+
+También encontrado y corregido en el camino: la aserción "`account-challenge.repository.ts` nunca asigna `claimedAt`" del gate de 4.b (`verify-challenge-progress-gate.ts`) quedó obsoleta — 4.c añade `AccountChallengeRepository.claim`, la única vía autorizada de esa transición. Se retiró esa aserción puntual (la que verifica que el WORKER PERIÓDICO nunca la asigna sigue vigente y en PASS).
+
+Gates ejecutados y su resultado:
+
+| Gate/verificación | Resultado |
+|---|---|
+| `verify:challenge-claim-gate` (nuevo, HTTP real contra servidor + Postgres — propiedad exclusiva del claim, estado previo exigido, entrega XP_BONUS+TITLE con `CHALLENGE_CLAIM`, idempotencia secuencial y CONCURRENTE, desafío sin `reward_bundle` configurado, sin identidad -> 401, frontera de dominio) | **PASS** |
+| `verify:challenge-progress-gate` (4.b, con el ajuste de aserción arriba) | PASS |
+| `verify:challenge-foundation-gate` (4.a) | PASS, sin regresión |
+| `verify:reward-foundation-gate` (1.a) | PASS, sin regresión |
+| `verify:reward-evaluation-worker-gate` (1.b) | PASS, sin regresión |
+| `verify:reward-delivery-xp-bonus-gate` (1.c) | PASS, sin regresión |
+| `verify:achievement-foundation-gate` (2.a) | PASS, sin regresión |
+| `verify:achievement-progress-unlock-gate` (2.b) | PASS, sin regresión |
+| `verify:title-foundation-gate` (3.a) | PASS, sin regresión |
+| `verify:title-equipment-gate` (3.b) | PASS, sin regresión — ejecutado por primera vez en la evidencia de este bloque (servidor HTTP disponible para el gate de 4.c); cierra la excepción de entorno registrada en 4.a/4.b. |
+| `node scripts/verify-block-ii-gate.mjs` (consolidado Bloque I + II) | PASS, sin regresión |
+
 ---
 
-**Bloque III — definición formal, 4ª revisión (2026-08-05). Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Incremento 4, sub-incrementos 4.a y 4.b implementados y gateados (§4.12–4.14, §4.16) — ningún ADR nuevo requerido (§6). Incremento 5 (§4.15) sigue en definición, sin implementación todavía. Pendiente: reclamación de desafíos (`CLAIMED`, endpoints, superficie móvil) y Cosméticos.**
+**Bloque III — definición formal, 5ª revisión (2026-08-05). Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Incremento 4, sub-incrementos 4.a, 4.b y 4.c implementados y gateados (§4.12–4.14, §4.16, §4.17) — ningún ADR nuevo requerido (§6). Incremento 5 (§4.15) sigue en definición, sin implementación todavía. Pendiente dentro de Incremento 4: superficie móvil (4.d, solo consumo/presentación). Sin tag — espera al cierre completo de Incremento 4 (backend + móvil + regresión final).**

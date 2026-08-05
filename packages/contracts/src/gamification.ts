@@ -124,3 +124,47 @@ export const xpHistoryResponseSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 export type XpHistoryResponse = z.infer<typeof xpHistoryResponseSchema>;
+
+/**
+ * Contratos de autoservicio del Incremento 4 (Desafíos), sub-incremento
+ * 4.c ("Reclamación") -- ver docs/adr/BLOCK-III-DEFINITION.md §4.16/§4.17.
+ * `GET /gamification/me/challenges` y `POST
+ * /gamification/me/challenges/:accountChallengeId/claim` operan sobre
+ * `request.accountId` (AuthGuard), nunca un id de cuenta recibido del
+ * cliente -- mismo criterio que el resto de `/gamification/me/*`.
+ */
+export const challengeSummarySchema = z.object({
+  id: entityId,
+  challengeKey: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  challengeType: z.enum(['DAILY', 'WEEKLY']),
+  targetValue: z.number().int().positive(),
+  progressValue: z.number().int().nonnegative(),
+  challengeStatus: z.enum(['ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CLAIMED']),
+  periodStart: isoDateTime,
+  periodEnd: isoDateTime,
+  acceptedAt: isoDateTime,
+  completedAt: isoDateTime.nullable(),
+  claimedAt: isoDateTime.nullable(),
+});
+export type ChallengeSummary = z.infer<typeof challengeSummarySchema>;
+
+// --- GET /gamification/me/challenges ---
+
+export const listChallengesResponseSchema = z.object({
+  challenges: z.array(challengeSummarySchema),
+});
+export type ListChallengesResponse = z.infer<typeof listChallengesResponseSchema>;
+
+// --- POST /gamification/me/challenges/:accountChallengeId/claim ---
+
+/**
+ * Devuelve el mismo `challengeSummarySchema` reflejando el estado tras el
+ * intento de reclamación -- `challengeStatus == 'CLAIMED'` si la entrega
+ * se confirmó por completo; si un componente de la recompensa falló, el
+ * endpoint responde 503 (reintentable) y `account_challenge` conserva
+ * `COMPLETED` -- nunca se expone un estado intermedio como si fuera éxito.
+ */
+export const claimChallengeResponseSchema = challengeSummarySchema;
+export type ClaimChallengeResponse = z.infer<typeof claimChallengeResponseSchema>;

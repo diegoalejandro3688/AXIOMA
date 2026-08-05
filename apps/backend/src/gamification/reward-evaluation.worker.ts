@@ -206,8 +206,15 @@ export class RewardEvaluationWorker {
    * `COSMETIC` en el mismo bundle queda `PENDING`, a la espera del
    * Incremento 5 -- no cuenta como fallo. `idempotencyKey =
    * reward:{sourceEntityType}:{sourceEntityId}` (§4.4).
+   *
+   * Visibilidad ampliada a pública en 4.c -- reutilizado por
+   * `ChallengeService.claim` (§4.17) para la fuente `CHALLENGE_CLAIM`, sin
+   * camino de entrega paralelo (mismo criterio "reutilizar el mecanismo
+   * genérico" que ADR-0019 exige). Sigue sin transicionar nada de
+   * `account_challenge` -- eso es responsabilidad exclusiva de
+   * `ChallengeService`/`AccountChallengeRepository`.
    */
-  private async deliverBundleComponents(
+  async deliverBundleComponents(
     accountId: string,
     bundle: RewardBundle & { items: RewardBundleItem[] },
     sourceEntityType: RewardSourceEntityType,

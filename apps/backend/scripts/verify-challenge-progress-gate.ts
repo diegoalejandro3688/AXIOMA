@@ -286,14 +286,18 @@ async function main() {
   check('DailyActivitySignalReader NUNCA llama computeStreak()', !readerContents.includes('computeStreak('));
   check('DailyActivitySignalReader SÍ reutiliza utcDayKey (no duplica la noción de día)', readerContents.includes('utcDayKey'));
 
-  console.log('--- 9. Fuera de alcance de 4.b: CLAIMED nunca se escribe, sin endpoints ---');
+  console.log('--- 9. Fuera de alcance de 4.b: el WORKER PERIÓDICO nunca reclama (CLAIMED es una acción síncrona de 4.c, §4.17) ---');
   const workerContents = readFileSync(join(gamificationDir, 'reward-evaluation.worker.ts'), 'utf8');
-  const accountChallengeRepoContents = readFileSync(join(gamificationDir, 'account-challenge.repository.ts'), 'utf8');
   check('reward-evaluation.worker.ts nunca asigna claimedAt', !workerContents.includes('claimedAt'));
-  check('account-challenge.repository.ts nunca asigna claimedAt', !accountChallengeRepoContents.includes('claimedAt'));
   const claimedAssignmentPattern = /challengeStatus:\s*'CLAIMED'/;
   check('ninguna asignación literal challengeStatus: CLAIMED en el worker', !claimedAssignmentPattern.test(workerContents));
-  check('ninguna asignación literal challengeStatus: CLAIMED en AccountChallengeRepository', !claimedAssignmentPattern.test(accountChallengeRepoContents));
+  // Nota (corrección encontrada al implementar 4.c, §4.17): esta sección
+  // originalmente también afirmaba que `account-challenge.repository.ts`
+  // nunca escribía `claimedAt`/`CLAIMED` -- cierto mientras CLAIMED estaba
+  // fuera de alcance (4.b). 4.c añade `AccountChallengeRepository.claim`,
+  // la única vía autorizada de esa transición (Gate 17 sigue siendo la
+  // barrera real) -- esa aserción se retiró aquí, no se contradice: sigue
+  // vigente que el WORKER nunca la produce, verificado arriba.
 
   const controllerFiles = readdirSync(gamificationDir).filter((f) => f.endsWith('.controller.ts'));
   let publicExposureFound = false;
