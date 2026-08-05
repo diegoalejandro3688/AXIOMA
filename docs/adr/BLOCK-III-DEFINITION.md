@@ -4,7 +4,7 @@
 **Fase**: Fase 2 — Learning Experience Foundation
 **Bloque**: III de VIII (Roadmap Learning Experience Foundation)
 **Documentos relacionados**: `docs/adr/BLOCK-II-CLOSURE-REPORT.md`, `docs/adr/BLOCK-II-DEFINITION.md`, `docs/adr/0016-gamificacion-fundacion.md`, `docs/adr/0018-public-profile-foundation.md`
-**Estado**: Definición revisada (9ª pasada, 2026-08-05 — añade §4.21, superficie móvil de cosméticos). Incremento 4 (Desafíos) **completo** (4.a `d476b63`, 4.b `8dacc71`, 4.c/4.d ver Evidencia de validación). Incremento 5 (Cosméticos) **completo**: 5.a, 5.b, 5.c **implementados y gateados** (ver Evidencia de validación). Pendiente antes del cierre formal del Bloque III: verificación visual real en Android (Desafíos y Cosméticos, claro/oscuro).
+**Estado**: **CERRADO — ver `docs/adr/BLOCK-III-CLOSURE-REPORT.md` (2026-08-05, APPROVED)**. Definición final (9ª pasada). Incremento 4 (Desafíos) completo (4.a `d476b63`, 4.b `8dacc71`, 4.c `83ae57b`, 4.d `bcbb107`). Incremento 5 (Cosméticos) completo (5.a `bcd5659`, 5.b `b186f6a`, 5.c `1ae25be`). Verificación visual real en Android (Desafíos y Cosméticos, claro/oscuro) confirmada por el Product Owner el 2026-08-05, incluyendo el hallazgo y fix del botón de Onboarding (`95601ad`). Gate consolidado `verify:block-iii-gate` en PASS.
 
 ---
 
@@ -748,4 +748,4 @@ Gates ejecutados y su resultado:
 
 ---
 
-**Bloque III — definición formal, 9ª revisión (2026-08-05). Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Incremento 4 (Desafíos) completo (4.a-4.d). Incremento 5 (Cosméticos) completo: 5.a, 5.b y 5.c implementados y gateados (§4.19/§4.20/§4.21) — ningún ADR nuevo requerido (§6). Pendiente antes del cierre formal del Bloque III: verificación visual real en Android (Desafíos y Cosméticos, tema claro/oscuro). Sin tag — Bloque III no se etiqueta hasta completar esa verificación.**
+**Bloque III — definición formal, 9ª revisión (2026-08-05), CERRADA. Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Incremento 4 (Desafíos) completo (4.a-4.d). Incremento 5 (Cosméticos) completo: 5.a, 5.b y 5.c implementados y gateados (§4.19/§4.20/§4.21) — ningún ADR nuevo requerido (§6). Verificación visual real en Android (Desafíos y Cosméticos, tema claro/oscuro) confirmada por el Product Owner, incluyendo el fix del botón de Onboarding. Ver `docs/adr/BLOCK-III-CLOSURE-REPORT.md` para el cierre formal completo.**
