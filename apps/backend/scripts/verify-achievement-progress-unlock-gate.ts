@@ -23,6 +23,7 @@ import { AchievementVersionRepository } from '../src/gamification/achievement-ve
 import { AchievementProgressRepository } from '../src/gamification/achievement-progress.repository';
 import { AchievementUnlockRepository } from '../src/gamification/achievement-unlock.repository';
 import { AccountTitleRepository } from '../src/gamification/account-title.repository';
+import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
 import { RewardEvaluationWorker } from '../src/gamification/reward-evaluation.worker';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
@@ -85,6 +86,7 @@ async function main() {
   const achievementProgressRepo = new AchievementProgressRepository(prisma);
   const achievementUnlockRepo = new AchievementUnlockRepository(prisma);
   const accountTitleRepo = new AccountTitleRepository(prisma);
+  const inventoryItemRepo = new InventoryItemRepository(prisma);
 
   function buildWorker(ledger: XpLedgerEntryRepository) {
     return new RewardEvaluationWorker(
@@ -103,6 +105,7 @@ async function main() {
       achievementProgressRepo,
       achievementUnlockRepo,
       accountTitleRepo,
+      inventoryItemRepo,
     );
   }
   const worker = buildWorker(ledgerRepo);
@@ -403,10 +406,11 @@ async function main() {
   const { join } = await import('node:path');
   const gamificationDir = join(__dirname, '..', 'src', 'gamification');
   const filesToCheck = ['reward-evaluation.worker.ts', 'achievement-progress.repository.ts', 'achievement-unlock.repository.ts'];
-  // 'accountTitle' se retiró en 3.a y 'ChallengeDefinition' en 4.b -- el
-  // worker ahora entrega componentes TITLE y evalúa desafíos
-  // legítimamente, ambos con autorización formal (§4.16).
-  const forbiddenSymbols = ['StudentResponse', 'CurriculumTopicProgress', 'PublicProfile', 'equippedTitle', 'equippedCosmetic', 'inventoryItem'];
+  // 'accountTitle' se retiró en 3.a, 'ChallengeDefinition' en 4.b, e
+  // 'inventoryItem' en 5.a -- el worker ahora entrega componentes
+  // TITLE/COSMETIC y evalúa desafíos legítimamente, todos con autorización
+  // formal (§4.16/§4.19).
+  const forbiddenSymbols = ['StudentResponse', 'CurriculumTopicProgress', 'PublicProfile', 'equippedTitle', 'equippedCosmetic'];
   let boundaryViolationFound = false;
   for (const file of filesToCheck) {
     const contents = readFileSync(join(gamificationDir, file), 'utf8');

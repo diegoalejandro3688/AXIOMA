@@ -1493,3 +1493,110 @@ model AccountChallengeConsumedEvent {
   @@unique([accountChallengeId, xpLedgerEntryId])
   @@map("account_challenge_consumed_event")
 }
+
+/// Bloque III, Incremento 5, sub-incremento 5.a ("Fundación de persistencia
+/// y entrega de cosméticos") -- ver docs/adr/BLOCK-III-DEFINITION.md
+/// §4.15/§4.19 y ADR-0019 (mecanismo de entrega genérico, reutilizado, no
+/// rediseñado). Data Model §16.33. SOLO esquema/repositorios/entrega en
+/// 5.a -- SIN `equipped_cosmetic`, SIN endpoints, SIN superficie móvil (ver
+/// 5.b/5.c).
+///
+/// `itemType` usa el enum `CosmeticSlot` (§4.15) -- el mismo enum que
+/// `EquippedCosmetic.cosmeticSlot` usará en 5.b; la coincidencia exacta
+/// entre ambos (Gate 34) es justamente por qué comparten un único tipo.
+///
+/// `rarityClass`: String abierto, mismo criterio que
+/// `TitleDefinition.rarityClass` (Data Model §16.33: "clasificación visual
+/// o de disponibilidad. No implicará probabilidades ocultas" -- no una
+/// enumeración cerrada).
+///
+/// `assetReference`: String OPACO a propósito (§4.19) -- 5.a no lo
+/// interpreta como URL pública, ruta local ni clave de Object Storage;
+/// solo lo persiste tal cual hasta que exista un contrato específico para
+/// servir el asset.
+///
+/// Inmutable por diseño de repositorio (sin `update()`/`delete()`), mismo
+/// criterio que `TitleDefinitionRepository`.
+model CosmeticItem {
+  id               String                   @id @default(uuid()) @db.Uuid
+  itemKey          String                   @unique @map("item_key")
+  itemType         CosmeticSlot             @map("item_type")
+  name             String
+  description      String?
+  rarityClass      String                   @map("rarity_class")
+  assetReference   String                   @map("asset_reference")
+  visibilityStatus CosmeticVisibilityStatus @map("visibility_status")
+  status           CosmeticItemStatus       @default(ACTIVE)
+  createdAt        DateTime                 @default(now()) @map("created_at")
+  retiredAt        DateTime?                @map("retired_at")
+
+  inventoryItems InventoryItem[]
+
+  @@map("cosmetic_item")
+}
+
+/// §4.15 -- mismo enum para `CosmeticItem.itemType` y (5.b)
+/// `EquippedCosmetic.cosmeticSlot`. `TITLE` deliberadamente ausente: los
+/// títulos siguen exclusivamente en `equipped_title` (Incremento 3, Gate 35).
+enum CosmeticSlot {
+  AVATAR
+  AVATAR_FRAME
+  PROFILE_BANNER
+  BADGE
+
+  @@map("cosmetic_slot")
+}
+
+enum CosmeticVisibilityStatus {
+  PRIVATE
+  PUBLIC
+
+  @@map("cosmetic_visibility_status")
+}
+
+enum CosmeticItemStatus {
+  ACTIVE
+  RETIRED
+
+  @@map("cosmetic_item_status")
+}
+
+/// Estructura calcada de `account_title` (§4.19) -- Data Model §16.34.
+/// `acquisitionSourceType`/`acquisitionSourceId` son SNAPSHOT del
+/// `reward_grant` que entregó este cosmético (mismo criterio que
+/// `AccountTitle`, ADR-0019 §4.5) -- fuente AUTORITATIVA de adquisición,
+/// nunca un metadato del catálogo. `UNIQUE(accountId, cosmeticItemId)` --
+/// idempotencia de adquisición (Data Model: "Un artículo único no deberá
+/// duplicarse accidentalmente").
+///
+/// `ownershipStatus`: 5.a produce ÚNICAMENTE `ACTIVE` en la creación --
+/// `REVOKED`/`SUPERSEDED` quedan reservados para una herramienta de
+/// moderación futura (mismo criterio que `AccountTitle`). Precisión
+/// obligatoria del Product Owner (§4.19): una nueva entrega del mismo
+/// cosmético sobre una fila ya no `ACTIVE` NUNCA reactiva su
+/// `ownershipStatus` -- `InventoryItemRepository.createIdempotent` la
+/// devuelve tal cual, sin tocarla; reactivar propiedad revocada es una
+/// política de dominio no definida, fuera de alcance de 5.a.
+model InventoryItem {
+  id                    String                       @id @default(uuid()) @db.Uuid
+  accountId             String                       @map("account_id") @db.Uuid
+  cosmeticItemId        String                       @map("cosmetic_item_id") @db.Uuid
+  acquisitionSourceType RewardSourceEntityType       @map("acquisition_source_type")
+  acquisitionSourceId   String                       @map("acquisition_source_id")
+  acquiredAt            DateTime                     @map("acquired_at")
+  ownershipStatus       InventoryItemOwnershipStatus @default(ACTIVE) @map("ownership_status")
+  revokedAt             DateTime?                    @map("revoked_at")
+
+  cosmeticItem CosmeticItem @relation(fields: [cosmeticItemId], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, cosmeticItemId])
+  @@map("inventory_item")
+}
+
+enum InventoryItemOwnershipStatus {
+  ACTIVE
+  REVOKED
+  SUPERSEDED
+
+  @@map("inventory_item_ownership_status")
+}

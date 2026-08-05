@@ -18,6 +18,7 @@ import { RewardGrantRepository } from '../src/gamification/reward-grant.reposito
 import { RewardGrantComponentRepository } from '../src/gamification/reward-grant-component.repository';
 import { RewardEvaluationCursorRepository } from '../src/gamification/reward-evaluation-cursor.repository';
 import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
+import { CosmeticItemRepository } from '../src/gamification/cosmetic-item.repository';
 import { deriveGrantStatus } from '../src/gamification/reward-status';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
 
@@ -42,6 +43,7 @@ async function main() {
   const componentRepo = new RewardGrantComponentRepository(prisma);
   const cursorRepo = new RewardEvaluationCursorRepository(prisma);
   const titleDefinitionRepo = new TitleDefinitionRepository(prisma);
+  const cosmeticItemRepo = new CosmeticItemRepository(prisma);
 
   const suffix = Date.now();
 
@@ -55,6 +57,19 @@ async function main() {
     displayText: 'Título de prueba (gate 1.a)',
     rarityClass: 'COMMON',
     unlockSourceType: 'LEVEL',
+    visibilityStatus: 'PUBLIC',
+  });
+
+  // Mismo criterio, desde 5.a: un componente COSMETIC con reference_id
+  // inexistente en cosmetic_item es rechazado por su propio trigger --
+  // necesita un cosmetic_item real para que el test de más abajo ejercite
+  // el CHECK de xp_amount (no el trigger de referencia).
+  const cosmeticItemFixture = await cosmeticItemRepo.create({
+    itemKey: `reward-foundation-gate-cosmetic-${suffix}`,
+    itemType: 'BADGE',
+    name: 'Insignia de prueba (gate 1.a)',
+    rarityClass: 'COMMON',
+    assetReference: 'gate://reward-foundation-fixture',
     visibilityStatus: 'PUBLIC',
   });
 
@@ -107,17 +122,17 @@ async function main() {
   }
   check('CHECK rechaza TITLE sin reference_id', titleRejectedWithoutReferenceId);
 
-  let titleRejectedWithXpAmount = false;
+  let cosmeticRejectedWithXpAmount = false;
   try {
     await pg.query(
       `INSERT INTO reward_bundle_item (id, reward_bundle_id, component_type, xp_amount, reference_id)
        VALUES ($1, $2, 'COSMETIC', 5, $3)`,
-      [randomUUID(), bundle.id, randomUUID()],
+      [randomUUID(), bundle.id, cosmeticItemFixture.id],
     );
   } catch (error) {
-    titleRejectedWithXpAmount = (error as { code?: string }).code === '23514';
+    cosmeticRejectedWithXpAmount = (error as { code?: string }).code === '23514';
   }
-  check('CHECK rechaza COSMETIC con xp_amount no nulo', titleRejectedWithXpAmount);
+  check('CHECK rechaza COSMETIC con xp_amount no nulo', cosmeticRejectedWithXpAmount);
 
   console.log('--- 2. reward_grant: idempotencia por idempotency_key, FK a reward_bundle ---');
   const accountA = randomUUID();

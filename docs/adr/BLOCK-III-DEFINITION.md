@@ -4,7 +4,7 @@
 **Fase**: Fase 2 — Learning Experience Foundation
 **Bloque**: III de VIII (Roadmap Learning Experience Foundation)
 **Documentos relacionados**: `docs/adr/BLOCK-II-CLOSURE-REPORT.md`, `docs/adr/BLOCK-II-DEFINITION.md`, `docs/adr/0016-gamificacion-fundacion.md`, `docs/adr/0018-public-profile-foundation.md`
-**Estado**: Definición revisada (6ª pasada, 2026-08-05 — añade §4.18, superficie móvil). Incremento 4 (Desafíos) **completo**: sub-incrementos 4.a, 4.b, 4.c y 4.d **implementados y gateados** (4.a: commit `d476b63`; 4.b: commit `8dacc71`; 4.c/4.d: ver Evidencia de validación más abajo). Incremento 5 (Cosméticos, §4.15) sigue sin implementación.
+**Estado**: Definición revisada (7ª pasada, 2026-08-05 — añade §4.19, fundación de cosméticos). Incremento 4 (Desafíos) **completo** (4.a `d476b63`, 4.b `8dacc71`, 4.c/4.d ver Evidencia de validación). Incremento 5 (Cosméticos): sub-incremento 5.a **implementado y gateado** (ver Evidencia de validación). Pendiente: 5.b (equipamiento), 5.c (móvil, alcance a definir después de 5.b).
 
 ---
 
@@ -322,6 +322,28 @@ Cierra el Incremento 4 en su alcance backend+móvil: consumo y presentación de 
 
 **Sin ADR nuevo**: sin decisión de arquitectura (solo cliente/presentación).
 
+### 4.19 Sub-incremento 5.a: fundación de persistencia y entrega de cosméticos (2026-08-05)
+
+Mismo patrón que 3.a (Títulos): esquema + entrega idempotente reutilizando `deliverBundleComponents` — SIN `equipped_cosmetic`, SIN endpoints, SIN superficie móvil (eso es 5.b/5.c).
+
+**`cosmetic_item`** (Data Model §16.33): `itemKey` (único), `itemType` (enum `CosmeticSlot`, ya fijado en §4.15 — `AVATAR|AVATAR_FRAME|PROFILE_BANNER|BADGE`), `name`, `description`, `rarityClass` (String abierto — mismo criterio que `TitleDefinition.rarityClass`, DM no lo enumera), `assetReference` (String **opaco** — no se interpreta como URL pública, ruta local ni clave de Object Storage hasta que exista un contrato específico; 5.a solo lo persiste tal cual), `visibilityStatus` (`PRIVATE|PUBLIC`), `status` (`ACTIVE|RETIRED`). Inmutable por diseño de repositorio (sin `update()`/`delete()`), mismo criterio que `TitleDefinitionRepository`.
+
+**`inventory_item`** (Data Model §16.34): calco de `account_title` — `accountId`, `cosmeticItemId` FK, `acquisitionSourceType`/`acquisitionSourceId` (snapshot del `reward_grant` que lo entregó, nunca `cosmetic_item` como fuente), `acquiredAt`, `ownershipStatus` (`ACTIVE|REVOKED|SUPERSEDED`), `revokedAt`. `UNIQUE(accountId, cosmeticItemId)` — idempotencia de adquisición (DM: "Un artículo único no deberá duplicarse accidentalmente").
+
+**Integridad de referencia (COSMETIC)**: mismos dos triggers que 3.a construyó para `TITLE`, replicados para `COSMETIC` — `enforce_reward_bundle_item_cosmetic_reference` (config, mutable) y `enforce_reward_grant_component_cosmetic_reference` (snapshot ya entregado/en curso), ambos rechazando `reference_id` que no exista en `cosmetic_item` cuando `component_type = 'COSMETIC'`. El CHECK de coherencia de 1.a (`reference_id` NULL solo si `XP_BONUS`) sigue sin interferencia, igual que en 3.a. Ningún trigger nuevo toca `XP_BONUS`/`TITLE`.
+
+**`deliverCosmeticComponent`** (nueva rama en `RewardEvaluationWorker.deliverBundleComponents`, junto a `deliverXpBonusComponent`/`deliverTitleComponent` — mismo mecanismo, sin camino paralelo):
+1. Resuelve `cosmetic_item` por `component.referenceId` (garantizado existente por el trigger — no revalida).
+2. Intenta crear `inventory_item` idempotentemente (`UNIQUE(accountId, cosmeticItemId)`).
+3. `acquisitionSourceType`/`acquisitionSourceId` = snapshot de `grant.sourceEntityType`/`grant.sourceEntityId` — misma fuente real que `deliverTitleComponent`, nunca un dato inventado.
+4. `markDelivered` solo después de que la creación (o recuperación idempotente) de `inventory_item` haya confirmado. Si la creación falla, `markFailed` — mismo patrón que `deliverTitleComponent`.
+5. Reintento (mismo `component.id`, `reward_grant` ya existente): el `UNIQUE` de `inventory_item` produce el mismo `P2002` recuperable ya usado en `AccountTitleRepository.createIdempotent` — no una segunda fila.
+6. **Decisión fijada, recomendación del Product Owner adoptada**: si ya existe un `inventory_item` para (`accountId`, `cosmeticItemId`) con `ownershipStatus` distinto de `ACTIVE` (`REVOKED`/`SUPERSEDED`), una nueva entrega del mismo cosmético **no reactiva la propiedad automáticamente** — `InventoryItemRepository.createIdempotent` devuelve la fila existente tal cual (sin tocar `ownershipStatus`) y `deliverCosmeticComponent` la trata como entrega ya resuelta (`markDelivered`, sin error) — reactivar propiedad revocada es una política de dominio no definida (fuera de alcance de 5.a, igual criterio que `RewardGrant.grantStatus = REVERSED`/`AchievementUnlock.status = REVERSED`: reservado para una herramienta de moderación futura). No se distingue de un `ACTIVE` existente a nivel de resultado del componente — ambos casos son "ya hay una fila, no se crea otra, se marca entregado" — la diferencia de `ownershipStatus` es visible solo consultando `inventory_item` directamente, nunca bloquea ni reintenta la entrega.
+
+**Limitación conocida, admitida explícitamente (no se construye backfill)**: componentes `COSMETIC` que quedaron `PENDING` antes de que `cosmetic_item` existiera (gates de 1.c/2.b/4.c, ejecutados contra bundles con `COSMETIC` fuera de alcance) solo se entregan si algo vuelve a tocar ese `reward_grant`. Para `LEVEL`/`ACHIEVEMENT_UNLOCK`, el worker los revisita en su próxima pasada normal. Para `CHALLENGE_CLAIM`, `ChallengeService.claim` corta temprano si el desafío ya está `CLAIMED` y nunca vuelve a intentar la entrega — un componente `COSMETIC` `PENDING` de un claim ya `CLAIMED` antes de 5.a queda `PENDING` para siempre, sin mecanismo de reconciliación. Aceptado como limitación conocida por tratarse de datos de prueba de Fase 2, sin datos de producción reales.
+
+**Sin ADR nuevo**: mismo criterio que 3.a — reutiliza el mecanismo de ADR-0019 sin introducir una decisión arquitectónica nueva.
+
 ## 5. Decision Gates
 
 ### Incremento 1 — Entrega de recompensas
@@ -392,6 +414,23 @@ Cierra el Incremento 4 en su alcance backend+móvil: consumo y presentación de 
 
 **Gate 25** (extensión de `LevelDefinition` con `reward_bundle_id`) se trasladó al Incremento 1, tabla de arriba en §5 (sub-incremento 1.c) — ver §4.1, nota histórica. Este incremento no vuelve a tocar `LevelDefinition`; solo añade componentes `TITLE`/`COSMETIC` al `reward_bundle` que un nivel ya referencia desde 1.c.
 
+#### Sub-incremento 5.a — Fundación de persistencia y entrega (§4.19)
+
+| # | Gate | Qué verifica |
+|---|---|---|
+| 47 | Catálogo inmutable por diseño de repositorio | `CosmeticItemRepository` no expone `update()`/`delete()` — mismo criterio que `TitleDefinitionRepository`. |
+| 48 | `UNIQUE(item_key)` | Rechaza un `cosmetic_item` con `itemKey` duplicado. |
+| 49 | Adquisición idempotente, `UNIQUE(accountId, cosmeticItemId)` | Un segundo intento de adquirir el mismo cosmético para la misma cuenta devuelve la fila ya existente, sin duplicar. |
+| 50 | Entrega real desde `LEVEL` | Un nivel con `reward_bundle` que incluye `COSMETIC` entrega `inventory_item` vía el mismo mecanismo ya usado para `XP_BONUS`/`TITLE` en esa fuente. |
+| 51 | Entrega real desde `ACHIEVEMENT_UNLOCK` | Un logro con recompensa `COSMETIC` entrega `inventory_item` vía el mismo mecanismo. |
+| 52 | Entrega real desde `CHALLENGE_CLAIM` | Un claim de desafío con recompensa `COSMETIC` entrega `inventory_item` vía el mismo mecanismo (§4.17). |
+| 53 | Reintento no duplica la entrega | Reprocesar el mismo componente/grant no crea una segunda `inventory_item` ni reabre un `deliveryStatus` ya `DELIVERED`. |
+| 54 | Referencia cosmética inexistente rechazada | Trigger rechaza `reward_bundle_item`/`reward_grant_component` con `component_type = COSMETIC` y `reference_id` inexistente en `cosmetic_item`, en AMBAS tablas — sin afectar `XP_BONUS`/`TITLE`. |
+| 55 | Sin `DELIVERED` si falla el inventario | Si la creación de `inventory_item` falla, el componente queda `FAILED`, nunca `DELIVERED`. |
+| 56 | Propiedad `REVOKED`/`SUPERSEDED` no se reactiva silenciosamente (§4.19) | Una nueva entrega sobre un `inventory_item` ya no `ACTIVE` no cambia su `ownershipStatus` — se trata como entrega ya resuelta, sin reactivar. |
+| 57 | Sin camino de entrega paralelo | Verificación estática: ninguna ruta de código crea `inventory_item` fuera de `deliverCosmeticComponent`/`InventoryItemRepository`. |
+| 58 | Componentes `COSMETIC`/`PENDING` históricos, documentados no silenciados (§4.19) | Se deja constancia explícita de cuántos `reward_grant_component` `COSMETIC` siguen `PENDING` de antes de 5.a — limitación conocida, no una reconciliación automática. |
+
 ### Worker de evaluación (transversal a Incrementos 1–4, §4.9)
 
 | # | Gate | Qué verifica |
@@ -423,6 +462,8 @@ Mismo patrón que `verify:block-ii-gate`: invoca el gate consolidado del Bloque 
 **Confirmación para Incremento 4 (2026-08-04)**: los mecanismos fijados en §4.12–4.14 (`account_challenge_daily_progress`, `DailyActivitySignalReader`, asignación automática con materialización perezosa) **no requieren ADR propio**. Ninguno introduce un componente de infraestructura nuevo (worker, cola, sistema externo): el tope diario reutiliza el patrón de aislamiento `SERIALIZABLE` ya validado en `XpGrantService` (Bloque I) sobre una tabla nueva, no un mecanismo nuevo; el lector de racha reutiliza la fuente persistida de Bloque II sin nueva tabla; la asignación perezosa es una regla de negocio sobre creación de filas, no una decisión de arquitectura. Se confirma consistente con el mecanismo de ADR-0019 (worker de evaluación por cursor de cuenta).
 
 **Confirmación para Incremento 5 (2026-08-04)**: la unificación de enum (§4.15) y el diferimiento de `STREAK_PROTECTION` son decisiones de modelado de datos y alcance de producto, no de arquitectura — **no requieren ADR propio**. Se apoyan íntegramente en el mecanismo de entrega ya fijado por ADR-0019 y en la coordinación de ciclo de vida ya construida en ADR-0018 (§4.10).
+
+**Confirmación para sub-incremento 5.a (2026-08-05)**: `deliverCosmeticComponent`, los triggers de referencia `COSMETIC`, y la política de no reactivación silenciosa de propiedad `REVOKED`/`SUPERSEDED` (§4.19) replican exactamente el mecanismo y las decisiones ya construidas en 3.a para `TITLE` — **no requiere ADR propio**, mismo criterio de confirmación incremento a incremento que 4.a/4.b/4.c.
 
 ## 7–10. Pendientes
 
@@ -517,6 +558,36 @@ Gates ejecutados y su resultado:
 
 **No verificado en esta sesión, admitido explícitamente** (§4.18): renderizado visual real (Browser/dispositivo, sesión autenticada real, tema claro/oscuro, gestos de doble toque) — el gate automatizado prueba la lógica de decisión pura, no la pantalla React Native en sí. Mismo criterio de honestidad que ya usa `verify-offline-outbox-gate.ts` sobre su propia verificación manual pendiente en Android.
 
+### Evidencia de validación — Incremento 5, sub-incremento 5.a ("Fundación de persistencia y entrega de cosméticos", 2026-08-05)
+
+Implementado, contra el alcance fijado en §4.19: `cosmetic_item`/`inventory_item` (migración `20260805042438_cosmetic_foundation`), los dos triggers de referencia `COSMETIC` (calco exacto de los de `TITLE`, 3.a), `RewardEvaluationWorker.deliverCosmeticComponent` (nueva rama en `deliverBundleComponents`, ambas ramas de invocación), y la política de no reactivación silenciosa de `ownershipStatus`.
+
+**Correcciones encontradas al gatear** (no anticipadas en el alcance aprobado, resueltas antes de cerrar 5.a):
+- Dos gates de sub-incrementos ya cerrados (`verify-reward-delivery-xp-bonus-gate.ts`, 1.c; `verify-achievement-progress-unlock-gate.ts`, 2.b) tenían `'inventoryItem'` en su lista de símbolos prohibidos para `reward-evaluation.worker.ts` — vigente mientras `COSMETIC` no tenía entrega real. Se retiró de ambas listas, mismo criterio ya aplicado en 4.b/4.c para `'ChallengeDefinition'`/`'accountTitle'`.
+- `verify-reward-delivery-xp-bonus-gate.ts` (1.c) tenía un fixture con `{ componentType: 'COSMETIC', referenceId: randomUUID() }` (un UUID inventado, válido antes de 5.a porque `COSMETIC` no se validaba) — el nuevo trigger de referencia lo rechaza de inmediato, rompiendo la creación del bundle. Corregido creando un `cosmetic_item` real para el fixture; los checks de esa sección se actualizaron para reflejar que el componente `COSMETIC` ahora SÍ se entrega (antes se afirmaba que quedaba `PENDING` para siempre, correcto solo hasta 5.a).
+- `verify-reward-foundation-gate.ts` (1.a) tenía el mismo patrón para su test "CHECK rechaza COSMETIC con xp_amount no nulo" (`referenceId: randomUUID()`) — el trigger nuevo se disparaba ANTES que el CHECK de coherencia (los triggers `BEFORE INSERT` corren antes de evaluar los `CHECK`), enmascarando la verificación original. Corregido con el mismo patrón que ya existía en ese archivo para `TITLE` (`titleDefinitionFixture`): se añadió un `cosmeticItemFixture` real.
+
+Gates ejecutados y su resultado:
+
+| Gate/verificación | Resultado |
+|---|---|
+| `verify:cosmetic-foundation-gate` (nuevo — catálogo inmutable, `UNIQUE(item_key)`, adquisición idempotente, entrega real desde `LEVEL`/`ACHIEVEMENT_UNLOCK`/`CHALLENGE_CLAIM`, reintento sin duplicados, referencia inexistente rechazada en ambas tablas, componente `FAILED` (nunca `DELIVERED`) si falla el inventario, propiedad `REVOKED` no reactivada, sin camino de entrega paralelo, componentes `COSMETIC`/`PENDING` históricos reportados) | **PASS** |
+| `verify:reward-foundation-gate` (1.a, con la corrección de fixture arriba) | PASS |
+| `verify:reward-evaluation-worker-gate` (1.b) | PASS, sin regresión |
+| `verify:reward-delivery-xp-bonus-gate` (1.c, con la corrección de fixture y frontera arriba) | PASS, sin regresión funcional |
+| `verify:achievement-foundation-gate` (2.a) | PASS, sin regresión |
+| `verify:achievement-progress-unlock-gate` (2.b, con la corrección de frontera arriba) | PASS, sin regresión funcional |
+| `verify:title-foundation-gate` (3.a) | PASS, sin regresión |
+| `verify:title-equipment-gate` (3.b) | PASS, sin regresión |
+| `verify:challenge-foundation-gate` (4.a) | PASS, sin regresión |
+| `verify:challenge-progress-gate` (4.b) | PASS, sin regresión |
+| `verify:challenge-claim-gate` (4.c) | PASS, sin regresión |
+| `node scripts/verify-block-ii-gate.mjs` (consolidado Bloque I + II) | PASS, sin regresión |
+
+**Limitación conocida, reportada por el propio gate**: 14 `reward_grant_component` `COSMETIC` en `PENDING` de corridas anteriores a 5.a (fixtures de gates ya cerrados que crearon bundles `COSMETIC` deliberadamente fuera de alcance) — el gate confirma que NINGUNO de los componentes que ÉL MISMO entregó quedó `PENDING`, y reporta el conteo histórico como información, sin intentar reconciliarlo (§4.19, decisión ya aceptada).
+
+**Sin equipamiento, sin endpoints, sin superficie móvil** (5.b/5.c) — confirmado explícitamente por el gate.
+
 ---
 
-**Bloque III — definición formal, 6ª revisión (2026-08-05). Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Incremento 4 — Desafíos — queda COMPLETO en su alcance backend + móvil: sub-incrementos 4.a, 4.b, 4.c y 4.d implementados y gateados (§4.12–4.14, §4.16, §4.17, §4.18) — ningún ADR nuevo requerido (§6). Verificación visual manual de 4.d en dispositivo/Browser queda pendiente, admitida explícitamente (no bloqueante para el cierre de este sub-incremento, sí recomendable antes de considerar Incremento 4 verificado end-to-end). Incremento 5 (Cosméticos, §4.15) sigue en definición, sin implementación todavía — Bloque III NO se etiqueta todavía.**
+**Bloque III — definición formal, 7ª revisión (2026-08-05). Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Incremento 4 (Desafíos) completo (4.a-4.d). Incremento 5 (Cosméticos): sub-incremento 5.a implementado y gateado (§4.19) — ningún ADR nuevo requerido (§6). Pendiente: 5.b (equipamiento) y 5.c (superficie móvil, alcance a definir después de 5.b). Sin tag — Bloque III no se etiqueta hasta que Incremento 5 cierre por completo.**

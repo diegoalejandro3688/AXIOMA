@@ -28,6 +28,7 @@ import { AchievementProgressRepository } from './achievement-progress.repository
 import { AchievementUnlockRepository } from './achievement-unlock.repository';
 import { parseUnlockRule, type XpThresholdUnlockRule } from './achievement-unlock-rule';
 import { AccountTitleRepository } from './account-title.repository';
+import { InventoryItemRepository } from './inventory-item.repository';
 import { ChallengeDefinitionRepository } from './challenge-definition.repository';
 import { AccountChallengeRepository } from './account-challenge.repository';
 import { AccountChallengeDailyProgressRepository } from './account-challenge-daily-progress.repository';
@@ -125,6 +126,7 @@ export class RewardEvaluationWorker {
     private readonly achievementProgressRepo: AchievementProgressRepository,
     private readonly achievementUnlockRepo: AchievementUnlockRepository,
     private readonly accountTitleRepo: AccountTitleRepository,
+    private readonly inventoryItemRepo: InventoryItemRepository,
     private readonly challengeDefinitionRepo: ChallengeDefinitionRepository,
     private readonly accountChallengeRepo: AccountChallengeRepository,
     private readonly dailyProgressRepo: AccountChallengeDailyProgressRepository,
@@ -242,8 +244,10 @@ export class RewardEvaluationWorker {
       } else if (component.componentType === 'TITLE') {
         const delivered = await this.deliverTitleComponent(accountId, grant, component);
         if (!delivered) allResolved = false;
+      } else if (component.componentType === 'COSMETIC') {
+        const delivered = await this.deliverCosmeticComponent(accountId, grant, component);
+        if (!delivered) allResolved = false;
       }
-      // COSMETIC: fuera de alcance hasta el Incremento 5 -- queda PENDING, no cuenta como fallo.
     }
     return { grant, allResolved };
   }
@@ -272,6 +276,41 @@ export class RewardEvaluationWorker {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Fallo entregando componente TITLE ${component.id} (cuenta ${accountId}): ${message}`);
+      await this.componentRepo.markFailed(component.id);
+      return false;
+    }
+    await this.componentRepo.markDelivered(component.id);
+    return true;
+  }
+
+  /**
+   * Entrega real de UN componente `COSMETIC` (Incremento 5, sub-incremento
+   * 5.a, §4.19): crea `inventory_item` idempotentemente (por
+   * `UNIQUE(accountId, cosmeticItemId)`) -- mismo mecanismo exacto que
+   * `deliverTitleComponent` (`component.referenceId` ya garantizado por
+   * `enforce_reward_grant_component_cosmetic_reference` a existir en
+   * `cosmetic_item`). `acquisitionSourceType`/`acquisitionSourceId` son
+   * snapshot de la cabecera `grant` -- fuente autoritativa de adquisición.
+   *
+   * Si ya existe un `inventory_item` con `ownershipStatus` distinto de
+   * `ACTIVE` (`REVOKED`/`SUPERSEDED`), `createIdempotent` lo devuelve tal
+   * cual, sin reactivarlo (§4.19) -- este método lo trata igual que
+   * cualquier otra recuperación idempotente: entrega resuelta,
+   * `markDelivered`, sin error. Operación de PROPIEDAD únicamente -- nunca
+   * equipa (`equipped_cosmetic` pertenece a 5.b, fuera de alcance aquí).
+   */
+  private async deliverCosmeticComponent(accountId: string, grant: RewardGrantWithComponents, component: RewardGrantComponent): Promise<boolean> {
+    try {
+      await this.inventoryItemRepo.createIdempotent({
+        accountId,
+        cosmeticItemId: component.referenceId!,
+        acquisitionSourceType: grant.sourceEntityType,
+        acquisitionSourceId: grant.sourceEntityId,
+        acquiredAt: new Date(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Fallo entregando componente COSMETIC ${component.id} (cuenta ${accountId}): ${message}`);
       await this.componentRepo.markFailed(component.id);
       return false;
     }
@@ -499,8 +538,10 @@ export class RewardEvaluationWorker {
       } else if (component.componentType === 'TITLE') {
         const delivered = await this.deliverTitleComponent(accountId, grant, component);
         if (!delivered) allResolved = false;
+      } else if (component.componentType === 'COSMETIC') {
+        const delivered = await this.deliverCosmeticComponent(accountId, grant, component);
+        if (!delivered) allResolved = false;
       }
-      // COSMETIC: fuera de alcance hasta el Incremento 5.
     }
     return allResolved;
   }

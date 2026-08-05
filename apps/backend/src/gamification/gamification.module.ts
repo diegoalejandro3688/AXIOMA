@@ -38,6 +38,8 @@ import { AccountChallengeConsumedEventRepository } from './account-challenge-con
 import { DailyActivitySignalReader } from './daily-activity-signal.reader';
 import { ChallengeService } from './challenge.service';
 import { ChallengeController } from './challenge.controller';
+import { CosmeticItemRepository } from './cosmetic-item.repository';
+import { InventoryItemRepository } from './inventory-item.repository';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -126,6 +128,13 @@ import { ChallengeController } from './challenge.controller';
  * `COMPLETED -> CLAIMED`, reutilizando `RewardEvaluationWorker.deliverBundleComponents`
  * (visibilidad ampliada a pública) con fuente `CHALLENGE_CLAIM`. Superficie
  * móvil diferida a 4.d.
+ *
+ * Incremento 5, sub-incremento 5.a ("Fundación de persistencia y entrega
+ * de cosméticos", §4.19): `cosmetic_item`/`inventory_item`, entrega
+ * idempotente de componentes `COSMETIC` vía `RewardEvaluationWorker.deliverCosmeticComponent`
+ * (mismo mecanismo genérico, sin camino paralelo) -- SIN `equipped_cosmetic`,
+ * SIN endpoints, SIN superficie móvil (ver 5.b/5.c). Propiedad `REVOKED`/
+ * `SUPERSEDED` nunca se reactiva silenciosamente ante una nueva entrega.
  */
 @Module({
   imports: [AuthModule, InternalOpsModule, OutboxModule],
@@ -164,6 +173,8 @@ import { ChallengeController } from './challenge.controller';
     AccountChallengeConsumedEventRepository,
     DailyActivitySignalReader,
     ChallengeService,
+    CosmeticItemRepository,
+    InventoryItemRepository,
   ],
   exports: [
     GamificationProgramRepository,
@@ -194,6 +205,8 @@ import { ChallengeController } from './challenge.controller';
     AccountChallengeConsumedEventRepository,
     DailyActivitySignalReader,
     ChallengeService,
+    CosmeticItemRepository,
+    InventoryItemRepository,
   ],
 })
 export class GamificationModule {}

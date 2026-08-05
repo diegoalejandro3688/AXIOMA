@@ -22,6 +22,7 @@ import { AchievementVersionRepository } from '../src/gamification/achievement-ve
 import { AchievementProgressRepository } from '../src/gamification/achievement-progress.repository';
 import { AchievementUnlockRepository } from '../src/gamification/achievement-unlock.repository';
 import { AccountTitleRepository } from '../src/gamification/account-title.repository';
+import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
 import { ChallengeDefinitionRepository } from '../src/gamification/challenge-definition.repository';
 import { AccountChallengeRepository } from '../src/gamification/account-challenge.repository';
 import { AccountChallengeDailyProgressRepository } from '../src/gamification/account-challenge-daily-progress.repository';
@@ -74,6 +75,7 @@ async function main() {
   const achievementProgressRepo = new AchievementProgressRepository(prisma);
   const achievementUnlockRepo = new AchievementUnlockRepository(prisma);
   const accountTitleRepo = new AccountTitleRepository(prisma);
+  const inventoryItemRepo = new InventoryItemRepository(prisma);
   const challengeDefinitionRepo = new ChallengeDefinitionRepository(prisma);
   const accountChallengeRepo = new AccountChallengeRepository(prisma);
   const dailyProgressRepo = new AccountChallengeDailyProgressRepository(prisma);
@@ -98,6 +100,7 @@ async function main() {
     achievementProgressRepo,
     achievementUnlockRepo,
     accountTitleRepo,
+    inventoryItemRepo,
     challengeDefinitionRepo,
     accountChallengeRepo,
     dailyProgressRepo,

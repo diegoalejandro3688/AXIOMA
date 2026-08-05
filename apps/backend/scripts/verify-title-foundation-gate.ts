@@ -24,6 +24,7 @@ import { AchievementProgressRepository } from '../src/gamification/achievement-p
 import { AchievementUnlockRepository } from '../src/gamification/achievement-unlock.repository';
 import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
 import { AccountTitleRepository } from '../src/gamification/account-title.repository';
+import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
 import { RewardEvaluationWorker } from '../src/gamification/reward-evaluation.worker';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
@@ -51,6 +52,7 @@ async function main() {
 
   const titleDefinitionRepo = new TitleDefinitionRepository(prisma);
   const accountTitleRepo = new AccountTitleRepository(prisma);
+  const inventoryItemRepo = new InventoryItemRepository(prisma);
   const bundleRepo = new RewardBundleRepository(prisma);
   const grantRepo = new RewardGrantRepository(prisma);
   const componentRepo = new RewardGrantComponentRepository(prisma);
@@ -80,6 +82,7 @@ async function main() {
     achievementProgressRepo,
     achievementUnlockRepo,
     accountTitleRepo,
+    inventoryItemRepo,
   );
 
   const suffix = Date.now();
