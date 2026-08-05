@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import type { UserProfileResponse } from '@axioma/contracts';
 import { useAuth } from '../../lib/auth/auth-provider';
 import { getProfile, initializeProfile, updateProfile } from '../../lib/api/user';
 import { LoadingState } from '../../components/loading-state';
 import { ErrorState } from '../../components/error-state';
+import { CosmeticsSection } from '../../components/cosmetics-section';
 import { useTheme, useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
@@ -66,49 +67,53 @@ export default function PerfilScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title} accessibilityRole="header">
-        Perfil
-      </Text>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <Text style={styles.title} accessibilityRole="header">
+          Perfil
+        </Text>
 
-      <TextInput
-        accessibilityLabel="Nombre a mostrar"
-        placeholder="Nombre a mostrar"
-        placeholderTextColor={tokens.color.text.muted}
-        selectionColor={tokens.color.accent.default}
-        cursorColor={tokens.color.accent.default}
-        value={displayName}
-        onChangeText={setDisplayName}
-        style={styles.input}
-      />
-      {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
+        <TextInput
+          accessibilityLabel="Nombre a mostrar"
+          placeholder="Nombre a mostrar"
+          placeholderTextColor={tokens.color.text.muted}
+          selectionColor={tokens.color.accent.default}
+          cursorColor={tokens.color.accent.default}
+          value={displayName}
+          onChangeText={setDisplayName}
+          style={styles.input}
+        />
+        {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
 
-      {state.status === 'needs-init' ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Guardar perfil"
-          onPress={handleInitialize}
-          disabled={saving || !displayName.trim()}
-          style={[styles.saveButton, (saving || !displayName.trim()) && styles.buttonDisabled]}
-        >
-          {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Guardar perfil</Text>}
-        </Pressable>
-      ) : (
-        <>
-          <Text style={styles.meta}>Zona horaria: {state.profile.timezone}</Text>
+        {state.status === 'needs-init' ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Guardar cambios"
-            onPress={handleSave}
-            disabled={saving || !displayName.trim() || displayName === state.profile.displayName}
-            style={[
-              styles.saveButton,
-              (saving || !displayName.trim() || displayName === state.profile.displayName) && styles.buttonDisabled,
-            ]}
+            accessibilityLabel="Guardar perfil"
+            onPress={handleInitialize}
+            disabled={saving || !displayName.trim()}
+            style={[styles.saveButton, (saving || !displayName.trim()) && styles.buttonDisabled]}
           >
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Guardar cambios</Text>}
+            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Guardar perfil</Text>}
           </Pressable>
-        </>
-      )}
+        ) : (
+          <>
+            <Text style={styles.meta}>Zona horaria: {state.profile.timezone}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Guardar cambios"
+              onPress={handleSave}
+              disabled={saving || !displayName.trim() || displayName === state.profile.displayName}
+              style={[
+                styles.saveButton,
+                (saving || !displayName.trim() || displayName === state.profile.displayName) && styles.buttonDisabled,
+              ]}
+            >
+              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Guardar cambios</Text>}
+            </Pressable>
+          </>
+        )}
+
+        <CosmeticsSection />
+      </ScrollView>
 
       <Pressable accessibilityRole="button" accessibilityLabel="Cerrar sesión" onPress={auth.logout} style={styles.logoutButton}>
         <Text style={styles.logoutButtonText}>Cerrar sesión</Text>
@@ -124,7 +129,9 @@ export default function PerfilScreen() {
  */
 function createStyles(t: ThemeTokens) {
   return {
-    container: { flex: 1, padding: 24, gap: 12, backgroundColor: t.color.background.default },
+    container: { flex: 1, paddingHorizontal: 24, paddingTop: 24, backgroundColor: t.color.background.default },
+    scroll: { flex: 1 },
+    scrollContent: { gap: 12, paddingBottom: 16 },
     title: { fontSize: 24, fontWeight: '700' as const, marginBottom: 8, color: t.color.text.primary },
     input: {
       borderWidth: 1,
@@ -142,7 +149,7 @@ function createStyles(t: ThemeTokens) {
     buttonDisabled: { opacity: 0.5 },
     saveButtonText: { color: '#fff', fontWeight: '600' as const },
     logoutButton: {
-      marginTop: 'auto' as const,
+      marginTop: 12,
       alignSelf: 'center' as const,
       marginBottom: 16,
       paddingVertical: 10,

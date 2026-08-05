@@ -37,7 +37,7 @@ interface RequestOptions<T> {
 }
 
 export async function apiRequest<T = void>(
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   path: string,
   options: RequestOptions<T> = {},
 ): Promise<ApiResult<T>> {

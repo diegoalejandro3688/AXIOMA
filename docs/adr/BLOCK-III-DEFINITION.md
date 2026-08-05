@@ -4,7 +4,7 @@
 **Fase**: Fase 2 — Learning Experience Foundation
 **Bloque**: III de VIII (Roadmap Learning Experience Foundation)
 **Documentos relacionados**: `docs/adr/BLOCK-II-CLOSURE-REPORT.md`, `docs/adr/BLOCK-II-DEFINITION.md`, `docs/adr/0016-gamificacion-fundacion.md`, `docs/adr/0018-public-profile-foundation.md`
-**Estado**: Definición revisada (8ª pasada, 2026-08-05 — añade §4.20, equipamiento de cosméticos). Incremento 4 (Desafíos) **completo** (4.a `d476b63`, 4.b `8dacc71`, 4.c/4.d ver Evidencia de validación). Incremento 5 (Cosméticos): sub-incrementos 5.a y 5.b **implementados y gateados** (ver Evidencia de validación). Pendiente: 5.c (superficie móvil, alcance a definir).
+**Estado**: Definición revisada (9ª pasada, 2026-08-05 — añade §4.21, superficie móvil de cosméticos). Incremento 4 (Desafíos) **completo** (4.a `d476b63`, 4.b `8dacc71`, 4.c/4.d ver Evidencia de validación). Incremento 5 (Cosméticos) **completo**: 5.a, 5.b, 5.c **implementados y gateados** (ver Evidencia de validación). Pendiente antes del cierre formal del Bloque III: verificación visual real en Android (Desafíos y Cosméticos, claro/oscuro).
 
 ---
 
@@ -372,6 +372,43 @@ Cierra `equipped_cosmetic` (Data Model §16.35) sobre la fundación de 5.a — m
 
 **Sin ADR nuevo**: mismo criterio que 3.b — reutiliza el mecanismo de coordinación de ADR-0018 sin introducir una decisión arquitectónica nueva.
 
+### 4.21 Sub-incremento 5.c: superficie móvil de cosméticos (2026-08-05)
+
+Cierra el Incremento 5 en su alcance backend+móvil: consumo y presentación de lo que 5.b ya expone, sin evaluación ni lógica de negocio nueva en el cliente — mismo criterio que 4.d.
+
+**Ubicación** (decisión de producto): Cosméticos vive dentro de **Perfil** (`app/(tabs)/perfil.tsx`), como una nueva sección "Personalización" (`components/cosmetics-section.tsx`) añadida bajo el formulario de perfil existente, dentro de un `ScrollView` nuevo (la pantalla no tenía scroll — necesario para que los 4 slots quepan sin recortar el botón de cerrar sesión). Ningún tab nuevo, ninguna ruta nueva.
+
+**Cliente tipado**:
+- `lib/api/client.ts`: se añade `'PUT'` a la unión de métodos de `apiRequest` (solo tenía `GET|POST|PATCH|DELETE`) — extensión mínima necesaria, sin tocar el resto del wrapper.
+- `lib/api/cosmetics.ts`: `listCosmetics()` (`GET /gamification/me/cosmetics`) y `equipCosmetic(slot, inventoryItemId)` (`PUT .../equipped/:slot`), mismo patrón que `lib/api/challenges.ts`.
+- `lib/cosmetics/equip-outcome.ts`: mapeo puro `ApiResult -> EquipCosmeticOutcome` (`ok`/`reload`/`conflict`/`network`/`error`) — solo traduce status HTTP, nunca reinterpreta reglas de negocio ya decididas por 5.b (propiedad, `ownershipStatus`, coincidencia de slot). `import type` de `ApiResult` a propósito (se elide en compilación) — gateable con `tsx` puro, mismo criterio que `claim-outcome.ts` (4.d).
+- `lib/cosmetics/group-cosmetics.ts`: `COSMETIC_SLOTS` (los 4 slots fijos), `SLOT_LABEL`, `groupOwnedCosmetics` (agrupación de `owned` por `itemType` — puramente de presentación, sin decidir a qué slot pertenece cada cosmético).
+
+**Pantalla** (`CosmeticsSection`, dentro de `perfil.tsx`): estados `loading`/`error`/`ready` (mismo `ScreenState` que otras pantallas). Los 4 slots (`AVATAR`/`AVATAR_FRAME`/`PROFILE_BANNER`/`BADGE`) se renderizan **siempre**, en el mismo orden, independientemente de si `owned`/`equipped` están vacíos — cada tarjeta muestra el cosmético equipado (o "Sin equipar") y, al tocarla, expande la lista de cosméticos poseídos de ESE slot (o un mensaje "Todavía no posees cosméticos de este tipo" si está vacío).
+
+**Bloqueo de doble toque, por SLOT (no global)** — decisión explícita, distinta de 4.d: dos `PUT` a slots distintos pueden coexistir sin conflicto en el backend (Gate 66, verificado con concurrencia real en 5.b), así que bloquear los 4 slots mientras uno está en curso sería una restricción de UI sin respaldo en el backend. Un `equippingSlot: CosmeticSlotValue | null` deshabilita únicamente las filas de selección y el toggle de ESE slot; los otros tres permanecen operables.
+
+**Sin equipamiento optimista** (mismo criterio que 4.d, nunca `CLAIMED`/equipado antes de la respuesta real):
+1. El estudiante toca un cosmético poseído de un slot.
+2. Se bloquea ese slot (`equippingSlot = slot`), se limpia su error previo.
+3. Se ejecuta el `PUT`.
+4. Solo tras una respuesta 200 el estado local de `equipped[slot]` se reemplaza con `outcome.data` (dato real del servidor) y el selector se cierra.
+5. Ante cualquier otro resultado, el equipamiento anterior se conserva sin cambios.
+
+**Reacción a cada resultado del `PUT`**:
+- `ok` (200): actualiza `equipped[slot]` localmente con la respuesta real, cierra el selector.
+- `reload` (404 — perfil inexistente o inventario desactualizado): descarta el estado local y recarga TODO (`load()` — `owned` + `equipped` completos), no se intenta adivinar qué cambió.
+- `conflict` (409 — cosmético ya no disponible o slot equivocado): conserva el equipamiento anterior, muestra un mensaje inline en ESE slot, cierra el selector.
+- `network`/`error`: mismo tratamiento que `conflict` — conserva el equipamiento anterior, mensaje inline, reintentable (el estudiante puede volver a tocar el cosmético).
+
+**Tema claro/oscuro**: `useThemedStyles`/`useTheme`, únicamente tokens semánticos, mismo criterio que 4.d/ADR-0015. `Perfil` se reestructuró con un `ScrollView` (`styles.scroll`/`styles.scrollContent` nuevos) manteniendo "Cerrar sesión" fuera del scroll, fijo al fondo (antes usaba `marginTop: 'auto'` dentro de un único `View`; ahora es un hermano del `ScrollView`, con `marginTop: 12` fijo).
+
+**Fuera de 5.c, confirmado**: sin desequipar sin reemplazo, sin tienda/monedas, sin compra, sin edición de `assetReference`, sin múltiples insignias simultáneas, sin catálogo público, sin subida de imágenes, sin animaciones complejas, sin cambios de backend (el único cambio fuera de `apps/mobile` es la adición de `'PUT'` a la unión de métodos del propio cliente móvil, que no es un cambio de backend).
+
+**Verificación real ejecutada en esta sesión** (no solo el gate de lógica pura — ver Evidencia de validación más abajo): sesión autenticada real vía `expo start --web` contra el backend real, incluyendo el flujo completo `sin cosméticos → con cosméticos → equipar → reemplazar → persistencia tras recarga`, contra datos insertados directamente en Postgres (no fixtures de gate) y limpiados al finalizar. Verificación visual real en Android (dispositivo/emulador, tema claro/oscuro) queda explícitamente diferida al cierre formal del Bloque III, junto con la de Desafíos (4.d) — instrucción explícita del Product Owner, no un olvido.
+
+**Sin ADR nuevo**: sin decisión de arquitectura (solo cliente/presentación).
+
 ## 5. Decision Gates
 
 ### Incremento 1 — Entrega de recompensas
@@ -473,6 +510,21 @@ Cierra `equipped_cosmetic` (Data Model §16.35) sobre la fundación de 5.a — m
 | 66 | Concurrencia sin duplicados ni error | Dos `PUT` concurrentes con cosméticos distintos para el mismo slot terminan con exactamente una fila válida, cuyo valor corresponde a una de las dos solicitudes — sin 500, sin fila duplicada. |
 | 67 | Anonimización limpia el equipamiento cosmético | `anonymizePublicProfileForAccountClosure` elimina las filas de `equipped_cosmetic` del perfil anonimizado (todas las que existan, hasta 4), sin tocar `inventory_item` (propiedad). |
 | 68 | Sin dependencia circular de módulos | Verificación estática: `GamificationModule` no importa `UserModule` — el controller de cosméticos vive en `UserModule` pese a su ruta `gamification/me/*`. |
+
+#### Sub-incremento 5.c — Superficie móvil (§4.21)
+
+| # | Gate | Qué verifica |
+|---|---|---|
+| 69 | Contrato tipado del `GET`/`PUT` | `lib/api/cosmetics.ts` usa los esquemas Zod de `@axioma/contracts` (`listCosmeticsResponseSchema`/`equipCosmeticResponseSchema`) — sin tipos redefinidos a mano. |
+| 70 | Los 4 slots existen siempre | `COSMETIC_SLOTS` tiene exactamente `AVATAR`/`AVATAR_FRAME`/`PROFILE_BANNER`/`BADGE`, sin depender del inventario recibido. |
+| 71 | Agrupación correcta por tipo | `groupOwnedCosmetics` particiona `owned` en sus 4 grupos según `itemType`, sin decidir a qué slot pertenece cada cosmético (eso ya lo fijó el backend). |
+| 72 | Inventario vacío no rompe la agrupación | Con `owned = []`, los 4 grupos existen como arrays vacíos — ninguno es `undefined`. |
+| 73 | Selección limitada al slot equivalente | La UI solo ofrece, dentro del selector de un slot, los cosméticos de `grouped[slot]` — nunca cosméticos de otro `itemType`. |
+| 74 | Doble toque bloqueado por slot | `equippingSlot` deshabilita la selección y el toggle de ESE slot mientras su `PUT` está en curso; los otros 3 slots permanecen operables (verificado por diseño: `equip-outcome.ts` no coordina entre slots). |
+| 75 | Ningún estado optimista | `equipped[slot]` solo se actualiza en la rama `outcome.kind === 'ok'`, con `outcome.data` (dato real del servidor) — verificado por inspección: ninguna otra rama toca `equipped`. |
+| 76 | `404`/`409` provocan reconciliación o conservación segura | `mapEquipResult`: 404 → `reload` (recarga completa); 409 → `conflict` (conserva el equipamiento anterior, mensaje inline) — mapeo puro, sin requerir `itemType`/slot para decidir (Gate verificado en `verify:cosmetics-gate`). |
+| 77 | Cosméticos equipados correctamente identificados | Con un inventario poblado y un slot equipado, la tarjeta de ESE slot muestra el nombre del cosmético equipado (no "Sin equipar"), y ese mismo ítem aparece marcado "Equipado" (no seleccionable de nuevo) dentro de su selector expandido. |
+| 78 | Sin lógica de negocio duplicada | Verificación por diseño: `mapEquipResult` no recibe ni necesita `itemType`/`ownershipStatus`/propiedad para decidir su resultado — solo el status HTTP ya decidido por el backend (5.b). |
 
 ### Worker de evaluación (transversal a Incrementos 1–4, §4.9)
 
@@ -662,6 +714,38 @@ Gates ejecutados y su resultado:
 
 **Confirmado explícitamente fuera de 5.b** (por el gate): sin desequipamiento sin reemplazo (`@Delete` ausente del controller), sin catálogo público de `cosmetic_item`, sin superficie móvil (5.c).
 
+### Evidencia de validación — Incremento 5, sub-incremento 5.c ("Superficie móvil de Cosméticos", 2026-08-05)
+
+Implementado, contra el diseño fijado en §4.21: `lib/api/cosmetics.ts`, `lib/cosmetics/equip-outcome.ts`, `lib/cosmetics/group-cosmetics.ts`, sección `CosmeticsSection` (`components/cosmetics-section.tsx`) integrada en `perfil.tsx` (reestructurado con `ScrollView`), y `'PUT'` añadido a la unión de métodos de `lib/api/client.ts`.
+
+**Verificación de lógica pura** (`verify:cosmetics-gate`, mismo criterio `tsx` sin runtime RN que `verify:challenges-gate`): 4 slots siempre presentes, agrupación correcta por tipo (incluyendo inventario vacío), mapeo `mapEquipResult` (200/404/409/network/otro) sin lógica de negocio duplicada — **PASS**, sin fallos.
+
+**Verificación real end-to-end ejecutada en esta sesión** (no solo la lógica pura): backend real levantado (`nest start`, PostgreSQL vía Docker), `expo start --web` con `EXPO_PUBLIC_AUTH_IDENTITY_CLIENT=stub` (ya configurado en `apps/mobile/.env`, sin tocar), sesión real autenticada contra `/auth/session`. Flujo verificado contra datos reales (insertados directamente en Postgres para esta verificación — no fixtures de gate — y eliminados al finalizar):
+- Cuenta sin `public_profile` ni inventario: `GET` no falla, los 4 slots se renderizan con "Sin equipar" (Gate 64/70 consumidos correctamente por el cliente).
+- Cuenta con inventario (2 `AVATAR` + 1 `BADGE`) pero sin `public_profile` ACTIVO: `PUT` responde 404 real → la pantalla ejecuta `reload()` (recarga completa), sin quedar en un estado inconsistente (Gate 76).
+- Tras crear el `public_profile` (vía `POST /user/public-profile` real) y reintentar: `PUT` exitoso, el slot `AVATAR` pasa de "Sin equipar" a "Zorro Explorador" con la respuesta real del servidor.
+- Reemplazo: equipar "Buho Sabio" en el mismo slot reemplaza atómicamente la fila (`equipped_cosmetic` confirmado en Postgres con exactamente 1 fila para `AVATAR`, valor actualizado) — sin fila duplicada, consistente con Gate 60/66 de 5.b.
+- Persistencia real: recarga completa de la página (nueva sesión) muestra "Buho Sabio" todavía equipado — dato del servidor, no de estado local perdido.
+- Tema oscuro: `resize_window` con `colorScheme: dark` + inspección de estilos computados confirma `color: rgb(245, 246, 248)` en el título "Personalización", exactamente `darkTokens.color.text.primary` (`#F5F6F8`) — sin hex nuevo, tokens aplicados correctamente.
+
+**Datos de verificación limpiados**: cuenta, `auth_identity`/`auth_session`, `public_profile` (+ `profile_username_history`), `inventory_item` y los 3 `cosmetic_item` de prueba se eliminaron de Postgres al finalizar — no quedan residuos en la base de datos de desarrollo.
+
+**Verificación visual real en Android (dispositivo/emulador) diferida explícitamente al cierre formal del Bloque III** — junto con la de Desafíos (4.d), instrucción explícita del Product Owner, no una omisión de esta sesión.
+
+Gates ejecutados y su resultado:
+
+| Gate/verificación | Resultado |
+|---|---|
+| `verify:cosmetics-gate` (nuevo, lógica pura — 4 slots siempre presentes, agrupación por tipo, mapeo 200/404/409/network/otro, sin lógica duplicada) | **PASS** |
+| `verify:challenges-gate` (4.d, regresión) | PASS, sin regresión |
+| `verify:offline-outbox-gate` (ADR-0011, regresión) | PASS, sin regresión |
+| `tsc --noEmit` (mobile, `scripts/` incluido en `tsconfig.json`) | PASS, sin errores |
+| `eslint app lib components` (mobile) | PASS, sin advertencias |
+| Verificación manual real (`expo start --web` + backend real) | Descrita arriba — flujo completo equipar/reemplazar/persistir verificado contra datos reales |
+| `node scripts/verify-block-ii-gate.mjs` (consolidado Bloque I + II, tras la manipulación manual de la base de datos de desarrollo) | **PASS** (ejecutado tras la limpieza de los datos de verificación, salida real confirmada: gate consolidado Bloque I PASS, GAMIFICATION Progresión Visible PASS, USER Public Profile Foundation PASS) |
+
+**Confirmado explícitamente fuera de 5.c**: sin desequipar sin reemplazo, sin tienda/monedas/compra, sin edición de `assetReference`, sin múltiples insignias simultáneas, sin catálogo público, sin subida de imágenes, sin animaciones complejas, sin cambios de backend.
+
 ---
 
-**Bloque III — definición formal, 8ª revisión (2026-08-05). Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Incremento 4 (Desafíos) completo (4.a-4.d). Incremento 5 (Cosméticos): sub-incrementos 5.a y 5.b implementados y gateados (§4.19/§4.20) — ningún ADR nuevo requerido (§6). Pendiente: 5.c (superficie móvil, alcance a definir). Sin tag — Bloque III no se etiqueta hasta que Incremento 5 cierre por completo.**
+**Bloque III — definición formal, 9ª revisión (2026-08-05). Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Incremento 4 (Desafíos) completo (4.a-4.d). Incremento 5 (Cosméticos) completo: 5.a, 5.b y 5.c implementados y gateados (§4.19/§4.20/§4.21) — ningún ADR nuevo requerido (§6). Pendiente antes del cierre formal del Bloque III: verificación visual real en Android (Desafíos y Cosméticos, tema claro/oscuro). Sin tag — Bloque III no se etiqueta hasta completar esa verificación.**
