@@ -42,6 +42,17 @@ import { CosmeticItemRepository } from './cosmetic-item.repository';
 import { InventoryItemRepository } from './inventory-item.repository';
 import { EquippedCosmeticRepository } from './equipped-cosmetic.repository';
 import { CosmeticEquipmentService } from './cosmetic-equipment.service';
+import { GameSeasonRepository } from './game-season.repository';
+import { LeagueDefinitionRepository } from './league-definition.repository';
+import { LeagueGroupRepository } from './league-group.repository';
+import { SeasonLeagueParticipationRepository } from './season-league-participation.repository';
+import { LeaguePointRuleRepository } from './league-point-rule.repository';
+import { LeaguePointLedgerEntryRepository } from './league-point-ledger-entry.repository';
+import { LeagueEnrollmentService } from './league-enrollment.service';
+import { LeaguePointGrantService } from './league-point-grant.service';
+import { LeaguePointGrantScheduler } from './league-point-grant.scheduler';
+import { SeasonTransitionService } from './season-transition.service';
+import { SeasonTransitionScheduler } from './season-transition.scheduler';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -147,6 +158,20 @@ import { CosmeticEquipmentService } from './cosmetic-equipment.service';
  * importe `UserModule`). Consistencia (cuenta, propiedad activa, perfil
  * `ACTIVE`, Y coincidencia tipo-slot) respaldada por trigger -- Gates
  * 22/34/59-63/66.
+ *
+ * Bloque IV, Incremento 1 ("Fundación de temporadas y ligas") -- ver
+ * docs/adr/LEF-BLOCK-IV-DEFINITION.md §9. `game_season`/`league_definition`/
+ * `league_group`/`season_league_participation` (materialización perezosa de
+ * grupo+participación bajo advisory lock, namespace 21, distinto de 19/20) y
+ * `league_point_rule`/`league_point_ledger_entry` (ledger de League Points
+ * INDEPENDIENTE de `xp_ledger_entry`, nunca una vista derivada ni una
+ * transacción compartida). `LeagueEnrollmentService`/`LeaguePointGrantService`/
+ * `SeasonTransitionService` -- SIN ranking, SIN endpoints, SIN superficie
+ * móvil (Incrementos 2-5). Transiciones de estado (temporada/grupo/
+ * participación) forward-only por trigger; ventana de elegibilidad sin
+ * retroactividad y exclusión otorgamiento-vs-cierre respaldadas también por
+ * trigger (`enforce_league_point_ledger_entry_window`), no solo por la
+ * relectura SERIALIZABLE de la aplicación.
  */
 @Module({
   imports: [AuthModule, InternalOpsModule, OutboxModule],
@@ -189,6 +214,17 @@ import { CosmeticEquipmentService } from './cosmetic-equipment.service';
     InventoryItemRepository,
     EquippedCosmeticRepository,
     CosmeticEquipmentService,
+    GameSeasonRepository,
+    LeagueDefinitionRepository,
+    LeagueGroupRepository,
+    SeasonLeagueParticipationRepository,
+    LeaguePointRuleRepository,
+    LeaguePointLedgerEntryRepository,
+    LeagueEnrollmentService,
+    LeaguePointGrantService,
+    LeaguePointGrantScheduler,
+    SeasonTransitionService,
+    SeasonTransitionScheduler,
   ],
   exports: [
     GamificationProgramRepository,
@@ -222,6 +258,12 @@ import { CosmeticEquipmentService } from './cosmetic-equipment.service';
     CosmeticItemRepository,
     InventoryItemRepository,
     CosmeticEquipmentService,
+    GameSeasonRepository,
+    LeagueDefinitionRepository,
+    LeagueGroupRepository,
+    SeasonLeagueParticipationRepository,
+    LeaguePointRuleRepository,
+    LeaguePointLedgerEntryRepository,
   ],
 })
 export class GamificationModule {}

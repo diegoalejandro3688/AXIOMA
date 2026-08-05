@@ -39,6 +39,7 @@
     "verify:challenge-claim-gate": "tsx scripts/verify-challenge-claim-gate.ts",
     "verify:cosmetic-foundation-gate": "tsx scripts/verify-cosmetic-foundation-gate.ts",
     "verify:cosmetic-equipment-gate": "tsx scripts/verify-cosmetic-equipment-gate.ts",
+    "verify:league-season-foundation-gate": "tsx scripts/verify-league-season-foundation-gate.ts",
     "cli:recover-account": "node dist/cli/recover-account.js",
     "db:up": "docker compose -f ../../docker-compose.yml up -d",
     "db:down": "docker compose -f ../../docker-compose.yml down"

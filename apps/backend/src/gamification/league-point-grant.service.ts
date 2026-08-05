@@ -1,0 +1,191 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { TransactionRunnerService } from '../platform/prisma/transaction-runner.service';
+import { Prisma } from '../generated/prisma/client';
+import type { ValidatedGamificationActivity, LeaguePointLedgerEntry } from '../generated/prisma/client';
+import { ValidatedGamificationActivityRepository } from './validated-gamification-activity.repository';
+import { SeasonLeagueParticipationRepository } from './season-league-participation.repository';
+import { GameSeasonRepository } from './game-season.repository';
+import { LeagueGroupRepository } from './league-group.repository';
+import { LeaguePointRuleRepository } from './league-point-rule.repository';
+import { LeaguePointLedgerEntryRepository } from './league-point-ledger-entry.repository';
+
+const GRANT_BATCH_SIZE = 100;
+const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
+const SERIALIZATION_CONFLICT_CODE = 'P2034';
+const MAX_SERIALIZABLE_RETRIES = 3;
+const RETRY_BACKOFF_MS = [25, 75, 150];
+
+export type LeagueGrantOutcome =
+  | { outcome: 'LP_GRANTED'; entry: LeaguePointLedgerEntry }
+  | { outcome: 'NOT_PARTICIPATING' }
+  | { outcome: 'OUT_OF_WINDOW' }
+  | { outcome: 'NO_ACTIVE_RULE' }
+  | { outcome: 'DAILY_CAP_REACHED' }
+  | { outcome: 'CLOSED_CONCURRENTLY' };
+
+class DailyCapExceededError extends Error {}
+/** Señal interna: al releer dentro de la transacción SERIALIZABLE, temporada/grupo/participación ya no están activos (§9.5). */
+class ClosedConcurrentlyError extends Error {}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isUniqueConstraintViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION;
+}
+
+function utcDayRange(at: Date): { start: Date; end: Date } {
+  const start = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()));
+  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
+}
+
+/**
+ * Otorga League Points a partir de `ValidatedGamificationActivity` -- ver
+ * docs/adr/LEF-BLOCK-IV-DEFINITION.md §9.4/§9.5. Estructuralmente calcado de
+ * `XpGrantService`, pero INDEPENDIENTE en cada paso: transacción propia
+ * (nunca comparte una con XP), tabla de reglas propia (`LeaguePointRule`,
+ * nunca deriva el monto de `XpRule`), ledger propio.
+ *
+ * Diferencia deliberada frente a XP: el otorgamiento de XP es incondicional;
+ * este es CONDICIONAL a que la cuenta tenga una `season_league_participation`
+ * ACTIVE cuyo `joinedAt` sea anterior o igual a `activity.occurredAt`, y a
+ * que temporada/grupo/participación sigan activos en el momento exacto de
+ * confirmar (releído dentro de la misma transacción SERIALIZABLE que
+ * escribe -- precisión obligatoria del Product Owner, §9.5). Sin
+ * participación elegible, o fuera de ventana, el otorgamiento se omite: no
+ * es un error, es "no aplica" -- nunca se escribe fila alguna.
+ */
+@Injectable()
+export class LeaguePointGrantService {
+  private readonly logger = new Logger(LeaguePointGrantService.name);
+
+  constructor(
+    private readonly txRunner: TransactionRunnerService,
+    private readonly activityRepo: ValidatedGamificationActivityRepository,
+    private readonly participationRepo: SeasonLeagueParticipationRepository,
+    private readonly seasonRepo: GameSeasonRepository,
+    private readonly groupRepo: LeagueGroupRepository,
+    private readonly ruleRepo: LeaguePointRuleRepository,
+    private readonly ledgerRepo: LeaguePointLedgerEntryRepository,
+  ) {}
+
+  async grantPending(): Promise<{ granted: number; skipped: number; failed: number }> {
+    const activeAccountIds = await this.participationRepo.findAllActiveAccountIds();
+    const pending = await this.activityRepo.findPendingLeagueGrant(activeAccountIds, GRANT_BATCH_SIZE);
+
+    let granted = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const activity of pending) {
+      try {
+        const result = await this.grantForActivity(activity);
+        if (result.outcome === 'LP_GRANTED') granted++;
+        else skipped++;
+      } catch (error) {
+        failed++;
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`No se pudo otorgar League Points para la actividad ${activity.id}: ${message}`);
+      }
+    }
+
+    return { granted, skipped, failed };
+  }
+
+  async grantForActivity(activity: ValidatedGamificationActivity): Promise<LeagueGrantOutcome> {
+    const at = activity.occurredAt;
+
+    // Lectura previa (fuera de la transacción) -- solo para decidir si vale
+    // la pena intentar; la verificación AUTORITATIVA ocurre releyendo
+    // DENTRO de la transacción SERIALIZABLE de abajo (§9.5).
+    const participation = await this.participationRepo.findActiveByAccountId(activity.accountId);
+    if (!participation) return { outcome: 'NOT_PARTICIPATING' };
+    if (at < participation.joinedAt) return { outcome: 'OUT_OF_WINDOW' };
+
+    const rule = await this.ruleRepo.findApplicableRule(activity.activityType, at);
+    if (!rule) return { outcome: 'NO_ACTIVE_RULE' };
+
+    const idempotencyKey = `league-grant:${participation.id}:${activity.id}`;
+
+    try {
+      const entry = await this.runSerializable(async (tx) => {
+        // Precisión obligatoria del Product Owner (§9.5) -- exclusión
+        // transaccional otorgamiento-vs-cierre: releer, DENTRO de esta
+        // misma transacción, que participación/temporada/grupo SIGUEN
+        // activos justo antes de confirmar. El trigger
+        // `enforce_league_point_ledger_entry_window` es el respaldo real en
+        // base de datos de esta misma condición.
+        const freshParticipation = await tx.seasonLeagueParticipation.findUnique({ where: { id: participation.id } });
+        if (!freshParticipation || freshParticipation.participationStatus !== 'ACTIVE') {
+          throw new ClosedConcurrentlyError();
+        }
+        const season = await tx.gameSeason.findUnique({ where: { id: freshParticipation.gameSeasonId } });
+        if (!season || season.status !== 'ACTIVE' || at < season.startsAt || at >= season.endsAt) {
+          throw new ClosedConcurrentlyError();
+        }
+        const group = await tx.leagueGroup.findUnique({ where: { id: freshParticipation.leagueGroupId } });
+        if (!group || (group.status !== 'OPEN' && group.status !== 'FULL')) {
+          throw new ClosedConcurrentlyError();
+        }
+
+        const { start, end } = utcDayRange(at);
+        const grantedToday = rule.dailyCap
+          ? await this.ledgerRepo.sumGrantedTodayForRule(tx, participation.id, rule.id, start, end)
+          : 0;
+
+        if (rule.dailyCap != null && grantedToday + rule.basePoints > rule.dailyCap) {
+          throw new DailyCapExceededError();
+        }
+
+        const { entry: created } = await this.ledgerRepo.createIdempotent(
+          {
+            accountId: activity.accountId,
+            seasonLeagueParticipationId: participation.id,
+            validatedActivityId: activity.id,
+            leaguePointRuleId: rule.id,
+            entryType: 'OTORGAMIENTO',
+            pointAmount: rule.basePoints,
+            ruleVersion: rule.ruleVersion,
+            idempotencyKey,
+            occurredAt: at,
+          },
+          tx,
+        );
+
+        await this.participationRepo.incrementLeaguePoints(tx, participation.id, created.pointAmount);
+
+        return created;
+      });
+
+      return { outcome: 'LP_GRANTED', entry };
+    } catch (error) {
+      if (error instanceof DailyCapExceededError) return { outcome: 'DAILY_CAP_REACHED' };
+      if (error instanceof ClosedConcurrentlyError) return { outcome: 'CLOSED_CONCURRENTLY' };
+      if (isUniqueConstraintViolation(error)) {
+        const existing = await this.ledgerRepo.findByIdempotencyKey(idempotencyKey);
+        if (existing) return { outcome: 'LP_GRANTED', entry: existing };
+      }
+      throw error;
+    }
+  }
+
+  /** Mismo mecanismo que `XpGrantService.runSerializable` -- reintento acotado ante conflicto real (P2034). */
+  private async runSerializable<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    let attempt = 0;
+    for (;;) {
+      attempt++;
+      try {
+        return await this.txRunner.run(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      } catch (error) {
+        const isSerializationConflict = error instanceof Prisma.PrismaClientKnownRequestError && error.code === SERIALIZATION_CONFLICT_CODE;
+        if (!isSerializationConflict || attempt >= MAX_SERIALIZABLE_RETRIES) throw error;
+
+        const cause = error instanceof Prisma.PrismaClientKnownRequestError ? (error.meta?.cause ?? error.message) : String(error);
+        this.logger.warn(`Conflicto serializable en otorgamiento de League Points (intento ${attempt}/${MAX_SERIALIZABLE_RETRIES}): ${cause} -- reintentando`);
+        const backoffIndex = Math.min(attempt - 1, RETRY_BACKOFF_MS.length - 1);
+        await sleep(RETRY_BACKOFF_MS[backoffIndex] ?? RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1]!);
+      }
+    }
+  }
+}

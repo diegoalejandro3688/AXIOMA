@@ -696,8 +696,13 @@ model ValidatedGamificationActivity {
   /// Mismo criterio que validationStatus: String, sin enum todavía.
   integrityStatus       String   @map("integrity_status")
 
-  ledgerEntries XpLedgerEntry[]
-  grantAttempt  XpGrantAttempt?
+  ledgerEntries            XpLedgerEntry[]
+  grantAttempt             XpGrantAttempt?
+  /// Bloque IV, Incremento 1 -- relación PARALELA a `ledgerEntries` (XP),
+  /// nunca la misma. El origen (esta fila) se comparte; el otorgamiento de
+  /// League Points es una lectura independiente, sin transacción compartida
+  /// con XP (ver LEF-BLOCK-IV-DEFINITION.md §9.7).
+  leaguePointLedgerEntries LeaguePointLedgerEntry[]
 
   @@index([accountId])
   @@map("validated_gamification_activity")
@@ -889,6 +894,7 @@ model RewardBundle {
   achievementVersions  AchievementVersion[]
   /// Bloque III, sub-incremento 4.a -- lado inverso de ChallengeDefinition.rewardBundleId.
   challengeDefinitions ChallengeDefinition[]
+  leagueDefinitions    LeagueDefinition[]
 
   @@map("reward_bundle")
 }
@@ -1644,4 +1650,247 @@ model EquippedCosmetic {
 
   @@id([publicProfileId, cosmeticSlot])
   @@map("equipped_cosmetic")
+}
+
+// =============================================================================
+// Bloque IV, Incremento 1 -- Fundación de temporadas y ligas.
+// Ver docs/adr/LEF-BLOCK-IV-DEFINITION.md §9 (diseño detallado, confirmado
+// con cuatro precisiones obligatorias del Product Owner). Data Model
+// §16.19-16.22. Sin ranking (Incremento 2), sin endpoints, sin móvil.
+//
+// `timezonePolicy` de Data Model §16.19 se omite deliberadamente: superseded
+// por la convención ya fijada en Bloque III (calendario UTC exclusivamente,
+// nunca zona horaria de cuenta, para no introducir una dependencia circular
+// con USER) -- no es un vacío, es una resolución explícita.
+//
+// `rankingRuleVersion`/`rewardPolicyVersion` (game_season) y
+// `minimumEntryRule`/`promotionRule`/`demotionRule`/`rewardBundleId`
+// (league_definition) se incluyen como columnas abiertas (String/UUID
+// nullable) siguiendo el mismo criterio ya usado para
+// `ChallengeDefinition.eligibilityRule`/`completionRule` en Bloque III
+// 4.a: el campo existe desde el nacimiento del modelo (Data Model lo exige),
+// pero NINGÚN código de este incremento las lee ni las interpreta -- eso es
+// responsabilidad de Incremento 2 (ranking/ascenso-descenso) y de quien
+// conecte la entrega de recompensas de liga. Evita una migración adicional
+// para añadir columnas que Data Model ya nombra como parte de la entidad.
+// =============================================================================
+
+enum GameSeasonStatus {
+  SCHEDULED
+  ACTIVE
+  FINALIZED
+  ARCHIVED
+
+  @@map("game_season_status")
+}
+
+/// Data Model §16.19. Fila inmutable por temporada -- nunca se edita una ya
+/// creada salvo su `status` (transición forward-only, trigger) y
+/// `finalizedAt`. Invariante "una sola temporada ACTIVE a la vez" reforzada
+/// por índice único parcial (migración SQL, no expresable en `schema.prisma`).
+model GameSeason {
+  id                  String           @id @default(uuid()) @db.Uuid
+  seasonKey           String           @unique @map("season_key")
+  name                String
+  description         String?
+  startsAt            DateTime         @map("starts_at")
+  endsAt              DateTime         @map("ends_at")
+  /// Grammar abierta, interpretada por Incremento 2 -- ver nota de cabecera.
+  rankingRuleVersion  String?          @map("ranking_rule_version")
+  rewardPolicyVersion String?          @map("reward_policy_version")
+  status              GameSeasonStatus @default(SCHEDULED)
+  createdAt           DateTime         @default(now()) @map("created_at")
+  finalizedAt         DateTime?        @map("finalized_at")
+
+  leagueGroups   LeagueGroup[]
+  participations SeasonLeagueParticipation[]
+
+  @@map("game_season")
+}
+
+enum LeagueDefinitionStatus {
+  ACTIVE
+  RETIRED
+
+  @@map("league_definition_status")
+}
+
+/// Data Model §16.20. Plantilla de TIER (ej. "Bronce") -- inmutable por fila,
+/// mismo criterio que ChallengeDefinition/TitleDefinition: una regla nueva es
+/// una fila nueva. NO es la instancia donde compiten los estudiantes -- ver
+/// LeagueGroup.
+model LeagueDefinition {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  leagueKey            String                 @unique @map("league_key")
+  name                 String
+  tierOrder            Int                    @map("tier_order")
+  /// Grammar abierta, interpretada por Incremento 2 -- ver nota de cabecera.
+  minimumEntryRule     String?                @map("minimum_entry_rule")
+  promotionRule        String?                @map("promotion_rule")
+  demotionRule         String?                @map("demotion_rule")
+  participantGroupSize Int                    @map("participant_group_size")
+  rewardBundleId       String?                @map("reward_bundle_id") @db.Uuid
+  status               LeagueDefinitionStatus @default(ACTIVE)
+  createdAt            DateTime               @default(now()) @map("created_at")
+  retiredAt            DateTime?              @map("retired_at")
+
+  rewardBundle   RewardBundle?               @relation(fields: [rewardBundleId], references: [id], onDelete: Restrict)
+  leagueGroups   LeagueGroup[]
+  participations SeasonLeagueParticipation[]
+
+  @@index([rewardBundleId])
+  @@map("league_definition")
+}
+
+enum LeagueGroupStatus {
+  /// Acepta inscripciones (cupo disponible).
+  OPEN
+  /// Cupo alcanzado -- sigue acumulando puntos hasta el cierre de temporada.
+  FULL
+  /// Temporada cerrada -- sin inscripciones, sin acumulación de puntos.
+  LOCKED
+  /// Incremento 2 calculó rangos/ascensos -- fuera del alcance de este incremento.
+  FINALIZED
+
+  @@map("league_group_status")
+}
+
+/// Data Model §16.21. INSTANCIA real y acotada de un tier para una temporada
+/// -- el conjunto de estudiantes que compiten entre sí. Materializada
+/// perezosamente (§9.3) bajo advisory lock (namespace 21) para proteger su
+/// `capacity` bajo concurrencia real -- ver trigger
+/// `enforce_league_group_capacity` (defensa adicional a nivel de base de
+/// datos, en caso de que algún camino futuro omita el lock).
+model LeagueGroup {
+  id                      String            @id @default(uuid()) @db.Uuid
+  gameSeasonId            String            @map("game_season_id") @db.Uuid
+  leagueDefinitionId      String            @map("league_definition_id") @db.Uuid
+  groupNumber             Int               @map("group_number")
+  /// Snapshot de `LeagueDefinition.participantGroupSize` al crear el grupo --
+  /// mismo criterio que `AccountChallenge.periodStart/periodEnd` snapshot de
+  /// `ChallengeDefinition`: el cupo de un grupo ya creado nunca cambia
+  /// retroactivamente si la definición del tier se reemplaza después.
+  capacity                Int
+  assignmentPolicyVersion String            @map("assignment_policy_version")
+  status                  LeagueGroupStatus @default(OPEN)
+  createdAt               DateTime          @default(now()) @map("created_at")
+  lockedAt                DateTime?         @map("locked_at")
+  finalizedAt             DateTime?         @map("finalized_at")
+
+  gameSeason       GameSeason                  @relation(fields: [gameSeasonId], references: [id], onDelete: Restrict)
+  leagueDefinition LeagueDefinition            @relation(fields: [leagueDefinitionId], references: [id], onDelete: Restrict)
+  participations   SeasonLeagueParticipation[]
+
+  @@unique([gameSeasonId, leagueDefinitionId, groupNumber])
+  @@map("league_group")
+}
+
+enum SeasonLeagueParticipationStatus {
+  ACTIVE
+  /// Estado terminal de ESTE incremento -- Incremento 2 decide
+  /// PROMOTED/DEMOTED/RETAINED a partir de aquí, no este.
+  SEASON_ENDED
+
+  @@map("season_league_participation_status")
+}
+
+/// Data Model §16.20. Vínculo cuenta<->grupo para una temporada. `@@unique
+/// ([accountId, gameSeasonId])` -- una cuenta nunca tiene dos participaciones
+/// activas en la misma temporada (§9.3). Inscripción idempotente: check-antes
+/// -de-crear, mismo criterio que AccountChallengeRepository.createIdempotent
+/// (corregido en Bloque III 4.b).
+model SeasonLeagueParticipation {
+  id                  String                          @id @default(uuid()) @db.Uuid
+  gameSeasonId        String                          @map("game_season_id") @db.Uuid
+  accountId           String                          @map("account_id") @db.Uuid
+  leagueDefinitionId  String                          @map("league_definition_id") @db.Uuid
+  leagueGroupId       String                          @map("league_group_id") @db.Uuid
+  leaguePoints        Int                             @default(0) @map("league_points")
+  /// Incremento 2 lo calcula -- NULL hasta entonces.
+  currentRank         Int?                            @map("current_rank")
+  participationStatus SeasonLeagueParticipationStatus @default(ACTIVE) @map("participation_status")
+  joinedAt            DateTime                        @map("joined_at")
+  /// Incremento 2 lo calcula -- NULL hasta entonces.
+  finalRank           Int?                            @map("final_rank")
+  finalizedAt         DateTime?                       @map("finalized_at")
+
+  gameSeason       GameSeason               @relation(fields: [gameSeasonId], references: [id], onDelete: Restrict)
+  leagueDefinition LeagueDefinition         @relation(fields: [leagueDefinitionId], references: [id], onDelete: Restrict)
+  leagueGroup      LeagueGroup              @relation(fields: [leagueGroupId], references: [id], onDelete: Restrict)
+  ledgerEntries    LeaguePointLedgerEntry[]
+
+  @@unique([accountId, gameSeasonId])
+  @@index([leagueGroupId])
+  @@map("season_league_participation")
+}
+
+enum LeaguePointRuleStatus {
+  ACTIVE
+  RETIRED
+
+  @@map("league_point_rule_status")
+}
+
+/// Fuente autoritativa del MONTO de League Points -- decisión exclusiva del
+/// servidor (§9.4), nunca una copia/conversión de XpRule. Selección de regla
+/// vigente por `effectiveFrom`, mismo criterio que XpRule -- simplificada sin
+/// la capa de GamificationProgram/ProgramVersion (innecesaria: un solo
+/// "programa" de puntos de liga en V1, a diferencia de XP que ya soportaba
+/// múltiples programas desde su diseño original).
+model LeaguePointRule {
+  id             String                @id @default(uuid()) @db.Uuid
+  /// Abierto -- mismo criterio que ValidatedGamificationActivity.activityType.
+  activityType   String                @map("activity_type")
+  basePoints     Int                   @map("base_points")
+  dailyCap       Int?                  @map("daily_cap")
+  effectiveFrom  DateTime              @map("effective_from")
+  effectiveUntil DateTime?             @map("effective_until")
+  ruleVersion    String                @map("rule_version")
+  status         LeaguePointRuleStatus @default(ACTIVE)
+  createdAt      DateTime              @default(now()) @map("created_at")
+
+  ledgerEntries LeaguePointLedgerEntry[]
+
+  @@map("league_point_rule")
+}
+
+enum LeaguePointLedgerEntryType {
+  OTORGAMIENTO
+  REVERSO
+  AJUSTE
+
+  @@map("league_point_ledger_entry_type")
+}
+
+/// Ledger INDEPENDIENTE de xp_ledger_entry (§4.4/§9.7 -- nunca una vista
+/// derivada, nunca una transacción compartida). Idempotencia vincula
+/// actividad Y participación (§9.5, precisión obligatoria del Product
+/// Owner): `idempotencyKey = "league-grant:{participationId}:{validatedActivityId}"`,
+/// con ambas referencias conservadas como columnas propias (no solo
+/// codificadas en la clave) para poder auditar exactamente qué actividad y
+/// qué participación produjeron cada fila. Inmutable + reverso como fila
+/// nueva, mismos dos triggers que xp_ledger_entry (migración SQL).
+model LeaguePointLedgerEntry {
+  id                          String                     @id @default(uuid()) @db.Uuid
+  accountId                   String                     @map("account_id") @db.Uuid
+  seasonLeagueParticipationId String                     @map("season_league_participation_id") @db.Uuid
+  validatedActivityId         String?                    @map("validated_activity_id") @db.Uuid
+  leaguePointRuleId           String?                    @map("league_point_rule_id") @db.Uuid
+  entryType                   LeaguePointLedgerEntryType @map("entry_type")
+  pointAmount                 Int                        @map("point_amount")
+  ruleVersion                 String?                    @map("rule_version")
+  idempotencyKey              String                     @unique @map("idempotency_key")
+  occurredAt                  DateTime                   @map("occurred_at")
+  recordedAt                  DateTime                   @default(now()) @map("recorded_at")
+  reversesEntryId             String?                    @unique @map("reverses_entry_id") @db.Uuid
+
+  seasonLeagueParticipation SeasonLeagueParticipation      @relation(fields: [seasonLeagueParticipationId], references: [id], onDelete: Restrict)
+  validatedActivity         ValidatedGamificationActivity? @relation(fields: [validatedActivityId], references: [id], onDelete: Restrict)
+  leaguePointRule           LeaguePointRule?               @relation(fields: [leaguePointRuleId], references: [id], onDelete: Restrict)
+  reversesEntry             LeaguePointLedgerEntry?        @relation("LeaguePointLedgerEntryReversal", fields: [reversesEntryId], references: [id], onDelete: Restrict)
+  reversedBy                LeaguePointLedgerEntry?        @relation("LeaguePointLedgerEntryReversal")
+
+  @@index([accountId])
+  @@index([seasonLeagueParticipationId])
+  @@map("league_point_ledger_entry")
 }

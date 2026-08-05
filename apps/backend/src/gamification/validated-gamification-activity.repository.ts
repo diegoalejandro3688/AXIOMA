@@ -57,4 +57,27 @@ export class ValidatedGamificationActivityRepository {
       take: limit,
     });
   }
+
+  /**
+   * Bloque IV, Incremento 1 -- "pendiente de otorgar League Points" =
+   * relación PARALELA a `ledgerEntries` (XP), nunca la misma (§9.7). Sin
+   * tabla de intentos/backoff propia (a diferencia de XP): se restringe a
+   * cuentas con una `season_league_participation` ACTIVE, para no escanear
+   * indefinidamente actividades de cuentas que nunca compiten. Limitación
+   * conocida y aceptada: una actividad anterior al `joinedAt` de una cuenta
+   * participante nunca generará LP (§9.4, sin retroactividad) pero seguirá
+   * apareciendo aquí en cada ciclo hasta que `LeaguePointGrantService` la
+   * descarte -- costo aceptable en V1, sin backfill masivo de cuentas.
+   */
+  findPendingLeagueGrant(activeAccountIds: string[], limit: number): Promise<ValidatedGamificationActivity[]> {
+    if (activeAccountIds.length === 0) return Promise.resolve([]);
+    return this.prisma.validatedGamificationActivity.findMany({
+      where: {
+        accountId: { in: activeAccountIds },
+        leaguePointLedgerEntries: { none: {} },
+      },
+      orderBy: { occurredAt: 'asc' },
+      take: limit,
+    });
+  }
 }
