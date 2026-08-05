@@ -877,12 +877,14 @@ model RewardBundle {
   status    RewardBundleStatus @default(ACTIVE)
   createdAt DateTime           @default(now()) @map("created_at")
 
-  items               RewardBundleItem[]
-  grants              RewardGrant[]
+  items                RewardBundleItem[]
+  grants               RewardGrant[]
   /// Bloque III, sub-incremento 1.c -- lado inverso de LevelDefinition.rewardBundleId.
-  levelDefinitions    LevelDefinition[]
+  levelDefinitions     LevelDefinition[]
   /// Bloque III, sub-incremento 2.a -- lado inverso de AchievementVersion.rewardBundleId.
-  achievementVersions AchievementVersion[]
+  achievementVersions  AchievementVersion[]
+  /// Bloque III, sub-incremento 4.a -- lado inverso de ChallengeDefinition.rewardBundleId.
+  challengeDefinitions ChallengeDefinition[]
 
   @@map("reward_bundle")
 }
@@ -1317,4 +1319,147 @@ model EquippedTitle {
   accountTitle  AccountTitle  @relation(fields: [accountTitleId], references: [id], onDelete: Restrict)
 
   @@map("equipped_title")
+}
+
+/// Bloque III, Incremento 4, sub-incremento 4.a ("Fundación de
+/// persistencia") -- ver docs/adr/BLOCK-III-DEFINITION.md §4.8/§4.12-§4.14
+/// (Incremento 4) y ADR-0019 (mecanismo de entrega genérico, reutilizado,
+/// no rediseñado). Data Model §16.18. SOLO esquema/repositorios mínimos en
+/// 4.a -- SIN evaluación de eventos, SIN progresión, SIN reclamación de
+/// recompensa, SIN integración con `RewardEvaluationWorker` (sub-incrementos
+/// posteriores).
+///
+/// `challengeType` deliberadamente limitado a `DAILY`/`WEEKLY` -- Data
+/// Model §16.18 admite además "temporada" y "permanente", pero
+/// BLOCK-III-DEFINITION.md §1 restringe el alcance de este bloque a
+/// diario/semanal; temporada se solapa con `game_season` (§16.19, Bloque
+/// IV) y "permanente" no tiene regla de recurrencia definida en ningún
+/// documento -- quedan fuera hasta que un bloque futuro los necesite.
+///
+/// Inmutable por fila una vez que existe un `account_challenge` que la
+/// referencia (§4.8) -- SIN trigger de base de datos: se aplica igual que
+/// `TitleDefinition`/`AchievementDefinition`, no exponiendo
+/// `update()`/`delete()` en el repositorio. Un desafío recurrente o con
+/// criterio actualizado es siempre una fila nueva (mismo `challengeKey`,
+/// id distinto, ventana propia).
+///
+/// `eligibilityRule`/`completionRule`: `String` abierto, SIN gramática
+/// interpretable todavía -- mismo criterio que `AchievementVersion.unlockRule`
+/// antes de que 2.b definiera `XP_THRESHOLD`; la gramática de evaluación de
+/// desafíos es responsabilidad de un sub-incremento posterior.
+/// `rewardBundleId` nullable -- mismo criterio que
+/// `AchievementVersion.rewardBundleId` (no todo desafío necesita configurar
+/// ya su recompensa en 4.a).
+model ChallengeDefinition {
+  id              String                    @id @default(uuid()) @db.Uuid
+  challengeKey    String                    @unique @map("challenge_key")
+  name            String
+  description     String?
+  challengeType   ChallengeType             @map("challenge_type")
+  eligibilityRule String                    @map("eligibility_rule")
+  completionRule  String                    @map("completion_rule")
+  rewardBundleId  String?                   @map("reward_bundle_id") @db.Uuid
+  startsAt        DateTime                  @map("starts_at")
+  endsAt          DateTime                  @map("ends_at")
+  /// Tope de contribuciones válidas por fecha local de cuenta -- §4.12.
+  /// NULL = sin tope adicional más allá de `targetValue`.
+  dailyCap        Int?                      @map("daily_cap")
+  status          ChallengeDefinitionStatus @default(ACTIVE)
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  retiredAt       DateTime?                 @map("retired_at")
+
+  rewardBundle      RewardBundle?      @relation(fields: [rewardBundleId], references: [id], onDelete: Restrict)
+  accountChallenges AccountChallenge[]
+
+  @@index([rewardBundleId])
+  @@map("challenge_definition")
+}
+
+enum ChallengeType {
+  DAILY
+  WEEKLY
+
+  @@map("challenge_type")
+}
+
+enum ChallengeDefinitionStatus {
+  ACTIVE
+  RETIRED
+
+  @@map("challenge_definition_status")
+}
+
+/// §16.18. `periodStart`/`periodEnd` son SNAPSHOT de
+/// `challengeDefinition.startsAt`/`endsAt` en el momento de creación --
+/// mismo criterio de snapshot que `reward_grant_component` (ADR-0019
+/// §4.5): aunque `challenge_definition` ya es inmutable por fila (§4.8), la
+/// columna evita un JOIN para la unicidad y para consultas por período.
+/// `acceptedAt` NUNCA es una acción voluntaria del estudiante en este
+/// bloque -- es el instante de asignación automática (§4.14); el nombre de
+/// columna sigue al Data Model, no a su semántica original.
+///
+/// Creación perezosa (§4.14): ningún proceso pre-crea filas para toda
+/// cuenta elegible -- nace al abrir la sección de desafíos o al primer
+/// evento elegible del período (mecanismo real: sub-incremento posterior;
+/// 4.a solo expone `createIdempotent`).
+///
+/// Ciclo de vida sin saltos (Gate 17) reforzado por trigger
+/// (`enforce_account_challenge_status_transition`): únicamente
+/// `ACCEPTED -> IN_PROGRESS -> COMPLETED -> CLAIMED`, en ese orden, sin
+/// omitir pasos ni retroceder. `completedAt`/`claimedAt` inmutables una vez
+/// fijados (mismo criterio no punitivo que `reward_grant_component.deliveredAt`).
+model AccountChallenge {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  accountId             String                 @map("account_id") @db.Uuid
+  challengeDefinitionId String                 @map("challenge_definition_id") @db.Uuid
+  progressValue         Int                    @default(0) @map("progress_value")
+  targetValue           Int                    @map("target_value")
+  challengeStatus       AccountChallengeStatus @default(ACCEPTED) @map("challenge_status")
+  periodStart           DateTime               @map("period_start")
+  periodEnd             DateTime               @map("period_end")
+  acceptedAt            DateTime               @map("accepted_at")
+  completedAt           DateTime?              @map("completed_at")
+  claimedAt             DateTime?              @map("claimed_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+
+  challengeDefinition ChallengeDefinition             @relation(fields: [challengeDefinitionId], references: [id], onDelete: Restrict)
+  dailyProgress       AccountChallengeDailyProgress[]
+
+  @@unique([accountId, challengeDefinitionId, periodStart])
+  @@index([challengeDefinitionId])
+  @@map("account_challenge")
+}
+
+enum AccountChallengeStatus {
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CLAIMED
+
+  @@map("account_challenge_status")
+}
+
+/// §4.12 (BLOCK-III-DEFINITION.md) -- acumulado de contribuciones válidas
+/// por fecha LOCAL de cuenta (`UserProfile.timezone`, ADR-0008), no UTC
+/// (divergencia deliberada respecto de `XpRule.dailyCap`, documentada en
+/// §4.12: ese mecanismo suma montos ya otorgados en un rango UTC fijo sin
+/// tabla propia; este necesita fecha de calendario del estudiante y un
+/// contador explícito por ser eventos discretos acumulados a lo largo de
+/// un período de varios días). 4.a SOLO expone el primitivo de persistencia
+/// (`upsertContribution`, incremento simple) -- decidir si una contribución
+/// es elegible, verificar `daily_cap`, y propagar a
+/// `AccountChallenge.progressValue` es evaluación/progresión, fuera de
+/// alcance de 4.a (sub-incremento posterior).
+model AccountChallengeDailyProgress {
+  id                 String   @id @default(uuid()) @db.Uuid
+  accountChallengeId String   @map("account_challenge_id") @db.Uuid
+  localDate          DateTime @map("local_date") @db.Date
+  contributionCount  Int      @default(0) @map("contribution_count")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  accountChallenge AccountChallenge @relation(fields: [accountChallengeId], references: [id], onDelete: Restrict)
+
+  @@unique([accountChallengeId, localDate])
+  @@map("account_challenge_daily_progress")
 }

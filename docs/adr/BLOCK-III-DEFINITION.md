@@ -4,7 +4,7 @@
 **Fase**: Fase 2 — Learning Experience Foundation
 **Bloque**: III de VIII (Roadmap Learning Experience Foundation)
 **Documentos relacionados**: `docs/adr/BLOCK-II-CLOSURE-REPORT.md`, `docs/adr/BLOCK-II-DEFINITION.md`, `docs/adr/0016-gamificacion-fundacion.md`, `docs/adr/0018-public-profile-foundation.md`
-**Estado**: Definición revisada (2ª pasada, auditoría crítica del Product Owner incorporada). Pasos 1–6 del ciclo. **Sin implementación todavía.**
+**Estado**: Definición revisada (3ª pasada, 2026-08-04 — decisiones de mecanismo del Product Owner para Incrementos 4 y 5 incorporadas en §4.12–4.15). Pasos 1–6 del ciclo. **Sin implementación todavía.**
 
 ---
 
@@ -160,6 +160,101 @@ Ver Decision Gate 15 (§5).
 
 Revisado el listado completo de Data Model (DM-OQ001–054): ninguna pregunta abierta cae sobre logros, títulos, desafíos o cosméticos.
 
+### 4.12 Desafíos: mecanismo real de tope diario (`daily_cap`), no una declaración cualitativa (2026-08-04)
+
+**Vacío cerrado por decisión del Product Owner**: el Gate 21 original (§5) declaraba el tope de repetición "por construcción", sin mecanismo. Se fija ahora un mecanismo concreto, distinto en forma del `dailyCap` de `xp_rule` (Bloque I) aunque inspirado en él — divergencia deliberada, justificada abajo.
+
+**Esquema**:
+
+```
+challenge_definition.daily_cap  Int?   -- null = sin tope adicional
+account_challenge_daily_progress
+  - id
+  - account_challenge_id
+  - local_date
+  - contribution_count
+  - created_at
+  - updated_at
+  UNIQUE(account_challenge_id, local_date)
+```
+
+**Semántica de `daily_cap`**: tope sobre cuántas contribuciones válidas de progreso puede aportar un mismo día calendario — nunca sobre cuántas veces el estudiante puede realizar la actividad. `null` = sin tope; `N` = como máximo `N` contribuciones ese día, sin importar cuántos eventos elegibles ocurran.
+
+**Por qué diverge del `dailyCap` de `xp_rule` (Bloque I)**: ese mecanismo sólo suma montos de XP ya otorgados dentro de un rango UTC del día (`utcDayRange`, ver `xp-grant.service.ts`) — no necesita una fila propia porque el ledger ya es la fuente de verdad y el rango es fijo (UTC). Un desafío semanal necesita, en cambio, (a) fecha **local de la cuenta** (`UserProfile.timezone`, ya existente — ver ADR-0008), no UTC, porque "día" es un concepto de calendario del estudiante; y (b) un contador explícito por fecha, porque las contribuciones de un desafío no son montos de un ledger existente que puedan sumarse retroactivamente, son eventos discretos de progreso acumulados a lo largo de un período de varios días. Se documenta la divergencia para que no se lea como inconsistencia entre incrementos.
+
+**Procesamiento** (worker de evaluación, dentro de la misma transacción `SERIALIZABLE` que ya usa `XpGrantService` como referencia de aislamiento — mismo patrón, tabla distinta):
+
+1. Resolver la fecha local de la cuenta para el evento (`UserProfile.timezone`).
+2. Obtener o crear (`upsert`) la fila diaria (`account_challenge_daily_progress`, `UNIQUE(account_challenge_id, local_date)`).
+3. Verificar `contribution_count < daily_cap` (si `daily_cap` no es `null`).
+4. Incrementar `contribution_count`.
+5. Incrementar el progreso agregado de `account_challenge`.
+6. Aplicar el tope de `target_value` (el progreso agregado nunca excede la meta del desafío).
+7. Marcar `completed_at` si el progreso alcanza `target_value`.
+
+**El `daily_cap` no reemplaza la deduplicación de eventos**: el worker exige, además y de forma independiente, una clave de deduplicación por evento de origen (mismo criterio que `ValidatedGamificationActivity.deduplicationKey`, Bloque I) — sin ella, reprocesar el mismo evento dos veces incrementaría `contribution_count` dos veces aunque el `daily_cap` no se haya alcanzado. Ver Gate 31 (§5).
+
+### 4.13 Desafíos: señal de "días activos" vía contrato de dominio, nunca la racha de presentación
+
+**Vacío cerrado**: una regla de desafío semanal del tipo "N días activos esta semana" no puede leer `currentStreak >= N` — la racha derivada en tiempo de lectura (Bloque II, sin tabla propia — ver BLOCK-II-CLOSURE-REPORT §6.2) puede haber empezado antes del período semanal del desafío y no representa "días activos dentro de este período".
+
+**Contrato fijado**: un lector de dominio propio, `DailyActivitySignalReader`, con dos operaciones:
+
+```
+hasEligibleActivity(accountId, localDate): boolean
+countActiveDays(accountId, periodStart, periodEnd): number
+```
+
+Debe consultar la **misma fuente persistida** que Bloque II ya usa para derivar racha (`xp_ledger_entry`/`xp_balance`), preservando una única semántica oficial de: actividad elegible, timezone de la cuenta, límites de inicio/fin de día, exclusión de eventos duplicados, y sincronización tardía de operaciones offline. No introduce una tabla de racha nueva — reutiliza la fuente, no la interpretación ya calculada para presentación.
+
+**Uso desde el worker**: al llegar una actividad elegible, el worker resuelve la fecha local del evento y aplica exactamente el mecanismo de §4.12 con `daily_cap = 1` sobre ese `account_challenge` — "como máximo un día activo cuenta por fecha" es el mismo mecanismo de tope diario, no uno adicional. `countActiveDays` corresponde entonces a contar fechas únicas ya acumuladas en `account_challenge_daily_progress` dentro del período, no a re-derivar la racha de presentación.
+
+### 4.14 Desafíos: asignación automática y materialización perezosa de `account_challenge`
+
+**Vacío cerrado**: ningún documento (Data Model, PRD, Master Context) especifica si un `account_challenge` nace por aceptación explícita del estudiante o por asignación automática. No existe hoy una UX de catálogo/descubrimiento de desafíos, ni una decisión de producto que la exija — introducirla requeriría endpoint de aceptación, pantalla de descubrimiento, límite de desafíos aceptables simultáneos, y tratamiento de progreso previo a la aceptación: ninguno de esos elementos está definido en este bloque.
+
+**Decisión fijada (2026-08-04)**: para este bloque, `account_challenge` se asigna **automáticamente** a toda cuenta elegible — no hay botón "Aceptar". `accepted_at` conserva el nombre de columna del Data Model, pero su semántica oficial pasa a ser "instante en que el desafío fue asignado automáticamente y quedó habilitado para acumular progreso", no una acción voluntaria del estudiante.
+
+**Materialización perezosa** (evita crear filas para todas las cuentas por adelantado): la fila `account_challenge` se crea en el primero de estos dos disparadores en ocurrir:
+- el estudiante abre la sección de desafíos, o
+- llega el primer evento elegible del período para esa cuenta/desafío.
+
+```
+account_challenge (creación perezosa)
+  accepted_at   = now()
+  period_start
+  period_end
+  progress      = 0
+  UNIQUE(account_id, challenge_definition_id, period_start)
+```
+
+Si en el futuro se introducen desafíos opcionales (elegibles entre varios), eso exige una decisión de producto nueva y probablemente separar `assigned_at` de `accepted_at` — no se anticipa aquí.
+
+### 4.15 Cosméticos: unificación `item_type`/`cosmetic_slot`, insignias, y diferimiento explícito de protección de racha (2026-08-04)
+
+**Contradicción cerrada** (detectada en auditoría, ver historial de este documento): `cosmetic_item.item_type` y `equipped_cosmetic.cosmetic_slot` enumeraban listas distintas en el Data Model (una incluía "insignia", la otra "título"). Se fija un único enum, usado idénticamente en ambos campos:
+
+```
+CosmeticItemType / CosmeticSlot (mismo enum para ambos campos)
+  - AVATAR
+  - AVATAR_FRAME
+  - PROFILE_BANNER
+  - BADGE
+```
+
+Corrección del Product Owner (2026-08-04): `AVATAR` y `AVATAR_FRAME` son slots distintos — `AVATAR` es un cosmético de avatar propio del sistema de inventario (independiente de `PublicProfile.avatarReference`, que sigue siendo la imagen base del perfil, ADR-0018), y `AVATAR_FRAME` es el marco decorativo que se superpone a esa imagen. `PROFILE_BACKGROUND` se descarta — no se introduce ningún slot ausente del Data Model.
+
+**Reglas**:
+- `cosmetic_item.item_type` debe coincidir exactamente con `equipped_cosmetic.cosmetic_slot` al equipar — un cosmético solo puede equiparse en su slot equivalente (verificable, Gate 34).
+- `TITLE` se elimina de `cosmetic_slot`: los títulos siguen exclusivamente en `equipped_title` (Incremento 3) — no vuelven a aparecer en el sistema cosmético (Gate 35).
+- Una cuenta tiene como máximo un ítem equipado por slot; el ítem debe existir previamente en `inventory_item` (propiedad).
+
+**Insignias**: no requieren un `RewardComponentType.BADGE` propio. Se conceden como `RewardComponentType.COSMETIC` referenciando un `cosmetic_item` con `item_type = BADGE` — evita duplicar el mecanismo de inventario ya construido para el resto de cosméticos.
+
+**Protección de racha (`STREAK_PROTECTION`) queda explícitamente diferida**, no omitida en silencio: el Data Model (§16.36) la lista como componente posible de `reward_bundle_item`, pero implementarla exige dominio que no existe en este bloque — saldo/inventario de protecciones, política de expiración, reglas de consumo, integración con la derivación de racha (§4.13), comportamiento ante sincronización offline tardía, y UX de aviso de uso. `RewardComponentType` se mantiene sin cambios: `XP_BONUS | TITLE | COSMETIC`. Se deja constancia aquí para que una futura corrección de Data Model, o un futuro bloque, encuentre la decisión documentada en vez de una ausencia sin explicar.
+
+**Nota de fidelidad al Data Model**: la lista `AVATAR`/`AVATAR_FRAME`/`PROFILE_BANNER`/`BADGE` (corregida 2026-08-04) mapea uno a uno los cuatro tipos de Data Model §16.33 (*"Avatar, marco, banner, insignia u otro"*, una vez retirado "título" — ver arriba): `Avatar` → `AVATAR`, `marco` → `AVATAR_FRAME`, `banner` → `PROFILE_BANNER`, `insignia` → `BADGE`. `AVATAR` (el cosmético de inventario) es distinto de `PublicProfile.avatarReference` (ADR-0018, la imagen base del perfil) — ambos coexisten sin conflicto de nombre a nivel de columna.
+
 ## 5. Decision Gates
 
 ### Incremento 1 — Entrega de recompensas
@@ -202,15 +297,21 @@ Revisado el listado completo de Data Model (DM-OQ001–054): ninguna pregunta ab
 | 18 | Expiración respetada | Un desafío vencido (`ends_at` pasado) no puede completarse ni reclamarse retroactivamente. |
 | 19 | Antifraude — sin gasto obligatorio | Satisfecho **por construcción**: no existe economía en este bloque (§3) — se declara, no requiere prueba de comportamiento. |
 | 20 | Antifraude — sin castigo por no participar | No completar un desafío no afecta XP, racha ni nivel — mismo aislamiento que el diseño no punitivo de rachas (Bloque II). |
-| 21 | Antifraude — tope de repetición (cierra el Gate 8 pendiente del Bloque I) | Reutiliza el patrón `daily_cap` ya validado en el Bloque I como tope de completions elegibles por desafío/día — mecanismo real, no una declaración cualitativa. |
+| 21 | Antifraude — tope de repetición (cierra el Gate 8 pendiente del Bloque I) | `daily_cap` real sobre `account_challenge_daily_progress` (§4.12): superar el tope el mismo día local no incrementa el progreso agregado, aunque existan más eventos elegibles ese día. |
+| 31 | Deduplicación de evento independiente del `daily_cap` (§4.12) | Reprocesar el mismo evento de origen dos veces no incrementa `contribution_count` ni el progreso agregado — la deduplicación por evento y el tope diario son mecanismos independientes, ambos exigidos. |
+| 32 | Asignación automática y materialización perezosa (§4.14) | `account_challenge` se crea sin acción explícita del estudiante, solo al abrir la sección o al primer evento elegible del período — `UNIQUE(account_id, challenge_definition_id, period_start)` impide duplicados y preexistencia para cuentas sin actividad. |
+| 33 | Señal de "días activos" vía `DailyActivitySignalReader` (§4.13) | Un desafío de días activos cuenta fechas únicas dentro de su propio período (misma mecánica que Gate 21, `daily_cap = 1`) — nunca lee `currentStreak` de presentación. |
 
 ### Incremento 5 — Cosméticos y slots (títulos/cosméticos vinculados a niveles vía `reward_bundle_id` ya añadido en 1.c)
 
 | # | Gate | Qué verifica |
 |---|---|---|
 | 22 | Un ítem por slot, solo si poseído y activo | `equipped_cosmetic` rechaza equipar un ítem no poseído, revocado, o en un slot incompatible. |
-| 23 | Múltiples slots simultáneos sin interferencia (§4.10) | Equipar un cosmético en el slot `marco` no afecta lo equipado en `avatar`/`banner`/`insignia` de la misma cuenta — cada slot es independiente. |
+| 23 | Múltiples slots simultáneos sin interferencia (§4.10) | Equipar un cosmético en el slot `AVATAR_FRAME` no afecta lo equipado en `AVATAR`/`PROFILE_BANNER`/`BADGE` de la misma cuenta — cada slot es independiente. |
 | 24 | Cosméticos no alteran nada funcional | Ningún cosmético cambia dificultad, corrección o XP base. |
+| 34 | Coincidencia exacta tipo-slot (§4.15) | `equipped_cosmetic` rechaza equipar un `cosmetic_item` cuyo `item_type` no sea idéntico al `cosmetic_slot` destino. |
+| 35 | Títulos fuera del sistema cosmético (§4.15) | `CosmeticSlot` no incluye `TITLE` — no existe ruta de código que equipe un título vía `equipped_cosmetic`; los títulos usan exclusivamente `equipped_title` (Incremento 3). |
+| 36 | `STREAK_PROTECTION` diferido, no omitido en silencio (§4.15) | `RewardComponentType` se mantiene en `XP_BONUS \| TITLE \| COSMETIC` — verificación estática de que ningún código introduce un componente de protección de racha en este bloque; insignias se conceden como `COSMETIC` con `item_type = BADGE`, sin componente propio. |
 
 **Gate 25** (extensión de `LevelDefinition` con `reward_bundle_id`) se trasladó al Incremento 1, tabla de arriba en §5 (sub-incremento 1.c) — ver §4.1, nota histórica. Este incremento no vuelve a tocar `LevelDefinition`; solo añade componentes `TITLE`/`COSMETIC` al `reward_bundle` que un nivel ya referencia desde 1.c.
 
@@ -242,10 +343,32 @@ Mismo patrón que `verify:block-ii-gate`: invoca el gate consolidado del Bloque 
 - **Incremento 1 (Entrega de recompensas) + worker de evaluación**: **requiere ADR nuevo** (ADR-0019, a redactar a continuación). Las políticas de fondo ya quedaron fijadas en esta definición (convención de clave de idempotencia §4.4, snapshot de lo entregado §4.5, garantías del worker §4.9, inmutabilidad de `challenge_definition` §4.8) — el ADR formaliza la implementación exacta (esquema de tablas, estructura del worker, endpoints internos), no redescubre estas decisiones.
 - **Incrementos 2–5 (Logros, Títulos, Desafíos, Cosméticos)**: no requieren ADR propio si se apoyan en el mecanismo que fije ADR-0019 sin introducir una decisión arquitectónica nueva — mismo criterio que Progresión Visible en el Bloque II. Se confirmará incremento a incremento.
 
+**Confirmación para Incremento 4 (2026-08-04)**: los mecanismos fijados en §4.12–4.14 (`account_challenge_daily_progress`, `DailyActivitySignalReader`, asignación automática con materialización perezosa) **no requieren ADR propio**. Ninguno introduce un componente de infraestructura nuevo (worker, cola, sistema externo): el tope diario reutiliza el patrón de aislamiento `SERIALIZABLE` ya validado en `XpGrantService` (Bloque I) sobre una tabla nueva, no un mecanismo nuevo; el lector de racha reutiliza la fuente persistida de Bloque II sin nueva tabla; la asignación perezosa es una regla de negocio sobre creación de filas, no una decisión de arquitectura. Se confirma consistente con el mecanismo de ADR-0019 (worker de evaluación por cursor de cuenta).
+
+**Confirmación para Incremento 5 (2026-08-04)**: la unificación de enum (§4.15) y el diferimiento de `STREAK_PROTECTION` son decisiones de modelado de datos y alcance de producto, no de arquitectura — **no requieren ADR propio**. Se apoyan íntegramente en el mecanismo de entrega ya fijado por ADR-0019 y en la coordinación de ciclo de vida ya construida en ADR-0018 (§4.10).
+
 ## 7–10. Pendientes
 
-Implementación incremental, validación técnica, actualización documental y cierre formal **no se inician todavía** — quedan para cuando el Product Owner autorice el paso a implementación.
+Implementación incremental, validación técnica, actualización documental y cierre formal **no se inician todavía** para el Bloque III como conjunto — quedan para el cierre formal completo. Sub-incrementos individuales ya autorizados e implementados registran su evidencia a continuación, en la medida en que avanzan.
+
+### Evidencia de validación — Incremento 4, sub-incremento 4.a ("Fundación de persistencia de desafíos", 2026-08-04)
+
+Implementado: esquema (`challenge_definition`/`account_challenge`/`account_challenge_daily_progress`, migración `20260805022207_challenge_foundation`), repositorios mínimos (`ChallengeDefinitionRepository`/`AccountChallengeRepository`/`AccountChallengeDailyProgressRepository`), sin evaluación de eventos, progresión, reclamación ni integración con `RewardEvaluationWorker` (fuera de alcance de 4.a, ver arriba).
+
+Gates ejecutados y su resultado:
+
+| Gate/verificación | Resultado |
+|---|---|
+| `verify:challenge-foundation-gate` (nuevo, 40 verificaciones — esquema, unicidad, ciclo de vida sin saltos, primitivo de acumulación diaria, frontera de dominio) | **PASS** |
+| `verify:reward-foundation-gate` (1.a) | PASS, sin regresión |
+| `verify:reward-evaluation-worker-gate` (1.b) | PASS, sin regresión |
+| `verify:reward-delivery-xp-bonus-gate` (1.c) | PASS, sin regresión |
+| `verify:achievement-foundation-gate` (2.a) | PASS, sin regresión |
+| `verify:achievement-progress-unlock-gate` (2.b) | PASS, sin regresión |
+| `verify:title-foundation-gate` (3.a) | PASS, sin regresión |
+| `node scripts/verify-block-ii-gate.mjs` (consolidado Bloque I + II) | PASS, sin regresión |
+| `verify:title-equipment-gate` (3.b) | **NO EJECUTADO** — requiere un servidor HTTP activo en `localhost:3000` (hace peticiones `fetch` reales); no se levantó un servidor para esta corrida. **No se reporta como PASS.** Excepción de entorno, no de código: 4.a no toca `equipped_title`, `public_profile`, ni ninguna ruta HTTP — ningún archivo de este sub-incremento roza ese flujo (verificado por la frontera de dominio del propio gate de 3.a/3.b y por la ausencia de cualquier referencia cruzada en los archivos nuevos de 4.a). Pendiente de re-ejecutar con el servidor arriba antes del cierre formal del Bloque III, junto con el resto de gates que dependen de HTTP. |
 
 ---
 
-**Bloque III — definición formal, 2ª revisión (2026-08-03). Los siete ajustes de la auditoría crítica quedaron incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Pendiente de revisión final del Product Owner antes de redactar ADR-0019.**
+**Bloque III — definición formal, 3ª revisión (2026-08-04). Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Se incorporan las decisiones de mecanismo del Product Owner para Incremento 4 (§4.12–4.14: tope diario real, contrato de señal de actividad, asignación automática perezosa) e Incremento 5 (§4.15: unificación de enum de slots, insignias vía `COSMETIC`, `STREAK_PROTECTION` diferido) — ningún ADR nuevo requerido, confirmado incremento a incremento (§6). Pendiente de autorización del Product Owner para iniciar implementación de Incremento 4.**

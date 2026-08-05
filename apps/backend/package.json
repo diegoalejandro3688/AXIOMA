@@ -34,6 +34,7 @@
     "verify:achievement-progress-unlock-gate": "tsx scripts/verify-achievement-progress-unlock-gate.ts",
     "verify:title-foundation-gate": "tsx scripts/verify-title-foundation-gate.ts",
     "verify:title-equipment-gate": "tsx scripts/verify-title-equipment-gate.ts",
+    "verify:challenge-foundation-gate": "tsx scripts/verify-challenge-foundation-gate.ts",
     "cli:recover-account": "node dist/cli/recover-account.js",
     "db:up": "docker compose -f ../../docker-compose.yml up -d",
     "db:down": "docker compose -f ../../docker-compose.yml down"

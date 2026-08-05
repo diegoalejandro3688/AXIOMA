@@ -31,6 +31,9 @@ import { TitleDefinitionRepository } from './title-definition.repository';
 import { AccountTitleRepository } from './account-title.repository';
 import { EquippedTitleRepository } from './equipped-title.repository';
 import { TitleEquipmentService } from './title-equipment.service';
+import { ChallengeDefinitionRepository } from './challenge-definition.repository';
+import { AccountChallengeRepository } from './account-challenge.repository';
+import { AccountChallengeDailyProgressRepository } from './account-challenge-daily-progress.repository';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -95,6 +98,16 @@ import { TitleEquipmentService } from './title-equipment.service';
  * `PrivacyModule` llamando a `UserService`, nunca repositorios ajenos
  * directamente). Consistencia (cuenta, propiedad activa, definición
  * activa/pública, perfil `ACTIVE`) respaldada por trigger -- Gates 13-15.
+ *
+ * Incremento 4, sub-incremento 4.a ("Fundación de persistencia de
+ * desafíos"): esquema y repositorios mínimos de `challenge_definition`/
+ * `account_challenge`/`account_challenge_daily_progress` -- SIN evaluación
+ * de eventos, SIN progresión, SIN reclamación de recompensa, SIN
+ * integración con `RewardEvaluationWorker` (sub-incrementos posteriores).
+ * Ciclo de vida de `account_challenge` (Gate 17) y tope diario (§4.12,
+ * schema-level) respaldados por trigger; el primitivo de acumulación
+ * (`AccountChallengeDailyProgressRepository.upsertContribution`) no decide
+ * elegibilidad ni aplica `dailyCap` todavía.
  */
 @Module({
   imports: [AuthModule, InternalOpsModule, OutboxModule],
@@ -127,6 +140,9 @@ import { TitleEquipmentService } from './title-equipment.service';
     AccountTitleRepository,
     EquippedTitleRepository,
     TitleEquipmentService,
+    ChallengeDefinitionRepository,
+    AccountChallengeRepository,
+    AccountChallengeDailyProgressRepository,
   ],
   exports: [
     GamificationProgramRepository,
@@ -151,6 +167,9 @@ import { TitleEquipmentService } from './title-equipment.service';
     TitleDefinitionRepository,
     AccountTitleRepository,
     TitleEquipmentService,
+    ChallengeDefinitionRepository,
+    AccountChallengeRepository,
+    AccountChallengeDailyProgressRepository,
   ],
 })
 export class GamificationModule {}
