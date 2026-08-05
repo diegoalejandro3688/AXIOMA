@@ -4,7 +4,7 @@
 **Fase**: Fase 2 — Learning Experience Foundation
 **Bloque**: III de VIII (Roadmap Learning Experience Foundation)
 **Documentos relacionados**: `docs/adr/BLOCK-II-CLOSURE-REPORT.md`, `docs/adr/BLOCK-II-DEFINITION.md`, `docs/adr/0016-gamificacion-fundacion.md`, `docs/adr/0018-public-profile-foundation.md`
-**Estado**: Definición revisada (5ª pasada, 2026-08-05 — añade §4.17, reclamación explícita de desafíos). Incremento 4, sub-incrementos 4.a, 4.b y 4.c **implementados y gateados** (4.a: commit `d476b63`; 4.b: commit `8dacc71`; 4.c: ver Evidencia de validación más abajo). Solo queda pendiente 4.d (superficie móvil de consumo/presentación) para cerrar el Incremento 4 completo.
+**Estado**: Definición revisada (6ª pasada, 2026-08-05 — añade §4.18, superficie móvil). Incremento 4 (Desafíos) **completo**: sub-incrementos 4.a, 4.b, 4.c y 4.d **implementados y gateados** (4.a: commit `d476b63`; 4.b: commit `8dacc71`; 4.c/4.d: ver Evidencia de validación más abajo). Incremento 5 (Cosméticos, §4.15) sigue sin implementación.
 
 ---
 
@@ -295,6 +295,33 @@ Cierra el flujo de un desafío ya `COMPLETED` (4.b) — endpoints de autoservici
 
 **Sin ADR nuevo**: reutiliza íntegramente el mecanismo de entrega de ADR-0019 (§6, mismo criterio de confirmación incremento a incremento que 4.a/4.b).
 
+### 4.18 Sub-incremento 4.d: superficie móvil (2026-08-05)
+
+Cierra el Incremento 4 en su alcance backend+móvil: consumo y presentación de lo que 4.c ya expone, sin evaluación ni lógica de negocio nueva en el cliente.
+
+**Ubicación** (decisión de producto, no técnica — resuelta contra Master Context §4.10, la autoridad más alta disponible, no asumida): *"Competir reúne progresión personal, desafíos y competencia asincrónica"* — Desafíos vive dentro del tab **Competir** ya existente (`app/(tabs)/competir.tsx`), reemplazando su `ComingSoonPlaceholder`. Ningún tab nuevo, ninguna ruta nueva — mismo criterio que Master Context exige para esa pantalla: *"no mostrar capacidades futuras como si ya pudieran utilizarse"* (liga, pregunta rápida, logros siguen sin construirse y no aparecen).
+
+**Cliente tipado**:
+- `lib/api/challenges.ts`: `listChallenges()` (`GET /gamification/me/challenges`) y `claimChallenge(id)` (`POST .../claim`), mismo patrón que `lib/api/progress.ts` (ADR-0013) — `apiRequest` + esquema Zod de `@axioma/contracts` (ya existentes desde 4.c).
+- `lib/challenges/claim-outcome.ts`: mapeo puro `ApiResult -> ClaimChallengeOutcome` (`ok`/`not_found`/`not_completed`/`retryable`/`network`/`error`) — **solo** traduce status HTTP a intención de UI, nunca reinterpreta reglas de negocio (Gate 43). Importa `ApiResult` con `import type` a propósito: ese import se elide en compilación, así este módulo nunca arrastra en tiempo de ejecución `expo-secure-store` (vía `lib/api/client.ts`) — es lo que permite gatearlo con `tsx` puro, sin runtime de React Native, mismo criterio que `verify-offline-outbox-gate.ts` (ADR-0011).
+- `lib/challenges/group-challenges.ts`: `groupChallenges` (activos/completados/reclamados), `progressRatio` (razón `[0,1]` para la barra, NO cálculo de progreso — los dos números ya vienen decididos por el backend), `canClaim` (réplica de presentación de "solo `COMPLETED` reclama", el backend la vuelve a exigir con 409 si se elude).
+
+**Pantalla** (`competir.tsx`): estados `loading`/`error`/`ready` (mismo `ScreenState` que `estudio/index.tsx`/`index.tsx`), `LoadingState`/`ErrorState`/`EmptyState` reutilizados sin modificar. `SectionList` con tres secciones filtradas a no-vacías (Activos/Completados/Reclamados). Progreso mostrado como `progressValue/targetValue` + barra proporcional. Botón "Reclamar" solo si `canClaim`. Protección de doble toque: un único `claimingId` global deshabilita TODOS los botones de reclamar mientras cualquier solicitud está en curso (no solo el ítem tocado) — más simple y suficiente para el volumen esperado de desafíos simultáneos.
+
+**Reacción a cada resultado del claim** (nunca optimista — el estado local solo cambia con la respuesta ya recibida):
+- `ok`: reemplaza ese ítem en el array local con `outcome.data` (dato real del servidor) — se re-agrupa solo, `groupChallenges` lo mueve a "Reclamados" en el siguiente render.
+- `not_completed` (409) / `not_found` (404): la vista local ya no coincide con el backend — se descarta y se recarga la lista completa (`load()`), no se intenta adivinar el estado correcto localmente (Gate 44).
+- `retryable` (503): el ítem NO cambia de grupo (sigue `COMPLETED` en el estado local, igual que en el backend) — se muestra un mensaje de error inline en ESE ítem y el botón vuelve a estar disponible para reintentar.
+- `network`/`error`: mismo tratamiento que `retryable` — mensaje inline, reintentable, sin tocar el estado del desafío.
+
+**Tema claro/oscuro**: `useThemedStyles`/`useTheme`, únicamente tokens semánticos (`color.background.*`, `color.text.*`, `color.accent.*`, `color.border.default`, `color.state.error.text`) — ningún hex nuevo, mismo criterio que ADR-0015.
+
+**Fuera de 4.d, confirmado**: sin cálculo de progreso en el cliente, sin `CLAIMED` optimista, sin evaluación de desafíos, sin tipos de desafío nuevos, sin notificaciones, sin animaciones de recompensa, sin cambios de backend (no se encontró ningún defecto de integración que lo exigiera).
+
+**Verificación manual pendiente, admitida explícitamente**: el gate de 4.d (`verify:challenges-gate`) prueba `group-challenges.ts`/`claim-outcome.ts` (lógica pura, sin RN) contra `tsx`, mismo criterio que `verify-offline-outbox-gate.ts` — NO reemplaza una verificación visual real del renderizado/tema/gestos en Browser o dispositivo, que no se ejecutó en esta sesión (requiere sesión autenticada real vía `expo start --web` + backend arriba). Queda pendiente antes de considerar 4.d validado end-to-end, mismo criterio de honestidad que ya usa el propio checklist de ADR-0011.
+
+**Sin ADR nuevo**: sin decisión de arquitectura (solo cliente/presentación).
+
 ## 5. Decision Gates
 
 ### Incremento 1 — Entrega de recompensas
@@ -346,6 +373,11 @@ Cierra el flujo de un desafío ya `COMPLETED` (4.b) — endpoints de autoservici
 | 39 | Idempotencia real del claim, secuencial y concurrente (§4.17) | Reclamar dos veces (secuencial o concurrente) produce como máximo un `reward_grant` y transiciona a `CLAIMED` una sola vez. |
 | 40 | `CHALLENGE_CLAIM` como fuente de recompensa (§4.4/§4.17) | El `reward_grant` de un claim usa `sourceEntityType = CHALLENGE_CLAIM`, `sourceEntityId = account_challenge.id`, clave `reward:CHALLENGE_CLAIM:{id}`. |
 | 41 | Sin `CLAIMED` sin entrega confirmada (§4.17) | Si algún componente de la recompensa falla, `account_challenge` conserva `COMPLETED` (nunca `CLAIMED`) y el endpoint responde 503, reintentable. |
+| 42 | Renderizado correcto de los cuatro estados (§4.18) | `ACCEPTED`/`IN_PROGRESS` en "Activos", `COMPLETED` en "Completados", `CLAIMED` en "Reclamados" -- sin duplicar ni omitir ningún desafío entre grupos. |
+| 43 | Sin lógica de negocio duplicada en el cliente (§4.18) | `mapClaimResult`/`progressRatio`/`canClaim` derivan su resultado ÚNICAMENTE de datos ya decididos por el backend (status HTTP, `progressValue`/`targetValue`/`challengeStatus`) -- ninguno reevalúa ni reinterpreta una regla de negocio. |
+| 44 | 409/404 fuerza reconciliación completa (§4.18) | Ante una discrepancia con el backend durante el claim, el cliente recarga la lista completa (`GET .../challenges`) en vez de adivinar el estado localmente. |
+| 45 | 503 conserva el estado local y permite reintentar (§4.18) | Un claim con 503 no cambia el grupo/estado local del desafío (sigue `COMPLETED`) y el botón de reclamar sigue disponible. |
+| 46 | Protección de doble toque (§4.18) | Mientras una solicitud de claim está en curso, ningún botón de reclamar adicional puede iniciar una segunda solicitud. |
 
 ### Incremento 5 — Cosméticos y slots (títulos/cosméticos vinculados a niveles vía `reward_bundle_id` ya añadido en 1.c)
 
@@ -462,6 +494,29 @@ Gates ejecutados y su resultado:
 | `verify:title-equipment-gate` (3.b) | PASS, sin regresión — ejecutado por primera vez en la evidencia de este bloque (servidor HTTP disponible para el gate de 4.c); cierra la excepción de entorno registrada en 4.a/4.b. |
 | `node scripts/verify-block-ii-gate.mjs` (consolidado Bloque I + II) | PASS, sin regresión |
 
+### Evidencia de validación — Incremento 4, sub-incremento 4.d ("Superficie móvil", 2026-08-05)
+
+Implementado, contra el diseño fijado en §4.18: `lib/api/challenges.ts`, `lib/challenges/claim-outcome.ts`, `lib/challenges/group-challenges.ts`, y `app/(tabs)/competir.tsx` (reemplaza `ComingSoonPlaceholder`, ubicación confirmada contra Master Context §4.10). Sin cambios de backend — ningún defecto de integración lo exigió.
+
+**Decisión de ubicación confirmada explícitamente antes de implementar** (no asumida): Master Context §4.10 ubica Desafíos dentro de Competir — se confirmó con el Product Owner antes de tocar `competir.tsx`.
+
+**Corrección de arquitectura encontrada al diseñar el gate** (no un defecto de comportamiento, un ajuste de estructura para poder probarlo): `lib/api/challenges.ts` importaba `apiRequest` de `lib/api/client.ts`, que importa `expo-secure-store` — cualquier archivo que lo importe, aunque sea transitivamente, falla al transformarse con `tsx` puro (esbuild no puede parsear el `react-native` que `expo-secure-store` arrastra fuera de Metro). Se extrajo el mapeo de resultado del claim a `lib/challenges/claim-outcome.ts`, que importa `ApiResult` con `import type` (elidido en compilación) — permite gatear la lógica de decisión real sin runtime de React Native, mismo criterio que ya usa `verify-offline-outbox-gate.ts` para el driver de SQLite.
+
+Gates ejecutados y su resultado:
+
+| Gate/verificación | Resultado |
+|---|---|
+| `verify:challenges-gate` (nuevo, móvil — cuatro estados agrupados correctamente, `progressRatio` acotado, `canClaim` solo en `COMPLETED`, mapeo 200/404/409/503/red/otro sin lógica de negocio duplicada) | **PASS** |
+| `tsc --noEmit` (mobile) | PASS |
+| `eslint app lib components` (mobile) | PASS, sin advertencias |
+| `verify:offline-outbox-gate` (mobile, regresión del flujo previo) | PASS, sin regresión |
+| `verify:challenge-claim-gate` (4.c) | PASS, sin regresión |
+| `verify:challenge-progress-gate` (4.b) | PASS, sin regresión |
+| `verify:challenge-foundation-gate` (4.a) | PASS, sin regresión |
+| `verify:title-equipment-gate` (3.b) | PASS, sin regresión |
+
+**No verificado en esta sesión, admitido explícitamente** (§4.18): renderizado visual real (Browser/dispositivo, sesión autenticada real, tema claro/oscuro, gestos de doble toque) — el gate automatizado prueba la lógica de decisión pura, no la pantalla React Native en sí. Mismo criterio de honestidad que ya usa `verify-offline-outbox-gate.ts` sobre su propia verificación manual pendiente en Android.
+
 ---
 
-**Bloque III — definición formal, 5ª revisión (2026-08-05). Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Incremento 4, sub-incrementos 4.a, 4.b y 4.c implementados y gateados (§4.12–4.14, §4.16, §4.17) — ningún ADR nuevo requerido (§6). Incremento 5 (§4.15) sigue en definición, sin implementación todavía. Pendiente dentro de Incremento 4: superficie móvil (4.d, solo consumo/presentación). Sin tag — espera al cierre completo de Incremento 4 (backend + móvil + regresión final).**
+**Bloque III — definición formal, 6ª revisión (2026-08-05). Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Incremento 4 — Desafíos — queda COMPLETO en su alcance backend + móvil: sub-incrementos 4.a, 4.b, 4.c y 4.d implementados y gateados (§4.12–4.14, §4.16, §4.17, §4.18) — ningún ADR nuevo requerido (§6). Verificación visual manual de 4.d en dispositivo/Browser queda pendiente, admitida explícitamente (no bloqueante para el cierre de este sub-incremento, sí recomendable antes de considerar Incremento 4 verificado end-to-end). Incremento 5 (Cosméticos, §4.15) sigue en definición, sin implementación todavía — Bloque III NO se etiqueta todavía.**

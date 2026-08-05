@@ -1,0 +1,123 @@
+// Gate del Bloque III, Incremento 4, sub-incremento 4.d ("Superficie móvil
+// de Desafíos") -- ver docs/adr/BLOCK-III-DEFINITION.md §4.18. Prueba la
+// lógica REAL de producción (`group-challenges.ts`, `claim-outcome.ts`)
+// sin runtime de React Native -- ambos módulos son deliberadamente libres
+// de imports de RN/Expo (solo un `import type` de `lib/api/client.ts`,
+// elidido en compilación) para que esto sea posible con `tsx` puro, mismo
+// criterio que `verify-offline-outbox-gate.ts` (lógica real, sin
+// dispositivo/emulador).
+//
+// Esto NO reemplaza la verificación manual en Browser/simulador de la
+// PANTALLA (renderizado real, tema claro/oscuro, gestos) -- ver el
+// checklist en docs/adr/BLOCK-III-DEFINITION.md §4.18.
+import type { ChallengeSummary } from '@axioma/contracts';
+import type { ApiResult } from '../lib/api/client';
+import { groupChallenges, progressRatio, canClaim } from '../lib/challenges/group-challenges';
+import { mapClaimResult } from '../lib/challenges/claim-outcome';
+
+let failures = 0;
+function check(label: string, condition: boolean) {
+  if (condition) {
+    console.log(`  OK  ${label}`);
+  } else {
+    console.error(`FALLO  ${label}`);
+    failures++;
+  }
+}
+
+let seq = 0;
+function makeChallenge(overrides: Partial<ChallengeSummary> = {}): ChallengeSummary {
+  seq++;
+  return {
+    id: `challenge-${seq}`,
+    challengeKey: `key-${seq}`,
+    name: `Desafío ${seq}`,
+    description: null,
+    challengeType: 'WEEKLY',
+    targetValue: 10,
+    progressValue: 0,
+    challengeStatus: 'ACCEPTED',
+    periodStart: '2026-08-01T00:00:00.000Z',
+    periodEnd: '2026-08-08T00:00:00.000Z',
+    acceptedAt: '2026-08-01T00:00:00.000Z',
+    completedAt: null,
+    claimedAt: null,
+    ...overrides,
+  };
+}
+
+function main() {
+  console.log('--- 1. groupChallenges: renderiza los cuatro estados en el grupo correcto ---');
+  const accepted = makeChallenge({ challengeStatus: 'ACCEPTED' });
+  const inProgress = makeChallenge({ challengeStatus: 'IN_PROGRESS', progressValue: 4 });
+  const completed = makeChallenge({ challengeStatus: 'COMPLETED', progressValue: 10, completedAt: '2026-08-03T00:00:00.000Z' });
+  const claimed = makeChallenge({
+    challengeStatus: 'CLAIMED',
+    progressValue: 10,
+    completedAt: '2026-08-03T00:00:00.000Z',
+    claimedAt: '2026-08-04T00:00:00.000Z',
+  });
+  const grouped = groupChallenges([accepted, inProgress, completed, claimed]);
+  check('ACCEPTED cae en "active"', grouped.active.includes(accepted));
+  check('IN_PROGRESS cae en "active"', grouped.active.includes(inProgress));
+  check('COMPLETED cae en "completed" (pendiente de reclamar)', grouped.completed.includes(completed));
+  check('CLAIMED cae en "claimed"', grouped.claimed.includes(claimed));
+  check('cada grupo tiene exactamente 1 elemento (sin duplicar entre grupos)', grouped.active.length === 2 && grouped.completed.length === 1 && grouped.claimed.length === 1);
+
+  console.log('--- 2. progressRatio: acotado a [0,1], reflejando progressValue/targetValue tal cual el backend los entrega ---');
+  check('0/10 -> 0', progressRatio(makeChallenge({ progressValue: 0, targetValue: 10 })) === 0);
+  check('4/10 -> 0.4', progressRatio(makeChallenge({ progressValue: 4, targetValue: 10 })) === 0.4);
+  check('10/10 -> 1', progressRatio(makeChallenge({ progressValue: 10, targetValue: 10 })) === 1);
+  check('targetValue 0 (defensivo, no debería ocurrir por el CHECK del backend) -> 0, sin dividir por cero', progressRatio(makeChallenge({ progressValue: 0, targetValue: 0 })) === 0);
+
+  console.log('--- 3. canClaim: únicamente COMPLETED habilita el botón de reclamar ---');
+  check('ACCEPTED -> no se puede reclamar', canClaim(accepted) === false);
+  check('IN_PROGRESS -> no se puede reclamar', canClaim(inProgress) === false);
+  check('COMPLETED -> SÍ se puede reclamar', canClaim(completed) === true);
+  check('CLAIMED -> no se puede reclamar de nuevo', canClaim(claimed) === false);
+
+  console.log('--- 4/6/7. mapClaimResult: 200/404/409/503/network/otro -- mismo significado que el backend fija en §4.17 ---');
+  const okResult: ApiResult<ChallengeSummary> = { ok: true, data: claimed };
+  const okOutcome = mapClaimResult(okResult);
+  check('200 -> kind "ok" con los datos del servidor (nunca optimista)', okOutcome.kind === 'ok' && okOutcome.data === claimed);
+
+  const notFound: ApiResult<ChallengeSummary> = { ok: false, kind: 'http', status: 404, message: 'no existe' };
+  check('404 -> kind "not_found" (Gate 37)', mapClaimResult(notFound).kind === 'not_found');
+
+  const notCompleted: ApiResult<ChallengeSummary> = { ok: false, kind: 'http', status: 409, message: 'todavía no completado' };
+  check('409 -> kind "not_completed" -- la pantalla debe reconciliar con el backend, no asumir (Gate 38)', mapClaimResult(notCompleted).kind === 'not_completed');
+
+  const retryable: ApiResult<ChallengeSummary> = { ok: false, kind: 'http', status: 503, message: 'entrega no confirmada' };
+  const retryableOutcome = mapClaimResult(retryable);
+  check(
+    '503 -> kind "retryable", con el mensaje del backend preservado (Gate 41)',
+    retryableOutcome.kind === 'retryable' && retryableOutcome.message === 'entrega no confirmada',
+  );
+
+  const network: ApiResult<ChallengeSummary> = { ok: false, kind: 'network', message: 'sin conexión' };
+  check('sin red -> kind "network"', mapClaimResult(network).kind === 'network');
+
+  const otherHttp: ApiResult<ChallengeSummary> = { ok: false, kind: 'http', status: 500, message: 'error inesperado' };
+  const otherOutcome = mapClaimResult(otherHttp);
+  check('otro status HTTP -> kind "error", status preservado', otherOutcome.kind === 'error' && otherOutcome.status === 500);
+
+  console.log('--- 9. Sin lógica duplicada del backend: el mapeo es puramente HTTP status -> intención de UI ---');
+  // Verificación por diseño, no por inspección de texto: mapClaimResult no
+  // recibe ni necesita `challengeStatus`/`progressValue`/`targetValue` para
+  // decidir su resultado -- solo el status HTTP ya decidido por el backend.
+  const notCompletedNoBusinessFields = mapClaimResult({ ok: false, kind: 'http', status: 409, message: 'x' });
+  check('el mapeo de 409 no requiere ni infiere el estado real del desafío -- delega la verdad al backend', notCompletedNoBusinessFields.kind === 'not_completed');
+
+  console.log('');
+  if (failures > 0) {
+    console.error(`${failures} verificación(es) fallaron.`);
+    process.exit(1);
+  }
+  console.log('Todas las verificaciones del gate de Desafíos (móvil, Bloque III, sub-incremento 4.d) pasaron.');
+  console.log('');
+  console.log('RECORDATORIO: esto valida group-challenges.ts/claim-outcome.ts (lógica pura), no la pantalla React');
+  console.log('Native en sí (renderizado, tema claro/oscuro, doble toque real). Verificación manual complementaria');
+  console.log('en Browser (expo start --web) pendiente antes del cierre -- ver docs/adr/BLOCK-III-DEFINITION.md §4.18.');
+}
+
+main();

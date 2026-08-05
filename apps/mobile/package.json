@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint app lib components --ext .ts,.tsx",
     "build": "tsc --noEmit",
-    "verify:offline-outbox-gate": "tsx scripts/verify-offline-outbox-gate.ts"
+    "verify:offline-outbox-gate": "tsx scripts/verify-offline-outbox-gate.ts",
+    "verify:challenges-gate": "tsx scripts/verify-challenges-gate.ts"
   },
   "dependencies": {
     "@axioma/contracts": "workspace:*",
