@@ -40,6 +40,8 @@ import { ChallengeService } from './challenge.service';
 import { ChallengeController } from './challenge.controller';
 import { CosmeticItemRepository } from './cosmetic-item.repository';
 import { InventoryItemRepository } from './inventory-item.repository';
+import { EquippedCosmeticRepository } from './equipped-cosmetic.repository';
+import { CosmeticEquipmentService } from './cosmetic-equipment.service';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -135,6 +137,16 @@ import { InventoryItemRepository } from './inventory-item.repository';
  * (mismo mecanismo genérico, sin camino paralelo) -- SIN `equipped_cosmetic`,
  * SIN endpoints, SIN superficie móvil (ver 5.b/5.c). Propiedad `REVOKED`/
  * `SUPERSEDED` nunca se reactiva silenciosamente ante una nueva entrega.
+ *
+ * Sub-incremento 5.b ("Equipamiento de cosméticos", §4.20):
+ * `equipped_cosmetic` + `CosmeticEquipmentService` (exportado --
+ * `UserModule` lo consume para el endpoint de autoservicio en
+ * `gamification/me/cosmetics`, mismo criterio de frontera que
+ * `TitleEquipmentService`: la ruta HTTP vive en `UserModule` para evitar
+ * una dependencia circular de módulos, sin que `GamificationModule`
+ * importe `UserModule`). Consistencia (cuenta, propiedad activa, perfil
+ * `ACTIVE`, Y coincidencia tipo-slot) respaldada por trigger -- Gates
+ * 22/34/59-63/66.
  */
 @Module({
   imports: [AuthModule, InternalOpsModule, OutboxModule],
@@ -175,6 +187,8 @@ import { InventoryItemRepository } from './inventory-item.repository';
     ChallengeService,
     CosmeticItemRepository,
     InventoryItemRepository,
+    EquippedCosmeticRepository,
+    CosmeticEquipmentService,
   ],
   exports: [
     GamificationProgramRepository,
@@ -207,6 +221,7 @@ import { InventoryItemRepository } from './inventory-item.repository';
     ChallengeService,
     CosmeticItemRepository,
     InventoryItemRepository,
+    CosmeticEquipmentService,
   ],
 })
 export class GamificationModule {}

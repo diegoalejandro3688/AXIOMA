@@ -15,6 +15,10 @@ import { TitleDefinitionRepository } from '../src/gamification/title-definition.
 import { AccountTitleRepository } from '../src/gamification/account-title.repository';
 import { EquippedTitleRepository } from '../src/gamification/equipped-title.repository';
 import { TitleEquipmentService } from '../src/gamification/title-equipment.service';
+import { CosmeticEquipmentService } from '../src/gamification/cosmetic-equipment.service';
+import { CosmeticItemRepository } from '../src/gamification/cosmetic-item.repository';
+import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
+import { EquippedCosmeticRepository } from '../src/gamification/equipped-cosmetic.repository';
 import { UserService } from '../src/user/user.service';
 import { UserProfileRepository } from '../src/user/user-profile.repository';
 import { PublicProfileRepository } from '../src/user/public-profile.repository';
@@ -66,7 +70,14 @@ async function main() {
   const titleDefinitionRepo = new TitleDefinitionRepository(prisma);
   const accountTitleRepo = new AccountTitleRepository(prisma);
   const titleEquipmentService = new TitleEquipmentService(accountTitleRepo, titleDefinitionRepo, new EquippedTitleRepository(prisma));
-  const userService = new UserService(new UserProfileRepository(prisma), new PublicProfileRepository(prisma), titleEquipmentService);
+  // UserService exige CosmeticEquipmentService desde 5.b -- este gate no ejercita
+  // cosméticos, pero el constructor real de producción sí lo requiere.
+  const cosmeticEquipmentService = new CosmeticEquipmentService(
+    new InventoryItemRepository(prisma),
+    new CosmeticItemRepository(prisma),
+    new EquippedCosmeticRepository(prisma),
+  );
+  const userService = new UserService(new UserProfileRepository(prisma), new PublicProfileRepository(prisma), titleEquipmentService, cosmeticEquipmentService);
 
   const suffix = Date.now();
 

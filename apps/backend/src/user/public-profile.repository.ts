@@ -118,8 +118,9 @@ export class PublicProfileRepository {
    * requeriría un job de limpieza no construido en este incremento.
    *
    * Extendido en el sub-incremento 3.b (Bloque III, BLOCK-III-DEFINITION.md
-   * §4.10) para también borrar `equipped_title` en la MISMA transacción --
-   * la propiedad (`account_title`) nunca se toca, solo la presentación
+   * §4.10) para también borrar `equipped_title`, y en 5.b (§4.20) para
+   * `equipped_cosmetic` -- ambos en la MISMA transacción. La propiedad
+   * (`account_title`/`inventory_item`) nunca se toca, solo la presentación
    * pública, mismo criterio ya aplicado aquí a `avatarReference`.
    */
   anonymize(accountId: string): Promise<PublicProfile> {
@@ -129,6 +130,10 @@ export class PublicProfileRepository {
         data: { lifecycleStatus: 'ANONYMIZED', anonymizedAt: new Date(), avatarReference: null },
       });
       await tx.equippedTitle.deleteMany({ where: { publicProfileId: profile.id } });
+      // Bloque III, sub-incremento 5.b (§4.20, Gate 67) -- mismo criterio
+      // que equipped_title: limpia PRESENTACIÓN (todas las filas, una por
+      // slot), nunca toca inventory_item (propiedad).
+      await tx.equippedCosmetic.deleteMany({ where: { publicProfileId: profile.id } });
       await tx.profileUsernameHistory.create({
         data: {
           publicProfileId: profile.id,

@@ -523,9 +523,11 @@ model PublicProfile {
   createdAt          DateTime                      @default(now()) @map("created_at")
   updatedAt          DateTime                      @updatedAt @map("updated_at")
 
-  usernameHistory ProfileUsernameHistory[]
+  usernameHistory   ProfileUsernameHistory[]
   /// Bloque III, sub-incremento 3.b -- lado inverso de EquippedTitle.publicProfileId.
-  equippedTitle   EquippedTitle?
+  equippedTitle     EquippedTitle?
+  /// Bloque III, sub-incremento 5.b -- lado inverso de EquippedCosmetic.publicProfileId (varias filas, una por slot).
+  equippedCosmetics EquippedCosmetic[]
 
   @@map("public_profile")
 }
@@ -1587,7 +1589,9 @@ model InventoryItem {
   ownershipStatus       InventoryItemOwnershipStatus @default(ACTIVE) @map("ownership_status")
   revokedAt             DateTime?                    @map("revoked_at")
 
-  cosmeticItem CosmeticItem @relation(fields: [cosmeticItemId], references: [id], onDelete: Restrict)
+  cosmeticItem      CosmeticItem       @relation(fields: [cosmeticItemId], references: [id], onDelete: Restrict)
+  /// Bloque III, sub-incremento 5.b -- lado inverso de EquippedCosmetic.inventoryItemId.
+  equippedCosmetics EquippedCosmetic[]
 
   @@unique([accountId, cosmeticItemId])
   @@map("inventory_item")
@@ -1599,4 +1603,45 @@ enum InventoryItemOwnershipStatus {
   SUPERSEDED
 
   @@map("inventory_item_ownership_status")
+}
+
+/// Bloque III, Incremento 5, sub-incremento 5.b ("Equipamiento de
+/// cosméticos") -- ver docs/adr/BLOCK-III-DEFINITION.md (Incremento 5) y
+/// ADR-0018 (public_profile). Data Model §16.35. Estructura calcada de
+/// `equipped_title` (3.b), extendida a multi-slot (decisión ya fijada en
+/// §4.10): `@@id([publicProfileId, cosmeticSlot])`, no `publicProfileId`
+/// solo -- una cuenta puede tener varias filas simultáneas (una por slot).
+///
+/// `inventoryItemId` SIN `@unique` -- a diferencia de
+/// `EquippedTitle.accountTitleId`, no hace falta: la coincidencia estricta
+/// `cosmetic_item.item_type = cosmetic_slot` (trigger, Gate 34) ya
+/// garantiza que un `inventory_item` solo puede ocupar SU slot
+/// correspondiente.
+///
+/// Consistencia (cuenta, propiedad activa, perfil ACTIVE, Y coincidencia
+/// de tipo-slot) reforzada por trigger
+/// (`enforce_equipped_cosmetic_account_consistency`) -- respaldo real en
+/// base de datos, no solo en la aplicación (Gates 22/34/62/63). Mismo
+/// criterio que `equipped_title`: el trigger exige
+/// `public_profile.lifecycle_status = ACTIVE` pero NO `visibility_status =
+/// VISIBLE`.
+///
+/// `upsert` sobre la PK es la única operación de escritura con sentido
+/// (equipar = reemplazar la selección de ESE slot, nunca "añadir") --
+/// re-equipar el mismo cosmético o reemplazar el del slot son ambos un
+/// único `UPDATE` atómico (Gates 59/60/66). SIN protección de
+/// inmutabilidad: cambiar de selección y la limpieza por anonimización
+/// (§4.20, `PublicProfileRepository.anonymize`) son operaciones legítimas.
+model EquippedCosmetic {
+  publicProfileId String       @map("public_profile_id") @db.Uuid
+  cosmeticSlot    CosmeticSlot @map("cosmetic_slot")
+  inventoryItemId String       @map("inventory_item_id") @db.Uuid
+  equippedAt      DateTime     @map("equipped_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  publicProfile PublicProfile @relation(fields: [publicProfileId], references: [id], onDelete: Restrict)
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+
+  @@id([publicProfileId, cosmeticSlot])
+  @@map("equipped_cosmetic")
 }

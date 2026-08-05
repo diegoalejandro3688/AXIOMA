@@ -142,3 +142,49 @@ export const equippedTitleResponseSchema = z.object({
   equippedAt: isoDateTime,
 });
 export type EquippedTitleResponse = z.infer<typeof equippedTitleResponseSchema>;
+
+/**
+ * Equipamiento de cosméticos -- ver docs/adr/BLOCK-III-DEFINITION.md
+ * (Incremento 5, sub-incremento 5.b). `cosmeticSlot` -- mismo enum que
+ * `CosmeticSlot` del backend (§4.15); `TITLE` deliberadamente ausente
+ * (Gate 35, los títulos usan `equipTitleRequestSchema`, no este contrato).
+ * Sin desequipamiento sin reemplazo en 5.b -- `PUT` siempre exige un
+ * `inventoryItemId` (identidad estable del recurso "cosmético equipado en
+ * este slot"), nunca `null`.
+ */
+export const cosmeticSlotSchema = z.enum(['AVATAR', 'AVATAR_FRAME', 'PROFILE_BANNER', 'BADGE']);
+export type CosmeticSlotValue = z.infer<typeof cosmeticSlotSchema>;
+
+const cosmeticItemInfoSchema = z.object({
+  inventoryItemId: entityId,
+  cosmeticItemId: entityId,
+  itemKey: z.string(),
+  itemType: cosmeticSlotSchema,
+  name: z.string(),
+  description: z.string().nullable(),
+  rarityClass: z.string(),
+  assetReference: z.string(),
+});
+
+export const ownedCosmeticSchema = cosmeticItemInfoSchema.extend({ acquiredAt: isoDateTime });
+export type OwnedCosmetic = z.infer<typeof ownedCosmeticSchema>;
+
+export const cosmeticSummarySchema = cosmeticItemInfoSchema.extend({ equippedAt: isoDateTime });
+export type CosmeticSummary = z.infer<typeof cosmeticSummarySchema>;
+
+export const listCosmeticsResponseSchema = z.object({
+  owned: z.array(ownedCosmeticSchema),
+  equipped: z.object({
+    AVATAR: cosmeticSummarySchema.nullable(),
+    AVATAR_FRAME: cosmeticSummarySchema.nullable(),
+    PROFILE_BANNER: cosmeticSummarySchema.nullable(),
+    BADGE: cosmeticSummarySchema.nullable(),
+  }),
+});
+export type ListCosmeticsResponse = z.infer<typeof listCosmeticsResponseSchema>;
+
+export const equipCosmeticRequestSchema = z.object({ inventoryItemId: entityId });
+export type EquipCosmeticRequest = z.infer<typeof equipCosmeticRequestSchema>;
+
+export const equipCosmeticResponseSchema = cosmeticSummarySchema;
+export type EquipCosmeticResponse = z.infer<typeof equipCosmeticResponseSchema>;

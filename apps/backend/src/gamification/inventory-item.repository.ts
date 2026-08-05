@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../platform/prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
-import type { InventoryItem, RewardSourceEntityType } from '../generated/prisma/client';
+import type { InventoryItem, RewardSourceEntityType, CosmeticItem } from '../generated/prisma/client';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
+
+export type InventoryItemWithCosmeticItem = InventoryItem & { cosmeticItem: CosmeticItem };
 
 /**
  * Único punto de acceso a `inventory_item` -- ver
@@ -61,5 +63,14 @@ export class InventoryItemRepository {
 
   findByAccountId(accountId: string): Promise<InventoryItem[]> {
     return this.prisma.inventoryItem.findMany({ where: { accountId } });
+  }
+
+  /** §4.20 (5.b) -- solo `ACTIVE`, con `cosmetic_item` ya unido, para el listado `GET .../cosmetics`. */
+  findActiveByAccountIdWithCosmeticItem(accountId: string): Promise<InventoryItemWithCosmeticItem[]> {
+    return this.prisma.inventoryItem.findMany({
+      where: { accountId, ownershipStatus: 'ACTIVE' },
+      include: { cosmeticItem: true },
+      orderBy: { acquiredAt: 'desc' },
+    });
   }
 }

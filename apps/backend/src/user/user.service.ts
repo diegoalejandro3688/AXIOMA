@@ -5,6 +5,10 @@ import { PublicProfileRepository } from './public-profile.repository';
 import { isReservedOrOffensive } from './reserved-usernames';
 import { TitleEquipmentService } from '../gamification/title-equipment.service';
 import type { EquippedTitleWithDetails } from '../gamification/equipped-title.repository';
+import { CosmeticEquipmentService } from '../gamification/cosmetic-equipment.service';
+import type { EquippedCosmeticWithDetails } from '../gamification/equipped-cosmetic.repository';
+import type { InventoryItemWithCosmeticItem } from '../gamification/inventory-item.repository';
+import type { CosmeticSlot } from '../generated/prisma/client';
 import { Prisma } from '../generated/prisma/client';
 import type { UserProfile, PublicProfile } from '../generated/prisma/client';
 
@@ -24,6 +28,7 @@ export class UserService {
     private readonly profileRepo: UserProfileRepository,
     private readonly publicProfileRepo: PublicProfileRepository,
     private readonly titleEquipmentService: TitleEquipmentService,
+    private readonly cosmeticEquipmentService: CosmeticEquipmentService,
   ) {}
 
   /**
@@ -254,6 +259,39 @@ export class UserService {
   async getEquippedTitle(accountId: string): Promise<EquippedTitleWithDetails | null> {
     const profile = await this.getPublicProfile(accountId);
     return this.titleEquipmentService.getEquippedTitle(profile.id);
+  }
+
+  // --- equipped_cosmetic -- ver docs/adr/BLOCK-III-DEFINITION.md (Incremento 5, sub-incremento 5.b) ---
+
+  /**
+   * Mismo criterio exacto que `equipTitle`: exige perfil existente (404
+   * vía `getPublicProfile`) y `lifecycleStatus = ACTIVE` (un perfil
+   * `RETIRED` no admite una nueva selección). La validación de
+   * propiedad/coincidencia de slot (Gates 34/61/62/63) es responsabilidad
+   * de `CosmeticEquipmentService` (dominio GAMIFICATION, dueño de esos
+   * datos).
+   */
+  async equipCosmetic(accountId: string, slot: CosmeticSlot, inventoryItemId: string): Promise<EquippedCosmeticWithDetails> {
+    const profile = await this.getPublicProfile(accountId);
+    if (profile.lifecycleStatus !== 'ACTIVE') {
+      throw new ConflictException('Esta identidad pública no está activa.');
+    }
+    return this.cosmeticEquipmentService.equip(profile.id, accountId, slot, inventoryItemId);
+  }
+
+  /**
+   * `owned` no depende de tener `public_profile` (propiedad y
+   * presentación son capas separadas, §4.3) -- `equipped` sale vacío
+   * (las 4 claves en `null`, Gate 64/65) si la cuenta nunca creó perfil,
+   * nunca un error.
+   */
+  async getCosmetics(accountId: string): Promise<{ owned: InventoryItemWithCosmeticItem[]; equipped: EquippedCosmeticWithDetails[] }> {
+    const [owned, profile] = await Promise.all([
+      this.cosmeticEquipmentService.getOwnedByAccountId(accountId),
+      this.publicProfileRepo.findByAccountId(accountId),
+    ]);
+    const equipped = profile ? await this.cosmeticEquipmentService.getEquipped(profile.id) : [];
+    return { owned, equipped };
   }
 
   /**

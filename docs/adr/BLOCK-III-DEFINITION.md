@@ -4,7 +4,7 @@
 **Fase**: Fase 2 — Learning Experience Foundation
 **Bloque**: III de VIII (Roadmap Learning Experience Foundation)
 **Documentos relacionados**: `docs/adr/BLOCK-II-CLOSURE-REPORT.md`, `docs/adr/BLOCK-II-DEFINITION.md`, `docs/adr/0016-gamificacion-fundacion.md`, `docs/adr/0018-public-profile-foundation.md`
-**Estado**: Definición revisada (7ª pasada, 2026-08-05 — añade §4.19, fundación de cosméticos). Incremento 4 (Desafíos) **completo** (4.a `d476b63`, 4.b `8dacc71`, 4.c/4.d ver Evidencia de validación). Incremento 5 (Cosméticos): sub-incremento 5.a **implementado y gateado** (ver Evidencia de validación). Pendiente: 5.b (equipamiento), 5.c (móvil, alcance a definir después de 5.b).
+**Estado**: Definición revisada (8ª pasada, 2026-08-05 — añade §4.20, equipamiento de cosméticos). Incremento 4 (Desafíos) **completo** (4.a `d476b63`, 4.b `8dacc71`, 4.c/4.d ver Evidencia de validación). Incremento 5 (Cosméticos): sub-incrementos 5.a y 5.b **implementados y gateados** (ver Evidencia de validación). Pendiente: 5.c (superficie móvil, alcance a definir).
 
 ---
 
@@ -344,6 +344,34 @@ Mismo patrón que 3.a (Títulos): esquema + entrega idempotente reutilizando `de
 
 **Sin ADR nuevo**: mismo criterio que 3.a — reutiliza el mecanismo de ADR-0019 sin introducir una decisión arquitectónica nueva.
 
+### 4.20 Sub-incremento 5.b: equipamiento de cosméticos (2026-08-05)
+
+Cierra `equipped_cosmetic` (Data Model §16.35) sobre la fundación de 5.a — mismo patrón que 3.b (Equipamiento de títulos), extendido a multi-slot.
+
+**`equipped_cosmetic`**: `@@id([publicProfileId, cosmeticSlot])` — clave única por perfil y slot (no `publicProfileId` solo, a diferencia de `equipped_title`, por la decisión multi-slot ya fijada en §4.10). `inventoryItemId` FK a `inventory_item`, sin `@unique`: la coincidencia estricta `item_type = cosmetic_slot` (Gate 34) ya garantiza que un `inventory_item` solo puede ocupar su slot correspondiente — no hace falta reforzarlo con una segunda restricción. `equippedAt`/`updatedAt`.
+
+**Trigger `enforce_equipped_cosmetic_account_consistency`** (calco de `enforce_equipped_title_account_consistency`, 3.b, con una condición adicional): exige `inventory_item.ownership_status = ACTIVE`, `inventory_item.account_id = public_profile.account_id`, `public_profile.lifecycle_status = ACTIVE`, y `cosmetic_item.item_type = NEW.cosmetic_slot` (vía `inventory_item`) — esta última es la que cierra Gate 34 con mecanismo real, no declarativo.
+
+**Contradicción real encontrada y resuelta antes de implementar** (no asumida en silencio): la ruta pedida (`/gamification/me/cosmetics`) necesita validar `public_profile` (dominio USER), pero `UserModule` ya importa `GamificationModule` (para `TitleEquipmentService`) — declarar el controller directamente en `GamificationModule` habría creado una dependencia circular de módulos, sin precedente en el proyecto. **Resuelto**: en NestJS la ruta HTTP de un controller es independiente del módulo que lo declara — `CosmeticEquipmentController` se registra en `UserModule` (mismo lugar que `PublicProfileController`), con el path `gamification/me/cosmetics`, y orquesta exactamente como títulos: `UserService` resuelve/valida `public_profile`, delega a `CosmeticEquipmentService` (vive en `GamificationModule`, exportado). Cero dependencia circular, cero patrón nuevo.
+
+**Semántica de equipar** (`PUT /gamification/me/cosmetics/equipped/:slot`, cuerpo `{ inventoryItemId }` — `PUT` porque "cosmético equipado en este slot" es un recurso con identidad estable, idempotente por diseño):
+- Re-equipar el MISMO cosmético: `UPSERT` sobre la PK `(publicProfileId, cosmeticSlot)` — no-op idempotente.
+- Reemplazar el cosmético del slot: mismo `UPSERT` — una sola fila, un solo `UPDATE`, atómico por construcción (nunca borrar+insertar).
+- `inventoryItemId` ajeno o inexistente → 404 (nunca 403, mismo criterio que títulos: no filtra existencia).
+- `inventory_item.ownershipStatus != ACTIVE` (`REVOKED`/`SUPERSEDED`) → 409, sin reactivar la propiedad (§4.19 ya fijó esa regla a nivel de entrega; 5.b la respeta al no ofrecer ningún camino que la contradiga).
+- `cosmetic_item.itemType != :slot` de la URL → 409 (mismo código que "no ACTIVE": ambos son conflictos de estado de negocio, no de identidad).
+- Perfil público inexistente → 404.
+
+**`GET /gamification/me/cosmetics`** → `{ owned: CosmeticSummary[], equipped: Record<CosmeticSlot, CosmeticSummary | null> }`. `owned` lista `inventory_item` `ACTIVE` de la cuenta — no depende de tener `public_profile` (propiedad y presentación son capas separadas, §4.3). `equipped` siempre expone las 4 claves de `CosmeticSlot`, en `null` si la cuenta nunca creó perfil o nunca equipó ese slot — nunca un objeto parcial.
+
+**Concurrencia**: sin advisory lock (a diferencia de `ChallengeService.claim`, §4.17) — equipar es un `UPSERT` de una sola fila sobre su propia clave primaria, sin interacción con el mecanismo de entrega de recompensas que motivó ese lock. Dos `PUT` concurrentes al mismo slot se serializan por el propio `UPSERT` de Postgres: el resultado final es determinista (una fila, el valor de una de las dos solicitudes), sin duplicados ni error 500.
+
+**Anonimización**: `UserService.anonymizePublicProfileForAccountClosure` se extiende para `DELETE FROM equipped_cosmetic WHERE public_profile_id = ...` (las hasta 4 filas, una por slot) en la MISMA transacción que ya limpia `equipped_title` — cumple lo ya anunciado en §4.10.
+
+**Confirmado explícitamente fuera de 5.b**: desequipamiento explícito sin reemplazo, catálogo público, superficie móvil (5.c), economía/tienda, edición de `assetReference`, reactivación de propiedad, más de una insignia (`BADGE`) equipada simultáneamente (un solo slot `BADGE`, igual que cualquier otro — múltiples insignias exigiría un modelo distinto, no decidido).
+
+**Sin ADR nuevo**: mismo criterio que 3.b — reutiliza el mecanismo de coordinación de ADR-0018 sin introducir una decisión arquitectónica nueva.
+
 ## 5. Decision Gates
 
 ### Incremento 1 — Entrega de recompensas
@@ -431,6 +459,21 @@ Mismo patrón que 3.a (Títulos): esquema + entrega idempotente reutilizando `de
 | 57 | Sin camino de entrega paralelo | Verificación estática: ninguna ruta de código crea `inventory_item` fuera de `deliverCosmeticComponent`/`InventoryItemRepository`. |
 | 58 | Componentes `COSMETIC`/`PENDING` históricos, documentados no silenciados (§4.19) | Se deja constancia explícita de cuántos `reward_grant_component` `COSMETIC` siguen `PENDING` de antes de 5.a — limitación conocida, no una reconciliación automática. |
 
+#### Sub-incremento 5.b — Equipamiento (§4.20)
+
+| # | Gate | Qué verifica |
+|---|---|---|
+| 59 | `PUT` idempotente ante el mismo valor | Reclamar el mismo `inventoryItemId` dos veces para el mismo slot produce el mismo resultado, sin duplicar filas. |
+| 60 | Reemplazo atómico de un slot ya ocupado | Equipar un `inventoryItemId` distinto en un slot ya ocupado actualiza la MISMA fila (`UPDATE`, nunca borrar+insertar). |
+| 61 | Propiedad exclusiva del equipamiento | `PUT` con un `inventoryItemId` ajeno o inexistente responde 404 — nunca 403, nunca filtra existencia (mismo criterio que Gate 37). |
+| 62 | Sin equipar propiedad no activa | `PUT` con un `inventoryItemId` `REVOKED`/`SUPERSEDED` responde 409, sin reactivar la propiedad. |
+| 63 | Coincidencia de slot exigida en el endpoint | `PUT` con un `inventoryItemId` cuyo `itemType` no coincide con `:slot` responde 409. |
+| 64 | `GET` funciona sin perfil público | Una cuenta sin `public_profile` recibe `owned` poblado normalmente y `equipped` con las 4 claves en `null` — nunca un error. |
+| 65 | Las cuatro claves de `equipped` existen siempre | La respuesta de `GET` incluye `AVATAR`/`AVATAR_FRAME`/`PROFILE_BANNER`/`BADGE` en todos los casos, incluso sin perfil o sin nada equipado — nunca un objeto parcial. |
+| 66 | Concurrencia sin duplicados ni error | Dos `PUT` concurrentes con cosméticos distintos para el mismo slot terminan con exactamente una fila válida, cuyo valor corresponde a una de las dos solicitudes — sin 500, sin fila duplicada. |
+| 67 | Anonimización limpia el equipamiento cosmético | `anonymizePublicProfileForAccountClosure` elimina las filas de `equipped_cosmetic` del perfil anonimizado (todas las que existan, hasta 4), sin tocar `inventory_item` (propiedad). |
+| 68 | Sin dependencia circular de módulos | Verificación estática: `GamificationModule` no importa `UserModule` — el controller de cosméticos vive en `UserModule` pese a su ruta `gamification/me/*`. |
+
 ### Worker de evaluación (transversal a Incrementos 1–4, §4.9)
 
 | # | Gate | Qué verifica |
@@ -464,6 +507,8 @@ Mismo patrón que `verify:block-ii-gate`: invoca el gate consolidado del Bloque 
 **Confirmación para Incremento 5 (2026-08-04)**: la unificación de enum (§4.15) y el diferimiento de `STREAK_PROTECTION` son decisiones de modelado de datos y alcance de producto, no de arquitectura — **no requieren ADR propio**. Se apoyan íntegramente en el mecanismo de entrega ya fijado por ADR-0019 y en la coordinación de ciclo de vida ya construida en ADR-0018 (§4.10).
 
 **Confirmación para sub-incremento 5.a (2026-08-05)**: `deliverCosmeticComponent`, los triggers de referencia `COSMETIC`, y la política de no reactivación silenciosa de propiedad `REVOKED`/`SUPERSEDED` (§4.19) replican exactamente el mecanismo y las decisiones ya construidas en 3.a para `TITLE` — **no requiere ADR propio**, mismo criterio de confirmación incremento a incremento que 4.a/4.b/4.c.
+
+**Confirmación para sub-incremento 5.b (2026-08-05)**: `equipped_cosmetic`, su trigger de consistencia, y la coordinación de anonimización (§4.20) replican exactamente el mecanismo ya construido en 3.b para `equipped_title`, extendido a multi-slot (decisión de modelado ya fijada en §4.10, no nueva). La resolución de la ruta HTTP (`CosmeticEquipmentController` en `UserModule`, path `gamification/me/*`) es una decisión de organización de código, no de arquitectura del sistema — **no requiere ADR propio**.
 
 ## 7–10. Pendientes
 
@@ -588,6 +633,35 @@ Gates ejecutados y su resultado:
 
 **Sin equipamiento, sin endpoints, sin superficie móvil** (5.b/5.c) — confirmado explícitamente por el gate.
 
+### Evidencia de validación — Incremento 5, sub-incremento 5.b ("Equipamiento de cosméticos", 2026-08-05)
+
+Implementado, contra el diseño fijado en §4.20: `equipped_cosmetic` (migración `20260805170952_cosmetic_equipment`), su trigger de consistencia (cuenta, propiedad activa, coincidencia tipo-slot, perfil activo) más el trigger de des-equipamiento atómico ante revocación (calco de `equipped_title`, 3.b), `CosmeticEquipmentService`/`CosmeticEquipmentController` (`GET`/`PUT /gamification/me/cosmetics[...]`, controller registrado en `UserModule` para evitar la dependencia circular ya identificada en el diseño), y la extensión de `PublicProfileRepository.anonymize()` para borrar `equipped_cosmetic`.
+
+**Corrección real encontrada al regresionar** (no relacionada con 5.b en sí, pero descubierta al ejecutar su regresión): `verify-challenge-progress-gate.ts` (4.b) anclaba `windowStart = now - 1h` a la HORA exacta de ejecución del gate, no al día calendario — corriendo el gate después del mediodía UTC, `daysFromNow(0)` (mediodía UTC de hoy) quedaba fuera de ventana y la materialización fallaba en silencio (falso negativo dependiente de la hora del día, no un defecto de `evaluateChallenges`). Corregido anclando `windowStart` al inicio del día calendario UTC de hoy, no a la hora de ejecución. También se encontró que `UserService` había pasado a exigir `CosmeticEquipmentService` como cuarto parámetro del constructor, y dos gates (`verify-title-equipment-gate.ts`, `verify-public-profile-gate.ts`) seguían instanciándolo con solo 3 argumentos — invisible a `tsc` porque `scripts/` no está en `tsconfig.json`, y sin causar fallo mientras no se tocara `equipCosmetic`/`getCosmetics`; corregido pasando una instancia real de `CosmeticEquipmentService` en ambos.
+
+**Nota de entorno, no de código**: varias corridas de gates HTTP consecutivas en esta sesión activaron el `ThrottlerModule` (100 req/60s, `app.module.ts`) — los fallos resultantes (`session.body.accountId` indefinido tras un 429) se confirmaron como saturación de throttling, no regresiones, esperando a que la ventana se liberara antes de reintentar.
+
+Gates ejecutados y su resultado:
+
+| Gate/verificación | Resultado |
+|---|---|
+| `verify:cosmetic-equipment-gate` (nuevo, HTTP real — GET sin perfil con las 4 claves en `null`, propiedad exclusiva 404, `REVOKED` rechazado sin reactivar, coincidencia de slot exigida, `PUT` idempotente, reemplazo atómico, dos `PUT` concurrentes sin 500 ni duplicados, anonimización, sin dependencia circular, sin `@Delete`, sin identidad → 401) | **PASS** |
+| `verify:cosmetic-foundation-gate` (5.a) | PASS, sin regresión |
+| `verify:challenge-claim-gate` (4.c) | PASS, sin regresión |
+| `verify:challenge-progress-gate` (4.b, con la corrección de fecha arriba) | PASS |
+| `verify:challenge-foundation-gate` (4.a) | PASS, sin regresión |
+| `verify:reward-foundation-gate` (1.a) | PASS, sin regresión |
+| `verify:reward-evaluation-worker-gate` (1.b) | PASS, sin regresión |
+| `verify:reward-delivery-xp-bonus-gate` (1.c) | PASS, sin regresión |
+| `verify:achievement-foundation-gate` (2.a) | PASS, sin regresión |
+| `verify:achievement-progress-unlock-gate` (2.b) | PASS, sin regresión |
+| `verify:title-foundation-gate` (3.a) | PASS, sin regresión |
+| `verify:title-equipment-gate` (3.b, con la corrección de constructor arriba) | PASS |
+| `verify:public-profile-gate` (con la corrección de constructor arriba) | PASS |
+| `node scripts/verify-block-ii-gate.mjs` (consolidado Bloque I + II) | **PASS** (ejecutado post-corrección, salida real confirmada: gate consolidado Bloque I PASS, GAMIFICATION Progresión Visible PASS, USER Public Profile Foundation PASS) |
+
+**Confirmado explícitamente fuera de 5.b** (por el gate): sin desequipamiento sin reemplazo (`@Delete` ausente del controller), sin catálogo público de `cosmetic_item`, sin superficie móvil (5.c).
+
 ---
 
-**Bloque III — definición formal, 7ª revisión (2026-08-05). Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Incremento 4 (Desafíos) completo (4.a-4.d). Incremento 5 (Cosméticos): sub-incremento 5.a implementado y gateado (§4.19) — ningún ADR nuevo requerido (§6). Pendiente: 5.b (equipamiento) y 5.c (superficie móvil, alcance a definir después de 5.b). Sin tag — Bloque III no se etiqueta hasta que Incremento 5 cierre por completo.**
+**Bloque III — definición formal, 8ª revisión (2026-08-05). Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Incremento 4 (Desafíos) completo (4.a-4.d). Incremento 5 (Cosméticos): sub-incrementos 5.a y 5.b implementados y gateados (§4.19/§4.20) — ningún ADR nuevo requerido (§6). Pendiente: 5.c (superficie móvil, alcance a definir). Sin tag — Bloque III no se etiqueta hasta que Incremento 5 cierre por completo.**

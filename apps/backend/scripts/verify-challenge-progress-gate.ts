@@ -148,7 +148,18 @@ async function main() {
     await balanceRepo.upsertIncrement(prisma as unknown as Prisma.TransactionClient, { accountId, deltaXp: entry.xpAmount, lastLedgerEntryId: entry.id });
   }
 
-  const windowStart = new Date(now.getTime() - 60 * 60 * 1000);
+  // Corrección (encontrada al regresionar 5.b): `windowStart = now - 1h`
+  // dependía de la HORA del día en que corriera el gate -- si el gate se
+  // ejecutaba después del mediodía UTC, `daysFromNow(0)` (mediodía UTC de
+  // HOY) quedaba ANTES de `windowStart`, fuera de ventana, y la
+  // materialización fallaba en silencio (`evaluateChallenges` no
+  // encuentra ninguna `challenge_definition` activa para ese instante).
+  // `windowStart` ahora se ancla al INICIO del día calendario UTC de hoy
+  // (menos 1h de margen), nunca a la hora exacta de ejecución -- así
+  // `daysFromNow(0)` (mediodía UTC de hoy) siempre cae dentro,
+  // independientemente de a qué hora del día corra el gate.
+  const nowDayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const windowStart = new Date(nowDayStart.getTime() - 60 * 60 * 1000);
   const windowEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   const definition = await challengeDefinitionRepo.create({
     challengeKey: `gate-4b-main-${suffix}`,
@@ -162,10 +173,6 @@ async function main() {
   });
   check('challenge_definition (gate 4.b) creada ACTIVA', definition.status === 'ACTIVE');
 
-  // Días calendario UTC relativos a "ahora" -- la ventana del desafío es
-  // [now-1h, now+7d), así que los eventos de prueba deben caer ahí dentro,
-  // nunca en fechas absolutas fijas que podrían quedar fuera de ventana.
-  const nowDayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   function daysFromNow(n: number, h = 12): Date {
     return new Date(nowDayStart.getTime() + n * 24 * 60 * 60 * 1000 + h * 60 * 60 * 1000);
   }
