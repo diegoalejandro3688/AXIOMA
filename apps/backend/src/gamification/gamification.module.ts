@@ -34,6 +34,8 @@ import { TitleEquipmentService } from './title-equipment.service';
 import { ChallengeDefinitionRepository } from './challenge-definition.repository';
 import { AccountChallengeRepository } from './account-challenge.repository';
 import { AccountChallengeDailyProgressRepository } from './account-challenge-daily-progress.repository';
+import { AccountChallengeConsumedEventRepository } from './account-challenge-consumed-event.repository';
+import { DailyActivitySignalReader } from './daily-activity-signal.reader';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -105,9 +107,17 @@ import { AccountChallengeDailyProgressRepository } from './account-challenge-dai
  * de eventos, SIN progresión, SIN reclamación de recompensa, SIN
  * integración con `RewardEvaluationWorker` (sub-incrementos posteriores).
  * Ciclo de vida de `account_challenge` (Gate 17) y tope diario (§4.12,
- * schema-level) respaldados por trigger; el primitivo de acumulación
- * (`AccountChallengeDailyProgressRepository.upsertContribution`) no decide
- * elegibilidad ni aplica `dailyCap` todavía.
+ * schema-level) respaldados por trigger.
+ *
+ * Sub-incremento 4.b ("Consumo de eventos y progresión de desafíos", §4.16):
+ * `RewardEvaluationWorker.evaluateChallenges` consume `pendingEntries`
+ * (`OTORGAMIENTO`), con deduplicación por evento
+ * (`AccountChallengeConsumedEventRepository`), tope diario real (día
+ * calendario UTC) y progresión `ACCEPTED -> IN_PROGRESS -> COMPLETED` --
+ * `CLAIMED`, endpoints y superficie móvil quedan fuera. `DailyActivitySignalReader`
+ * (gramática `hasEligibleActivity`/`countActiveDays`, Gate 33) se gatea de
+ * forma independiente -- no lo invoca el worker en 4.b (los desafíos de
+ * "días activos" usan el mismo mecanismo genérico con `daily_cap = 1`).
  */
 @Module({
   imports: [AuthModule, InternalOpsModule, OutboxModule],
@@ -143,6 +153,8 @@ import { AccountChallengeDailyProgressRepository } from './account-challenge-dai
     ChallengeDefinitionRepository,
     AccountChallengeRepository,
     AccountChallengeDailyProgressRepository,
+    AccountChallengeConsumedEventRepository,
+    DailyActivitySignalReader,
   ],
   exports: [
     GamificationProgramRepository,
@@ -170,6 +182,8 @@ import { AccountChallengeDailyProgressRepository } from './account-challenge-dai
     ChallengeDefinitionRepository,
     AccountChallengeRepository,
     AccountChallengeDailyProgressRepository,
+    AccountChallengeConsumedEventRepository,
+    DailyActivitySignalReader,
   ],
 })
 export class GamificationModule {}

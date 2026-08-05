@@ -403,9 +403,10 @@ async function main() {
   const { join } = await import('node:path');
   const gamificationDir = join(__dirname, '..', 'src', 'gamification');
   const filesToCheck = ['reward-evaluation.worker.ts', 'achievement-progress.repository.ts', 'achievement-unlock.repository.ts'];
-  // 'accountTitle' se retiró en 3.a -- el worker ahora entrega
-  // componentes TITLE legítimamente, con autorización formal.
-  const forbiddenSymbols = ['StudentResponse', 'CurriculumTopicProgress', 'PublicProfile', 'equippedTitle', 'equippedCosmetic', 'ChallengeDefinition', 'inventoryItem'];
+  // 'accountTitle' se retiró en 3.a y 'ChallengeDefinition' en 4.b -- el
+  // worker ahora entrega componentes TITLE y evalúa desafíos
+  // legítimamente, ambos con autorización formal (§4.16).
+  const forbiddenSymbols = ['StudentResponse', 'CurriculumTopicProgress', 'PublicProfile', 'equippedTitle', 'equippedCosmetic', 'inventoryItem'];
   let boundaryViolationFound = false;
   for (const file of filesToCheck) {
     const contents = readFileSync(join(gamificationDir, file), 'utf8');
@@ -416,7 +417,7 @@ async function main() {
       }
     }
   }
-  check('ningún archivo de 2.b referencia PROGRESS/Public Profile/equipamiento/desafíos/inventario', !boundaryViolationFound);
+  check('ningún archivo de 2.b referencia PROGRESS/Public Profile/equipamiento/inventario', !boundaryViolationFound);
 
   const controllerFiles = readdirSync(gamificationDir).filter((f) => f.endsWith('.controller.ts'));
   let publicExposureFound = false;

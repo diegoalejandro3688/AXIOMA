@@ -790,15 +790,17 @@ model XpLedgerEntry {
   reversesEntryId     String?           @unique @map("reverses_entry_id") @db.Uuid
   createdByActorType  XpLedgerActorType @default(SYSTEM) @map("created_by_actor_type")
 
-  validatedActivity       ValidatedGamificationActivity? @relation(fields: [validatedActivityId], references: [id], onDelete: Restrict)
-  xpRule                  XpRule?                        @relation(fields: [xpRuleId], references: [id], onDelete: Restrict)
-  reversesEntry           XpLedgerEntry?                 @relation("XpLedgerEntryReversal", fields: [reversesEntryId], references: [id], onDelete: Restrict)
-  reversedBy              XpLedgerEntry?                 @relation("XpLedgerEntryReversal")
+  validatedActivity       ValidatedGamificationActivity?  @relation(fields: [validatedActivityId], references: [id], onDelete: Restrict)
+  xpRule                  XpRule?                         @relation(fields: [xpRuleId], references: [id], onDelete: Restrict)
+  reversesEntry           XpLedgerEntry?                  @relation("XpLedgerEntryReversal", fields: [reversesEntryId], references: [id], onDelete: Restrict)
+  reversedBy              XpLedgerEntry?                  @relation("XpLedgerEntryReversal")
   balances                XpBalance[]
   /// Bloque III, sub-incremento 2.b -- lado inverso de AchievementProgress.lastActivityId.
   achievementProgressRows AchievementProgress[]
   /// Bloque III, sub-incremento 2.b -- lado inverso de AchievementUnlock.triggerActivityId.
   achievementUnlocks      AchievementUnlock[]
+  /// Bloque III, sub-incremento 4.b -- lado inverso de AccountChallengeConsumedEvent.xpLedgerEntryId.
+  challengeConsumedEvents AccountChallengeConsumedEvent[]
 
   @@index([accountId])
   @@map("xp_ledger_entry")
@@ -1424,6 +1426,8 @@ model AccountChallenge {
 
   challengeDefinition ChallengeDefinition             @relation(fields: [challengeDefinitionId], references: [id], onDelete: Restrict)
   dailyProgress       AccountChallengeDailyProgress[]
+  /// Bloque III, sub-incremento 4.b -- lado inverso de AccountChallengeConsumedEvent.accountChallengeId.
+  consumedEvents      AccountChallengeConsumedEvent[]
 
   @@unique([accountId, challengeDefinitionId, periodStart])
   @@index([challengeDefinitionId])
@@ -1440,16 +1444,18 @@ enum AccountChallengeStatus {
 }
 
 /// §4.12 (BLOCK-III-DEFINITION.md) -- acumulado de contribuciones válidas
-/// por fecha LOCAL de cuenta (`UserProfile.timezone`, ADR-0008), no UTC
-/// (divergencia deliberada respecto de `XpRule.dailyCap`, documentada en
-/// §4.12: ese mecanismo suma montos ya otorgados en un rango UTC fijo sin
-/// tabla propia; este necesita fecha de calendario del estudiante y un
-/// contador explícito por ser eventos discretos acumulados a lo largo de
-/// un período de varios días). 4.a SOLO expone el primitivo de persistencia
-/// (`upsertContribution`, incremento simple) -- decidir si una contribución
-/// es elegible, verificar `daily_cap`, y propagar a
-/// `AccountChallenge.progressValue` es evaluación/progresión, fuera de
-/// alcance de 4.a (sub-incremento posterior).
+/// por día calendario UTC (`local_date` -- nombre de columna heredado de la
+/// redacción original de §4.12, corregida en §4.16(a): NO es zona horaria
+/// de cuenta, es UTC, mismo criterio que `XpRule.dailyCap`/racha --
+/// `UserProfile.timezone` no es alcanzable desde GAMIFICATION sin una
+/// dependencia circular de módulos). Divergencia deliberada respecto de
+/// `XpRule.dailyCap` (ese mecanismo suma montos ya otorgados en un rango
+/// UTC fijo sin tabla propia; este necesita un contador explícito por
+/// fecha porque las contribuciones de un desafío son eventos discretos
+/// acumulados a lo largo de un período de varios días, no un monto
+/// sumable retroactivamente). 4.a SOLO expuso el primitivo de persistencia
+/// (`upsertContribution`) -- 4.b decide elegibilidad, verifica `daily_cap`,
+/// y propaga a `AccountChallenge.progressValue` (§4.16).
 model AccountChallengeDailyProgress {
   id                 String   @id @default(uuid()) @db.Uuid
   accountChallengeId String   @map("account_challenge_id") @db.Uuid
@@ -1462,4 +1468,28 @@ model AccountChallengeDailyProgress {
 
   @@unique([accountChallengeId, localDate])
   @@map("account_challenge_daily_progress")
+}
+
+/// §4.16 (BLOCK-III-DEFINITION.md), sub-incremento 4.b -- deduplicación por
+/// evento, independiente del `daily_cap` (§4.12/§4.16(e)). Un evento
+/// consumido lo está para siempre respecto de ESE `account_challenge`,
+/// incluso si su contribución quedó bloqueada por `daily_cap` -- "consumido"
+/// y "contribuyó" son hechos independientes (§4.16(e)). `UNIQUE
+/// (account_challenge_id, xp_ledger_entry_id)` ES la clave idempotente --
+/// mismo criterio que `account_title (accountId, titleDefinitionId)`, sin
+/// columna de texto adicional. Sin trigger de inmutabilidad/no-DELETE: esta
+/// tabla es de solo-inserción por diseño de aplicación (el worker nunca
+/// actualiza ni borra una fila), no hay necesidad de reforzarlo en base de
+/// datos todavía -- mismo criterio de proporcionalidad que `equipped_title`.
+model AccountChallengeConsumedEvent {
+  id                 String   @id @default(uuid()) @db.Uuid
+  accountChallengeId String   @map("account_challenge_id") @db.Uuid
+  xpLedgerEntryId    String   @map("xp_ledger_entry_id") @db.Uuid
+  consumedAt         DateTime @default(now()) @map("consumed_at")
+
+  accountChallenge AccountChallenge @relation(fields: [accountChallengeId], references: [id], onDelete: Restrict)
+  xpLedgerEntry    XpLedgerEntry    @relation(fields: [xpLedgerEntryId], references: [id], onDelete: Restrict)
+
+  @@unique([accountChallengeId, xpLedgerEntryId])
+  @@map("account_challenge_consumed_event")
 }

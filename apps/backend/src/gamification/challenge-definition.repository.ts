@@ -40,4 +40,18 @@ export class ChallengeDefinitionRepository {
   findAllActiveOrderedByKey(): Promise<ChallengeDefinition[]> {
     return this.prisma.challengeDefinition.findMany({ where: { status: 'ACTIVE' }, orderBy: { challengeKey: 'asc' } });
   }
+
+  /**
+   * Definiciones ACTIVAS cuya ventana `[startsAt, endsAt)` contiene
+   * `instant` -- usado por 4.b para decidir qué desafíos son elegibles para
+   * UN evento concreto (Gate 18: un evento fuera de la ventana no es
+   * elegible para esa definición, filtrado aquí antes de cualquier otra
+   * cosa).
+   */
+  findActiveContainingInstant(instant: Date): Promise<ChallengeDefinition[]> {
+    return this.prisma.challengeDefinition.findMany({
+      where: { status: 'ACTIVE', startsAt: { lte: instant }, endsAt: { gt: instant } },
+      orderBy: { challengeKey: 'asc' },
+    });
+  }
 }

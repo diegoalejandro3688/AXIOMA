@@ -4,7 +4,7 @@
 **Fase**: Fase 2 — Learning Experience Foundation
 **Bloque**: III de VIII (Roadmap Learning Experience Foundation)
 **Documentos relacionados**: `docs/adr/BLOCK-II-CLOSURE-REPORT.md`, `docs/adr/BLOCK-II-DEFINITION.md`, `docs/adr/0016-gamificacion-fundacion.md`, `docs/adr/0018-public-profile-foundation.md`
-**Estado**: Definición revisada (3ª pasada, 2026-08-04 — decisiones de mecanismo del Product Owner para Incrementos 4 y 5 incorporadas en §4.12–4.15). Pasos 1–6 del ciclo. **Sin implementación todavía.**
+**Estado**: Definición revisada (4ª pasada, 2026-08-05 — correcciones previas a 4.b en §4.16: día calendario UTC en vez de zona horaria de cuenta, gramáticas mínimas `CUMULATIVE_COUNT`/`ALL_ACCOUNTS`, `TransactionClient` único, semántica de evento consumido bajo `daily_cap` agotado). Incremento 4, sub-incrementos 4.a y 4.b **implementados y gateados** (4.a: commit `d476b63`; 4.b: ver Evidencia de validación más abajo). Reclamación (`CLAIMED`), endpoints y superficie móvil quedan para un sub-incremento posterior.
 
 ---
 
@@ -180,19 +180,21 @@ account_challenge_daily_progress
 
 **Semántica de `daily_cap`**: tope sobre cuántas contribuciones válidas de progreso puede aportar un mismo día calendario — nunca sobre cuántas veces el estudiante puede realizar la actividad. `null` = sin tope; `N` = como máximo `N` contribuciones ese día, sin importar cuántos eventos elegibles ocurran.
 
-**Por qué diverge del `dailyCap` de `xp_rule` (Bloque I)**: ese mecanismo sólo suma montos de XP ya otorgados dentro de un rango UTC del día (`utcDayRange`, ver `xp-grant.service.ts`) — no necesita una fila propia porque el ledger ya es la fuente de verdad y el rango es fijo (UTC). Un desafío semanal necesita, en cambio, (a) fecha **local de la cuenta** (`UserProfile.timezone`, ya existente — ver ADR-0008), no UTC, porque "día" es un concepto de calendario del estudiante; y (b) un contador explícito por fecha, porque las contribuciones de un desafío no son montos de un ledger existente que puedan sumarse retroactivamente, son eventos discretos de progreso acumulados a lo largo de un período de varios días. Se documenta la divergencia para que no se lea como inconsistencia entre incrementos.
+**Por qué diverge del `dailyCap` de `xp_rule` (Bloque I)**: ese mecanismo sólo suma montos de XP ya otorgados dentro de un rango UTC del día (`utcDayRange`, ver `xp-grant.service.ts`) — no necesita una fila propia porque el ledger ya es la fuente de verdad y el rango es fijo. Un desafío semanal necesita, en cambio, (a) el día calendario **UTC** del evento — igual convención que `xp_rule`/racha, ver corrección de (b) más abajo — y (b) un contador explícito por fecha, porque las contribuciones de un desafío no son montos de un ledger existente que puedan sumarse retroactivamente, son eventos discretos de progreso acumulados a lo largo de un período de varios días. Se documenta la divergencia para que no se lea como inconsistencia entre incrementos.
 
-**Procesamiento** (worker de evaluación, dentro de la misma transacción `SERIALIZABLE` que ya usa `XpGrantService` como referencia de aislamiento — mismo patrón, tabla distinta):
+**Corrección (§4.16, 2026-08-05)**: la redacción original de este párrafo proponía resolver `local_date` vía `UserProfile.timezone`. Se corrige: `local_date` es el día calendario **UTC** (`utcDayKey`, reutilizado de `streak-calculator.ts`), no una fecha de cuenta — `UserProfile.timezone` no es alcanzable desde GAMIFICATION sin una dependencia circular de módulos, y el resto del dominio (`xp_rule.dailyCap`, racha) ya usa UTC deliberadamente. El nombre de columna `local_date` no cambia; su semántica sí.
 
-1. Resolver la fecha local de la cuenta para el evento (`UserProfile.timezone`).
-2. Obtener o crear (`upsert`) la fila diaria (`account_challenge_daily_progress`, `UNIQUE(account_challenge_id, local_date)`).
+**Procesamiento** (worker de evaluación, dentro de la misma transacción `SERIALIZABLE` que ya usa `XpGrantService` como referencia de aislamiento — mismo patrón, tabla distinta; ver §4.16(d) sobre el uso obligatorio de un único `Prisma.TransactionClient` para todo el paso):
+
+1. Resolver el día calendario UTC del evento (`utcDayKey`, no zona horaria de cuenta — §4.16(a)).
+2. Obtener o crear (`upsert`) la fila diaria (`account_challenge_daily_progress`, `UNIQUE(account_challenge_id, local_date)`), sobre el mismo `tx`.
 3. Verificar `contribution_count < daily_cap` (si `daily_cap` no es `null`).
 4. Incrementar `contribution_count`.
 5. Incrementar el progreso agregado de `account_challenge`.
 6. Aplicar el tope de `target_value` (el progreso agregado nunca excede la meta del desafío).
 7. Marcar `completed_at` si el progreso alcanza `target_value`.
 
-**El `daily_cap` no reemplaza la deduplicación de eventos**: el worker exige, además y de forma independiente, una clave de deduplicación por evento de origen (mismo criterio que `ValidatedGamificationActivity.deduplicationKey`, Bloque I) — sin ella, reprocesar el mismo evento dos veces incrementaría `contribution_count` dos veces aunque el `daily_cap` no se haya alcanzado. Ver Gate 31 (§5).
+**El `daily_cap` no reemplaza la deduplicación de eventos**: el worker exige, además y de forma independiente, una clave de deduplicación por evento de origen (mismo criterio que `ValidatedGamificationActivity.deduplicationKey`, Bloque I) — sin ella, reprocesar el mismo evento dos veces incrementaría `contribution_count` dos veces aunque el `daily_cap` no se haya alcanzado. Ver Gate 31 (§5) y §4.16(e) (un evento bloqueado por `daily_cap` igual se marca consumido).
 
 ### 4.13 Desafíos: señal de "días activos" vía contrato de dominio, nunca la racha de presentación
 
@@ -205,9 +207,9 @@ hasEligibleActivity(accountId, localDate): boolean
 countActiveDays(accountId, periodStart, periodEnd): number
 ```
 
-Debe consultar la **misma fuente persistida** que Bloque II ya usa para derivar racha (`xp_ledger_entry`/`xp_balance`), preservando una única semántica oficial de: actividad elegible, timezone de la cuenta, límites de inicio/fin de día, exclusión de eventos duplicados, y sincronización tardía de operaciones offline. No introduce una tabla de racha nueva — reutiliza la fuente, no la interpretación ya calculada para presentación.
+Debe consultar la **misma fuente persistida** que Bloque II ya usa para derivar racha (`XpLedgerEntryRepository.findByAccountId`, filtrando `entryType = OTORGAMIENTO` — el mismo dato que consume `ProgressionService.getStreak`), preservando una única semántica oficial de: actividad elegible, límites de inicio/fin de día (día calendario **UTC**, corrección §4.16(a) — no timezone de cuenta como decía esta redacción originalmente), exclusión de eventos duplicados, y sincronización tardía de operaciones offline. No introduce una tabla de racha nueva ni llama `computeStreak()` — reutiliza la fuente y la utilidad `utcDayKey` (importada de `streak-calculator.ts`), nunca la interpretación ya calculada para presentación.
 
-**Uso desde el worker**: al llegar una actividad elegible, el worker resuelve la fecha local del evento y aplica exactamente el mecanismo de §4.12 con `daily_cap = 1` sobre ese `account_challenge` — "como máximo un día activo cuenta por fecha" es el mismo mecanismo de tope diario, no uno adicional. `countActiveDays` corresponde entonces a contar fechas únicas ya acumuladas en `account_challenge_daily_progress` dentro del período, no a re-derivar la racha de presentación.
+**Uso desde el worker**: al llegar una actividad elegible, el worker resuelve el día calendario UTC del evento y aplica exactamente el mecanismo de §4.12 con `daily_cap = 1` sobre ese `account_challenge` — "como máximo un día activo cuenta por fecha" es el mismo mecanismo de tope diario, no uno adicional. `countActiveDays` corresponde entonces a contar fechas únicas ya acumuladas en `account_challenge_daily_progress` dentro del período, no a re-derivar la racha de presentación.
 
 ### 4.14 Desafíos: asignación automática y materialización perezosa de `account_challenge`
 
@@ -254,6 +256,22 @@ Corrección del Product Owner (2026-08-04): `AVATAR` y `AVATAR_FRAME` son slots 
 **Protección de racha (`STREAK_PROTECTION`) queda explícitamente diferida**, no omitida en silencio: el Data Model (§16.36) la lista como componente posible de `reward_bundle_item`, pero implementarla exige dominio que no existe en este bloque — saldo/inventario de protecciones, política de expiración, reglas de consumo, integración con la derivación de racha (§4.13), comportamiento ante sincronización offline tardía, y UX de aviso de uso. `RewardComponentType` se mantiene sin cambios: `XP_BONUS | TITLE | COSMETIC`. Se deja constancia aquí para que una futura corrección de Data Model, o un futuro bloque, encuentre la decisión documentada en vez de una ausencia sin explicar.
 
 **Nota de fidelidad al Data Model**: la lista `AVATAR`/`AVATAR_FRAME`/`PROFILE_BANNER`/`BADGE` (corregida 2026-08-04) mapea uno a uno los cuatro tipos de Data Model §16.33 (*"Avatar, marco, banner, insignia u otro"*, una vez retirado "título" — ver arriba): `Avatar` → `AVATAR`, `marco` → `AVATAR_FRAME`, `banner` → `PROFILE_BANNER`, `insignia` → `BADGE`. `AVATAR` (el cosmético de inventario) es distinto de `PublicProfile.avatarReference` (ADR-0018, la imagen base del perfil) — ambos coexisten sin conflicto de nombre a nivel de columna.
+
+### 4.16 Sub-incremento 4.b: correcciones previas a la implementación, contra ADR-0019 y el código vigente (2026-08-05)
+
+4.a (cerrado, commit `d476b63`) quedó tal como se implementó — esta sección no lo reabre, corrige la redacción de §4.12/§4.13 antes de construir 4.b sobre ella.
+
+**a) Día calendario UTC, no zona horaria de cuenta (corrige §4.12/§4.13)**: `UserProfile.timezone` no es alcanzable desde GAMIFICATION sin crear una dependencia circular de módulos (`UserModule` ya importa `GamificationModule` para `TitleEquipmentService`) ni sin apartarse de la convención que el propio dominio ya fijó dos veces: tanto el `daily_cap` de `xp_rule` (`utcDayRange`, Bloque I) como el cálculo de racha (`utcDayKey`, `streak-calculator.ts`) resuelven el día en **UTC** deliberadamente, no en la zona horaria del estudiante — `streak-calculator.ts` lo dice explícitamente en su propio comentario. §4.12/§4.13 quedan corregidos: `account_challenge_daily_progress.local_date` se resuelve como el día calendario **UTC** de `xpLedgerEntry.occurredAt`, reutilizando `utcDayKey` (importado de `streak-calculator.ts`, nunca duplicado) — no una fecha de cuenta.
+
+**Semántica heredada de `local_date`**: el nombre de columna no cambia (ya migrado en 4.a, `20260805022207_challenge_foundation`) — solo su significado documentado. Donde §4.12/§4.13 decían "fecha local de cuenta", debe leerse "día calendario UTC", mismo criterio que el resto de GAMIFICATION. No es una migración de esquema, es una corrección de la definición formal previa a que 4.b dependa de ella.
+
+**b) Gramática mínima `CUMULATIVE_COUNT v1` para `completion_rule`**: mismo criterio que `XP_THRESHOLD` (2.b) — el mínimo necesario para que 4.b materialice `account_challenge.targetValue` al crear la fila perezosamente. Única forma soportada: `{schemaVersion:"v1", type:"CUMULATIVE_COUNT", targetValue:N}` (`N` entero positivo). Cualquier otra forma se rechaza explícitamente (validación estricta, mismo criterio que `parseUnlockRule`) — un `challenge_definition` con `completion_rule` no reconocida o malformada es un error de configuración de esa definición, aislado (no detiene la evaluación de otras cuentas ni de otros desafíos), nunca una excepción silenciosa que finja progreso.
+
+**c) `eligibility_rule` no se ignora — gramática mínima `ALL_ACCOUNTS v1`**: corrige la propuesta previa de tratarlo como no leído. 4.b debe parsear y validar `eligibility_rule` con la misma disciplina que `completion_rule`, aunque el único valor soportado en 4.b sea `{schemaVersion:"v1", type:"ALL_ACCOUNTS"}` (elegible cualquier cuenta, sin segmentación). Una regla no reconocida o malformada es error de configuración de esa definición (mismo aislamiento que (b)) — nunca se asume "sin filtro" por default silencioso ante un valor no entendido. Este campo queda así como el punto de extensión real para segmentación futura (p. ej. por nivel mínimo), sin tocar el mecanismo de materialización cuando eso llegue.
+
+**d) Un único `Prisma.TransactionClient` para todo el paso**: la lectura de `account_challenge_daily_progress` (para comparar contra `daily_cap`), el `INSERT` en `account_challenge_consumed_event`, la escritura de `upsertContribution`, y el incremento de `account_challenge.progressValue` deben ejecutarse sobre el **mismo** `tx` — nunca una lectura fuera de transacción seguida de una escritura dentro de otra. `AccountChallengeDailyProgressRepository.upsertContribution` deja de aceptar invocarse sin `tx` explícito: firma corregida `upsertContribution(tx: Prisma.TransactionClient, accountChallengeId, localDate)`, mismo criterio posicional que `XpBalanceRepository.upsertIncrement(tx, ...)`. Sin este cambio, el `SELECT` de `daily_cap` y el `UPSERT` podrían correr en conexiones distintas, reabriendo exactamente la condición de carrera que `SERIALIZABLE` existe para prevenir (mismo razonamiento que `xp-grant.service.ts`).
+
+**e) Un evento bloqueado por `daily_cap` sigue siendo un evento CONSUMIDO**: la fila en `account_challenge_consumed_event` se inserta siempre que el evento sea elegible para la definición (dentro de su ventana, `eligibility_rule` satisfecha) — incluso cuando esa contribución específica no incrementa nada porque el `daily_cap` del día ya se agotó. "Consumido" (no se vuelve a evaluar) y "contribuyó" (incrementó `contribution_count`/`progress_value`) son hechos independientes. Si el registro de consumo dependiera de haber contribuido, un reintento del mismo evento volvería a competir por el cupo del día contra el resultado de otros eventos ya procesados en ese reintento — el resultado dejaría de ser determinista, rompiendo la idempotencia de lote (Gate 27).
 
 ## 5. Decision Gates
 
@@ -369,6 +387,30 @@ Gates ejecutados y su resultado:
 | `node scripts/verify-block-ii-gate.mjs` (consolidado Bloque I + II) | PASS, sin regresión |
 | `verify:title-equipment-gate` (3.b) | **NO EJECUTADO** — requiere un servidor HTTP activo en `localhost:3000` (hace peticiones `fetch` reales); no se levantó un servidor para esta corrida. **No se reporta como PASS.** Excepción de entorno, no de código: 4.a no toca `equipped_title`, `public_profile`, ni ninguna ruta HTTP — ningún archivo de este sub-incremento roza ese flujo (verificado por la frontera de dominio del propio gate de 3.a/3.b y por la ausencia de cualquier referencia cruzada en los archivos nuevos de 4.a). Pendiente de re-ejecutar con el servidor arriba antes del cierre formal del Bloque III, junto con el resto de gates que dependen de HTTP. |
 
+### Evidencia de validación — Incremento 4, sub-incremento 4.b ("Consumo de eventos y progresión de desafíos", 2026-08-05)
+
+Implementado, contra la propuesta de diseño confirmada y las correcciones de §4.16: `RewardEvaluationWorker.evaluateChallenges`/`evaluateChallengeEventForDefinition` (consume únicamente `pendingEntries` filtrado a `OTORGAMIENTO`, sin ensanchar la frontera del worker), `account_challenge_consumed_event` (migración `20260805024926_challenge_event_consumption`, deduplicación por evento), gramáticas `CUMULATIVE_COUNT v1`/`ALL_ACCOUNTS v1` (`challenge-rule.ts`), `DailyActivitySignalReader` (independiente de la racha de presentación, gateado por separado — no invocado por el worker en 4.b), y progresión `ACCEPTED → IN_PROGRESS → COMPLETED` (`AccountChallengeRepository.advanceProgress`, nunca `CLAIMED`).
+
+**Correcciones encontradas durante la implementación** (no anticipadas en la propuesta de diseño, resueltas antes de cerrar 4.b):
+- `AccountChallengeRepository.createIdempotent` usaba el patrón "crear y recuperarse de `P2002`" (mismo criterio que `AccountTitleRepository`) — dentro de la transacción `SERIALIZABLE` compartida que exige §4.16(d), un error de restricción única deja la transacción abortada en Postgres (`25P02`) y ninguna sentencia posterior sobre el mismo `tx` se ejecuta. Corregido a verificar existencia antes de crear (`findUnique` → `create`), seguro en este flujo porque el lock consultivo por cuenta (ADR-0019 §1) ya serializa el acceso.
+- Dos gates de sub-incrementos ya cerrados (`verify-reward-delivery-xp-bonus-gate.ts`, 1.c; `verify-achievement-progress-unlock-gate.ts`, 2.b) tenían `'ChallengeDefinition'` en su lista de símbolos prohibidos para `reward-evaluation.worker.ts` — vigente mientras desafíos no tenían evaluación real. Se retiró de ambas listas, mismo criterio ya aplicado ahí mismo cuando 2.b/3.a extendieron el worker (comentario `'AchievementDefinition' se retiró en 2.b... 'accountTitle' se retiró en 3.a`) — ninguna otra frontera de esos gates cambió.
+- `verify-challenge-foundation-gate.ts` (4.a) no retiraba sus propias filas `challenge_definition` de prueba entre corridas (a diferencia de los gates de logros/títulos) — quedaban `ACTIVE` con `eligibility_rule`/`completion_rule` en texto libre, y el worker real de 4.b las leía e intentaba evaluarlas. Se añadió la misma higiene de retiro al inicio del gate, mismo criterio que 2.a/2.b.
+
+Gates ejecutados y su resultado:
+
+| Gate/verificación | Resultado |
+|---|---|
+| `verify:challenge-progress-gate` (nuevo — materialización perezosa, progresión completa, idempotencia de lote ante reintento, `daily_cap` real con eventos concurrentes, aislamiento por evento consumido bajo cap agotado, exclusión de `BONO`/`AJUSTE`, exclusión de eventos fuera de ventana, aislamiento de definiciones con `completion_rule`/`eligibility_rule` inválida, `DailyActivitySignalReader` independiente de la racha, ausencia de `CLAIMED`/endpoints, frontera de dominio) | **PASS** |
+| `verify:challenge-foundation-gate` (4.a, con la corrección de higiene arriba) | PASS |
+| `verify:reward-foundation-gate` (1.a) | PASS, sin regresión |
+| `verify:reward-evaluation-worker-gate` (1.b) | PASS, sin regresión |
+| `verify:reward-delivery-xp-bonus-gate` (1.c, con la corrección de frontera arriba) | PASS, sin regresión funcional |
+| `verify:achievement-foundation-gate` (2.a) | PASS, sin regresión |
+| `verify:achievement-progress-unlock-gate` (2.b, con la corrección de frontera arriba) | PASS, sin regresión funcional |
+| `verify:title-foundation-gate` (3.a) | PASS, sin regresión |
+| `node scripts/verify-block-ii-gate.mjs` (consolidado Bloque I + II) | PASS, sin regresión |
+| `verify:title-equipment-gate` (3.b) | **NO EJECUTADO** — misma excepción de entorno que 4.a (requiere servidor HTTP activo); 4.b tampoco toca `equipped_title`/`public_profile`/HTTP. |
+
 ---
 
-**Bloque III — definición formal, 3ª revisión (2026-08-04). Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Se incorporan las decisiones de mecanismo del Product Owner para Incremento 4 (§4.12–4.14: tope diario real, contrato de señal de actividad, asignación automática perezosa) e Incremento 5 (§4.15: unificación de enum de slots, insignias vía `COSMETIC`, `STREAK_PROTECTION` diferido) — ningún ADR nuevo requerido, confirmado incremento a incremento (§6). Pendiente de autorización del Product Owner para iniciar implementación de Incremento 4.**
+**Bloque III — definición formal, 4ª revisión (2026-08-05). Los siete ajustes de la auditoría crítica de la 2ª revisión permanecen incorporados; el modelo de equipamiento se mantiene normalizado (§4.10). Incremento 4, sub-incrementos 4.a y 4.b implementados y gateados (§4.12–4.14, §4.16) — ningún ADR nuevo requerido (§6). Incremento 5 (§4.15) sigue en definición, sin implementación todavía. Pendiente: reclamación de desafíos (`CLAIMED`, endpoints, superficie móvil) y Cosméticos.**

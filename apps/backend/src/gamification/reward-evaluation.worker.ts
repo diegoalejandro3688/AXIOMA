@@ -12,6 +12,7 @@ import type {
   AchievementDefinition,
   AchievementVersion,
   AchievementUnlock,
+  ChallengeDefinition,
 } from '../generated/prisma/client';
 import { XpLedgerEntryRepository } from './xp-ledger-entry.repository';
 import { XpBalanceRepository } from './xp-balance.repository';
@@ -27,6 +28,12 @@ import { AchievementProgressRepository } from './achievement-progress.repository
 import { AchievementUnlockRepository } from './achievement-unlock.repository';
 import { parseUnlockRule, type XpThresholdUnlockRule } from './achievement-unlock-rule';
 import { AccountTitleRepository } from './account-title.repository';
+import { ChallengeDefinitionRepository } from './challenge-definition.repository';
+import { AccountChallengeRepository } from './account-challenge.repository';
+import { AccountChallengeDailyProgressRepository } from './account-challenge-daily-progress.repository';
+import { AccountChallengeConsumedEventRepository } from './account-challenge-consumed-event.repository';
+import { parseCompletionRule, parseEligibilityRule } from './challenge-rule';
+import { utcDayStart } from './daily-activity-signal.reader';
 
 /**
  * Bloque III (ADR-0019). Sub-incremento 1.b: descubrimiento de cuentas
@@ -55,9 +62,18 @@ import { AccountTitleRepository } from './account-title.repository';
  * entregar, tanto justo después de completar como en cualquier reintento
  * posterior sobre una fila ya `COMPLETED`.
  *
- * Desafíos (Incremento 4) y títulos/cosméticos (Incrementos 3/5) siguen
- * sin evaluación real -- este worker todavía NO entrega títulos ni
- * cosméticos, NO escribe sobre inventario ni `public_profile`.
+ * Sub-incremento 4.b (Incremento 4, Desafíos) añade `evaluateChallenges`,
+ * consumiendo ÚNICAMENTE `pendingEntries` (mismo dato ya recibido, sin
+ * ensanchar la frontera del worker) filtrado a `entryType = OTORGAMIENTO`.
+ * Por cada evento y cada `challenge_definition` ACTIVA cuya ventana lo
+ * contiene: deduplicación por evento (`account_challenge_consumed_event`),
+ * tope diario real (`account_challenge_daily_progress`, día calendario
+ * UTC -- §4.16(a)) e incremento de `progressValue`, todo en una única
+ * transacción `SERIALIZABLE` por `(evento, account_challenge)` -- ver
+ * docs/adr/BLOCK-III-DEFINITION.md §4.16. Transiciona ÚNICAMENTE
+ * `ACCEPTED -> IN_PROGRESS -> COMPLETED`; `CLAIMED` queda fuera de 4.b.
+ * Cosméticos (Incremento 5) siguen sin evaluación real -- este worker
+ * todavía NO escribe sobre inventario cosmético ni `public_profile`.
  *
  * Namespace de advisory lock (`ADVISORY_LOCK_NAMESPACE = 19`, por
  * ADR-0019): primer uso de advisory locks en el proyecto -- namespace fijo
@@ -109,6 +125,10 @@ export class RewardEvaluationWorker {
     private readonly achievementProgressRepo: AchievementProgressRepository,
     private readonly achievementUnlockRepo: AchievementUnlockRepository,
     private readonly accountTitleRepo: AccountTitleRepository,
+    private readonly challengeDefinitionRepo: ChallengeDefinitionRepository,
+    private readonly accountChallengeRepo: AccountChallengeRepository,
+    private readonly dailyProgressRepo: AccountChallengeDailyProgressRepository,
+    private readonly consumedEventRepo: AccountChallengeConsumedEventRepository,
   ) {}
 
   /**
@@ -152,6 +172,9 @@ export class RewardEvaluationWorker {
 
     const achievementsResolved = await this.evaluateAchievements(accountId, progress.lifetimeXp, lastActivityId);
     if (!achievementsResolved) hasUnresolvedComponent = true;
+
+    const challengesResolved = await this.evaluateChallenges(accountId, pendingEntries);
+    if (!challengesResolved) hasUnresolvedComponent = true;
 
     if (hasUnresolvedComponent) {
       throw new Error(`No se pudieron resolver todas las recompensas pendientes (nivel y/o logros) para la cuenta ${accountId}.`);
@@ -473,6 +496,106 @@ export class RewardEvaluationWorker {
       // COSMETIC: fuera de alcance hasta el Incremento 5.
     }
     return allResolved;
+  }
+
+  /**
+   * Bloque III, sub-incremento 4.b (§4.16) -- consume ÚNICAMENTE
+   * `pendingEntries`, filtrado a `entryType = OTORGAMIENTO` (excluye
+   * `BONO` -- evita que la propia recompensa retroalimente el progreso del
+   * desafío --, `REVERSO` y `AJUSTE`). Ningún dato fuera de lo que
+   * `evaluateAccount` ya recibía -- la frontera del worker no se ensancha.
+   */
+  private async evaluateChallenges(accountId: string, pendingEntries: XpLedgerEntry[]): Promise<boolean> {
+    const eligibleEntries = pendingEntries.filter((entry) => entry.entryType === 'OTORGAMIENTO');
+    if (eligibleEntries.length === 0) return true;
+
+    let allResolved = true;
+    for (const entry of eligibleEntries) {
+      const definitions = await this.challengeDefinitionRepo.findActiveContainingInstant(entry.occurredAt);
+      for (const definition of definitions) {
+        const resolved = await this.evaluateChallengeEventForDefinition(accountId, definition, entry);
+        if (!resolved) allResolved = false;
+      }
+    }
+    return allResolved;
+  }
+
+  /**
+   * Procesa UN evento contra UNA `challenge_definition` ACTIVA cuya
+   * ventana ya contiene `entry.occurredAt` (filtrado por el llamador --
+   * Gate 18: un evento fuera de ventana no llega aquí para esa definición).
+   *
+   * `eligibility_rule`/`completion_rule` se parsean con la MISMA disciplina
+   * (§4.16(b)/(c)) -- una definición con cualquiera de las dos mal
+   * formada es un error de configuración de ESA definición, aislado (no
+   * detiene otras definiciones ni otras cuentas), nunca un default
+   * silencioso. `eligibility_rule` hoy solo admite `ALL_ACCOUNTS` -- no hay
+   * segmentación que aplicar todavía, pero la validación ocurre igual
+   * (corrección §4.16(c): el campo no se ignora).
+   *
+   * Dedup -> `daily_cap` -> incremento, en UNA sola transacción
+   * `SERIALIZABLE` (§4.16(d)) -- lectura y escritura sobre el MISMO `tx`.
+   * Un evento bloqueado por `daily_cap` queda igualmente CONSUMIDO
+   * (§4.16(e)): "consumido" y "contribuyó" son hechos independientes.
+   */
+  private async evaluateChallengeEventForDefinition(accountId: string, definition: ChallengeDefinition, entry: XpLedgerEntry): Promise<boolean> {
+    let completionRule: ReturnType<typeof parseCompletionRule>;
+    try {
+      parseEligibilityRule(definition.eligibilityRule);
+      completionRule = parseCompletionRule(definition.completionRule);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`challenge_definition "${definition.challengeKey}" tiene eligibility_rule/completion_rule inválida: ${message}`);
+      return false;
+    }
+
+    try {
+      await this.txRunner.run(
+        async (tx) => {
+          const { accountChallenge } = await this.accountChallengeRepo.createIdempotent(tx, {
+            accountId,
+            challengeDefinitionId: definition.id,
+            targetValue: completionRule.targetValue,
+            periodStart: definition.startsAt,
+            periodEnd: definition.endsAt,
+            acceptedAt: new Date(),
+          });
+
+          // Terminal para progreso (Gate 17: nunca retrocede) -- nada más que hacer.
+          if (accountChallenge.challengeStatus === 'COMPLETED' || accountChallenge.challengeStatus === 'CLAIMED') return;
+
+          const consumed = await this.consumedEventRepo.tryConsume(tx, accountChallenge.id, entry.id);
+          if (!consumed) return; // ya procesado -- idempotencia de lote (Gate 27)
+
+          const localDate = utcDayStart(entry.occurredAt);
+          const daily = await this.dailyProgressRepo.findByAccountChallengeAndDate(accountChallenge.id, localDate, tx);
+          const underCap = definition.dailyCap == null || (daily?.contributionCount ?? 0) < definition.dailyCap;
+          if (!underCap) return; // consumido pero sin contribución -- §4.16(e)
+
+          await this.dailyProgressRepo.upsertContribution(tx, accountChallenge.id, localDate);
+
+          const newProgressValue = Math.min(accountChallenge.progressValue + 1, accountChallenge.targetValue);
+          const reachesTarget = newProgressValue >= accountChallenge.targetValue;
+
+          if (accountChallenge.challengeStatus === 'ACCEPTED') {
+            // ACCEPTED -> COMPLETED directo no es una transición válida (Gate 17)
+            // -- dos sentencias sucesivas dentro de la MISMA transacción.
+            await this.accountChallengeRepo.advanceProgress(tx, accountChallenge.id, newProgressValue, 'IN_PROGRESS');
+            if (reachesTarget) {
+              await this.accountChallengeRepo.advanceProgress(tx, accountChallenge.id, newProgressValue, 'COMPLETED');
+            }
+          } else {
+            await this.accountChallengeRepo.advanceProgress(tx, accountChallenge.id, newProgressValue, reachesTarget ? 'COMPLETED' : null);
+          }
+        },
+        { isolationLevel: 'Serializable' },
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Fallo evaluando el desafío "${definition.challengeKey}" para la cuenta ${accountId} (evento ${entry.id}): ${message}`);
+      return false;
+    }
+    return true;
   }
 
   /**

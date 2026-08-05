@@ -327,20 +327,14 @@ async function main() {
   const { readFileSync } = await import('node:fs');
   const { join } = await import('node:path');
   const filesToCheck = ['reward-evaluation.worker.ts'];
-  // 'AchievementDefinition' se retiró en 2.b (evalúa logros UNIQUE) y
-  // 'accountTitle' se retiró en 3.a (entrega componentes TITLE) -- ambos
-  // sub-incrementos extendieron el worker con autorización formal. La
-  // frontera que SIGUE vigente (desafíos, equipamiento, inventario --
-  // Incrementos 3.b/4/5) no cambió y se verifica igual.
-  const forbiddenSymbols = [
-    'StudentResponse',
-    'CurriculumTopicProgress',
-    'PublicProfile',
-    'equippedTitle',
-    'equippedCosmetic',
-    'ChallengeDefinition',
-    'inventoryItem',
-  ];
+  // 'AchievementDefinition' se retiró en 2.b (evalúa logros UNIQUE),
+  // 'accountTitle' se retiró en 3.a (entrega componentes TITLE), y
+  // 'ChallengeDefinition' se retira en 4.b (evalúa desafíos, §4.16) --
+  // los tres sub-incrementos extendieron el worker con autorización
+  // formal. La frontera que SIGUE vigente (equipamiento, cosméticos,
+  // inventario -- Incrementos 3.b/5, y reclamación de desafíos, 4.c/+) no
+  // cambió y se verifica igual.
+  const forbiddenSymbols = ['StudentResponse', 'CurriculumTopicProgress', 'PublicProfile', 'equippedTitle', 'equippedCosmetic', 'inventoryItem'];
   let boundaryViolationFound = false;
   for (const file of filesToCheck) {
     const contents = readFileSync(join(__dirname, '..', 'src', 'gamification', file), 'utf8');
@@ -351,10 +345,7 @@ async function main() {
       }
     }
   }
-  check(
-    'el worker no referencia PROGRESS/Public Profile/equipamiento/desafíos/inventario (fuera de alcance de 1.c, 2.b y 3.a)',
-    !boundaryViolationFound,
-  );
+  check('el worker no referencia PROGRESS/Public Profile/equipamiento/inventario (fuera de alcance de 1.c, 2.b, 3.a y 4.b)', !boundaryViolationFound);
 
   console.log('--- 6. Sin efecto sobre PROGRESS ni Public Profile ---');
   const accounts = [accountA, accountB, accountC];

@@ -8,7 +8,7 @@ import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../src/generated/prisma/client';
+import { PrismaClient, Prisma } from '../src/generated/prisma/client';
 import { ChallengeDefinitionRepository } from '../src/gamification/challenge-definition.repository';
 import { AccountChallengeRepository } from '../src/gamification/account-challenge.repository';
 import { AccountChallengeDailyProgressRepository } from '../src/gamification/account-challenge-daily-progress.repository';
@@ -33,6 +33,14 @@ async function main() {
   const prisma = new PrismaClient({ adapter }) as unknown as PrismaService;
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
+
+  // Higiene entre corridas -- mismo criterio que 2.a/2.b con
+  // achievement_definition. Encontrado al implementar 4.b: sin esto, las
+  // filas ACTIVAS de corridas anteriores de ESTE gate (con eligibility_rule/
+  // completion_rule en texto libre, sin gramática JSON) quedaban visibles
+  // para el worker real de 4.b vía findActiveContainingInstant, e
+  // interferían con sus evaluaciones.
+  await pg.query("UPDATE challenge_definition SET status = 'RETIRED' WHERE challenge_key LIKE 'weekly-ten-activities-%' AND status = 'ACTIVE'");
 
   const challengeDefinitionRepo = new ChallengeDefinitionRepository(prisma);
   const accountChallengeRepo = new AccountChallengeRepository(prisma);
@@ -107,7 +115,8 @@ async function main() {
 
   console.log('--- 4. account_challenge: creación perezosa idempotente, UNIQUE(account_id, challenge_definition_id, period_start), FK ---');
   const accountX = randomUUID();
-  const firstAssignment = await accountChallengeRepo.createIdempotent({
+  // 4.b (§4.16(d)) exige `tx` explícito en createIdempotent -- ver nota en el paso 8.
+  const firstAssignment = await accountChallengeRepo.createIdempotent(prisma as unknown as Prisma.TransactionClient, {
     accountId: accountX,
     challengeDefinitionId: challengeDefinition.id,
     targetValue: 10,
@@ -120,7 +129,7 @@ async function main() {
   check('progressValue nace 0', firstAssignment.accountChallenge.progressValue === 0);
   check('acceptedAt fijado (asignación automática, no acción del estudiante -- §4.14)', firstAssignment.accountChallenge.acceptedAt !== null);
 
-  const secondAssignment = await accountChallengeRepo.createIdempotent({
+  const secondAssignment = await accountChallengeRepo.createIdempotent(prisma as unknown as Prisma.TransactionClient, {
     accountId: accountX,
     challengeDefinitionId: challengeDefinition.id,
     targetValue: 999, // deliberadamente distinto -- no debe usarse
@@ -138,7 +147,7 @@ async function main() {
 
   let fkRejectedForUnknownChallenge = false;
   try {
-    await accountChallengeRepo.createIdempotent({
+    await accountChallengeRepo.createIdempotent(prisma as unknown as Prisma.TransactionClient, {
       accountId: accountX,
       challengeDefinitionId: randomUUID(),
       targetValue: 10,
@@ -242,10 +251,13 @@ async function main() {
 
   console.log('--- 8. account_challenge_daily_progress: primitivo de acumulación (§4.12), UNIQUE(account_challenge_id, local_date), FK ---');
   const day1 = localDate(2026, 8, 5);
-  const firstContribution = await dailyProgressRepo.upsertContribution(rowId, day1);
+  // 4.b (§4.16(d)) exige `tx` explícito -- este gate no corre dentro de una
+  // transacción real, así que pasa `prisma` directamente (estructuralmente
+  // compatible con Prisma.TransactionClient para este uso de solo-lectura/upsert).
+  const firstContribution = await dailyProgressRepo.upsertContribution(prisma as unknown as Prisma.TransactionClient, rowId, day1);
   check('primer upsertContribution -> contributionCount = 1', firstContribution.contributionCount === 1);
 
-  const secondContribution = await dailyProgressRepo.upsertContribution(rowId, day1);
+  const secondContribution = await dailyProgressRepo.upsertContribution(prisma as unknown as Prisma.TransactionClient, rowId, day1);
   check('segundo upsertContribution (mismo día) -> contributionCount = 2', secondContribution.contributionCount === 2);
 
   // Cuenta por account_challenge_id SIN filtrar por local_date en SQL crudo
@@ -261,7 +273,7 @@ async function main() {
   check('sigue existiendo UNA sola fila diaria tras dos upserts sobre el mismo día -- UNIQUE respetada vía upsert', dailyRowCount.rows[0].n === 1);
 
   const day2 = localDate(2026, 8, 6);
-  const otherDayContribution = await dailyProgressRepo.upsertContribution(rowId, day2);
+  const otherDayContribution = await dailyProgressRepo.upsertContribution(prisma as unknown as Prisma.TransactionClient, rowId, day2);
   check('un día distinto crea su propia fila (contributionCount = 1)', otherDayContribution.contributionCount === 1);
 
   const allDays = await dailyProgressRepo.findByAccountChallengeId(rowId);
