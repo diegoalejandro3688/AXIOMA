@@ -30,13 +30,14 @@ export default function OnboardingScreen() {
   );
 }
 
-/** Alcance mínimo (ver ADR-0015): solo `container`/`title`/`note` pasan por tokens. */
 function createStyles(t: ThemeTokens) {
   return {
     container: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 16, padding: 24, backgroundColor: t.color.background.default },
     title: { fontSize: 24, fontWeight: '700' as const, color: t.color.text.primary },
     note: { fontSize: 13, color: t.color.text.secondary, textAlign: 'center' as const },
-    button: { backgroundColor: '#111', paddingVertical: 12, paddingHorizontal: 32, borderRadius: 8 },
-    buttonText: { color: '#fff', fontWeight: '600' as const },
+    // Mismo par bg/texto que el resto de botones CTA ya migrados (ej. `continueButton` en Inicio) --
+    // antes hardcodeado ('#111'/'#fff'), quedaba fijo en negro sin importar el tema (hallazgo de validación Android).
+    button: { backgroundColor: t.color.accent.default, paddingVertical: 12, paddingHorizontal: 32, borderRadius: 8 },
+    buttonText: { color: t.color.text.onAccent, fontWeight: '600' as const },
   };
 }
