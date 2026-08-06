@@ -203,6 +203,7 @@ export const competitiveEquippedTitleSchema = z.object({
   displayText: z.string(),
   rarityClass: z.string(),
 });
+export type CompetitiveEquippedTitle = z.infer<typeof competitiveEquippedTitleSchema>;
 
 export const competitiveEquippedCosmeticSchema = z.object({
   cosmeticSlot: cosmeticSlotSchema,
@@ -210,12 +211,14 @@ export const competitiveEquippedCosmeticSchema = z.object({
   name: z.string(),
   assetReference: z.string(),
 });
+export type CompetitiveEquippedCosmetic = z.infer<typeof competitiveEquippedCosmeticSchema>;
 
 export const publicAchievementSchema = z.object({
   achievementKey: z.string(),
   name: z.string(),
   unlockedAt: isoDateTime,
 });
+export type PublicAchievement = z.infer<typeof publicAchievementSchema>;
 
 /** `null` si la cuenta no tiene participación activa en la temporada vigente -- NUNCA motivo de 404 (ADR-0021 §2). */
 export const competitiveContextSchema = z.object({

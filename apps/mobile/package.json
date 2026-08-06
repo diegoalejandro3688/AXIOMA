@@ -15,7 +15,8 @@
     "verify:challenges-gate": "tsx scripts/verify-challenges-gate.ts",
     "verify:cosmetics-gate": "tsx scripts/verify-cosmetics-gate.ts",
     "verify:league-participation-gate": "tsx scripts/verify-league-participation-gate.ts",
-    "verify:leaderboard-gate": "tsx scripts/verify-leaderboard-gate.ts"
+    "verify:leaderboard-gate": "tsx scripts/verify-leaderboard-gate.ts",
+    "verify:competitive-profile-gate": "tsx scripts/verify-competitive-profile-gate.ts"
   },
   "dependencies": {
     "@axioma/contracts": "workspace:*",

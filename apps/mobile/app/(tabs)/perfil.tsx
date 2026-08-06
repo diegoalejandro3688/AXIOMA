@@ -6,6 +6,7 @@ import { getProfile, initializeProfile, updateProfile } from '../../lib/api/user
 import { LoadingState } from '../../components/loading-state';
 import { ErrorState } from '../../components/error-state';
 import { CosmeticsSection } from '../../components/cosmetics-section';
+import { CompetitiveProfileSection } from '../../components/competitive-profile-section';
 import { useTheme, useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
@@ -113,6 +114,7 @@ export default function PerfilScreen() {
         )}
 
         <CosmeticsSection />
+        <CompetitiveProfileSection />
       </ScrollView>
 
       <Pressable accessibilityRole="button" accessibilityLabel="Cerrar sesión" onPress={auth.logout} style={styles.logoutButton}>

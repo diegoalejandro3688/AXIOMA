@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Text, Pressable, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import type { LeaderboardRow } from '@axioma/contracts';
 import { getLeaderboardPage } from '../../../lib/api/competitive';
 import { mergeLeaderboardPages, describeMyPosition } from '../../../lib/leaderboard/paginate-leaderboard';
@@ -37,6 +38,7 @@ type ScreenState =
  */
 export default function RankingScreen() {
   const styles = useThemedStyles(createStyles);
+  const router = useRouter();
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
 
   const load = useCallback(async () => {
@@ -117,7 +119,7 @@ export default function RankingScreen() {
           data={state.entries}
           keyExtractor={(row) => String(row.rankPosition)}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => <LeaderboardRowCard row={item} styles={styles} />}
+          renderItem={({ item }) => <LeaderboardRowCard row={item} styles={styles} router={router} />}
           ListFooterComponent={
             <View style={styles.footer}>
               {state.loadMoreError ? <Text style={styles.loadMoreError}>{state.loadMoreError}</Text> : null}
@@ -145,8 +147,13 @@ export default function RankingScreen() {
  * `presentable: false` no puede, ni en tiempo de compilación, leer
  * `username`/`avatar`/`equippedTitle`/`equippedCosmetics`/`levelNumber`/
  * `publicAchievements` (TypeScript los excluye del tipo de esa rama).
+ *
+ * Navegación al perfil (sub-incremento 5.c) ÚNICAMENTE desde una fila
+ * presentable -- una fila redactada no tiene `username` que navegar, ni
+ * siquiera se envuelve en `Pressable` (sin `onPress`, sin
+ * `accessibilityRole="button"`).
  */
-function LeaderboardRowCard({ row, styles }: { row: LeaderboardRow; styles: ReturnType<typeof createStyles> }) {
+function LeaderboardRowCard({ row, styles, router }: { row: LeaderboardRow; styles: ReturnType<typeof createStyles>; router: ReturnType<typeof useRouter> }) {
   const highlight = row.isCurrentUser;
 
   if (!row.presentable) {
@@ -160,7 +167,12 @@ function LeaderboardRowCard({ row, styles }: { row: LeaderboardRow; styles: Retu
   }
 
   return (
-    <View style={[styles.row, highlight && styles.rowHighlighted]}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Ver perfil de ${row.username}`}
+      onPress={() => router.push({ pathname: '/(tabs)/competir/perfil/[username]', params: { username: row.username } })}
+      style={[styles.row, highlight && styles.rowHighlighted]}
+    >
       <Text style={styles.rankPosition}>#{row.rankPosition}</Text>
       <View style={styles.rowInfo}>
         <Text style={styles.username}>{row.username}</Text>
@@ -168,7 +180,7 @@ function LeaderboardRowCard({ row, styles }: { row: LeaderboardRow; styles: Retu
         <Text style={styles.levelNumber}>Nivel {row.levelNumber}</Text>
       </View>
       <Text style={styles.metricValue}>{row.metricValue}</Text>
-    </View>
+    </Pressable>
   );
 }
 
