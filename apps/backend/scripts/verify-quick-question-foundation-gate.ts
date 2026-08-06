@@ -147,6 +147,14 @@ async function main() {
   );
 
   console.log('--- 6. Gate 1: repetible ENTRE sesiones -- sin UNIQUE(accountId, questionVersionId) global (a diferencia de student_response) ---');
+  // Precisión obligatoria del Product Owner añadida en 4.b: una sola
+  // QuickQuestionSession ACTIVE por cuenta (índice único parcial
+  // quick_question_session_one_active_per_account) -- session1 debe
+  // cerrarse antes de poder abrir session2 para la MISMA cuenta. La
+  // repetibilidad entre sesiones (Gate 1) no depende de que ambas estén
+  // ACTIVE simultáneamente, solo de que no exista UNIQUE(accountId,
+  // questionVersionId) global -- sigue intacta.
+  await sessionRepo.close(session1.id, new Date());
   const session2 = await sessionRepo.create(accountAlice);
   await sessionRepo.setCurrentQuestion(session2.id, q1.questionVersionId, new Date());
   const attempt2 = await prisma.$transaction(async (tx) => {
@@ -215,12 +223,17 @@ async function main() {
   check('findBySessionId devuelve todos los intentos de la sesión, en orden', allInSession1.length === 1 && allInSession1[0].id === attempt1.id);
 
   console.log('--- 11. FK Restrict: quick_question_attempt exige questionVersionId/answerOptionId existentes en EDUCATION ---');
+  // session1/session2/session3 ya están CLOSED a esta altura -- el trigger
+  // enforce_quick_question_attempt_session_active dispararía primero
+  // ("ya no está ACTIVE") y enmascararía el error de FK que este paso
+  // quiere probar. Sesión dedicada, ACTIVE, exclusivamente para esto.
+  const session4 = await sessionRepo.create(accountAlice);
   let unknownQuestionVersionRejected = false;
   try {
     await pg.query(
       `INSERT INTO quick_question_attempt (id, session_id, account_id, question_version_id, answer_option_id, is_correct, presented_at, responded_at, operation_id, created_at)
        VALUES ($1, $2, $3, $4, $5, true, now(), now(), $6, now())`,
-      [randomUUID(), session1.id, accountAlice, randomUUID() /* questionVersionId inexistente */, q1.answerOptionId, randomUUID()],
+      [randomUUID(), session4.id, accountAlice, randomUUID() /* questionVersionId inexistente */, q1.answerOptionId, randomUUID()],
     );
   } catch (error) {
     unknownQuestionVersionRejected = (error as { code?: string }).code === '23503';
@@ -252,14 +265,18 @@ async function main() {
     }
   }
   check('ningún controller expone quick_question_session/quick_question_attempt (sin endpoints en 4.a)', !publicExposureFound);
-  const serviceFileExists = readdirSync(gamificationDir).includes('quick-question.service.ts');
-  check('QuickQuestionService (motor de sesión, 4.b) todavía no existe -- 4.a es exclusivamente persistencia', !serviceFileExists);
+  // Nota: la ausencia de quick-question.service.ts fue verificada mientras
+  // 4.a era el último sub-incremento construido -- una vez completado 4.b
+  // (ver verify-quick-question-engine-gate.ts), ese archivo existe
+  // legítimamente y esta comprobación ya no aplica. Lo que sigue siendo
+  // permanente es que los REPOSITORIOS de 4.a nunca publican al outbox
+  // directamente -- verificado abajo.
   const outboxUsage = sessionRepoSource.includes('OutboxService') || attemptRepoSource.includes('OutboxService');
   check('ningún repositorio de 4.a publica al outbox directamente (publicación es responsabilidad de 4.b, fuera de la transacción de escritura)', !outboxUsage);
 
   console.log('--- 14. Limpieza de fixtures de este gate (mismo criterio que verify-progress-gate: nunca dejar contaminación en curriculum_topic compartido) ---');
-  await pg.query('DELETE FROM quick_question_attempt WHERE session_id IN ($1, $2, $3)', [session1.id, session2.id, session3.id]);
-  await pg.query('DELETE FROM quick_question_session WHERE id IN ($1, $2, $3)', [session1.id, session2.id, session3.id]);
+  await pg.query('DELETE FROM quick_question_attempt WHERE session_id IN ($1, $2, $3, $4)', [session1.id, session2.id, session3.id, session4.id]);
+  await pg.query('DELETE FROM quick_question_session WHERE id IN ($1, $2, $3, $4)', [session1.id, session2.id, session3.id, session4.id]);
   await pg.query('DELETE FROM answer_option WHERE question_version_id IN ($1, $2)', [q1.questionVersionId, q2.questionVersionId]);
   await pg.query('DELETE FROM question_version WHERE id IN ($1, $2)', [q1.questionVersionId, q2.questionVersionId]);
   await pg.query(`DELETE FROM question WHERE question_key LIKE 'GATE.QQ.%'`);

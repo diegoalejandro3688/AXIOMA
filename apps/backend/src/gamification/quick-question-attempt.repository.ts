@@ -40,8 +40,9 @@ export class QuickQuestionAttemptRepository {
     return tx.quickQuestionAttempt.create({ data: input });
   }
 
-  findByOperationId(operationId: string): Promise<QuickQuestionAttempt | null> {
-    return this.prisma.quickQuestionAttempt.findUnique({ where: { operationId } });
+  /** `tx` opcional -- QuickQuestionService.answer (4.b) lo pasa para releer dentro de la transacción bloqueada por sesión (§13, "relectura, decisión y escritura en el mismo tx"). */
+  findByOperationId(operationId: string, tx?: Prisma.TransactionClient): Promise<QuickQuestionAttempt | null> {
+    return (tx ?? this.prisma).quickQuestionAttempt.findUnique({ where: { operationId } });
   }
 
   findBySessionAndQuestionVersion(sessionId: string, questionVersionId: string): Promise<QuickQuestionAttempt | null> {
@@ -50,8 +51,9 @@ export class QuickQuestionAttemptRepository {
     });
   }
 
-  findQuestionVersionIdsBySession(sessionId: string): Promise<string[]> {
-    return this.prisma.quickQuestionAttempt
+  /** `tx` opcional -- QuickQuestionService.next (4.b) lo pasa para leer dentro de la transacción bloqueada por sesión. */
+  findQuestionVersionIdsBySession(sessionId: string, tx?: Prisma.TransactionClient): Promise<string[]> {
+    return (tx ?? this.prisma).quickQuestionAttempt
       .findMany({ where: { sessionId }, select: { questionVersionId: true } })
       .then((rows) => rows.map((r) => r.questionVersionId));
   }

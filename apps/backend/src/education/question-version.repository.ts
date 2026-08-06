@@ -43,12 +43,16 @@ export class QuestionVersionRepository {
   }
 
   /**
-   * Uso interno de PROGRESS (ADR-0014) para validar una respuesta: incluye
-   * el `status` de la identidad lógica (`question`) -- una pregunta retirada
-   * no puede responderse aunque su última versión siga `PUBLISHED`.
+   * Uso interno de PROGRESS (ADR-0014) y GAMIFICATION (Bloque IV,
+   * Incremento 4) para validar una respuesta: incluye el `status` de la
+   * identidad lógica (`question`) -- una pregunta retirada no puede
+   * responderse aunque su última versión siga `PUBLISHED`. `tx` opcional --
+   * QuickQuestionService (4.b) lo pasa para leer dentro de la misma
+   * transacción bloqueada por sesión (§13, "relectura, decisión y
+   * escritura en el mismo tx"); PROGRESS sigue sin pasarlo (sin cambios).
    */
-  findByIdWithQuestionStatus(id: string): Promise<QuestionVersionWithQuestionStatus | null> {
-    return this.prisma.questionVersion.findUnique({
+  findByIdWithQuestionStatus(id: string, tx?: Prisma.TransactionClient): Promise<QuestionVersionWithQuestionStatus | null> {
+    return (tx ?? this.prisma).questionVersion.findUnique({
       where: { id },
       include: { question: { select: { id: true, status: true } } },
     });
@@ -57,5 +61,36 @@ export class QuestionVersionRepository {
   /** Conteo de versiones publicadas de un tema -- usado por PROGRESS para determinar completitud (ADR-0014, punto 6). */
   countPublishedByTopicId(curriculumTopicId: string): Promise<number> {
     return this.prisma.questionVersion.count({ where: { curriculumTopicId, editorialStatus: 'PUBLISHED' } });
+  }
+
+  /**
+   * Selección server-side de Pregunta rápida (Bloque IV, Incremento 4,
+   * sub-incremento 4.b, §13.2). `excludeQuestionVersionIds` = toda
+   * `questionVersionId` ya presente en `quick_question_attempt` de la
+   * sesión actual -- refuerza en la SELECCIÓN lo que
+   * `@@unique([sessionId, questionVersionId])` ya refuerza en la
+   * ESCRITURA (defensa en profundidad). Sin filtro por materia/dificultad
+   * en V1 -- "dificultad" no existe en el esquema hoy (auditoría §12).
+   * `tx` opcional -- pasado por QuickQuestionService dentro de la
+   * transacción bloqueada por sesión.
+   */
+  async findRandomEligible(excludeQuestionVersionIds: string[], tx?: Prisma.TransactionClient): Promise<QuestionVersion | null> {
+    const client = tx ?? this.prisma;
+    // Prisma Client no expone ORDER BY random() de forma portable -- SQL
+    // crudo SOLO para elegir el id (evita el mapeo manual snake_case ->
+    // camelCase que $queryRaw exigiría sobre la fila completa); la fila real
+    // se recupera después con el mismo cliente vía Prisma normal, mapeo
+    // correcto garantizado. Sin problema de rendimiento conocido con el
+    // volumen actual del catálogo.
+    const rows = await client.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "question_version"
+      WHERE "editorial_status" = 'PUBLISHED'
+        AND "id" != ALL(${excludeQuestionVersionIds}::uuid[])
+      ORDER BY random()
+      LIMIT 1
+    `;
+    const chosenId = rows[0]?.id;
+    if (!chosenId) return null;
+    return client.questionVersion.findUnique({ where: { id: chosenId } });
   }
 }

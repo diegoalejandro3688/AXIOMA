@@ -17,7 +17,8 @@ export class AnswerOptionRepository {
     return result.count;
   }
 
-  findById(id: string): Promise<AnswerOption | null> {
-    return this.prisma.answerOption.findUnique({ where: { id } });
+  /** `tx` opcional -- GAMIFICATION (QuickQuestionService, 4.b) lo pasa para leer dentro de la transacción bloqueada por sesión; PROGRESS sigue sin pasarlo. */
+  findById(id: string, tx?: Prisma.TransactionClient): Promise<AnswerOption | null> {
+    return (tx ?? this.prisma).answerOption.findUnique({ where: { id } });
   }
 }

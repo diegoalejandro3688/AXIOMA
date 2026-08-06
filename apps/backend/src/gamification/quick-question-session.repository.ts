@@ -18,8 +18,9 @@ import type { QuickQuestionSession } from '../generated/prisma/client';
 export class QuickQuestionSessionRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(accountId: string): Promise<QuickQuestionSession> {
-    return this.prisma.quickQuestionSession.create({ data: { accountId } });
+  /** `tx` opcional -- QuickQuestionService.openSession (4.b) lo pasa para crear dentro de la transacción bloqueada por cuenta (§13, precisión #1/#3). */
+  create(accountId: string, tx?: Prisma.TransactionClient): Promise<QuickQuestionSession> {
+    return (tx ?? this.prisma).quickQuestionSession.create({ data: { accountId } });
   }
 
   findById(id: string, tx?: Prisma.TransactionClient): Promise<QuickQuestionSession | null> {
@@ -27,12 +28,24 @@ export class QuickQuestionSessionRepository {
   }
 
   /**
+   * Única `QuickQuestionSession` `ACTIVE` de una cuenta -- respaldada por
+   * `quick_question_session_one_active_per_account` (índice único parcial,
+   * migración SQL de 4.b, mismo criterio que `game_season_single_active`
+   * salvo que aquí es POR CUENTA, no global). `tx` opcional -- usado para
+   * la relectura bajo advisory lock en `openSession`.
+   */
+  findActiveByAccountId(accountId: string, tx?: Prisma.TransactionClient): Promise<QuickQuestionSession | null> {
+    return (tx ?? this.prisma).quickQuestionSession.findFirst({ where: { accountId, status: 'ACTIVE' } });
+  }
+
+  /**
    * 4.b: fija la pregunta pendiente tras la selección server-side (`/next`).
    * Sin cambio de `status` -- el trigger de transición lo permite libremente
-   * mientras la sesión siga ACTIVE.
+   * mientras la sesión siga ACTIVE. `tx` opcional -- QuickQuestionService.next
+   * lo pasa para escribir dentro de la transacción bloqueada por sesión.
    */
-  setCurrentQuestion(id: string, questionVersionId: string, presentedAt: Date): Promise<QuickQuestionSession> {
-    return this.prisma.quickQuestionSession.update({
+  setCurrentQuestion(id: string, questionVersionId: string, presentedAt: Date, tx?: Prisma.TransactionClient): Promise<QuickQuestionSession> {
+    return (tx ?? this.prisma).quickQuestionSession.update({
       where: { id },
       data: { currentQuestionVersionId: questionVersionId, currentPresentedAt: presentedAt },
     });
@@ -52,9 +65,13 @@ export class QuickQuestionSessionRepository {
     });
   }
 
-  /** 4.c: cierre forward-only -- descarta cualquier pregunta pendiente, sin crear intento ni publicar actividad (§13.4). */
-  close(id: string, closedAt: Date): Promise<QuickQuestionSession> {
-    return this.prisma.quickQuestionSession.update({
+  /**
+   * Cierre forward-only -- descarta cualquier pregunta pendiente, sin crear
+   * intento ni publicar actividad (§13.4). `tx` opcional -- QuickQuestionService.close
+   * (4.b) lo pasa para escribir dentro de la transacción bloqueada por sesión.
+   */
+  close(id: string, closedAt: Date, tx?: Prisma.TransactionClient): Promise<QuickQuestionSession> {
+    return (tx ?? this.prisma).quickQuestionSession.update({
       where: { id },
       data: { status: 'CLOSED', closedAt, currentQuestionVersionId: null, currentPresentedAt: null },
     });

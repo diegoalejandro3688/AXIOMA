@@ -26,24 +26,38 @@ function isKnownEventKey(eventKey: string): eventKey is GamificationEventKey {
  * sola, no puede detectar.
  */
 function deduplicationKeyFor(eventKey: GamificationEventKey, payload: Record<string, unknown>): string {
-  if (eventKey === 'student_response_recorded') {
-    return `response:${payload.studentResponseId as string}`;
+  switch (eventKey) {
+    case 'student_response_recorded':
+      return `response:${payload.studentResponseId as string}`;
+    case 'quick_question_answered':
+      return `quick-question:${payload.quickQuestionAttemptId as string}`;
+    case 'curriculum_topic_completed':
+      // Sin identificador propio de "transición" en el modelo actual -- se
+      // usa (accountId, curriculumTopicId), tal como fue decidido explícitamente.
+      return `topic-completed:${payload.accountId as string}:${payload.curriculumTopicId as string}`;
   }
-  // curriculum_topic_completed: sin identificador propio de "transición" en
-  // el modelo actual -- se usa (accountId, curriculumTopicId), tal como
-  // fue decidido explícitamente.
-  return `topic-completed:${payload.accountId as string}:${payload.curriculumTopicId as string}`;
 }
 
 function sourceEntityFor(eventKey: GamificationEventKey, payload: Record<string, unknown>): { type: string; id: string } {
-  if (eventKey === 'student_response_recorded') {
-    return { type: 'StudentResponse', id: payload.studentResponseId as string };
+  switch (eventKey) {
+    case 'student_response_recorded':
+      return { type: 'StudentResponse', id: payload.studentResponseId as string };
+    case 'quick_question_answered':
+      return { type: 'QuickQuestionAttempt', id: payload.quickQuestionAttemptId as string };
+    case 'curriculum_topic_completed':
+      return { type: 'CurriculumTopicProgress', id: payload.curriculumTopicId as string };
   }
-  return { type: 'CurriculumTopicProgress', id: payload.curriculumTopicId as string };
 }
 
 function activityTypeFor(eventKey: GamificationEventKey): string {
-  return eventKey === 'student_response_recorded' ? 'RESPUESTA_VALIDADA' : 'TEMA_COMPLETADO';
+  switch (eventKey) {
+    case 'student_response_recorded':
+      return 'RESPUESTA_VALIDADA';
+    case 'quick_question_answered':
+      return 'QUICK_QUESTION_ANSWERED';
+    case 'curriculum_topic_completed':
+      return 'TEMA_COMPLETADO';
+  }
 }
 
 /**

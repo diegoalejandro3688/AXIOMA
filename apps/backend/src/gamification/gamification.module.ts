@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { EducationModule } from '../education/education.module';
 import { InternalOpsModule } from '../platform/internal-ops/internal-ops.module';
 import { OutboxModule } from '../platform/outbox/outbox.module';
 import { GamificationProgramRepository } from './gamification-program.repository';
@@ -63,6 +64,7 @@ import { LeaderboardFinalizationService } from './leaderboard-finalization.servi
 import { LeaderboardFinalizationScheduler } from './leaderboard-finalization.scheduler';
 import { QuickQuestionSessionRepository } from './quick-question-session.repository';
 import { QuickQuestionAttemptRepository } from './quick-question-attempt.repository';
+import { QuickQuestionService } from './quick-question.service';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -216,9 +218,20 @@ import { QuickQuestionAttemptRepository } from './quick-question-attempt.reposit
  * preguntas, SIN corrección, SIN transacción de negocio, SIN publicación de
  * evento, SIN HTTP (sub-incremento 4.b/4.c) -- únicamente esquema,
  * migración, triggers y los dos repositorios mínimos.
+ *
+ * Sub-incremento 4.b ("Motor de sesión") -- ver
+ * docs/adr/LEF-BLOCK-IV-DEFINITION.md §13.2-13.3. `QuickQuestionService`:
+ * selección server-side (`QuestionVersionRepository.findRandomEligible`,
+ * EDUCATION, importado vía `EducationModule` -- mismo criterio que
+ * `ProgressModule`), corrección reutilizando `AnswerOptionRepository`
+ * (EDUCATION), advisory lock namespace 23 (distinto de 19/20/21/22) con
+ * exclusión mutua compartida entre `next`/`answer`/`close` por sesión,
+ * apertura idempotente de sesión por cuenta (índice único parcial +
+ * relectura bajo lock), publicación best-effort post-commit de
+ * `quick_question_answered` (ADR-0006). SIN HTTP todavía (4.c).
  */
 @Module({
-  imports: [AuthModule, InternalOpsModule, OutboxModule],
+  imports: [AuthModule, EducationModule, InternalOpsModule, OutboxModule],
   controllers: [GamificationController, ProgressionController, ChallengeController],
   providers: [
     GamificationProgramRepository,
@@ -279,6 +292,7 @@ import { QuickQuestionAttemptRepository } from './quick-question-attempt.reposit
     LeaderboardFinalizationScheduler,
     QuickQuestionSessionRepository,
     QuickQuestionAttemptRepository,
+    QuickQuestionService,
   ],
   exports: [
     GamificationProgramRepository,

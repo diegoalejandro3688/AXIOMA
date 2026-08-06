@@ -12,7 +12,7 @@ import { entityId, isoDateTime } from './common';
  * en vez de colarse silenciosamente.
  */
 
-export const GAMIFICATION_EVENT_KEYS = ['student_response_recorded', 'curriculum_topic_completed'] as const;
+export const GAMIFICATION_EVENT_KEYS = ['student_response_recorded', 'curriculum_topic_completed', 'quick_question_answered'] as const;
 
 export type GamificationEventKey = (typeof GAMIFICATION_EVENT_KEYS)[number];
 
@@ -57,12 +57,36 @@ export const curriculumTopicCompletedPayloadSchema = z
 
 export type CurriculumTopicCompletedPayload = z.infer<typeof curriculumTopicCompletedPayloadSchema>;
 
+/**
+ * Publicado por GAMIFICATION (QuickQuestionService, Bloque IV Incremento 4)
+ * únicamente al CREAR un QuickQuestionAttempt por primera vez -- nunca en
+ * el camino de replay (mismo operationId) ni en el de conflicto (sin
+ * pregunta pendiente, sesión cerrada). Mismo criterio que
+ * `studentResponseRecordedPayloadSchema`: `quickQuestionAttemptId` es la
+ * clave del hecho estable, base de la deduplicación de negocio -- ver
+ * docs/adr/LEF-BLOCK-IV-DEFINITION.md §13.3. Publicación BEST-EFFORT,
+ * post-commit (ADR-0006, §"Publicación best-effort") -- nunca dentro de la
+ * transacción que crea el intento.
+ */
+export const quickQuestionAnsweredPayloadSchema = z
+  .object({
+    accountId: entityId,
+    quickQuestionAttemptId: entityId,
+    quickQuestionSessionId: entityId,
+    questionVersionId: entityId,
+    isCorrect: z.boolean(),
+  })
+  .strict();
+
+export type QuickQuestionAnsweredPayload = z.infer<typeof quickQuestionAnsweredPayloadSchema>;
+
 export const gamificationEventPayloadSchemas: Record<
   GamificationEventKey,
-  typeof studentResponseRecordedPayloadSchema | typeof curriculumTopicCompletedPayloadSchema
+  typeof studentResponseRecordedPayloadSchema | typeof curriculumTopicCompletedPayloadSchema | typeof quickQuestionAnsweredPayloadSchema
 > = {
   student_response_recorded: studentResponseRecordedPayloadSchema,
   curriculum_topic_completed: curriculumTopicCompletedPayloadSchema,
+  quick_question_answered: quickQuestionAnsweredPayloadSchema,
 };
 
 /**
