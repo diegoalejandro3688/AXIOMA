@@ -225,6 +225,7 @@ export const competitiveContextSchema = z.object({
   calculatedAt: isoDateTime,
   snapshotVersion: z.number().int().nonnegative(),
 });
+export type CompetitiveContext = z.infer<typeof competitiveContextSchema>;
 
 export const competitiveProfileResponseSchema = z.object({
   username: z.string(),

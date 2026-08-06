@@ -5,8 +5,8 @@ import { Stack } from 'expo-router';
  * Incremento 5. Sigue siendo la misma pestaña, no una ruta nueva -- mismo
  * patrón que `estudio/_layout.tsx`. `index` es el hub (Desafíos +
  * participación de liga); `ranking` es la lista de ranking del propio
- * grupo (sub-incremento 5.b, todavía un placeholder "Próximamente" --
- * ver ranking.tsx).
+ * grupo, con redacción y paginación por botón "Ver más" (sub-incremento
+ * 5.b).
  */
 export default function CompetirLayout() {
   return (
