@@ -46,4 +46,17 @@ export class LeagueDefinitionRepository {
       orderBy: { tierOrder: 'asc' },
     });
   }
+
+  /**
+   * Bloque IV, Incremento 2 (ADR-0020 §4, "tiers extremos") -- el `tierOrder`
+   * máximo entre los tiers ACTIVE. Un candidato a `PROMOTED` en este tier se
+   * resuelve como `RETAINED` (no existe un tier superior al que ascender).
+   */
+  findHighestActiveTier(tx?: Prisma.TransactionClient): Promise<LeagueDefinition | null> {
+    const client: Client = tx ?? this.prisma;
+    return client.leagueDefinition.findFirst({
+      where: { status: 'ACTIVE' },
+      orderBy: { tierOrder: 'desc' },
+    });
+  }
 }

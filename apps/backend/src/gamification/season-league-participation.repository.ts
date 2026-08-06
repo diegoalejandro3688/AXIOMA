@@ -78,6 +78,33 @@ export class SeasonLeagueParticipationRepository {
     return (tx ?? this.prisma).seasonLeagueParticipation.findUnique({ where: { id } });
   }
 
+  /**
+   * Bloque IV, Incremento 2 -- TODAS las participaciones de un grupo, sin
+   * excepción (ADR-0020 §1/§2: la identidad autoritativa del cálculo es
+   * `season_league_participation`, nunca `public_profile` -- ningún filtro
+   * de visibilidad se aplica aquí ni en ningún punto de este repositorio).
+   */
+  findAllByGroupId(groupId: string, tx?: Prisma.TransactionClient): Promise<SeasonLeagueParticipation[]> {
+    const client: Client = tx ?? this.prisma;
+    return client.seasonLeagueParticipation.findMany({ where: { leagueGroupId: groupId } });
+  }
+
+  /** Bloque IV, Incremento 2 -- `currentRank` es una proyección actualizada en cada pasada periódica (Data Model §16.20). */
+  updateCurrentRank(tx: Prisma.TransactionClient, id: string, currentRank: number): Promise<SeasonLeagueParticipation> {
+    return tx.seasonLeagueParticipation.update({ where: { id }, data: { currentRank } });
+  }
+
+  updateOutcome(
+    tx: Prisma.TransactionClient,
+    id: string,
+    input: { participationStatus: 'PROMOTED' | 'DEMOTED' | 'RETAINED'; finalRank: number; finalizedAt: Date },
+  ): Promise<SeasonLeagueParticipation> {
+    return tx.seasonLeagueParticipation.update({
+      where: { id },
+      data: { participationStatus: input.participationStatus, finalRank: input.finalRank, currentRank: input.finalRank, finalizedAt: input.finalizedAt },
+    });
+  }
+
   incrementLeaguePoints(tx: Prisma.TransactionClient, id: string, delta: number): Promise<SeasonLeagueParticipation> {
     return tx.seasonLeagueParticipation.update({ where: { id }, data: { leaguePoints: { increment: delta } } });
   }

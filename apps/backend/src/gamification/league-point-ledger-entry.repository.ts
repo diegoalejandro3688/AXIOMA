@@ -72,6 +72,23 @@ export class LeaguePointLedgerEntryRepository {
   }
 
   /**
+   * Bloque IV, Incremento 2 -- todas las entradas de TODAS las
+   * participaciones de un grupo, en una sola consulta (evita N+1 por
+   * participación). Orden `(occurredAt ASC, id ASC)` -- exactamente el orden
+   * que exige la definición de `tieBreakValue` (ADR-0020 §3): el ÚLTIMO
+   * elemento de cada participación en este orden es su "momento de alcanzar
+   * el puntaje".
+   */
+  findAllByParticipationIds(seasonLeagueParticipationIds: string[], tx?: Prisma.TransactionClient): Promise<LeaguePointLedgerEntry[]> {
+    if (seasonLeagueParticipationIds.length === 0) return Promise.resolve([]);
+    const client: Client = tx ?? this.prisma;
+    return client.leaguePointLedgerEntry.findMany({
+      where: { seasonLeagueParticipationId: { in: seasonLeagueParticipationIds } },
+      orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  /**
    * Suma de OTORGAMIENTO ya concedidos hoy para una regla concreta, DENTRO
    * de la participación -- base del tope diario. Debe ejecutarse dentro de
    * la transacción SERIALIZABLE del otorgamiento, mismo criterio que

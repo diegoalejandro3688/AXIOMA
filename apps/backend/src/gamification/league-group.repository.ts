@@ -65,4 +65,18 @@ export class LeagueGroupRepository {
     });
     return result.count;
   }
+
+  /** Bloque IV, Incremento 2 -- alcance de cada pasada de `LeaderboardCalculationScheduler` (ADR-0020 §6). */
+  findOpenOrFullForSeason(gameSeasonId: string): Promise<LeagueGroup[]> {
+    return this.prisma.leagueGroup.findMany({ where: { gameSeasonId, status: { in: ['OPEN', 'FULL'] } } });
+  }
+
+  /** Bloque IV, Incremento 2 -- grupos cerrados por Incremento 1 pero sin instantánea final todavía (ADR-0020 §7). */
+  findLockedNotFinalized(): Promise<LeagueGroup[]> {
+    return this.prisma.leagueGroup.findMany({ where: { status: 'LOCKED' } });
+  }
+
+  updateStatus(tx: Prisma.TransactionClient, id: string, status: 'FINALIZED', finalizedAt: Date): Promise<LeagueGroup> {
+    return tx.leagueGroup.update({ where: { id }, data: { status, finalizedAt } });
+  }
 }

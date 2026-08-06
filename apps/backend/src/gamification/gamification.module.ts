@@ -53,6 +53,14 @@ import { LeaguePointGrantService } from './league-point-grant.service';
 import { LeaguePointGrantScheduler } from './league-point-grant.scheduler';
 import { SeasonTransitionService } from './season-transition.service';
 import { SeasonTransitionScheduler } from './season-transition.scheduler';
+import { LeaderboardDefinitionRepository } from './leaderboard-definition.repository';
+import { LeaderboardEntryRepository } from './leaderboard-entry.repository';
+import { LeaderboardSnapshotRepository } from './leaderboard-snapshot.repository';
+import { LeaderboardSnapshotEntryRepository } from './leaderboard-snapshot-entry.repository';
+import { LeaderboardCalculationService } from './leaderboard-calculation.service';
+import { LeaderboardCalculationScheduler } from './leaderboard-calculation.scheduler';
+import { LeaderboardFinalizationService } from './leaderboard-finalization.service';
+import { LeaderboardFinalizationScheduler } from './leaderboard-finalization.scheduler';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -172,6 +180,27 @@ import { SeasonTransitionScheduler } from './season-transition.scheduler';
  * retroactividad y exclusión otorgamiento-vs-cierre respaldadas también por
  * trigger (`enforce_league_point_ledger_entry_window`), no solo por la
  * relectura SERIALIZABLE de la aplicación.
+ *
+ * Bloque IV, Incremento 2 ("Ranking") -- ver
+ * docs/adr/0020-ranking-materializacion.md (APPROVED, cinco precisiones
+ * obligatorias del Product Owner) y docs/adr/LEF-BLOCK-IV-DEFINITION.md §10.
+ * `leaderboard_definition`/`leaderboard_entry` (proyección materializada,
+ * identidad autoritativa `seasonLeagueParticipationId` -- NUNCA
+ * `publicProfileId`, que queda `null` y se resuelve en Incremento 3) +
+ * `leaderboard_snapshot`/`leaderboard_snapshot_entry` (instantánea inmutable
+ * al cierre, sin ninguna columna mutable). `LeaderboardCalculationService`
+ * calcula y persiste el ranking de un grupo (`LeaderboardCalculationScheduler`,
+ * cada 15 min, SOLO grupos OPEN/FULL de la temporada ACTIVE -- sin recálculo
+ * bajo demanda del cliente). `LeaderboardFinalizationService`
+ * (`LeaderboardFinalizationScheduler`, cada minuto) cierra todo grupo
+ * `LOCKED` sin instantánea final: último recálculo, gramática `top/bottom
+ * N%` (mínimo 3 participantes, tiers extremos resueltos a `RETAINED`),
+ * snapshot `FINAL`, transición `SEASON_ENDED -> {PROMOTED,DEMOTED,RETAINED}`
+ * -- advisory lock namespace 22 (distinto de 19/20/21) protege el cierre de
+ * un mismo grupo contra reintentos concurrentes (idempotente). La
+ * visibilidad de perfil NUNCA excluye ni altera el cálculo (ADR-0020 §1/§2)
+ * -- toda `season_league_participation` de un grupo obtiene su fila real,
+ * sin excepción. SIN endpoints, SIN superficie móvil (Incrementos 3/5).
  */
 @Module({
   imports: [AuthModule, InternalOpsModule, OutboxModule],
@@ -225,6 +254,14 @@ import { SeasonTransitionScheduler } from './season-transition.scheduler';
     LeaguePointGrantScheduler,
     SeasonTransitionService,
     SeasonTransitionScheduler,
+    LeaderboardDefinitionRepository,
+    LeaderboardEntryRepository,
+    LeaderboardSnapshotRepository,
+    LeaderboardSnapshotEntryRepository,
+    LeaderboardCalculationService,
+    LeaderboardCalculationScheduler,
+    LeaderboardFinalizationService,
+    LeaderboardFinalizationScheduler,
   ],
   exports: [
     GamificationProgramRepository,
@@ -264,6 +301,10 @@ import { SeasonTransitionScheduler } from './season-transition.scheduler';
     SeasonLeagueParticipationRepository,
     LeaguePointRuleRepository,
     LeaguePointLedgerEntryRepository,
+    LeaderboardDefinitionRepository,
+    LeaderboardEntryRepository,
+    LeaderboardSnapshotRepository,
+    LeaderboardCalculationService,
   ],
 })
 export class GamificationModule {}

@@ -1704,8 +1704,10 @@ model GameSeason {
   createdAt           DateTime         @default(now()) @map("created_at")
   finalizedAt         DateTime?        @map("finalized_at")
 
-  leagueGroups   LeagueGroup[]
-  participations SeasonLeagueParticipation[]
+  leagueGroups         LeagueGroup[]
+  participations       SeasonLeagueParticipation[]
+  leaderboardEntries   LeaderboardEntry[]
+  leaderboardSnapshots LeaderboardSnapshot[]
 
   @@map("game_season")
 }
@@ -1736,9 +1738,10 @@ model LeagueDefinition {
   createdAt            DateTime               @default(now()) @map("created_at")
   retiredAt            DateTime?              @map("retired_at")
 
-  rewardBundle   RewardBundle?               @relation(fields: [rewardBundleId], references: [id], onDelete: Restrict)
-  leagueGroups   LeagueGroup[]
-  participations SeasonLeagueParticipation[]
+  rewardBundle         RewardBundle?               @relation(fields: [rewardBundleId], references: [id], onDelete: Restrict)
+  leagueGroups         LeagueGroup[]
+  participations       SeasonLeagueParticipation[]
+  leaderboardSnapshots LeaderboardSnapshot[]
 
   @@index([rewardBundleId])
   @@map("league_definition")
@@ -1779,9 +1782,11 @@ model LeagueGroup {
   lockedAt                DateTime?         @map("locked_at")
   finalizedAt             DateTime?         @map("finalized_at")
 
-  gameSeason       GameSeason                  @relation(fields: [gameSeasonId], references: [id], onDelete: Restrict)
-  leagueDefinition LeagueDefinition            @relation(fields: [leagueDefinitionId], references: [id], onDelete: Restrict)
-  participations   SeasonLeagueParticipation[]
+  gameSeason           GameSeason                  @relation(fields: [gameSeasonId], references: [id], onDelete: Restrict)
+  leagueDefinition     LeagueDefinition            @relation(fields: [leagueDefinitionId], references: [id], onDelete: Restrict)
+  participations       SeasonLeagueParticipation[]
+  leaderboardEntries   LeaderboardEntry[]
+  leaderboardSnapshots LeaderboardSnapshot[]
 
   @@unique([gameSeasonId, leagueDefinitionId, groupNumber])
   @@map("league_group")
@@ -1789,9 +1794,18 @@ model LeagueGroup {
 
 enum SeasonLeagueParticipationStatus {
   ACTIVE
-  /// Estado terminal de ESTE incremento -- Incremento 2 decide
-  /// PROMOTED/DEMOTED/RETAINED a partir de aquí, no este.
+  /// Estado intermedio, fijado por Incremento 1 al cerrar la temporada --
+  /// SEASON_ENDED -> {PROMOTED,DEMOTED,RETAINED} lo decide únicamente
+  /// LeaderboardFinalizationService (Incremento 2, ADR-0020 §7), nunca
+  /// SeasonTransitionService.
   SEASON_ENDED
+  /// Bloque IV, Incremento 2 (ADR-0020 §4/§7) -- resultado del cierre de
+  /// grupo. La identidad del cálculo es SIEMPRE season_league_participation,
+  /// nunca public_profile (ADR-0020 §1/§2): estos tres valores se asignan
+  /// con total independencia de la visibilidad del perfil.
+  PROMOTED
+  DEMOTED
+  RETAINED
 
   @@map("season_league_participation_status")
 }
@@ -1816,10 +1830,12 @@ model SeasonLeagueParticipation {
   finalRank           Int?                            @map("final_rank")
   finalizedAt         DateTime?                       @map("finalized_at")
 
-  gameSeason       GameSeason               @relation(fields: [gameSeasonId], references: [id], onDelete: Restrict)
-  leagueDefinition LeagueDefinition         @relation(fields: [leagueDefinitionId], references: [id], onDelete: Restrict)
-  leagueGroup      LeagueGroup              @relation(fields: [leagueGroupId], references: [id], onDelete: Restrict)
-  ledgerEntries    LeaguePointLedgerEntry[]
+  gameSeason                 GameSeason                 @relation(fields: [gameSeasonId], references: [id], onDelete: Restrict)
+  leagueDefinition           LeagueDefinition           @relation(fields: [leagueDefinitionId], references: [id], onDelete: Restrict)
+  leagueGroup                LeagueGroup                @relation(fields: [leagueGroupId], references: [id], onDelete: Restrict)
+  ledgerEntries              LeaguePointLedgerEntry[]
+  leaderboardEntries         LeaderboardEntry[]
+  leaderboardSnapshotEntries LeaderboardSnapshotEntry[]
 
   @@unique([accountId, gameSeasonId])
   @@index([leagueGroupId])
@@ -1895,4 +1911,158 @@ model LeaguePointLedgerEntry {
   @@index([accountId])
   @@index([seasonLeagueParticipationId])
   @@map("league_point_ledger_entry")
+}
+
+// =============================================================================
+// Bloque IV, Incremento 2 -- Ranking. Ver docs/adr/0020-ranking-materializacion.md
+// (APPROVED, cinco precisiones obligatorias del Product Owner incorporadas) y
+// docs/adr/LEF-BLOCK-IV-DEFINITION.md §10. Data Model §16.23-16.25/§16.41-16.42.
+//
+// Identidad autoritativa del cálculo: `seasonLeagueParticipationId`, NUNCA
+// `publicProfileId` (ADR-0020 §1) -- el perfil público controla
+// exclusivamente presentación/visibilidad (Incremento 3), jamás el cálculo
+// competitivo (§2). `publicProfileId` en `LeaderboardEntry` es una columna
+// denormalizada, nullable, resuelta de nuevo en cada pasada -- ningún código
+// la usa para decidir inclusión o valores.
+// =============================================================================
+
+enum LeaderboardDefinitionStatus {
+  ACTIVE
+  RETIRED
+
+  @@map("leaderboard_definition_status")
+}
+
+/// Data Model §16.23. Plantilla de ranking -- en V1 existe una única fila
+/// activa (`LEADERBOARD_KEY = 'league-ranking-v1'`, ver
+/// `leaderboard-calculation.service.ts`), mismo criterio que `PROGRAM_KEY =
+/// 'xp-core'` en Bloque I: no hace falta soporte multi-programa hasta que
+/// exista un segundo tipo de ranking real. `scopeRule`/`visibilityRule`
+/// abiertas (String), interpretadas mínimamente en V1 (ámbito = grupo,
+/// visibilidad = responsabilidad de Incremento 3) -- mismo criterio que
+/// `eligibilityRule`/`completionRule` en Bloque III.
+model LeaderboardDefinition {
+  id              String                      @id @default(uuid()) @db.Uuid
+  leaderboardKey  String                      @unique @map("leaderboard_key")
+  leaderboardType String                      @map("leaderboard_type")
+  rankingMetric   String                      @map("ranking_metric")
+  scopeRule       String                      @map("scope_rule")
+  visibilityRule  String?                     @map("visibility_rule")
+  tieBreakRule    String                      @map("tie_break_rule")
+  updateFrequency String                      @map("update_frequency")
+  status          LeaderboardDefinitionStatus @default(ACTIVE)
+  createdAt       DateTime                    @default(now()) @map("created_at")
+
+  entries   LeaderboardEntry[]
+  snapshots LeaderboardSnapshot[]
+
+  @@map("leaderboard_definition")
+}
+
+/// Data Model §16.23 -- "Es una proyección materializada". Caché reconstruible
+/// desde `league_point_ledger_entry`/`season_league_participation`
+/// (ADR-0020 §6), actualizada IN PLACE (`UPSERT` por `(leaderboardDefinitionId,
+/// groupId, seasonLeagueParticipationId)`) por `LeaderboardCalculationService`
+/// -- nunca escrita directamente por ningún otro camino. `@@unique` adicional
+/// por `(leaderboardDefinitionId, groupId, rankPosition)` -- defensa en base
+/// de datos contra una posición duplicada dentro del mismo grupo, además de
+/// la garantía ya dada por el cálculo (orden total estricto, ADR-0020 §4).
+model LeaderboardEntry {
+  id                          String   @id @default(uuid()) @db.Uuid
+  leaderboardDefinitionId     String   @map("leaderboard_definition_id") @db.Uuid
+  gameSeasonId                String   @map("game_season_id") @db.Uuid
+  groupId                     String   @map("group_id") @db.Uuid
+  seasonLeagueParticipationId String   @map("season_league_participation_id") @db.Uuid
+  /// Denormalizado, nullable, SOLO presentación (ADR-0020 §1) -- nunca gatea inclusión ni valores.
+  publicProfileId             String?  @map("public_profile_id") @db.Uuid
+  rankPosition                Int      @map("rank_position")
+  metricValue                 Int      @map("metric_value")
+  tieBreakValue               DateTime @map("tie_break_value")
+  calculatedAt                DateTime @map("calculated_at")
+  snapshotVersion             Int      @map("snapshot_version")
+
+  leaderboardDefinition     LeaderboardDefinition     @relation(fields: [leaderboardDefinitionId], references: [id], onDelete: Restrict)
+  gameSeason                GameSeason                @relation(fields: [gameSeasonId], references: [id], onDelete: Restrict)
+  group                     LeagueGroup               @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  seasonLeagueParticipation SeasonLeagueParticipation @relation(fields: [seasonLeagueParticipationId], references: [id], onDelete: Restrict)
+
+  @@unique([leaderboardDefinitionId, groupId, seasonLeagueParticipationId])
+  @@unique([leaderboardDefinitionId, groupId, rankPosition])
+  @@index([groupId])
+  @@map("leaderboard_entry")
+}
+
+enum LeaderboardSnapshotType {
+  /// Único tipo escrito en V1 -- al cerrar un grupo (ADR-0020 §7).
+  FINAL
+  /// Reservado, sin uso en V1 (instantáneas intermedias no exigidas por ningún documento fuente).
+  PERIODIC
+
+  @@map("leaderboard_snapshot_type")
+}
+
+/// Data Model §16.42, extendida por ADR-0020 §5 (precisión obligatoria del
+/// Product Owner: conservar el resultado completo y las versiones de
+/// política, no solo posición y LP). Sin ninguna columna mutable --
+/// "vigente" se determina por AUSENCIA de otra fila cuyo `supersedesSnapshotId`
+/// la referencie, nunca por un `UPDATE` (trigger de bloqueo total como
+/// defensa en profundidad, migración SQL).
+model LeaderboardSnapshot {
+  id                      String                  @id @default(uuid()) @db.Uuid
+  leagueGroupId           String                  @map("league_group_id") @db.Uuid
+  gameSeasonId            String                  @map("game_season_id") @db.Uuid
+  leagueDefinitionId      String                  @map("league_definition_id") @db.Uuid
+  leaderboardDefinitionId String                  @map("leaderboard_definition_id") @db.Uuid
+  snapshotType            LeaderboardSnapshotType @default(FINAL) @map("snapshot_type")
+  snapshotAt              DateTime                @map("snapshot_at")
+  /// Política CONGELADA en el momento del cierre (ADR-0020 §5/Gate 20) -- un
+  /// cambio posterior en LeagueDefinition/LeaderboardDefinition nunca reescribe esta fila.
+  tieBreakRuleVersion     String                  @map("tie_break_rule_version")
+  promotionRuleVersion    String                  @map("promotion_rule_version")
+  demotionRuleVersion     String                  @map("demotion_rule_version")
+  rankingMetricVersion    String                  @map("ranking_metric_version")
+  participantCount        Int                     @map("participant_count")
+  contentHash             String                  @map("content_hash")
+  supersedesSnapshotId    String?                 @unique @map("supersedes_snapshot_id") @db.Uuid
+  correctionReason        String?                 @map("correction_reason")
+  createdAt               DateTime                @default(now()) @map("created_at")
+
+  leagueGroup           LeagueGroup                @relation(fields: [leagueGroupId], references: [id], onDelete: Restrict)
+  gameSeason            GameSeason                 @relation(fields: [gameSeasonId], references: [id], onDelete: Restrict)
+  leagueDefinition      LeagueDefinition           @relation(fields: [leagueDefinitionId], references: [id], onDelete: Restrict)
+  leaderboardDefinition LeaderboardDefinition      @relation(fields: [leaderboardDefinitionId], references: [id], onDelete: Restrict)
+  supersedesSnapshot    LeaderboardSnapshot?       @relation("LeaderboardSnapshotCorrection", fields: [supersedesSnapshotId], references: [id], onDelete: Restrict)
+  supersededBy          LeaderboardSnapshot?       @relation("LeaderboardSnapshotCorrection")
+  entries               LeaderboardSnapshotEntry[]
+
+  @@map("leaderboard_snapshot")
+}
+
+enum PromotionOutcome {
+  PROMOTED
+  DEMOTED
+  RETAINED
+
+  @@map("promotion_outcome")
+}
+
+/// Fila hija INMUTABLE de `LeaderboardSnapshot` -- una por participación,
+/// congela el resultado completo (ADR-0020 §5). Nunca se actualiza ni se
+/// borra (trigger de bloqueo total, migración SQL).
+model LeaderboardSnapshotEntry {
+  id                          String           @id @default(uuid()) @db.Uuid
+  leaderboardSnapshotId       String           @map("leaderboard_snapshot_id") @db.Uuid
+  seasonLeagueParticipationId String           @map("season_league_participation_id") @db.Uuid
+  rankPosition                Int              @map("rank_position")
+  metricValue                 Int              @map("metric_value")
+  tieBreakValue               DateTime         @map("tie_break_value")
+  promotionOutcome            PromotionOutcome @map("promotion_outcome")
+  createdAt                   DateTime         @default(now()) @map("created_at")
+
+  leaderboardSnapshot       LeaderboardSnapshot       @relation(fields: [leaderboardSnapshotId], references: [id], onDelete: Restrict)
+  seasonLeagueParticipation SeasonLeagueParticipation @relation(fields: [seasonLeagueParticipationId], references: [id], onDelete: Restrict)
+
+  @@unique([leaderboardSnapshotId, seasonLeagueParticipationId])
+  @@index([seasonLeagueParticipationId])
+  @@map("leaderboard_snapshot_entry")
 }
