@@ -39,4 +39,13 @@ export class EquippedCosmeticRepository {
       include: { inventoryItem: { include: { cosmeticItem: true } } },
     });
   }
+
+  /** Bloque IV, Incremento 3, sub-incremento 3.a -- lote, UNA sola consulta `WHERE public_profile_id IN (...)`. */
+  findManyByPublicProfileIds(publicProfileIds: string[]): Promise<EquippedCosmeticWithDetails[]> {
+    if (publicProfileIds.length === 0) return Promise.resolve([]);
+    return this.prisma.equippedCosmetic.findMany({
+      where: { publicProfileId: { in: publicProfileIds } },
+      include: { inventoryItem: { include: { cosmeticItem: true } } },
+    });
+  }
 }

@@ -21,6 +21,17 @@ export class PublicProfileRepository {
   }
 
   /**
+   * Bloque IV, Incremento 3, sub-incremento 3.a -- lote, UNA sola consulta
+   * `WHERE account_id IN (...)`, nunca N consultas individuales (ver
+   * `CompetitiveProfileIdentityService`, que es quien evita el patrón N+1
+   * al resolver presentabilidad para las filas de una lista de ranking).
+   */
+  findManyByAccountIds(accountIds: string[]): Promise<PublicProfile[]> {
+    if (accountIds.length === 0) return Promise.resolve([]);
+    return this.prisma.publicProfile.findMany({ where: { accountId: { in: accountIds } } });
+  }
+
+  /**
    * Ventana de reserva (ADR-0018 §2): un username que fue reemplazado o
    * quedó huérfano por cierre de cuenta hace menos de `sinceDate` sigue
    * bloqueado para CUALQUIER otra cuenta, aunque ya no lo tenga ninguna

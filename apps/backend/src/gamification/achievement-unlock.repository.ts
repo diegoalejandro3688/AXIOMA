@@ -49,6 +49,22 @@ export class AchievementUnlockRepository {
   }
 
   /**
+   * Bloque IV, Incremento 3, sub-incremento 3.a -- logros PÚBLICOS
+   * desbloqueados (`achievementDefinition.visibilityClass = 'PUBLIC'`,
+   * `status = 'ACTIVE'` -- un logro `REVERSED` nunca aparece en una
+   * superficie pública) para un lote de cuentas, UNA sola consulta `WHERE
+   * account_id IN (...)`. Nunca expone `visibilityClass = 'PRIVATE'`, sin
+   * importar el estado de desbloqueo (Decision Gate 8, ADR-0021).
+   */
+  findManyPublicByAccountIds(accountIds: string[]): Promise<Array<AchievementUnlock & { achievementDefinition: { achievementKey: string; name: string } }>> {
+    if (accountIds.length === 0) return Promise.resolve([]);
+    return this.prisma.achievementUnlock.findMany({
+      where: { accountId: { in: accountIds }, status: 'ACTIVE', achievementDefinition: { visibilityClass: 'PUBLIC' } },
+      include: { achievementDefinition: { select: { achievementKey: true, name: true } } },
+    });
+  }
+
+  /**
    * Única transición mutable de esta fila -- rellena `rewardGrantId` tras
    * crear el `reward_grant` correspondiente (que necesitaba el `id` de
    * este unlock para su propia clave de idempotencia, §4.4). Validación de

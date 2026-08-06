@@ -39,6 +39,15 @@ export class EquippedTitleRepository {
     });
   }
 
+  /** Bloque IV, Incremento 3, sub-incremento 3.a -- lote, UNA sola consulta `WHERE public_profile_id IN (...)`. */
+  findManyByPublicProfileIds(publicProfileIds: string[]): Promise<EquippedTitleWithDetails[]> {
+    if (publicProfileIds.length === 0) return Promise.resolve([]);
+    return this.prisma.equippedTitle.findMany({
+      where: { publicProfileId: { in: publicProfileIds } },
+      include: { accountTitle: { include: { titleDefinition: true } } },
+    });
+  }
+
   /** Seguro ante ausencia de fila (des-equipar cuando no hay nada equipado es un no-op, no un error). */
   async deleteByPublicProfileId(publicProfileId: string): Promise<void> {
     await this.prisma.equippedTitle.deleteMany({ where: { publicProfileId } });

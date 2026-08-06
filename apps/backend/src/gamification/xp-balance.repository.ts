@@ -28,6 +28,12 @@ export class XpBalanceRepository {
     return this.prisma.xpBalance.findUnique({ where: { accountId } });
   }
 
+  /** Bloque IV, Incremento 3, sub-incremento 3.a -- lote, UNA sola consulta `WHERE account_id IN (...)`. */
+  findManyByAccountIds(accountIds: string[]): Promise<XpBalance[]> {
+    if (accountIds.length === 0) return Promise.resolve([]);
+    return this.prisma.xpBalance.findMany({ where: { accountId: { in: accountIds } } });
+  }
+
   /**
    * Incremento atómico -- SIEMPRE dentro de la transacción SERIALIZABLE del
    * otorgamiento/reverso que produjo `lastLedgerEntryId`, nunca aislado.
