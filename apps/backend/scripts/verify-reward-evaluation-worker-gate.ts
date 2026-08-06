@@ -63,12 +63,6 @@ async function main() {
   const cursorRepo = new RewardEvaluationCursorRepository(prisma);
   const worker = new TestRewardEvaluationWorker(prisma, ledgerRepo, cursorRepo);
 
-  // Línea base ANTES de correr este gate -- reward_grant puede tener filas
-  // preexistentes de otros gates (p. ej. verify-reward-foundation-gate.ts,
-  // 1.a); lo que importa es que ESTE gate no agregue ninguna, no que la
-  // tabla esté vacía globalmente.
-  const rewardGrantCountBefore = (await pg.query('SELECT count(*)::int AS n FROM reward_grant')).rows[0].n as number;
-
   const suffix = Date.now();
   let entrySeq = 0;
   async function createEntry(accountId: string, occurredAt: Date): Promise<XpLedgerEntry> {
@@ -216,6 +210,17 @@ async function main() {
   const normalBatchEntry = await createEntry(accountNormalInBatch, new Date());
   worker.poisonAccounts.add(accountPoisonInBatch);
 
+  // Cuenta EXTERNA controlada, deliberadamente pendiente pero AJENA a los
+  // fixtures de esta sección -- `run()` descubre TODA cuenta pendiente en
+  // la base (`discoverPendingAccounts`, sin acotar), por diseño correcto
+  // de producto (ver ADR-0019 §1): un `run()` real barre cualquier cuenta
+  // legítimamente pendiente, incluidas las de otros dominios/gates
+  // corridos antes en la misma cadena consolidada. Esta cuenta demuestra
+  // que ese barrido ocurre y se tolera, sin que este gate le imponga
+  // ninguna aserción sobre su `reward_grant` (fuera de su control).
+  const accountExternalPending = randomUUID();
+  await createEntry(accountExternalPending, new Date());
+
   const runResult = await worker.run();
   worker.poisonAccounts.delete(accountPoisonInBatch);
 
@@ -224,18 +229,33 @@ async function main() {
   const cursorNormalAfterRun = await cursorRepo.findByAccountId(accountNormalInBatch);
   check('la cuenta envenenada NO tiene cursor avanzado (nunca se procesó con éxito)', cursorPoisonAfterRun?.lastProcessedRecordedAt == null);
   check('la cuenta normal SÍ avanzó su cursor en el mismo run()', cursorNormalAfterRun?.lastProcessedEntryId === normalBatchEntry.id);
+  const cursorExternalAfterRun = await cursorRepo.findByAccountId(accountExternalPending);
+  check(
+    'run() SÍ procesó la cuenta externa legítimamente pendiente, ajena a este gate -- alcance global tolerado, no un defecto',
+    cursorExternalAfterRun?.lastProcessedRecordedAt != null,
+  );
 
-  console.log('--- 6. Sin efecto todavía sobre reward_grant, inventario, equipamiento o PROGRESS ---');
-  const rewardGrantCountAfter = (await pg.query('SELECT count(*)::int AS n FROM reward_grant')).rows[0].n as number;
-  check('CERO reward_grant NUEVOS creados por este gate (sin evaluación real todavía)', rewardGrantCountAfter === rewardGrantCountBefore);
-  const publicProfileTouched = await pg.query('SELECT count(*)::int AS n FROM public_profile WHERE account_id = ANY($1)', [
-    [accountTied, accountMidRun, accountConcurrent, accountFailing, accountPoisonInBatch, accountNormalInBatch],
-  ]);
-  check('ningún public_profile creado/tocado', publicProfileTouched.rows[0].n === 0);
-  const studentResponseTouched = await pg.query('SELECT count(*)::int AS n FROM student_response WHERE account_id = ANY($1)', [
-    [accountTied, accountMidRun, accountConcurrent, accountFailing, accountPoisonInBatch, accountNormalInBatch],
-  ]);
-  check('ningún StudentResponse creado/tocado (PROGRESS fuera de alcance)', studentResponseTouched.rows[0].n === 0);
+  console.log('--- 6. Sin efecto sobre reward_grant/inventario/equipamiento/PROGRESS PARA LAS CUENTAS DE ESTE GATE ---');
+  // Corrección (fragilidad preexistente, no relacionada con Bloque IV):
+  // la versión anterior media reward_grant con un conteo GLOBAL de la
+  // tabla -- `run()` (línea de arriba) descubre y procesa TODA cuenta
+  // pendiente en la base, incluidas las de otros gates corridos antes en
+  // la misma cadena consolidada (con su evaluateAccount REAL, no el mock
+  // de este archivo) -- un conteo global es indistinguible de "otro gate
+  // otorgó una recompensa legítima mientras tanto" y "este gate se
+  // rompió". Acotado a las CUENTAS PROPIAS de este gate (todas UUID
+  // recién generados, garantizado cero filas preexistentes) -- la única
+  // aserción que este gate puede hacer con autoridad real.
+  const ownedAccounts = [accountTied, accountMidRun, accountConcurrent, accountFailing, accountPoisonInBatch, accountNormalInBatch];
+  const rewardGrantForOwnedAccounts = await pg.query('SELECT count(*)::int AS n FROM reward_grant WHERE account_id = ANY($1)', [ownedAccounts]);
+  check(
+    'CERO reward_grant para las cuentas PROPIAS de este gate (sin evaluación real todavía -- evaluateAccount está mockeado aquí)',
+    rewardGrantForOwnedAccounts.rows[0].n === 0,
+  );
+  const publicProfileTouched = await pg.query('SELECT count(*)::int AS n FROM public_profile WHERE account_id = ANY($1)', [ownedAccounts]);
+  check('ningún public_profile creado/tocado (cuentas propias)', publicProfileTouched.rows[0].n === 0);
+  const studentResponseTouched = await pg.query('SELECT count(*)::int AS n FROM student_response WHERE account_id = ANY($1)', [ownedAccounts]);
+  check('ningún StudentResponse creado/tocado (cuentas propias, PROGRESS fuera de alcance)', studentResponseTouched.rows[0].n === 0);
 
   console.log('--- 7. Frontera de dominio: verificación estática ---');
   const { readFileSync } = await import('node:fs');
