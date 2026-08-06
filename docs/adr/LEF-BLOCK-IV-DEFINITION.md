@@ -3,8 +3,8 @@
 **Fecha**: 2026-08-05
 **Fase**: Fase 2 — Learning Experience Foundation
 **Bloque**: IV de VIII (Roadmap Learning Experience Foundation)
-**Documentos relacionados**: `docs/adr/BLOCK-III-CLOSURE-REPORT.md`, `docs/adr/BLOCK-III-DEFINITION.md`, `docs/adr/0018-public-profile-foundation.md`, `docs/adr/0016-gamificacion-fundacion.md`, `docs/PHASE-2-KICKOFF-INVENTORY.md`
-**Estado**: Definición revisada (2ª pasada, 2026-08-05). Incremento 1 ("Fundación de temporadas y ligas") **implementado y gateado** (§9, ver Evidencia de validación) — cuatro precisiones obligatorias del Product Owner incorporadas y verificadas con gates de concurrencia real. Pendiente: Incrementos 2-5 (ranking, perfil competitivo cross-account, pregunta rápida, superficie móvil).
+**Documentos relacionados**: `docs/adr/BLOCK-III-CLOSURE-REPORT.md`, `docs/adr/BLOCK-III-DEFINITION.md`, `docs/adr/0018-public-profile-foundation.md`, `docs/adr/0016-gamificacion-fundacion.md`, `docs/adr/0020-ranking-materializacion.md`, `docs/PHASE-2-KICKOFF-INVENTORY.md`
+**Estado**: Definición revisada (3ª pasada, 2026-08-05). Incremento 1 ("Fundación de temporadas y ligas") **implementado y gateado** (§9) — cuatro precisiones obligatorias del Product Owner incorporadas y verificadas con gates de concurrencia real. Incremento 2 ("Ranking"): diseño completo (§10) y **ADR-0020 APPROVED (2026-08-05)** — implementación autorizada a continuación. Pendiente: Incrementos 3-5 (perfil competitivo cross-account, pregunta rápida, superficie móvil).
 
 **Nota de nomenclatura**: este documento y su futuro cierre usan el prefijo `LEF-` (`LEF-BLOCK-IV-DEFINITION.md`, `LEF-BLOCK-IV-CLOSURE-REPORT.md`) porque `docs/adr/BLOCK-IV-CLOSURE-REPORT.md` y `BLOCK-V-CLOSURE-REPORT.md` **ya existen**, pertenecientes a un roadmap distinto y anterior (Fase 1 — Vertical Slice M1, "Bloque IV/V de V"). Los Bloques I–III de esta fase (Learning Experience Foundation) no colisionaban con esos nombres y no se renombran retroactivamente — decisión explícita del Product Owner (2026-08-05): prefijo nuevo hacia adelante, historia cerrada intacta.
 
@@ -264,3 +264,163 @@ Gates ejecutados y su resultado:
 | `node scripts/verify-block-iii-gate.mjs` (consolidado Bloque I+II+III, regresión) | **PASS** (los 13 pasos, salida real confirmada: sin regresión introducida por Bloque IV Incremento 1) |
 
 **Confirmado explícitamente fuera de Incremento 1**: sin ranking (`currentRank`/`finalRank` permanecen `NULL`), sin endpoints HTTP, sin superficie móvil, sin `gamification_integrity_signal`/`enforcement_action`.
+
+## 10. Incremento 2 — Ranking: propuesta de diseño (auditoría completa, sin implementar todavía)
+
+Autorización del Product Owner (2026-08-05): **únicamente auditoría y diseño** de este incremento. No se toca el esquema, no se implementa el endpoint cross-cuenta (Incremento 3) ni superficie móvil (Incremento 5) hasta nueva confirmación.
+
+**Nota de superación parcial (2026-08-05)**: tras revisar esta propuesta, el Product Owner corrigió dos decisiones de fondo e hizo obligatoria la formalización de tres puntos que aquí quedaban abiertos. **`docs/adr/0020-ranking-materializacion.md` es ahora el documento autoritativo** para este incremento — en particular, **§10.11 de abajo queda corregido y reemplazado** por ADR-0020 §1/§2 (la identidad autoritativa del cálculo es `season_league_participation`, nunca `public_profile`; la visibilidad de perfil no debe alterar el cálculo competitivo bajo ninguna circunstancia — se conserva §10.11 tal cual se escribió originalmente, sin editarla, únicamente para que quede registro auditable de la corrección real que introdujo el Product Owner, mismo criterio de transparencia ya usado en otras enmiendas de este proyecto). §10.5 (desempate) y §10.8 (cierre de grupo) quedan formalizados en detalle por ADR-0020 §3/§4/§5 — las secciones de abajo siguen siendo válidas en su decisión de fondo, ADR-0020 las precisa.
+
+### 10.1 Auditoría documental — fuentes revisadas
+
+- **Data Model §16.23 "Ranking"**: `leaderboard_definition` (`leaderboardKey`, `leaderboardType`, `rankingMetric`, `scopeRule`, `visibilityRule`, `tieBreakRule`, `updateFrequency`, `status`) y `leaderboard_entry`, declarada explícitamente **"proyección materializada"** (`leaderboardDefinitionId`, `seasonId`, `groupId`, `publicProfileId`, `rankPosition`, `metricValue`, `tieBreakValue`, `calculatedAt`, `snapshotVersion`). Cierra con: *"El ranking deberá poder reconstruirse desde sus libros mayores y reglas."*
+- **Data Model §16.24 "Empates"**: exige desempate **determinista, público en sus principios, independiente de Premium, incapaz de usar información académica privada, estable durante la finalización**. Factores aprobables (exactamente tres, ninguno más): *"Momento de alcanzar el puntaje", "Cantidad de actividades válidas", "Desempeño en una competencia específica"*. Prohibidos explícitamente: gasto, antigüedad de suscripción, información personal, cantidad de invitaciones, comportamientos no explicados.
+- **Data Model §16.25 "Privacidad de rankings"**: el ranking usa **exclusivamente** `public_profile_id`. Lista blanca: username, avatar, título equipado, nivel o puntos aplicables, posición, liga. Lista negra explícita: nombre privado, correo, edad exacta, ubicación, materias débiles, puntajes diagnósticos, objetivos, historial de respuestas, estado Premium, configuración de accesibilidad.
+- **Data Model §16.41 "Finalización de temporada"**: el pipeline de cierre es una secuencia fija — bloquear entradas → procesar pendientes → resolver incidencias → **materializar ranking final** → **aplicar desempates** → **determinar ascensos/descensos** → entregar recompensas → **conservar instantánea** → abrir siguiente temporada. Entidad `season_finalization_run` registra el resultado.
+- **Data Model §16.42 "Instantáneas históricas"**: `leaderboard_snapshot` (`leaderboardDefinitionId`, `seasonId`, `snapshotType` [periódica o final], `snapshotAt`, `ruleVersion`, `participantCount`, `contentHash`, `status`). *"Las instantáneas finales deberán ser inmutables. Una corrección posterior generará una versión sustitutiva con motivo registrado."* — mismo principio "reverso, nunca edición" ya usado en los ledgers.
+- **Master Context §4.10 "Liga"**: *"El ranking forma parte de Liga y no deberá convertirse en un destino principal independiente."*
+- **Master Context §5.20 (CUJ-16)**: *"El cliente no recalcula posiciones como autoridad"*, *"Un ranking temporalmente desactualizado deberá indicarlo"*, *"La interfaz comunica la posición y la vigencia de los datos"* — tolerancia a staleness explícitamente autorizada, con obligación de comunicarla.
+- **Master Context §5.21 (CUJ-17, cierre de temporada)**: *"La finalización de una temporada nunca modificará dominio ni eliminará progreso académico."*
+- **Master Context §7.20 "Ligas y rankings"**: GAMIFICATION es propietario. *"Cada cálculo deberá conocer: temporada; grupo; regla; periodo; datos incluidos; momento de cálculo; versión; estado de cierre."* *"La interfaz podrá mostrar una instantánea, pero el cliente no podrá declarar la posición final."*
+- **PRD GAME-017/GAME-020/GAME-022, PROFILE-006/007/008**: ascenso/descenso por XP competitivo válido de temporada; identidad pública limitada (mismo criterio que Data Model §16.25); sin comparaciones sobre inteligencia; el estudiante controla su visibilidad, con la opción más privada como predeterminada ante duda.
+- **ADR-0018**: `visibilityStatus = PRIVATE` → *"no puede ser referenciado por `leaderboard_entry`"*. `lifecycleStatus = RETIRED` → excluido de *"toda superficie pública"*. **Vacío confirmado**: ADR-0018 nunca definió qué pasa con una fila `leaderboard_entry` YA EXISTENTE cuando el perfil referenciado pasa a `PRIVATE`/`RETIRED` después de haber sido creada — lo deja explícitamente para este incremento (§9.8 de este documento).
+- **§6 de este documento (ya fijado)**: Incremento 2 **requiere ADR nuevo** por dos motivos ya señalados: (1) proyección materializada con recálculo periódico, patrón nuevo distinto de "derivar en lectura" (Bloque II) y de "entrega directa inmutable" (Bloque III); (2) nada de perfil cross-cuenta (eso es Incremento 3, dependiente de este).
+
+**Vacíos confirmados por la auditoría, sin resolver en ningún documento fuente** (debo decidirlos aquí, no asumirlos en silencio):
+1. Qué dispara el recálculo (worker programado vs. bajo demanda) — ninguna fuente lo fija.
+2. Qué pasa con una `leaderboard_entry` existente cuando el perfil deja de ser elegible (`PRIVATE`/`RETIRED`) — ADR-0018 lo deja abierto explícitamente.
+3. Convención de paginación (cursor vs. offset) para listar rankings — el Data Model solo define cursores para sincronización offline (§21.17), sin regla general para APIs de lista.
+4. Forma concreta de `promotionRule`/`demotionRule` (dejadas como grammar abierta, sin interpretar, en Incremento 1) — Data Model no fija números; PRD (OQ-011) da una hipótesis V1 no vinculante ("primeras 10 posiciones ascienden, últimas 5 descienden, de ~40").
+
+### 10.2 Evaluación de las cuatro alternativas
+
+| # | Alternativa | Evaluación |
+|---|---|---|
+| 1 | **Cálculo directo desde `league_point_ledger_entry`** (sin proyección) | Descartada como única fuente. Contradice literalmente el Data Model, que declara `leaderboard_entry` **"proyección materializada"** — no es una opción de diseño, es la entidad ya nombrada. Además, ordenar por `SUM(point_amount)` en cada lectura escala mal si se pide con frecuencia, y no puede exponer `calculatedAt`/`snapshotVersion` (exigidos por Master Context §7.20) sin materializar algo. Sí se conserva como **mecanismo de reconstrucción** (ver §10.4) — la fórmula de cálculo, no el camino de lectura. |
+| 2 | **Proyección materializada recalculada periódicamente** (preferencia inicial del Product Owner) | Correcta y necesaria como base — coincide exactamente con la entidad `leaderboard_entry` del Data Model. Permite lecturas rápidas indexadas por `rankPosition`, reconstruible en cualquier momento desde el ledger. **Incompleta por sí sola**: no cubre el requisito explícito de instantáneas inmutables en el cierre de temporada (§16.41/§16.42, `leaderboard_snapshot`), que es una entidad HERMANA distinta en el propio Data Model, con su propio ciclo de vida (inmutable, corrección = versión sustitutiva). |
+| 3 | **Snapshots periódicos únicamente** (sin proyección continua) | Descartada como única fuente. Coincide con `leaderboard_snapshot`, pero por sí sola no sirve para mostrar una tabla de posiciones consultable en cualquier momento dentro de una temporada activa — Master Context exige que Liga muestre "tabla de posiciones" y "posición del estudiante" de forma continua, no solo en cortes periódicos. Se conserva como **mecanismo de archivo** (ver §10.6), no como fuente de lectura en vivo. |
+| 4 | **Modelo híbrido — RECOMENDADO** | Extiende la preferencia inicial del Product Owner (alternativa 2) con lo mínimo necesario para cumplir lo que el propio Data Model ya especifica como dos entidades distintas: `leaderboard_entry` (proyección viva, recalculada periódicamente, para lectura durante la temporada activa) **+** `leaderboard_snapshot` (instantánea inmutable, tomada exactamente al cerrar cada grupo/temporada, para el registro histórico y la decisión de ascenso/descenso). No es una desviación del diagrama del Product Owner — es su extensión mínima necesaria para el pipeline de cierre (§16.41, CUJ-17), que el diagrama original no contemplaba. |
+
+**Diagrama actualizado** (extiende el propuesto por el Product Owner):
+
+```
+league_point_ledger_entry          season_league_participation
+        \\                              /
+         \\  fuentes de verdad         /
+          v                          v
+              leaderboard_entry
+        (proyección materializada, reconstruible,
+         recalculada periódicamente -- SOLO grupos OPEN/FULL
+         de la temporada ACTIVE)
+                    |
+                    | al cerrar el grupo (LOCKED), último cálculo
+                    v
+              leaderboard_snapshot
+        (instantánea INMUTABLE, snapshotType=FINAL,
+         dispara la decisión de ascenso/descenso)
+                    |
+                    v
+              ranking API (Incremento 3 -- no se implementa aún)
+```
+
+### 10.3 Fuente autoritativa
+
+`league_point_ledger_entry` (Incremento 1) es la única fuente del monto. `season_league_participation`/`league_group` son la fuente de "quién compite con quién" (scope). `leaderboard_entry` nunca se escribe directamente: siempre es el resultado de agregar `SUM(pointAmount)` por `seasonLeagueParticipationId` (OTORGAMIENTO + REVERSO, que ya vienen con signo) y ordenar según el criterio de desempate de §10.5. Cero información nueva se introduce en este incremento — solo se deriva de lo que Incremento 1 ya persiste.
+
+### 10.4 Ámbito del ranking (grupo, tier o temporada)
+
+**Decisión: por GRUPO** (`leaderboard_entry.groupId` = `league_group.id`), no por tier completo ni por temporada completa. Razón: la unidad real de competencia ya fijada en Incremento 1 es el `league_group` (conjunto acotado, con cupo, donde ocurre el ascenso/descenso) — un tier puede tener decenas de grupos paralelos sin relación competitiva entre sí. Ranking agregado por tier completo o global (Data Model `leaderboard_type: "Liga, temporada, global"`) queda **fuera de alcance de V1**, con `leaderboard_definition.scopeRule` como grammar abierta (String) para no cerrar la puerta a una extensión futura sin migración de esquema — mismo criterio que `eligibilityRule`/`completionRule` en Bloque III (columna presente desde el nacimiento del modelo, interpretación mínima en V1).
+
+### 10.5 Desempate determinista
+
+Orden de evaluación, todos verificables sin información privada:
+
+1. `metricValue` (suma de `pointAmount`) **DESC** — el ranking mismo, no un desempate.
+2. Empate real → **"Momento de alcanzar el puntaje"**: `occurredAt` del `league_point_ledger_entry` que llevó a esa cuenta a su total actual, **ASC** (quien lo alcanzó primero, mejor posición) — determinista, público en sus principios, no usa información académica.
+3. Empate persistente → **"Cantidad de actividades válidas"**: `COUNT(*)` de entradas `OTORGAMIENTO` de esa participación, **DESC** (más actividades sostenidas, mejor posición que un único golpe de puntaje).
+4. **"Desempeño en una competencia específica"** (tercer factor aprobado por Data Model) — **diferido explícitamente**: V1 no tiene todavía una "competencia específica" con puntaje propio (Pregunta rápida, Incremento 4, es individual/asincrónica, sin mecanismo de puntaje competitivo comparable) — documentado como deuda diferida, mismo criterio que `STREAK_PROTECTION` en Bloque III, no un vacío oculto.
+5. Desempate final de última instancia (si TODO lo anterior empata exactamente) → `accountId` en orden lexicográfico — no es uno de los tres factores aprobados por Data Model, pero tampoco está en la lista de prohibidos (no es gasto, antigüedad, información personal, invitaciones ni comportamiento no explicado); es una garantía técnica de unicidad absoluta de `rankPosition`, transparente y sin significado valorativo.
+
+`leaderboard_definition.tieBreakRule` almacena esta cadena como grammar versionada (string abierto, ej. `"v1-time-then-activity-count"`), igual criterio que el resto de reglas abiertas del bloque.
+
+### 10.6 Reconstrucción y reconciliación
+
+- **Reconstrucción** = el mismo cálculo de siempre, no un camino de emergencia separado: borrar y regenerar `leaderboard_entry` de un grupo agregando desde `league_point_ledger_entry` es exactamente lo que el recálculo periódico normal hace en cada pasada (mismo principio que `XpGrantService.reconcileBalance`, que recalcula desde el ledger sin un mecanismo paralelo).
+- `leaderboard_entry` es una **proyección/caché**, no un hecho histórico — a diferencia de los ledgers (inmutables por diseño), se actualiza **in place** (`UPSERT` por `(leaderboardDefinitionId, groupId, publicProfileId)`), incrementando `snapshotVersion` en cada pasada exitosa. No se conserva cada pasada intermedia como historial — para eso existe `leaderboard_snapshot` (§10.8), reservado a instantáneas que sí vale la pena conservar.
+- Recálculo por grupo = una transacción atómica: todas las filas de ESE grupo se reemplazan juntas, con el mismo `snapshotVersion`/`calculatedAt` — coherencia garantizada DENTRO de un grupo, sin necesidad de coordinación ENTRE grupos (cada uno es una unidad de competencia aislada, mismo criterio de aislamiento de fallo que `RewardEvaluationWorker`).
+- Reconciliación ante sospecha de corrupción: un comando administrativo interno (sin exponer a clientes) puede forzar un recálculo inmediato de un grupo o de todos los grupos activos, usando la MISMA función de cálculo — nunca un camino de reparación distinto que pudiera divergir del cálculo normal.
+
+### 10.7 Disparador del recálculo (worker vs. bajo demanda) — decisión de ADR
+
+**Decisión: worker programado exclusivamente, sin recálculo bajo demanda del cliente** — evita que un cliente fuerce carga arbitraria en el servidor, y es coherente con "el cliente no recalcula posiciones como autoridad" (CUJ-16).
+
+- `LeaderboardCalculationScheduler` (`@Cron`), cadencia propuesta **cada 15 minutos** (configurable) — deliberadamente más espaciada que el otorgamiento de puntos (`EVERY_MINUTE`), porque el propio corpus ya autoriza y exige comunicar staleness ("Un ranking temporalmente desactualizado deberá indicarlo") en vez de exigir tiempo real.
+- Alcance por ciclo: todo `league_group` con `status IN (OPEN, FULL)` de la temporada `ACTIVE` — un grupo `LOCKED`/`FINALIZED` no se recalcula más por este scheduler (su último estado se congela y se archiva, ver §10.8).
+- Consistencia: `snapshotVersion`/`calculatedAt` son consistentes DENTRO de un grupo (misma transacción), pero pueden diferir ENTRE grupos (cálculo independiente, sin sincronización global necesaria).
+
+### 10.8 Comportamiento al cerrar/finalizar un grupo
+
+Extiende (no reemplaza) el cierre de temporada ya construido en Incremento 1 (`SeasonTransitionService`), en el mismo paso donde un `league_group` pasa a `LOCKED`, siguiendo el pipeline fijo de Data Model §16.41:
+
+1. Último recálculo de `leaderboard_entry` para ese grupo (con los datos ya congelados, ya que el grupo dejó de acumular puntos al pasar a `LOCKED` en Incremento 1).
+2. Se aplican los desempates de §10.5 sobre ese resultado final.
+3. Se decide `PROMOTED`/`DEMOTED`/`RETAINED` por `season_league_participation` según `rankPosition` final contra las zonas fijadas en `LeagueDefinition.promotionRule`/`demotionRule` — **grammar V1 concreta a fijar en el ADR**, no dejada abierta indefinidamente (a diferencia de Incremento 1, que las dejó sin interpretar): propuesta inicial "top N% asciende, bottom N% desciende, resto retiene", con N configurable por `LeagueDefinition`, inspirado en la hipótesis no vinculante de PRD OQ-011 pero sin comprometerse a sus cifras exactas (esas se validan en beta, igual que el PRD ya anticipa).
+4. Se escribe un `leaderboard_snapshot` (`snapshotType = FINAL`, inmutable desde ese instante) — `contentHash` calculado sobre una serialización canónica ordenada por `rankPosition` (para que el mismo contenido siempre produzca el mismo hash, sin depender de orden de iteración), `participantCount`, `ruleVersion` (referencia a la versión de `tieBreakRule`/reglas aplicadas). Una corrección posterior nunca edita esta fila — genera una nueva versión sustitutiva con motivo registrado (§16.42, literal).
+5. Transición de `season_league_participation.participationStatus`: `SEASON_ENDED → PROMOTED|DEMOTED|RETAINED` (extiende el enum ya creado en Incremento 1, que deliberadamente se detuvo en `SEASON_ENDED` a la espera de este incremento).
+
+### 10.9 Paginación estable
+
+Sin convención específica en el Data Model (solo existe para sincronización offline, no aplicable a listas de API). **Decisión: cursor, no offset** — mismo criterio ya usado en `XpLedgerEntryRepository.findByAccountIdPaginated` (evita desalineación si el contenido cambia entre páginas, y aquí SÍ cambia: `leaderboard_entry` se recalcula cada 15 minutos mientras un cliente pagina).
+
+- Cursor propuesto: `(rankPosition ASC, id ASC)` — orden compuesto, mismo motivo que el cursor de `xp_ledger_entry` (evita omitir filas con `rankPosition` empatado antes de aplicar desempate, aunque en la práctica `rankPosition` ya es único post-desempate).
+- `leaderboard_entry` se actualiza **in place** (§10.6) — no se versionan snapshots de cada pasada intermedia, así que una sesión de scroll larga podría, en el peor caso, cruzar un recálculo a mitad de camino y ver una página con datos ligeramente más nuevos que la anterior. Esta imprecisión ya está autorizada explícitamente por el corpus (CUJ-16: staleness tolerada y comunicada) — no se construye un mecanismo de fotografías versionadas por sesión de paginación, que sería una complejidad no exigida por ningún documento fuente. Cada página SIEMPRE devuelve `calculatedAt`/`snapshotVersion` de las filas servidas, para que el cliente cumpla el paso 7 de CUJ-16 ("la interfaz comunica la posición y la vigencia de los datos").
+
+### 10.10 Posición propia aunque quede fuera de la página
+
+Ninguna fuente exige explícitamente una "fila pegajaza", pero es de bajo costo y evita una mala experiencia obvia. **Decisión**: `leaderboard_entry` debe ser recuperable individualmente por `(groupId, publicProfileId)` sin depender de paginación — consulta O(1) por clave, no un escaneo de página. La presentación de esto (bloque "mi posición" separado de la página solicitada) es diseño del endpoint de **Incremento 3**, no de este incremento — aquí solo se garantiza que la CAPACIDAD de recuperación directa exista.
+
+### 10.11 Privacidad y exclusión de perfiles no visibles/no activos — ⚠️ CORREGIDA por ADR-0020 §1/§2, ver nota arriba
+
+**Esta sección quedó INCORRECTA tras la revisión del Product Owner y se conserva sin editar únicamente como registro auditable.** La decisión vigente es la opuesta a la de abajo: la visibilidad del perfil **nunca** excluye ni altera el cálculo — ver `docs/adr/0020-ranking-materializacion.md` §1/§2.
+
+- El cálculo periódico **excluye desde el origen** cualquier `season_league_participation` cuyo `public_profile` no sea `visibilityStatus = VISIBLE` **y** `lifecycleStatus = ACTIVE` — nunca se calcula su `rankPosition`, nunca se crea su fila (mismo criterio ya fijado por ADR-0018: "no puede ser referenciado por `leaderboard_entry`").
+- Ser `PRIVATE` no afecta la acumulación de `league_point_ledger_entry` (eso ya lo decide Incremento 1, sin relación con visibilidad) — solo afecta si aparece en el ranking.
+- **Resuelve el vacío confirmado de ADR-0018** (qué pasa con una fila YA EXISTENTE cuando el perfil deja de ser elegible): **doble mecanismo**, no solo el ciclo de 15 minutos —
+  1. **Eliminación inmediata y síncrona**: cuando `UserService` cambia `visibilityStatus` a `PRIVATE` (o `lifecycle_status` deja de ser `ACTIVE`), la MISMA transacción elimina cualquier `leaderboard_entry` de esa `publicProfileId` — mismo patrón de frontera ya usado en `PublicProfileRepository.anonymize()`, que hoy ya borra `equipped_title`/`equipped_cosmetic` (tablas de GAMIFICATION que representan presentación pública, no producción) en la misma transacción de USER.
+  2. **Red de seguridad periódica**: el recálculo normal de cada 15 minutos, al reconstruir un grupo desde cero, nunca vuelve a incluir a un perfil no elegible — si el mecanismo inmediato fallara por cualquier razón, la exposición queda acotada a, como máximo, un ciclo de recálculo (nunca indefinida).
+- `leaderboard_snapshot` **finales** (§10.8) son inmutables por diseño — si un perfil se vuelve `PRIVATE` DESPUÉS de que su temporada ya cerró y se archivó, la instantánea histórica NO se edita (correcto: es un registro de lo que ocurrió, no una vista en vivo) pero su presentación pública futura (si alguna vez se expone historial competitivo) deberá aplicar el mismo filtro de visibilidad en el momento de LEER el snapshot, no de escribirlo — decisión de presentación para Incremento 3, anotada aquí para no perderla.
+
+### 10.12 Riesgos
+
+1. **Costo de recálculo escala con el número de grupos activos** — mitigado por aislamiento de fallo por grupo (una transacción por grupo, sin bloqueo mutuo) y cadencia espaciada (15 min, no cada minuto).
+2. **Staleness percibida por el estudiante** justo tras una actividad — mitigado por el requisito UX ya exigido por CUJ-16 (comunicar vigencia), no por reducir la cadencia a costa de escalabilidad.
+3. **Fuga de privacidad si el borrado inmediato al pasar a `PRIVATE` falla** — mitigado por el recálculo periódico como red de seguridad (exposición acotada a un ciclo, nunca indefinida) + Decision Gate dedicado.
+4. **Grammar de `promotionRule`/`demotionRule` mal definida** produce ascensos/descensos inconsistentes entre tiers — mitigado fijando UNA grammar V1 concreta en el ADR (top/bottom N%), no dejada abierta a interpretación libre por quien implemente.
+5. **`contentHash` no determinista** (orden de iteración no fijo) generaría falsos positivos de "corrupción" al comparar instantáneas — mitigado exigiendo una serialización canónica ordenada por `rankPosition` antes de hashear.
+6. **Bug en una pasada de recálculo sobrescribe datos correctos** (dado que `leaderboard_entry` se actualiza in place, no hay "versión anterior" que restaurar automáticamente) — mitigado manteniendo siempre disponible el recómputo administrativo interno (§10.6), y por el hecho de que la fuente (`league_point_ledger_entry`) nunca se toca, así que cualquier corrección es, en el peor caso, una repasada, nunca una pérdida de datos real.
+
+### 10.13 Determinación de ADR
+
+**Confirmado: Incremento 2 requiere ADR nuevo** (ya señalado en §6, ratificado aquí con el diseño completo). Redactado como **`docs/adr/0020-ranking-materializacion.md`**, con cinco precisiones obligatorias del Product Owner incorporadas: identidad autoritativa `season_league_participation` (no `public_profile`); la visibilidad nunca altera el cálculo competitivo (corrige §10.11); definición exacta y reconstruible de `tieBreakValue` con comportamiento de reversos; gramática `top/bottom N%` completamente formalizada (redondeo, mínimos, grupos incompletos, tiers extremos); `leaderboard_snapshot`/`leaderboard_snapshot_entry` con resultado completo y versiones de política congeladas. **Pendiente de aprobación final del ADR antes de implementar.**
+
+### 10.14 Decision Gates propuestos (a confirmar antes de implementar)
+
+| # | Gate | Qué verifica |
+|---|---|---|
+| 1 | Reconstructibilidad completa | Borrar todas las filas `leaderboard_entry` de un grupo y forzar un recálculo produce exactamente el mismo resultado que antes de borrarlas (mismos `rankPosition`, mismo `metricValue`) — el ledger es la única fuente real. |
+| 2 | Desempate determinista y estable | Dos participaciones con el mismo `metricValue` siempre producen el mismo orden relativo entre corridas repetidas del cálculo, sin importar el orden de iteración interno. |
+| 3 | Exclusión desde el origen de perfiles no elegibles | Una `season_league_participation` cuyo perfil es `PRIVATE` o `lifecycleStatus != ACTIVE` nunca obtiene una fila `leaderboard_entry`, incluso con `leaguePoints > 0`. |
+| 4 | Eliminación inmediata al perder elegibilidad | Cambiar `visibilityStatus` a `PRIVATE` elimina, en la misma transacción, cualquier `leaderboard_entry` preexistente de ese perfil — verificado leyendo la base inmediatamente después, sin esperar el siguiente ciclo del scheduler. |
+| 5 | Red de seguridad periódica | Aunque se simule un fallo del mecanismo inmediato (insertando una fila `leaderboard_entry` de un perfil `PRIVATE` directamente), el siguiente recálculo del grupo la elimina igualmente. |
+| 6 | Aislamiento de fallo por grupo | Un error forzado al recalcular un grupo no impide que otros grupos de la misma pasada se recalculen correctamente. |
+| 7 | Atomicidad por grupo | Una lectura concurrente con un recálculo en curso nunca ve una mezcla de filas de dos `snapshotVersion` distintos dentro del MISMO grupo. |
+| 8 | Sin recálculo bajo demanda expuesto | Ningún endpoint ni símbolo público permite a un cliente disparar un recálculo — verificación estática. |
+| 9 | Snapshot final inmutable | Una fila `leaderboard_snapshot` con `snapshotType = FINAL` rechaza cualquier `UPDATE` (trigger) — una corrección crea una fila nueva con motivo registrado, nunca edita la existente. |
+| 10 | `contentHash` determinista | Recalcular el hash sobre el mismo conjunto de filas (mismo contenido, distinto orden de iteración simulado) produce siempre el mismo valor. |
+| 11 | Decisión de ascenso/descenso solo al cierre | `PROMOTED`/`DEMOTED`/`RETAINED` nunca se asigna mientras el grupo sigue `OPEN`/`FULL` — solo tras la transición a `LOCKED`. |
+| 12 | Grammar de promoción/descenso aplicada correctamente | Con una distribución conocida de `rankPosition` y una regla `top N%/bottom N%` fija, las cuentas correctas (y solo esas) terminan `PROMOTED`/`DEMOTED`. |
+| 13 | Recuperación directa por clave para "mi posición" | `leaderboard_entry` de una cuenta específica es recuperable en O(1) por `(groupId, publicProfileId)`, sin depender de la página en la que caería. |
+| 14 | Paginación estable ante recálculo intermedio | Una página ya servida nunca cambia retroactivamente; una nueva página solicitada después de un recálculo puede reflejar datos más recientes (comportamiento aceptado, no un defecto) pero siempre con `calculatedAt`/`snapshotVersion` explícitos en la respuesta. |
+| 15 | Frontera de dominio intacta | Verificación estática: ningún archivo nuevo de este incremento referencia `StudentResponse`/`CurriculumTopicProgress` ni repositorios de XP directamente (mismo criterio que Incremento 1, §14 de su gate). |
+
+**Pendiente de confirmación del Product Owner antes de redactar el ADR-0020 y comenzar la implementación.**
