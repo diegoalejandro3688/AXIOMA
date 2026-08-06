@@ -214,6 +214,16 @@ export default function CompetirScreen() {
 
       {renderLeagueSection()}
 
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Jugar Pregunta rápida"
+        onPress={() => router.push('/(tabs)/competir/quick-question')}
+        style={styles.quickQuestionCard}
+      >
+        <Text style={styles.quickQuestionTitle}>Pregunta rápida</Text>
+        <Text style={styles.quickQuestionSubtitle}>Responde preguntas y gana XP</Text>
+      </Pressable>
+
       {state.challenges.length === 0 ? (
         <EmptyState message="Todavía no tienes desafíos asignados. Sigue estudiando y aparecerán aquí." />
       ) : (
@@ -279,6 +289,16 @@ function createStyles(t: ThemeTokens) {
     joinButtonText: { color: t.color.text.onAccent, fontWeight: '700' as const },
     rankingButton: { marginTop: 4, alignSelf: 'flex-start' as const },
     rankingButtonText: { color: t.color.accent.default, fontWeight: '600' as const },
+    quickQuestionCard: {
+      backgroundColor: t.color.accent.subtleBg,
+      borderWidth: 1,
+      borderColor: t.color.accent.default,
+      borderRadius: 14,
+      padding: 16,
+      gap: 2,
+    },
+    quickQuestionTitle: { fontSize: 16, fontWeight: '700' as const, color: t.color.text.primary },
+    quickQuestionSubtitle: { fontSize: 13, color: t.color.text.secondary },
     list: { gap: 12, paddingBottom: 24 },
     sectionTitle: { fontSize: 13, fontWeight: '700' as const, color: t.color.text.secondary, marginTop: 12, marginBottom: 6, textTransform: 'uppercase' as const },
     card: {
