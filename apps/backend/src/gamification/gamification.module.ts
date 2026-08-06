@@ -61,6 +61,8 @@ import { LeaderboardCalculationService } from './leaderboard-calculation.service
 import { LeaderboardCalculationScheduler } from './leaderboard-calculation.scheduler';
 import { LeaderboardFinalizationService } from './leaderboard-finalization.service';
 import { LeaderboardFinalizationScheduler } from './leaderboard-finalization.scheduler';
+import { QuickQuestionSessionRepository } from './quick-question-session.repository';
+import { QuickQuestionAttemptRepository } from './quick-question-attempt.repository';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -201,6 +203,19 @@ import { LeaderboardFinalizationScheduler } from './leaderboard-finalization.sch
  * visibilidad de perfil NUNCA excluye ni altera el cálculo (ADR-0020 §1/§2)
  * -- toda `season_league_participation` de un grupo obtiene su fila real,
  * sin excepción. SIN endpoints, SIN superficie móvil (Incrementos 3/5).
+ *
+ * Bloque IV, Incremento 4, sub-incremento 4.a ("Fundación de persistencia
+ * de Pregunta rápida") -- ver docs/adr/LEF-BLOCK-IV-DEFINITION.md §12-13.
+ * `quick_question_session`/`quick_question_attempt` -- entidades PROPIAS y
+ * MÍNIMAS (decisión confirmada del Product Owner, §12.8), NO el framework
+ * genérico `competition_definition`/`competition_instance`/`competition_result`
+ * del Data Model. Máquina de estados forward-only (`ACTIVE -> CLOSED`) y
+ * "sesión cerrada no acepta nuevas respuestas" respaldadas por trigger
+ * (`enforce_quick_question_session_status_transition`/
+ * `enforce_quick_question_attempt_session_active`). SIN selección de
+ * preguntas, SIN corrección, SIN transacción de negocio, SIN publicación de
+ * evento, SIN HTTP (sub-incremento 4.b/4.c) -- únicamente esquema,
+ * migración, triggers y los dos repositorios mínimos.
  */
 @Module({
   imports: [AuthModule, InternalOpsModule, OutboxModule],
@@ -262,6 +277,8 @@ import { LeaderboardFinalizationScheduler } from './leaderboard-finalization.sch
     LeaderboardCalculationScheduler,
     LeaderboardFinalizationService,
     LeaderboardFinalizationScheduler,
+    QuickQuestionSessionRepository,
+    QuickQuestionAttemptRepository,
   ],
   exports: [
     GamificationProgramRepository,
@@ -307,6 +324,8 @@ import { LeaderboardFinalizationScheduler } from './leaderboard-finalization.sch
     LeaderboardEntryRepository,
     LeaderboardSnapshotRepository,
     LeaderboardCalculationService,
+    QuickQuestionSessionRepository,
+    QuickQuestionAttemptRepository,
   ],
 })
 export class GamificationModule {}

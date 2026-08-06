@@ -4,7 +4,7 @@
 **Fase**: Fase 2 — Learning Experience Foundation
 **Bloque**: IV de VIII (Roadmap Learning Experience Foundation)
 **Documentos relacionados**: `docs/adr/BLOCK-III-CLOSURE-REPORT.md`, `docs/adr/BLOCK-III-DEFINITION.md`, `docs/adr/0018-public-profile-foundation.md`, `docs/adr/0016-gamificacion-fundacion.md`, `docs/adr/0020-ranking-materializacion.md`, `docs/adr/0021-perfil-competitivo-cross-cuenta.md`, `docs/PHASE-2-KICKOFF-INVENTORY.md`
-**Estado**: Definición revisada (4ª pasada, 2026-08-06). Incremento 1 ("Fundación de temporadas y ligas") **implementado y gateado** (§9). Incremento 2 ("Ranking") **implementado, gateado y CERRADO** (§10, ADR-0020 APPROVED) — checkpoint commiteado sin tag (`26c28f1`). La limitación ambiental de `findPendingGrant` (Bloque I) documentada al cierre de Incremento 2 (§10, nota final) fue diagnosticada y corregida en un commit independiente (`0b52122`, starvation real confirmada y resuelta) — ver también `449d654`/`15fcd30` (hallazgo relacionado de Bloque III, clasificado como rate limiting real, no defecto de producto). Incremento 3 ("Perfil competitivo de otro usuario"): diseño completo (§11) y **`docs/adr/0021-perfil-competitivo-cross-cuenta.md` APROBADO (2026-08-06)** -- implementación autorizada, sin código todavía. Pendiente: Incrementos 4-5 (pregunta rápida, superficie móvil).
+**Estado**: Definición revisada (4ª pasada, 2026-08-06). Incremento 1 ("Fundación de temporadas y ligas") **implementado y gateado** (§9). Incremento 2 ("Ranking") **implementado, gateado y CERRADO** (§10, ADR-0020 APPROVED) — checkpoint commiteado sin tag (`26c28f1`). La limitación ambiental de `findPendingGrant` (Bloque I) documentada al cierre de Incremento 2 (§10, nota final) fue diagnosticada y corregida en un commit independiente (`0b52122`, starvation real confirmada y resuelta) — ver también `449d654`/`15fcd30` (hallazgo relacionado de Bloque III, clasificado como rate limiting real, no defecto de producto). Incremento 3 ("Perfil competitivo de otro usuario") **implementado, gateado y CERRADO** (§11, ADR-0021 APPROVED) -- sub-incrementos 3.a/3.b/3.c completos, checkpoints commiteados sin tag (`4eb676b`, `f7909da`, `7decfaa`). Incremento 4 ("Pregunta rápida"): **auditoría documental completa (§12), decisiones confirmadas por el Product Owner (§12.8), diseño detallado y desglose incremental listos (§13)** -- entidades propias `quick_question_session`/`quick_question_attempt` (no el framework genérico del Data Model), 10 Decision Gates refinados, tres sub-incrementos propuestos (4.a fundación, 4.b motor de sesión, 4.c endpoints). Pendiente de confirmación final antes de comenzar 4.a. Pendiente: Incremento 5 (superficie móvil).
 
 **Nota de nomenclatura**: este documento y su futuro cierre usan el prefijo `LEF-` (`LEF-BLOCK-IV-DEFINITION.md`, `LEF-BLOCK-IV-CLOSURE-REPORT.md`) porque `docs/adr/BLOCK-IV-CLOSURE-REPORT.md` y `BLOCK-V-CLOSURE-REPORT.md` **ya existen**, pertenecientes a un roadmap distinto y anterior (Fase 1 — Vertical Slice M1, "Bloque IV/V de V"). Los Bloques I–III de esta fase (Learning Experience Foundation) no colisionaban con esos nombres y no se renombran retroactivamente — decisión explícita del Product Owner (2026-08-05): prefijo nuevo hacia adelante, historia cerrada intacta.
 
@@ -571,3 +571,189 @@ Perfil inexistente/`PRIVATE`/`RETIRED` → 404 uniforme (§11.4). Perfil present
 **Confirma lo ya señalado en §6/§4.6**: este incremento requiere ADR nuevo por ser el primer patrón de autorización cross-cuenta del proyecto — ninguna decisión de arquitectura previa lo cubre.
 
 **Resuelto (2026-08-06)**: el Product Owner confirmó las tres decisiones de fondo (redactar, nunca omitir, únicamente dentro de una clasificación real — §11.3.2; lista blanca reconciliada — §11.3.1; resolución de identidad en la capa de presentación de USER, sin ciclo de módulos — §11.3.3). **Corrección obligatoria sobre la propuesta inicial de este documento**: la redacción NO se extiende a la consulta directa de un perfil individual — esa superficie mantiene el 404 uniforme ya fijado por el Gate 5 de §5 (`PRIVATE`/`RETIRED`/`ANONYMIZED`/inexistente, mismo código y cuerpo, sin excepción). La redacción aplica exclusivamente a filas dentro de una lista de ranking real, donde omitir dejaría un hueco de posición. **`docs/adr/0021-perfil-competitivo-cross-cuenta.md` — APROBADO (2026-08-06)**, con esta corrección incorporada, 12 Decision Gates (sustituyen y amplían los de §11.6). Implementación autorizada a continuación (ver plan incremental).
+
+## 12. Incremento 4 — Pregunta rápida: auditoría documental (sin implementar)
+
+Mismo criterio que §9/§10/§11: solo auditoría y diseño en esta pasada. No se toca el esquema, no se implementa nada.
+
+### 12.1 Fuentes revisadas
+
+- **Master Context §4.10** (recorrido canónico: *"Competir → Pregunta rápida → pregunta → respuesta → resultado validado → XP → continuación"*) y **CUJ-15** (Tier 1, integridad académica Tier 0): sin emparejamiento, sin depender de otro estudiante conectado, sin reutilizar preguntas activas de ensayos sin separación explícita, reintento de red no duplica intento ni XP, Premium no concede tiempo/dificultad/multiplicadores, la explicación nunca queda oculta por la recompensa.
+- **PRD GAME-023 a GAME-026**: materia identificable, dificultad apropiada, tiempo opcional o controlado, resultado inmediato, explicación posterior, XP competitivo, registro del intento; preguntas de bancos aprobados y versionados; competencia asíncrona en V1 (Versus/emparejamiento explícitamente fuera del lanzamiento inicial); Premium sin ventajas competitivas.
+- **Data Model §16.27 "Competencias dentro de Juego"**: entidades `competition_definition` (plantilla: `competitionType`, `participantMode`, `questionPolicyId`, `scoringRuleVersion`, `timeRuleVersion`, `matchmakingPolicyVersion`, `rewardPolicyVersion`) y `competition_instance` (ejecución concreta: definición+versión, temporada, participantes, preguntas materializadas, inicio/fin, estado, resultado, incidencias, integridad) — cierra con una nota literal: *"Las respuestas académicas continuarán utilizando el modelo del Bloque 11"* (PROGRESS).
+- **Data Model §16.28 "Emparejamiento"**: `matchmaking_request` — **diferido explícitamente**, mismo criterio que Versus (§3 de este documento, DM-OQ047).
+- **Data Model §16.29 "Resultado competitivo"**: `competition_result` (`placement`, `competitionScore`, `correctCount`, `responseTimeMetric`, `integrityStatus`, `resultStatus`, `supersedesResultId`) — *"El resultado competitivo no sustituye el resultado académico del intento."*
+
+### 12.2 Hallazgo central — auditado contra el código real, no solo contra el Data Model
+
+Se auditó si `StudentResponse` (PROGRESS, Bloque 11) es reutilizable literalmente para Pregunta rápida, dada la nota del Data Model citada arriba. **No lo es** — tres bloqueadores concretos, no interpretables:
+
+1. **`@@unique([accountId, questionVersionId])` global** en `student_response` — una cuenta solo puede responder cada pregunta UNA vez, para siempre. Pregunta rápida necesita poder repetir preguntas entre rondas (o coincidir con una ya respondida en Estudio) sin chocar contra esa unicidad.
+2. **Efecto colateral automático sobre `curriculum_topic_progress`**: `ProgressService.recordActivityAndMaybeComplete` crea/actualiza el progreso del tema y puede marcarlo `COMPLETED` en cada respuesta nueva. Una actividad explícitamente *"fuera de la estructura de Estudio"* (§8 de este documento) no puede disparar ese efecto sin corromper el seguimiento real de Estudio.
+3. **Fila inmutable, sin dimensión de "intento"**: `student_response` no tiene ningún concepto de sesión/ronda repetible — es un registro académico permanente por pregunta, no un evento competitivo repetible.
+
+**Conclusión**: Pregunta rápida necesita su **propia entidad de registro de intento** (alineada con `competition_instance`/`competition_result`, ya nombradas en Data Model) — nunca escribe en `student_response` ni en `curriculum_topic_progress`. La nota *"continuarán utilizando el modelo del Bloque 11"* se interpreta como: **reutiliza el mecanismo de corrección** (`QuestionVersion`/`AnswerOption`, ya en EDUCATION — la lógica de "¿esta opción es correcta?"), **no la tabla `student_response`**. Se marca como vacío a confirmar con el Product Owner antes de fijarlo en un ADR — no se asume en silencio, dado que contradice una lectura literal del Data Model.
+
+### 12.3 Reutilización real ya disponible (sin trabajo nuevo en Bloque I)
+
+Auditado contra el código, no supuesto:
+
+- **`GamificationService.ingestPending`/`ingestOne` es genérico** — solo mira `eventKey`/`schemaVersion`/`payload` de `outbox_event`, sin ninguna suposición sobre qué endpoint lo publicó. Un evento nuevo con forma equivalente a `student_response_recorded` (mismo `accountId`, un id propio, `occurredAt`) alimenta `ValidatedGamificationActivity` sin tocar ese pipeline.
+- **`XpGrantService`/`LeaguePointGrantService` ya escanean CUALQUIER `ValidatedGamificationActivity`** por `activityType` — un `activityType` nuevo (ej. `QUICK_QUESTION_ANSWERED`) con su propia `XpRule`/`LeaguePointRule` (mismo patrón "versión vigente en `occurredAt`" ya usado en todo el proyecto) basta para que el XP y los League Points fluyan **sin ningún código nuevo** en Bloque I ni en Incremento 1 de este bloque.
+- **Patrón de idempotencia `operationId`** (`findByOperationId`, `@unique` en Postgres, P2002 resuelto por re-consulta) ya validado en PROGRESS — reutilizable tal cual para el intento de Pregunta rápida, mismo criterio "reintento de red no duplica" (CUJ-15).
+
+### 12.4 Vacíos reales identificados, sin resolver en ningún documento fuente
+
+1. **Selección de pregunta**: `QuestionVersionRepository` hoy solo tiene `findPublishedByTopicId` (una lista completa de un tema) y `findByIdWithQuestionStatus` (por id) — **ningún método de selección aleatoria/arbitraria existe**. Hay que decidir la política (¿aleatoria entre todas las publicadas? ¿el estudiante elige materia? ¿excluir preguntas ya usadas recientemente en Pregunta rápida por esa cuenta?).
+2. **"No preguntas activas de ensayos sin separación" (GAME-024)**: auditado contra `schema.prisma` completo — **ningún concepto de "ensayo"/mock-exam existe hoy** en el esquema. La regla no tiene nada que excluir todavía. Clasificación propuesta: fuera de alcance real de este incremento (nada que construir), salvo que el Product Owner indique lo contrario.
+3. **Timer** ("tiempo opcional o controlado", PRD): propuesta V1 mínima = sin timer, mismo criterio que `STREAK_PROTECTION` en Bloque III (deuda diferida documentada, no construida) — a confirmar.
+4. **Forma de la entidad nueva**: ¿usar `competition_definition`/`competition_instance`/`competition_result` tal como ya están nombradas en Data Model (una fila de `competition_definition` para `"quick-question-v1"`, mismo patrón que `xp-core`/`league-ranking-v1`), con `matchmakingPolicyVersion` nulo/sin usar? Coincide con el precedente ya establecido en este bloque (construir solo lo pedido, columnas grammar abiertas sin interpretar) — recomendado, evita inventar una tabla paralela cuando el Data Model ya nombra la correcta.
+5. **¿Aparece en el perfil competitivo de Incremento 3?** Ningún documento lo exige todavía — no se amplía la lista blanca de ADR-0021 sin instrucción explícita.
+
+### 12.5 Dependencias
+
+- **Bloque I (EDUCATION)**: `QuestionVersion`/`AnswerOption` ya construidos — reutiliza su lógica de corrección, no la amplía.
+- **Bloque I (GAMIFICATION)**: pipeline `outbox_event` → `ValidatedGamificationActivity`, `XpGrantService`, patrón `operationId` — todos ya genéricos, se benefician sin cambios.
+- **Bloque IV, Incremento 1**: `LeaguePointGrantService` — ya genérico, se beneficia automáticamente si la cuenta tiene participación activa.
+- **No depende de Incremento 3** (perfil competitivo) salvo que se decida exponer el resultado ahí (vacío 5).
+
+### 12.6 Decision Gates propuestos (borrador, a confirmar antes de implementar)
+
+| # | Gate | Qué verifica |
+|---|---|---|
+| 1 | Frontera con PROGRESS intacta | Ningún archivo de este incremento escribe en `student_response`/`curriculum_topic_progress` — verificación estática, mismo criterio que todos los incrementos anteriores. |
+| 2 | Repetible sin chocar con Estudio | Responder la misma pregunta en Estudio y en Pregunta rápida (o dos veces en Pregunta rápida) nunca falla por la unicidad de `student_response` — entidad de intento completamente separada. |
+| 3 | Reintento de red idempotente | Mismo `operationId` enviado dos veces no duplica intento ni XP/LP. |
+| 4 | XP/LP automáticos, sin código nuevo en Bloque I/Incremento 1 | Una `XpRule`/`LeaguePointRule` nueva para el `activityType` de Pregunta rápida basta -- `XpGrantService`/`LeaguePointGrantService` no se modifican. |
+| 5 | Sin emparejamiento | Ningún símbolo/tabla de `matchmaking_request` referenciado; sin espera de otro estudiante (CUJ-15, reglas 1-2). |
+| 6 | Equidad Premium | Dos cuentas (una Premium) reciben la misma pregunta, el mismo tiempo, la misma dificultad (GAME-026). |
+| 7 | Explicación nunca oculta | La respuesta HTTP/presentación siempre incluye la explicación, independiente de la recompensa obtenida. |
+
+### 12.7 Determinación de ADR
+
+Igual que Incremento 1 (Fundación de temporadas y ligas): por ahora, cada mecanismo identificado ya fue aprobado y validado en Bloques I/IV-1 (pipeline de outbox genérico, patrón `operationId`, `XpRule`/`LeaguePointRule` por `activityType`), aplicado a una entidad nueva. **No hay decisión de arquitectura nueva evidente todavía** — pendiente de confirmar en el diseño detallado si la relación `competition_result`/resultado académico (*"no sustituye el resultado académico del intento"* — una tabla de resultado competitivo paralela a un resultado académico ya existente en otro dominio) introduce un patrón genuinamente nuevo no visto en este proyecto. Se determina con el diseño detallado, no aquí.
+
+**Resuelto (2026-08-06)** — el Product Owner aprobó la auditoría y confirmó los cinco vacíos de §12.4, ver §12.8. Diseño detallado en §13.
+
+
+### 12.8 Decisiones confirmadas (2026-08-06)
+
+El Product Owner aprobó la auditoría y confirmó, cerrando los cinco vacíos de §12.4:
+
+1. **Entidades propias y mínimas** — `quick_question_session`/`quick_question_attempt` (o nombres equivalentes), **no** el framework genérico `competition_definition`/`competition_instance`/`competition_result` del Data Model. Corrige la propuesta de §12.4, punto 4 (que recomendaba usar las entidades genéricas) — decisión de fondo del Product Owner, no una ambigüedad que quedara sin resolver.
+2. **Selección de pregunta server-side**, entre preguntas activas/elegibles (`editorialStatus = PUBLISHED`), **sin repetición dentro de una sesión**, y el cliente **nunca** elige `questionVersionId` arbitrariamente.
+3. **Exclusión de preguntas de ensayos activos: `NO APLICA`** mientras el concepto de "ensayo" no exista en el esquema — confirma la clasificación propuesta en §12.4, punto 2, sin construir nada para una entidad inexistente.
+4. **Timer estricto diferido** — solo se registran timestamps (`presentedAt`/`respondedAt`) para auditoría futura, sin lógica de límite de tiempo en V1.
+5. **Corrección vía EDUCATION, cero escritura en PROGRESS** — confirma §12.2: nunca `student_response`, nunca `curriculum_topic_progress`.
+6. **Una `ValidatedGamificationActivity` con resultado inequívoco** (`QUICK_QUESTION_ANSWERED`) por intento finalizado — XP/LP se resuelven exclusivamente por las reglas server-side ya existentes (`XpRule`/`LeaguePointRule`), sin código nuevo en `XpGrantService`/`LeaguePointGrantService`.
+7. **Sin integración con el perfil competitivo (Incremento 3) todavía** — el resultado de Pregunta rápida solo impacta indirectamente vía League Points (si la cuenta participa en Liga), nunca se añade a la lista blanca de ADR-0021 en este incremento.
+
+## 13. Incremento 4 — Pregunta rápida: diseño detallado y desglose incremental (sin implementar todavía)
+
+Mismo criterio que Incrementos 1-3: propuesta de diseño completa, sin tocar el esquema hasta confirmación final del Product Owner sobre esta sección.
+
+### 13.1 Modelo de datos propuesto
+
+**`quick_question_session`** — una ronda de Pregunta rápida:
+
+| Columna | Tipo | Nota |
+|---|---|---|
+| `id` | UUID | — |
+| `accountId` | UUID | sin FK a `Account`, mismo criterio que `ValidatedGamificationActivity`/`CurriculumTopicProgress` (ADR-0014) |
+| `status` | enum (`ACTIVE`, `CLOSED`) | forward-only, trigger `enforce_quick_question_session_status_transition` -- mismo patrón que `AccountChallenge`/`LeagueGroup` |
+| `currentQuestionVersionId` | UUID? | la pregunta actualmente presentada, sin responder todavía -- `NULL` si no hay ninguna pendiente. Vive en la sesión, no en una fila de intento a medio terminar -- evita un estado `PRESENTED` intermedio en `quick_question_attempt` |
+| `currentPresentedAt` | DateTime? | timestamp de auditoría (decisión #4), no usado para ningún límite |
+| `startedAt` | DateTime | — |
+| `closedAt` | DateTime? | — |
+
+**`quick_question_attempt`** — un intento finalizado (una pregunta ya respondida) dentro de una sesión:
+
+| Columna | Tipo | Nota |
+|---|---|---|
+| `id` | UUID | — |
+| `sessionId` | UUID (FK) | — |
+| `accountId` | UUID | denormalizado -- mismo criterio que `RewardGrant`/`XpLedgerEntry` (lectura directa sin join, no autoritativo por sí solo) |
+| `questionVersionId` | UUID (FK a EDUCATION) | — |
+| `answerOptionId` | UUID (FK a EDUCATION) | — |
+| `isCorrect` | Boolean | resuelto por el servidor, nunca enviado por el cliente -- mismo criterio que `StudentResponse.isCorrect` (`ProgressService` es "la única autoridad") |
+| `presentedAt` | DateTime | copiado de `session.currentPresentedAt` al finalizar -- timestamps de auditoría (decisión #4) |
+| `respondedAt` | DateTime | — |
+| `operationId` | UUID, `@unique` | idempotencia -- mismo patrón exacto que `StudentResponse.operationId` |
+| `createdAt` | DateTime | — |
+
+**Restricciones**:
+- `@@unique([sessionId, questionVersionId])` -- **sin repetición dentro de una sesión** (decisión #2), a nivel de base de datos, no solo de lógica de aplicación.
+- `@@unique([operationId])` -- idempotencia ante reintento de red (mismo mecanismo que `StudentResponse`).
+- Trigger `enforce_quick_question_attempt_session_active` -- rechaza un `INSERT` en `quick_question_attempt` si `session.status != 'ACTIVE'` (**sesión cerrada no acepta nuevas respuestas**, defensa en profundidad -- la capa de aplicación ya lo valida antes, este trigger es el respaldo, mismo criterio que `enforce_league_group_capacity`).
+
+**Repetible entre sesiones**: al no existir ninguna restricción de unicidad `(accountId, questionVersionId)` global (a diferencia de `student_response`), la misma pregunta puede aparecer en sesiones distintas de la misma cuenta -- diseño intencional (decisión de fondo §12.2), no un descuido.
+
+### 13.2 Selección de pregunta -- servidor autoritativo
+
+Nuevo método en `QuestionVersionRepository`:
+
+```
+findRandomEligible(excludeQuestionVersionIds: string[], limit = 1): Promise<QuestionVersion[]>
+```
+
+`WHERE editorialStatus = 'PUBLISHED' AND id NOT IN (excludeQuestionVersionIds) ORDER BY random() LIMIT :limit`. `excludeQuestionVersionIds` = todas las `questionVersionId` ya presentes en `quick_question_attempt` de la sesión actual (consulta directa por `sessionId`) -- refuerza a nivel de selección lo que el `@@unique([sessionId, questionVersionId])` ya refuerza a nivel de escritura (defensa en profundidad, mismo criterio que el resto del proyecto).
+
+Sin filtro por materia/dificultad en V1 (no existe "dificultad" en el esquema hoy, confirmado en la auditoría de §12) -- cualquier pregunta `PUBLISHED` de cualquier tema es elegible. Selección por materia queda como extensión futura no bloqueante, sin construir en este incremento.
+
+**El cliente nunca envía `questionVersionId`** (decisión #2): el endpoint que presenta la siguiente pregunta no lo acepta como parámetro; el endpoint que responde tampoco -- resuelve `session.currentQuestionVersionId` server-side. Un cliente que intentara enviarlo sería ignorado (el servicio nunca lo lee del body).
+
+### 13.3 Corrección, publicación de actividad, cero escritura en PROGRESS
+
+**Corrección (2026-08-06)** -- verificado contra el código real antes de implementar 4.a: `OutboxService.publish()` usa el cliente Prisma global (`OutboxEventRepository` recibe `PrismaService`, no un `Prisma.TransactionClient`) y es **best-effort por diseño**, documentado explícitamente en su propio docstring y en ADR-0006 §"Publicación best-effort" -- "publicar después de confirmar, nunca dentro de una transacción". No hay manera de que `publish()` participe en la misma transacción que otra escritura hoy, para ningún dominio. Este es el mismo patrón ya en producción en `ProgressService.recordResponse` (crea `StudentResponse`, luego, fuera de esa transacción, publica `student_response_recorded` best-effort) -- Pregunta rápida sigue exactamente ese precedente, sin extender `OutboxService` ni introducir entrega garantizada en este incremento.
+
+`QuickQuestionService.submitAnswer(accountId, sessionId, answerOptionId, operationId)`:
+
+1. Verifica idempotencia: `findByOperationId` -- reintento de red devuelve el mismo intento ya creado, sin duplicar (mismo patrón que `StudentResponse`).
+2. Carga `session`, valida `status == 'ACTIVE'` y `currentQuestionVersionId != null` (si no hay pregunta pendiente, 409 -- el cliente debe pedir "siguiente pregunta" primero).
+3. Carga `answerOption` vía EDUCATION (`AnswerOptionRepository`, ya existente) y valida que `answerOption.questionVersionId === session.currentQuestionVersionId` -- reutiliza el mecanismo de corrección de EDUCATION, **nunca** crea ni toca `student_response`/`curriculum_topic_progress` (decisión #5, Gate 5).
+4. **En una transacción que cubre EXCLUSIVAMENTE las dos tablas propias de este incremento**: crea `quick_question_attempt` (con `isCorrect = answerOption.isCorrect`) y limpia `session.currentQuestionVersionId` (vuelve a `null`, lista para la siguiente). **Después de que esa transacción confirma** -- fuera de ella, best-effort -- publica `outbox.publish({ eventKey: 'quick_question_answered', ... })` (mismo `deduplicationKey` determinista que el resto del proyecto, ej. `quick-question:${attempt.id}`), igual que `ProgressService` publica `student_response_recorded` después de confirmar `StudentResponse`.
+5. **Consecuencia aceptada, igual que ADR-0006/PROGRESS**: si el proceso cae exactamente entre el commit del paso 4 y el insert del outbox, el intento queda registrado (correcto, nunca se pierde ni se corrompe) pero ese evento puntual no se publica, sin reintento automático -- el mismo hueco conocido y aceptado que `student_response_recorded`. Un fallo de `publish()` (excepción atrapada dentro del propio `OutboxService`) tampoco revierte ni duplica el `quick_question_attempt` ya confirmado, ni dejan la sesión inconsistente: `currentQuestionVersionId` ya quedó en `null` dentro de la transacción que sí confirmó, independientemente de si el evento se publicó -- la sesión queda lista para pedir la siguiente pregunta en cualquier caso. Gate de evidencia obligatorio en 4.b (§13.5, Gate 7 revisado).
+6. `GamificationService.ingestOne` (sin cambios, ya genérico) consume ese evento -- `activityTypeFor('quick_question_answered') = 'QUICK_QUESTION_ANSWERED'` (una línea nueva en el `switch`/mapa existente) -- crea `ValidatedGamificationActivity`.
+7. `XpGrantScheduler`/`LeaguePointGrantScheduler` (sin cambios, ya genéricos) recogen esa actividad en su próximo ciclo -- **XP/LP solo si existe una `XpRule`/`LeaguePointRule` con `activityType = 'QUICK_QUESTION_ANSWERED'`** (decisión #6, dato de configuración, no código nuevo -- Gate 8).
+
+### 13.4 Endpoints propuestos
+
+```
+POST /gamification/me/quick-question/sessions            -- abre una sesión ACTIVE
+POST /gamification/me/quick-question/sessions/:id/next    -- servidor selecciona y devuelve la siguiente pregunta elegible
+POST /gamification/me/quick-question/sessions/:id/answers -- responde la pregunta pendiente (answerOptionId + operationId)
+POST /gamification/me/quick-question/sessions/:id/close   -- cierra la sesión (forward-only)
+```
+
+Respuesta de `/next`: pregunta + opciones (reutiliza la forma ya expuesta por EDUCATION para `GET /progress/topics/:topicId`, sin `isCorrect` de ninguna opción -- mismo criterio de no filtrar la respuesta correcta al cliente). Respuesta de `/answers`: `isCorrect`, `explanationContent` (recién ahí se revela -- GAME-023, "explicación posterior").
+
+Todos exigen `AuthGuard`, operan sobre `request.accountId` -- mismo criterio que el resto del proyecto, ningún id de sesión ajeno es alcanzable (`sessionId` se valida contra `accountId` del solicitante, 404 si no coincide, mismo criterio "nunca filtra existencia" ya usado en 3.a-3.c).
+
+### 13.5 Decision Gates refinados (sustituyen a los de §12.6)
+
+| # | Gate | Qué verifica |
+|---|---|---|
+| 1 | Repetible entre sesiones | La misma cuenta responde la MISMA pregunta en dos sesiones distintas -- ambos intentos se crean sin error. |
+| 2 | Sin repetición dentro de una sesión | `findRandomEligible` nunca devuelve una pregunta ya usada en la sesión actual; un intento de `INSERT` directo violando `@@unique([sessionId, questionVersionId])` es rechazado por Postgres (defensa en profundidad). |
+| 3 | Selección autoritativa del servidor | Ningún endpoint acepta `questionVersionId` del cliente -- verificación estática del DTO de entrada + funcional (enviar uno de todos modos no tiene efecto). |
+| 4 | Corrección consistente con EDUCATION | `isCorrect` del intento coincide EXACTAMENTE con `AnswerOption.isCorrect` ya definido en EDUCATION -- nunca decidido de otra forma. |
+| 5 | Cero escritura en PROGRESS | Ningún archivo de este incremento referencia `StudentResponse`/`CurriculumTopicProgress` -- verificación estática, mismo criterio que todos los incrementos anteriores. |
+| 6 | Idempotencia del intento | Reenviar el mismo `operationId` no crea un segundo `quick_question_attempt` ni publica un segundo evento. |
+| 7 | Publicación única, best-effort, POST-COMMIT (sin afirmar atomicidad) | Por cada `quick_question_attempt` existe EXACTAMENTE una `ValidatedGamificationActivity` con `activityType = QUICK_QUESTION_ANSWERED` -- nunca cero, nunca dos, en el camino normal. **Evidencia adicional obligatoria** (§13.3 punto 5): forzando un fallo en `OutboxService.publish()` tras confirmar la transacción, (a) el `quick_question_attempt` sigue existiendo, intacto, no se revierte; (b) no se crea un segundo intento ni se duplica ningún registro; (c) `session.currentQuestionVersionId` queda en `null` de todos modos (la sesión no queda inconsistente ni bloqueada) -- la ausencia del evento es el único efecto del fallo, nunca una escritura a medias. |
+| 8 | XP/LP únicamente por reglas | Sin una `XpRule`/`LeaguePointRule` para `QUICK_QUESTION_ANSWERED`, la actividad queda `NO_ACTIVE_RULE`/`NOT_PARTICIPATING` (comportamiento genérico ya existente) -- ningún camino de código de este incremento otorga XP/LP directamente. |
+| 9 | Sesión cerrada no acepta nuevas respuestas | Tras `close`, tanto `/next` como `/answers` responden con conflicto (409) -- verificado además a nivel de base de datos (trigger `enforce_quick_question_attempt_session_active`). |
+| 10 | Frontera de dominio | Ningún archivo nuevo referencia `PublicProfile`/`LeaderboardEntry` directamente (Incremento 3 queda sin integrar, decisión #7). |
+
+### 13.6 Desglose incremental propuesto
+
+Mismo patrón que Bloque IV Incremento 3 (fundación → motor → endpoints, cada uno con su propio gate):
+
+| # | Sub-incremento | Contenido | Gate |
+|---|---|---|---|
+| **4.a** | Fundación de persistencia | `quick_question_session`/`quick_question_attempt`, migración, triggers (`enforce_quick_question_session_status_transition`, `enforce_quick_question_attempt_session_active`), repositorios. Sin selección de preguntas, sin HTTP. | Gates 1, 2 (parcial, solo restricción de BD), 9 (parcial, solo trigger) |
+| **4.b** | Motor de sesión | `QuickQuestionService` completo: `findRandomEligible`, `submitAnswer` (corrección + transacción + publicación de evento), `activityTypeFor('quick_question_answered')`. Sin HTTP todavía -- mismo criterio que 3.a (gate directo contra el servicio, sin servidor). | Gates 2 (completo), 3, 4, 5, 6, 7, 8 |
+| **4.c** | Endpoints HTTP | Controller + contratos Zod + `sessions`/`next`/`answers`/`close`. Gate contra el servidor real, mismo criterio que 3.b/3.c. | Gate 9 (completo), 10, regresión de 1-8 vía HTTP |
+
+Cada sub-incremento cierra con `tsc`/`eslint`/build + regresión de los gates ya existentes, mismo criterio que toda esta sesión.
+
+**Pendiente de confirmación del Product Owner antes de comenzar 4.a** -- en particular, la forma exacta de las dos tablas (§13.1) y los cuatro endpoints (§13.4).

@@ -184,6 +184,11 @@ model QuestionVersion {
   curriculumTopic  CurriculumTopic   @relation(fields: [curriculumTopicId], references: [id], onDelete: Restrict)
   answerOptions    AnswerOption[]
   studentResponses StudentResponse[]
+  /// Bloque IV, Incremento 4, sub-incremento 4.a -- lado inverso de
+  /// QuickQuestionSession.currentQuestionVersionId (pregunta pendiente,
+  /// nullable) y QuickQuestionAttempt.questionVersionId (intento finalizado).
+  quickQuestionSessions  QuickQuestionSession[]
+  quickQuestionAttempts  QuickQuestionAttempt[]
 
   @@index([questionId])
   @@index([curriculumTopicId])
@@ -208,6 +213,8 @@ model AnswerOption {
 
   questionVersion  QuestionVersion   @relation(fields: [questionVersionId], references: [id], onDelete: Cascade)
   studentResponses StudentResponse[]
+  /// Bloque IV, Incremento 4, sub-incremento 4.a -- lado inverso de QuickQuestionAttempt.answerOptionId.
+  quickQuestionAttempts QuickQuestionAttempt[]
 
   @@index([questionVersionId])
   @@map("answer_option")
@@ -2065,4 +2072,92 @@ model LeaderboardSnapshotEntry {
   @@unique([leaderboardSnapshotId, seasonLeagueParticipationId])
   @@index([seasonLeagueParticipationId])
   @@map("leaderboard_snapshot_entry")
+}
+
+// =============================================================================
+// Bloque IV, Incremento 4, sub-incremento 4.a -- Fundación de persistencia de
+// Pregunta rápida. Ver docs/adr/LEF-BLOCK-IV-DEFINITION.md §12-13.
+//
+// Entidades PROPIAS y MÍNIMAS (decisión confirmada del Product Owner, §12.8
+// punto 1) -- NO el framework genérico `competition_definition`/
+// `competition_instance`/`competition_result` del Data Model §16.27-16.29.
+// `student_response` (PROGRESS, Bloque 11) NO es reutilizable: unicidad
+// global (accountId, questionVersionId) impide repetir preguntas entre
+// sesiones, y su efecto colateral automático sobre
+// `curriculum_topic_progress` corrompería el seguimiento real de Estudio
+// (§12.2). Este incremento reutiliza el MECANISMO de corrección de EDUCATION
+// (QuestionVersion/AnswerOption), nunca la tabla `student_response`, y jamás
+// escribe en PROGRESS.
+// =============================================================================
+
+enum QuickQuestionSessionStatus {
+  ACTIVE
+  CLOSED
+
+  @@map("quick_question_session_status")
+}
+
+/// Una ronda de Pregunta rápida (§13.1). Forward-only: `ACTIVE -> CLOSED`,
+/// nunca al revés (trigger `enforce_quick_question_session_status_transition`,
+/// migración SQL -- mismo criterio que `AccountChallenge`/`LeagueGroup`).
+/// `accountId` SIN FK a `Account` -- mismo criterio que
+/// `ValidatedGamificationActivity`/`CurriculumTopicProgress` (ADR-0014).
+///
+/// `currentQuestionVersionId` vive en la sesión, no en una fila de intento a
+/// medio terminar -- evita un estado `PRESENTED` intermedio en
+/// `QuickQuestionAttempt` (decisión de diseño §13.1). `NULL` significa "sin
+/// pregunta pendiente" -- estado inicial y estado tras cada respuesta.
+model QuickQuestionSession {
+  id                       String                     @id @default(uuid()) @db.Uuid
+  accountId                String                     @map("account_id") @db.Uuid
+  status                   QuickQuestionSessionStatus @default(ACTIVE)
+  currentQuestionVersionId String?                    @map("current_question_version_id") @db.Uuid
+  /// Timestamp de auditoría (decisión #4, §12.8) -- nunca usado para ningún límite de tiempo en V1.
+  currentPresentedAt       DateTime?                  @map("current_presented_at")
+  startedAt                DateTime                   @default(now()) @map("started_at")
+  closedAt                 DateTime?                  @map("closed_at")
+
+  currentQuestionVersion QuestionVersion?       @relation(fields: [currentQuestionVersionId], references: [id], onDelete: Restrict)
+  attempts               QuickQuestionAttempt[]
+
+  @@index([accountId])
+  @@map("quick_question_session")
+}
+
+/// Un intento finalizado (una pregunta ya respondida) dentro de una sesión
+/// (§13.1). `isCorrect` resuelto por el servidor (4.b), nunca enviado por el
+/// cliente -- mismo criterio que `StudentResponse.isCorrect`.
+///
+/// `@@unique([sessionId, questionVersionId])`: sin repetición DENTRO de una
+/// sesión (decisión #2, §12.8), a nivel de base de datos, no solo de lógica
+/// de aplicación. Repetible ENTRE sesiones de la misma cuenta por diseño: a
+/// diferencia de `student_response`, no existe ninguna restricción de
+/// unicidad `(accountId, questionVersionId)` global.
+///
+/// `operationId` -- idempotencia ante reintento de red, mismo patrón exacto
+/// que `StudentResponse.operationId`.
+model QuickQuestionAttempt {
+  id                String   @id @default(uuid()) @db.Uuid
+  sessionId         String   @map("session_id") @db.Uuid
+  /// Denormalizado -- mismo criterio que `RewardGrant`/`XpLedgerEntry`
+  /// (lectura directa sin join, no autoritativo por sí solo; la sesión es la
+  /// fuente real de `accountId`).
+  accountId         String   @map("account_id") @db.Uuid
+  questionVersionId String   @map("question_version_id") @db.Uuid
+  answerOptionId    String   @map("answer_option_id") @db.Uuid
+  isCorrect         Boolean  @map("is_correct")
+  /// Copiado de `session.currentPresentedAt` al finalizar -- timestamp de auditoría (decisión #4).
+  presentedAt       DateTime @map("presented_at")
+  respondedAt       DateTime @default(now()) @map("responded_at")
+  operationId       String   @unique @map("operation_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  session         QuickQuestionSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  questionVersion QuestionVersion      @relation(fields: [questionVersionId], references: [id], onDelete: Restrict)
+  answerOption    AnswerOption         @relation(fields: [answerOptionId], references: [id], onDelete: Restrict)
+
+  @@unique([sessionId, questionVersionId])
+  @@index([sessionId])
+  @@index([accountId])
+  @@map("quick_question_attempt")
 }
