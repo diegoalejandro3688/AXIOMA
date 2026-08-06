@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import {
   claimPublicProfileRequestSchema,
@@ -9,14 +9,18 @@ import {
   equippedTitleResponseSchema,
   competitiveProfileResponseSchema,
   meCompetitiveProfileResponseSchema,
+  leaderboardPageResponseSchema,
   type PublicProfileResponse,
   type EquippedTitleResponse,
   type CompetitiveProfileResponse,
   type MeCompetitiveProfileResponse,
+  type LeaderboardPageResponse,
 } from '@axioma/contracts';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { parseRequestBody } from '../platform/validation/parse-request-body';
 import { UserService, type CompetitiveProfileView, type MeCompetitiveProfileView } from './user.service';
+import type { LeaderboardPageView, LeaderboardRowView } from './competitive-leaderboard.service';
+import { MAX_LEADERBOARD_LIMIT } from './competitive-leaderboard.service';
 import type { PublicProfile } from '../generated/prisma/client';
 import type { EquippedTitleWithDetails } from '../gamification/equipped-title.repository';
 
@@ -55,6 +59,20 @@ function toMeCompetitiveProfileResponse(view: MeCompetitiveProfileView): MeCompe
   return meCompetitiveProfileResponseSchema.parse({
     ...toCompetitiveProfileResponse(view),
     lifecycleStatus: view.lifecycleStatus,
+  });
+}
+
+/** Bloque IV, Incremento 3, sub-incremento 3.c -- una fila redactada se pasa TAL CUAL (ya no tiene más claves que serializar). */
+function toLeaderboardRow(row: LeaderboardRowView) {
+  if (!row.presentable) return row;
+  return { ...row, publicAchievements: row.publicAchievements.map((a) => ({ ...a, unlockedAt: a.unlockedAt.toISOString() })) };
+}
+
+function toLeaderboardPageResponse(page: LeaderboardPageView): LeaderboardPageResponse {
+  return leaderboardPageResponseSchema.parse({
+    entries: page.entries.map(toLeaderboardRow),
+    nextCursor: page.nextCursor,
+    competitiveContext: page.competitiveContext ? { ...page.competitiveContext, calculatedAt: page.competitiveContext.calculatedAt.toISOString() } : null,
   });
 }
 
@@ -146,6 +164,31 @@ export class PublicProfileController {
   async getMyCompetitiveProfile(@Req() request: AuthenticatedRequest): Promise<MeCompetitiveProfileResponse> {
     const view = await this.userService.getMyCompetitiveProfile(request.accountId);
     return toMeCompetitiveProfileResponse(view);
+  }
+
+  /**
+   * Bloque IV, Incremento 3, sub-incremento 3.c (ADR-0021 §1/§5) -- lista
+   * de ranking del propio grupo, SIN `groupId` de entrada (precisión
+   * obligatoria del Product Owner: se resuelve server-side, nunca lo
+   * recibe el cliente). Registrada ANTES de `:username/competitive-profile`
+   * por el mismo motivo que `me/competitive-profile` -- mismo criterio de
+   * orden de rutas.
+   */
+  @Get('me/leaderboard')
+  async getMyLeaderboard(
+    @Req() request: AuthenticatedRequest,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limitParam?: string,
+  ): Promise<LeaderboardPageResponse> {
+    let limit: number | undefined;
+    if (limitParam !== undefined) {
+      limit = Number(limitParam);
+      if (!Number.isInteger(limit) || limit <= 0 || limit > MAX_LEADERBOARD_LIMIT) {
+        throw new BadRequestException(`limit debe ser un entero positivo, máximo ${MAX_LEADERBOARD_LIMIT}.`);
+      }
+    }
+    const page = await this.userService.getMyLeaderboard(request.accountId, { cursor, limit });
+    return toLeaderboardPageResponse(page);
   }
 
   /**

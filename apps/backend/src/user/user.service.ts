@@ -13,6 +13,7 @@ import { Prisma } from '../generated/prisma/client';
 import type { UserProfile, PublicProfile } from '../generated/prisma/client';
 import { CompetitiveProfileIdentityService, type CompetitiveProfileIdentity } from './competitive-profile-identity.service';
 import { CompetitiveContextService, type CompetitiveContext } from './competitive-context.service';
+import { CompetitiveLeaderboardService, type LeaderboardPageView } from './competitive-leaderboard.service';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
@@ -69,6 +70,7 @@ export class UserService {
     private readonly cosmeticEquipmentService: CosmeticEquipmentService,
     private readonly competitiveProfileIdentityService: CompetitiveProfileIdentityService,
     private readonly competitiveContextService: CompetitiveContextService,
+    private readonly competitiveLeaderboardService: CompetitiveLeaderboardService,
   ) {}
 
   /**
@@ -404,6 +406,21 @@ export class UserService {
     // servicio, y debe fallar de forma segura (404), nunca filtrar datos.
     if (!resolved.presentable) throw new NotFoundException(COMPETITIVE_PROFILE_NOT_FOUND_MESSAGE);
     return toCompetitiveProfileView(resolved.identity, competitive);
+  }
+
+  /**
+   * Bloque IV, Incremento 3, sub-incremento 3.c (ADR-0021 §1/§5,
+   * precisiones obligatorias del Product Owner 2026-08-06) -- lista
+   * paginada del ranking del GRUPO del solicitante. Sin `groupId` de
+   * entrada -- `CompetitiveLeaderboardService` lo resuelve server-side
+   * desde la participación activa de `accountId`. Sin participación
+   * activa: lista vacía, `competitiveContext: null`, NUNCA un error.
+   * Delega toda la lógica (identidad por lote, redacción, excepción de
+   * autoconsulta, cursor opaco) al servicio -- este método es solo el
+   * punto de entrada desde el controller.
+   */
+  async getMyLeaderboard(accountId: string, options: { cursor?: string; limit?: number }): Promise<LeaderboardPageView> {
+    return this.competitiveLeaderboardService.resolvePage(accountId, options);
   }
 
   /**

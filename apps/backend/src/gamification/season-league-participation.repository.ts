@@ -79,6 +79,18 @@ export class SeasonLeagueParticipationRepository {
   }
 
   /**
+   * Bloque IV, Incremento 3, sub-incremento 3.c -- lote, UNA sola consulta
+   * `WHERE id IN (...)`, para resolver `accountId` de un conjunto de
+   * `seasonLeagueParticipationId` (una página de `leaderboard_entry`) sin
+   * una consulta por fila (mismo principio anti-N+1 que 3.a).
+   */
+  findManyByIds(ids: string[], tx?: Prisma.TransactionClient): Promise<SeasonLeagueParticipation[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    const client: Client = tx ?? this.prisma;
+    return client.seasonLeagueParticipation.findMany({ where: { id: { in: ids } } });
+  }
+
+  /**
    * Bloque IV, Incremento 2 -- TODAS las participaciones de un grupo, sin
    * excepción (ADR-0020 §1/§2: la identidad autoritativa del cálculo es
    * `season_league_participation`, nunca `public_profile` -- ningún filtro

@@ -242,3 +242,48 @@ export const meCompetitiveProfileResponseSchema = competitiveProfileResponseSche
   lifecycleStatus: z.enum(['ACTIVE', 'RETIRED']),
 });
 export type MeCompetitiveProfileResponse = z.infer<typeof meCompetitiveProfileResponseSchema>;
+
+/**
+ * Lista de ranking del propio grupo -- ver docs/adr/0021-perfil-competitivo-cross-cuenta.md,
+ * sub-incremento 3.c. Unión discriminada por `presentable`: una fila
+ * redactada contiene ÚNICAMENTE `presentable: false`, `isCurrentUser`,
+ * `rankPosition`, `metricValue` -- ninguna otra clave, ni con valor
+ * `null` (mismo criterio que la redacción de perfil individual). Nunca
+ * incluye `accountId`/`publicProfileId`/`seasonLeagueParticipationId`/
+ * `groupId` -- ni una fila presentable ni una redactada.
+ */
+export const leaderboardRowSchema = z.discriminatedUnion('presentable', [
+  z.object({
+    presentable: z.literal(true),
+    isCurrentUser: z.boolean(),
+    rankPosition: z.number().int().positive(),
+    metricValue: z.number().int(),
+    username: z.string(),
+    avatar: z.string().nullable(),
+    equippedTitle: competitiveEquippedTitleSchema.nullable(),
+    equippedCosmetics: z.array(competitiveEquippedCosmeticSchema),
+    levelNumber: z.number().int().positive(),
+    publicAchievements: z.array(publicAchievementSchema),
+  }),
+  z.object({
+    presentable: z.literal(false),
+    isCurrentUser: z.boolean(),
+    rankPosition: z.number().int().positive(),
+    metricValue: z.number().int(),
+  }),
+]);
+export type LeaderboardRow = z.infer<typeof leaderboardRowSchema>;
+
+/**
+ * `nextCursor` es OPAQUE -- ver `leaderboard-cursor.ts` (backend). Nunca
+ * decodificar ni interpretar del lado del cliente; pasar tal cual como
+ * `?cursor=` de la siguiente página. `null` significa que no hay más
+ * páginas. `competitiveContext: null` cuando el solicitante no tiene
+ * participación activa -- lista vacía, NUNCA un error (ADR-0021 §2).
+ */
+export const leaderboardPageResponseSchema = z.object({
+  entries: z.array(leaderboardRowSchema),
+  nextCursor: z.string().nullable(),
+  competitiveContext: competitiveContextSchema.nullable(),
+});
+export type LeaderboardPageResponse = z.infer<typeof leaderboardPageResponseSchema>;

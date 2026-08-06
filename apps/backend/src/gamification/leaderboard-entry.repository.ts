@@ -95,4 +95,27 @@ export class LeaderboardEntryRepository {
       take: options.limit,
     });
   }
+
+  /**
+   * Bloque IV, Incremento 3, sub-incremento 3.c -- misma paginación
+   * estable, pero cursor de UN solo campo (`rankPosition`), nunca
+   * `leaderboardEntry.id` -- ese id es exactamente uno de los
+   * identificadores internos que ADR-0021 prohíbe exponer en el cursor
+   * HTTP opaco (`leaderboardCursor.ts`). Válido porque `rankPosition` ya
+   * es una secuencia total estricta `1..G` sin repeticiones DENTRO de un
+   * grupo -- garantizado por `@@unique([leaderboardDefinitionId, groupId,
+   * rankPosition])` (ADR-0020 §4, punto 6) y por el desempate hasta
+   * `accountId` como última instancia (ADR-0020 §3) -- nunca hace falta un
+   * segundo campo de desempate para esta consulta.
+   */
+  findByGroupPaginatedByRank(groupId: string, options: { limit: number; afterRankPosition?: number }): Promise<LeaderboardEntry[]> {
+    return this.prisma.leaderboardEntry.findMany({
+      where: {
+        groupId,
+        ...(options.afterRankPosition !== undefined ? { rankPosition: { gt: options.afterRankPosition } } : {}),
+      },
+      orderBy: { rankPosition: 'asc' },
+      take: options.limit,
+    });
+  }
 }
