@@ -51,6 +51,9 @@ async function createSession(uidSuffix: string): Promise<{ accountId: string; he
   const uid = `title-equip-gate-${uidSuffix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const idToken = StubIdentityProvider.encode({ providerSubject: uid, email: `${uid}@example.com`, emailVerified: true });
   const session = await req('POST', '/auth/session', {}, { idToken });
+  if (session.status !== 200 || !session.body?.accountId) {
+    throw new Error(`No se pudo crear la sesión de prueba (uid=${uid}): ${session.status} ${session.raw}`);
+  }
   return {
     accountId: session.body.accountId as string,
     headers: { authorization: `Bearer ${idToken}`, 'x-session-id': session.body.sessionId },
