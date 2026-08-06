@@ -1,0 +1,64 @@
+import { z } from 'zod';
+import { isoDateTime } from './common';
+
+/**
+ * Contratos de autoservicio de participación de liga (Bloque IV, Incremento
+ * 5, sub-incremento 5.a) -- resuelve el hueco real encontrado en la
+ * auditoría previa a Incremento 5: `LeagueEnrollmentService.joinActiveSeason`
+ * (Incremento 1) nunca tenía disparador HTTP -- ninguna cuenta real podía
+ * inscribirse en una liga. Acción explícita e idempotente de autoservicio,
+ * NUNCA conectada a `XpGrantService` ni a ningún otorgamiento automático
+ * (decisión del Product Owner, 2026-08-06).
+ *
+ * `request.accountId` (AuthGuard) es la única fuente de identidad -- ningún
+ * cuerpo acepta tier, grupo ni identidad. Ninguna respuesta expone
+ * `leagueDefinitionId`/`seasonLeagueParticipationId`/`gameSeasonId`/
+ * `leagueGroupId`/`accountId` -- mismo criterio que `competitiveContextSchema`
+ * (ADR-0021 §2/§3). Deliberadamente SIN `leaguePoints`: el saldo y la
+ * posición siguen perteneciendo a los endpoints competitivos existentes
+ * (`/user/public-profile/me/competitive-profile`), este contrato es
+ * EXCLUSIVAMENTE sobre el hecho de estar o no inscrito.
+ */
+
+export const leagueParticipationBodySchema = z.object({}).strict();
+export type LeagueParticipationBody = z.infer<typeof leagueParticipationBodySchema>;
+
+/** Forma compartida entre GET y POST cuando la cuenta SÍ tiene una participación resuelta. */
+export const enrolledLeagueParticipationSchema = z.object({
+  outcome: z.literal('ENROLLED'),
+  leagueName: z.string(),
+  joinedAt: isoDateTime,
+  // Enum completo de season_league_participation_status (ADR-0020 §4/§7) --
+  // una cuenta puede estar ENROLLED con cualquiera de estos cinco valores
+  // (p. ej. tras el cierre de una temporada, antes de inscribirse en la
+  // siguiente): ACTIVE/SEASON_ENDED (Incremento 1) y PROMOTED/DEMOTED/
+  // RETAINED (resultado del cierre de grupo, Incremento 2).
+  status: z.enum(['ACTIVE', 'SEASON_ENDED', 'PROMOTED', 'DEMOTED', 'RETAINED']),
+});
+export type EnrolledLeagueParticipation = z.infer<typeof enrolledLeagueParticipationSchema>;
+
+/**
+ * GET -- lectura pura, NUNCA crea participación. Tres outcomes: `ENROLLED`
+ * (ya inscrita), `NOT_ENROLLED` (hay temporada activa, la cuenta todavía no
+ * participa -- el hub muestra "Unirme a la liga" únicamente en este caso),
+ * `NO_ACTIVE_SEASON` (nada que unirse todavía).
+ */
+export const getLeagueParticipationResponseSchema = z.discriminatedUnion('outcome', [
+  enrolledLeagueParticipationSchema,
+  z.object({ outcome: z.literal('NOT_ENROLLED') }),
+  z.object({ outcome: z.literal('NO_ACTIVE_SEASON') }),
+]);
+export type GetLeagueParticipationResponse = z.infer<typeof getLeagueParticipationResponseSchema>;
+
+/**
+ * POST -- acción idempotente. Devuelve la participación existente o recién
+ * creada (`ENROLLED`) -- el mismo cuerpo tanto si esta llamada creó la fila
+ * como si ya existía, mismo criterio "200 uniforme" que Pregunta rápida
+ * (4.c). Sin temporada activa: `NO_ACTIVE_SEASON`, outcome de dominio,
+ * NUNCA un error genérico.
+ */
+export const postLeagueParticipationResponseSchema = z.discriminatedUnion('outcome', [
+  enrolledLeagueParticipationSchema,
+  z.object({ outcome: z.literal('NO_ACTIVE_SEASON') }),
+]);
+export type PostLeagueParticipationResponse = z.infer<typeof postLeagueParticipationResponseSchema>;

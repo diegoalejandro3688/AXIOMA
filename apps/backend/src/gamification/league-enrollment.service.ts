@@ -23,6 +23,14 @@ const ASSIGNMENT_POLICY_VERSION = 'v1-lowest-tier';
 
 export type EnrollmentOutcome = { participation: SeasonLeagueParticipation; created: boolean } | { outcome: 'NO_ACTIVE_SEASON' };
 
+/** Vista sin IDs internos de una participación ya resuelta -- ver `describeParticipation`. */
+export type EnrolledParticipationView = { leagueName: string; joinedAt: Date; participationStatus: SeasonLeagueParticipation['participationStatus'] };
+
+export type ParticipationStatusOutcome =
+  | ({ kind: 'ENROLLED' } & EnrolledParticipationView)
+  | { kind: 'NOT_ENROLLED' }
+  | { kind: 'NO_ACTIVE_SEASON' };
+
 /**
  * Bloque IV, Incremento 1 ("Fundación de temporadas y ligas") -- ver
  * docs/adr/LEF-BLOCK-IV-DEFINITION.md §9. Resuelve "buscar grupo abierto con
@@ -112,5 +120,37 @@ export class LeagueEnrollmentService {
       if (previousTier && previousTier.status === 'ACTIVE') return previousTier;
     }
     return this.leagueDefinitionRepo.findLowestActiveTier();
+  }
+
+  /**
+   * Bloque IV, Incremento 5, sub-incremento 5.a -- lectura PURA, nunca crea
+   * nada (§13, precisión obligatoria del Product Owner: "GET nunca crea
+   * participación"). Sin advisory lock -- ninguna escritura posible en este
+   * camino. Reutiliza exactamente las mismas dos consultas que el camino
+   * rápido (sin lock) de `joinActiveSeason`, nunca una tercera fuente de
+   * verdad.
+   */
+  async getParticipationStatus(accountId: string): Promise<ParticipationStatusOutcome> {
+    const season = await this.seasonRepo.findActive();
+    if (!season) return { kind: 'NO_ACTIVE_SEASON' };
+
+    const participation = await this.participationRepo.findByAccountAndSeason(accountId, season.id);
+    if (!participation) return { kind: 'NOT_ENROLLED' };
+
+    return { kind: 'ENROLLED', ...(await this.describeParticipation(participation)) };
+  }
+
+  /**
+   * Resuelve `leagueName` a partir de `leagueDefinitionId` -- único lugar
+   * donde `joinActiveSeason`/`getParticipationStatus` convergen para
+   * construir la vista pública. `leagueDefinitionId`/
+   * `seasonLeagueParticipationId`/`gameSeasonId`/`leagueGroupId` NUNCA
+   * salen de este método hacia el llamador (controller) -- mismo criterio
+   * que `competitiveContextSchema` (ADR-0021 §2/§3).
+   */
+  async describeParticipation(participation: SeasonLeagueParticipation): Promise<EnrolledParticipationView> {
+    const league = await this.leagueDefinitionRepo.findById(participation.leagueDefinitionId);
+    if (!league) throw new Error(`Participación ${participation.id} referencia un leagueDefinitionId inexistente.`);
+    return { leagueName: league.name, joinedAt: participation.joinedAt, participationStatus: participation.participationStatus };
   }
 }

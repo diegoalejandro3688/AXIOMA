@@ -51,6 +51,7 @@ import { SeasonLeagueParticipationRepository } from './season-league-participati
 import { LeaguePointRuleRepository } from './league-point-rule.repository';
 import { LeaguePointLedgerEntryRepository } from './league-point-ledger-entry.repository';
 import { LeagueEnrollmentService } from './league-enrollment.service';
+import { LeagueParticipationController } from './league-participation.controller';
 import { LeaguePointGrantService } from './league-point-grant.service';
 import { LeaguePointGrantScheduler } from './league-point-grant.scheduler';
 import { SeasonTransitionService } from './season-transition.service';
@@ -242,10 +243,24 @@ import { QuickQuestionController } from './quick-question.controller';
  * importado para resolver bloques `image` de `stemContent`/
  * `explanationContent` a URL firmada, mismo criterio que `EducationService`
  * -- Pregunta rápida reutiliza contenido de EDUCATION que puede incluirlas.
+ *
+ * Bloque IV, Incremento 5, sub-incremento 5.a ("Enrolamiento real +
+ * wrappers API + hub de navegación") -- ver
+ * docs/adr/LEF-BLOCK-IV-DEFINITION.md, auditoría previa a Incremento 5.
+ * `LeagueParticipationController` (`/gamification/me/league/participation`):
+ * `GET` (lectura pura, NUNCA crea -- ENROLLED/NOT_ENROLLED/NO_ACTIVE_SEASON)
+ * y `POST` (acción idempotente, ENROLLED/NO_ACTIVE_SEASON). Resuelve el
+ * hueco real encontrado en la auditoría: `LeagueEnrollmentService.joinActiveSeason`
+ * (Incremento 1) nunca tenía disparador HTTP -- ninguna cuenta real podía
+ * inscribirse. Deliberadamente NO conectado a `XpGrantService` ni a ningún
+ * otorgamiento automático (decisión del Product Owner) -- acción explícita
+ * de autoservicio únicamente. Sin `leaguePoints` en el contrato -- el saldo
+ * y la posición siguen perteneciendo a los endpoints competitivos ya
+ * existentes (Incremento 3).
  */
 @Module({
   imports: [AuthModule, EducationModule, InternalOpsModule, ObjectStorageModule, OutboxModule],
-  controllers: [GamificationController, ProgressionController, ChallengeController, QuickQuestionController],
+  controllers: [GamificationController, ProgressionController, ChallengeController, QuickQuestionController, LeagueParticipationController],
   providers: [
     GamificationProgramRepository,
     GamificationProgramVersionRepository,

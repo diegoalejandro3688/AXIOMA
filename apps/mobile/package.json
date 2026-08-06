@@ -13,7 +13,8 @@
     "build": "tsc --noEmit",
     "verify:offline-outbox-gate": "tsx scripts/verify-offline-outbox-gate.ts",
     "verify:challenges-gate": "tsx scripts/verify-challenges-gate.ts",
-    "verify:cosmetics-gate": "tsx scripts/verify-cosmetics-gate.ts"
+    "verify:cosmetics-gate": "tsx scripts/verify-cosmetics-gate.ts",
+    "verify:league-participation-gate": "tsx scripts/verify-league-participation-gate.ts"
   },
   "dependencies": {
     "@axioma/contracts": "workspace:*",
