@@ -6,3 +6,4 @@ export * from './user';
 export * from './education';
 export * from './progress';
 export * from './gamification';
+export * from './quick-question';

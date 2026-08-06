@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { EducationModule } from '../education/education.module';
 import { InternalOpsModule } from '../platform/internal-ops/internal-ops.module';
+import { ObjectStorageModule } from '../platform/object-storage/object-storage.module';
 import { OutboxModule } from '../platform/outbox/outbox.module';
 import { GamificationProgramRepository } from './gamification-program.repository';
 import { GamificationProgramVersionRepository } from './gamification-program-version.repository';
@@ -65,6 +66,7 @@ import { LeaderboardFinalizationScheduler } from './leaderboard-finalization.sch
 import { QuickQuestionSessionRepository } from './quick-question-session.repository';
 import { QuickQuestionAttemptRepository } from './quick-question-attempt.repository';
 import { QuickQuestionService } from './quick-question.service';
+import { QuickQuestionController } from './quick-question.controller';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -228,11 +230,22 @@ import { QuickQuestionService } from './quick-question.service';
  * exclusión mutua compartida entre `next`/`answer`/`close` por sesión,
  * apertura idempotente de sesión por cuenta (índice único parcial +
  * relectura bajo lock), publicación best-effort post-commit de
- * `quick_question_answered` (ADR-0006). SIN HTTP todavía (4.c).
+ * `quick_question_answered` (ADR-0006).
+ *
+ * Sub-incremento 4.c ("Endpoints HTTP") -- ver
+ * docs/adr/LEF-BLOCK-IV-DEFINITION.md §13.4. `QuickQuestionController`
+ * (`/gamification/me/quick-question/sessions`): `POST /` (abrir/reutilizar),
+ * `POST /:sessionId/next`, `POST /:sessionId/answers`, `POST /:sessionId/close`
+ * -- cada uno solo traduce entrada/salida sobre `QuickQuestionService`
+ * (4.b), sin lógica de dominio nueva. `200` uniforme en las cuatro rutas
+ * (precisión obligatoria del Product Owner). `ObjectStorageModule`
+ * importado para resolver bloques `image` de `stemContent`/
+ * `explanationContent` a URL firmada, mismo criterio que `EducationService`
+ * -- Pregunta rápida reutiliza contenido de EDUCATION que puede incluirlas.
  */
 @Module({
-  imports: [AuthModule, EducationModule, InternalOpsModule, OutboxModule],
-  controllers: [GamificationController, ProgressionController, ChallengeController],
+  imports: [AuthModule, EducationModule, InternalOpsModule, ObjectStorageModule, OutboxModule],
+  controllers: [GamificationController, ProgressionController, ChallengeController, QuickQuestionController],
   providers: [
     GamificationProgramRepository,
     GamificationProgramVersionRepository,

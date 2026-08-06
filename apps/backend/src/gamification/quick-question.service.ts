@@ -4,10 +4,10 @@ import { OutboxService } from '../platform/outbox/outbox.service';
 import { GAMIFICATION_SCHEMA_VERSION } from '@axioma/contracts';
 import { QuickQuestionSessionRepository } from './quick-question-session.repository';
 import { QuickQuestionAttemptRepository } from './quick-question-attempt.repository';
-import { QuestionVersionRepository } from '../education/question-version.repository';
+import { QuestionVersionRepository, type QuestionVersionWithAnswerOptions } from '../education/question-version.repository';
 import { AnswerOptionRepository } from '../education/answer-option.repository';
 import { Prisma } from '../generated/prisma/client';
-import type { QuickQuestionSession, QuickQuestionAttempt, QuestionVersion } from '../generated/prisma/client';
+import type { QuickQuestionSession, QuickQuestionAttempt } from '../generated/prisma/client';
 
 /**
  * Namespace de advisory lock DISTINTO a los ya en uso (19 ADR-0019, 20
@@ -27,10 +27,10 @@ const QUICK_QUESTION_LOCK_NAMESPACE = 23;
 export type OpenSessionOutcome = { session: QuickQuestionSession; created: boolean };
 
 export type NextOutcome =
-  | { outcome: 'QUESTION_PRESENTED'; session: QuickQuestionSession; questionVersion: QuestionVersion }
+  | { outcome: 'QUESTION_PRESENTED'; session: QuickQuestionSession; questionVersion: QuestionVersionWithAnswerOptions }
   | { outcome: 'NO_QUESTIONS_AVAILABLE'; session: QuickQuestionSession };
 
-export type AnswerOutcome = { attempt: QuickQuestionAttempt; created: boolean };
+export type AnswerOutcome = { attempt: QuickQuestionAttempt; created: boolean; explanationContent: Prisma.JsonValue | null };
 
 /**
  * Bloque IV, Incremento 4, sub-incremento 4.b ("Motor de sesión de Pregunta
@@ -103,7 +103,7 @@ export class QuickQuestionService {
         }
 
         if (session.currentQuestionVersionId) {
-          const pending = await this.questionVersionRepo.findByIdWithQuestionStatus(session.currentQuestionVersionId, tx);
+          const pending = await this.questionVersionRepo.findByIdWithAnswerOptions(session.currentQuestionVersionId, tx);
           if (!pending) {
             throw new ConflictException('La pregunta pendiente de esta sesión ya no está disponible.');
           }
@@ -146,7 +146,11 @@ export class QuickQuestionService {
           if (existing.sessionId !== sessionId) {
             throw new BadRequestException('Este operationId ya fue usado en otra sesión de Pregunta rápida.');
           }
-          return { attempt: existing, created: false };
+          // Replay -- misma pregunta ya resuelta anteriormente, se resuelve
+          // su explicación de nuevo (nunca se re-crea el intento ni se
+          // vuelve a publicar, ver `result.created` más abajo).
+          const questionVersion = await this.questionVersionRepo.findByIdWithQuestionStatus(existing.questionVersionId, tx);
+          return { attempt: existing, created: false, explanationContent: questionVersion?.explanationContent ?? null };
         }
 
         if (session.status !== 'ACTIVE') {
@@ -161,6 +165,16 @@ export class QuickQuestionService {
           throw new BadRequestException('La alternativa no pertenece a la pregunta pendiente de esta sesión.');
         }
 
+        // Mismo criterio de defensa en profundidad que PROGRESS
+        // (ADR-0014): la pregunta pudo retirarse en la ventana entre
+        // presentarse (`/next`) y responderse -- se revalida aquí, no solo
+        // en la selección. También es la fuente de `explanationContent`
+        // para la respuesta.
+        const questionVersion = await this.questionVersionRepo.findByIdWithQuestionStatus(session.currentQuestionVersionId, tx);
+        if (!questionVersion || questionVersion.editorialStatus !== 'PUBLISHED' || questionVersion.question.status !== 'ACTIVE') {
+          throw new ConflictException('La pregunta pendiente de esta sesión ya no está disponible.');
+        }
+
         const attempt = await this.attemptRepo.create(tx, {
           sessionId,
           accountId,
@@ -172,7 +186,7 @@ export class QuickQuestionService {
         });
         await this.sessionRepo.clearCurrentQuestion(tx, sessionId);
 
-        return { attempt, created: true };
+        return { attempt, created: true, explanationContent: questionVersion.explanationContent };
       },
       { timeout: 30_000, maxWait: 30_000 },
     );

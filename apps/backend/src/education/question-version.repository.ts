@@ -11,6 +11,10 @@ export type QuestionVersionWithQuestionStatus = QuestionVersion & {
   question: { id: string; status: string };
 };
 
+export type QuestionVersionWithAnswerOptions = QuestionVersion & {
+  answerOptions: AnswerOption[];
+};
+
 /**
  * Repositorio propio del agregado QuestionVersion (dominio EDUCATION).
  * `curriculumTopicId` es la clasificación editorial fina, trazable por
@@ -58,6 +62,21 @@ export class QuestionVersionRepository {
     });
   }
 
+  /**
+   * Presentación server-side de Pregunta rápida (Bloque IV, Incremento 4,
+   * sub-incremento 4.c, §13.4) -- `stemContent`/`answerOptions` para
+   * renderizar la pregunta pendiente, SIN `isCorrect` hacia el cliente (esa
+   * exclusión ocurre en la capa de mapeo del controller, mismo criterio que
+   * EDUCATION). `tx` opcional -- QuickQuestionService lo pasa dentro de la
+   * transacción bloqueada por sesión.
+   */
+  findByIdWithAnswerOptions(id: string, tx?: Prisma.TransactionClient): Promise<QuestionVersionWithAnswerOptions | null> {
+    return (tx ?? this.prisma).questionVersion.findUnique({
+      where: { id },
+      include: { answerOptions: { orderBy: { displayOrder: 'asc' } } },
+    });
+  }
+
   /** Conteo de versiones publicadas de un tema -- usado por PROGRESS para determinar completitud (ADR-0014, punto 6). */
   countPublishedByTopicId(curriculumTopicId: string): Promise<number> {
     return this.prisma.questionVersion.count({ where: { curriculumTopicId, editorialStatus: 'PUBLISHED' } });
@@ -74,14 +93,15 @@ export class QuestionVersionRepository {
    * `tx` opcional -- pasado por QuickQuestionService dentro de la
    * transacción bloqueada por sesión.
    */
-  async findRandomEligible(excludeQuestionVersionIds: string[], tx?: Prisma.TransactionClient): Promise<QuestionVersion | null> {
+  async findRandomEligible(excludeQuestionVersionIds: string[], tx?: Prisma.TransactionClient): Promise<QuestionVersionWithAnswerOptions | null> {
     const client = tx ?? this.prisma;
     // Prisma Client no expone ORDER BY random() de forma portable -- SQL
     // crudo SOLO para elegir el id (evita el mapeo manual snake_case ->
     // camelCase que $queryRaw exigiría sobre la fila completa); la fila real
-    // se recupera después con el mismo cliente vía Prisma normal, mapeo
-    // correcto garantizado. Sin problema de rendimiento conocido con el
-    // volumen actual del catálogo.
+    // se recupera después con el mismo cliente vía Prisma normal (incluye
+    // answerOptions -- mismo shape que findByIdWithAnswerOptions, evita una
+    // segunda consulta en el llamador). Sin problema de rendimiento
+    // conocido con el volumen actual del catálogo.
     const rows = await client.$queryRaw<{ id: string }[]>`
       SELECT "id" FROM "question_version"
       WHERE "editorial_status" = 'PUBLISHED'
@@ -91,6 +111,9 @@ export class QuestionVersionRepository {
     `;
     const chosenId = rows[0]?.id;
     if (!chosenId) return null;
-    return client.questionVersion.findUnique({ where: { id: chosenId } });
+    return client.questionVersion.findUnique({
+      where: { id: chosenId },
+      include: { answerOptions: { orderBy: { displayOrder: 'asc' } } },
+    });
   }
 }
