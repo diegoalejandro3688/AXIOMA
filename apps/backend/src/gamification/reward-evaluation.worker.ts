@@ -222,6 +222,16 @@ export class RewardEvaluationWorker {
     sourceEntityType: RewardSourceEntityType,
     sourceEntityId: string,
   ) {
+    // Guarda de última línea (defensa en profundidad): un accountId ausente
+    // aquí nunca debería originarse en el propio worker (siempre recibe el
+    // parámetro real de processAccount/discoverPendingAccounts) -- pero un
+    // llamador externo con un valor corrupto (visto en gates: una sesión de
+    // prueba fallida silenciosamente propagada) NO debe poder persistir un
+    // reward_grant con sourceEntityId literal "undefined:..." -- falla
+    // rápido y explícito en vez de escribir un dato irrecuperable.
+    if (!accountId) {
+      throw new Error(`deliverBundleComponents: accountId ausente (sourceEntityType=${sourceEntityType}, sourceEntityId=${sourceEntityId}).`);
+    }
     const { grant } = await this.grantRepo.createIdempotent({
       accountId,
       rewardBundleId: bundle.id,

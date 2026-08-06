@@ -349,6 +349,18 @@ async function main() {
   check('el cursor ahora sí avanzó tras el éxito', cursorCAfterRetry?.lastProcessedRecordedAt != null);
   check('attempts se reseteó a 0 tras el éxito', cursorCAfterRetry?.attempts === 0);
 
+  console.log('--- 4b. accountId ausente nunca puede persistir un reward_grant (guarda de defensa en profundidad) ---');
+  let missingAccountIdRejected = false;
+  try {
+    // @ts-expect-error -- accountId vacío deliberadamente, para probar la guarda en tiempo de ejecución (no solo el tipo).
+    await worker.deliverBundleComponents('', bundleLevel2, 'LEVEL', 'no-deberia-persistir:1');
+  } catch (error) {
+    missingAccountIdRejected = error instanceof Error && error.message.includes('accountId ausente');
+  }
+  check('deliverBundleComponents rechaza accountId ausente antes de tocar la base de datos', missingAccountIdRejected);
+  const noOrphanGrant = await pg.query("SELECT count(*)::int AS n FROM reward_grant WHERE source_entity_id LIKE '%undefined%'");
+  check('ningún reward_grant con sourceEntityId conteniendo "undefined" existe en la base', noOrphanGrant.rows[0].n === 0);
+
   console.log('--- 5. Frontera de dominio: verificación estática ---');
   const { readFileSync } = await import('node:fs');
   const { join } = await import('node:path');
