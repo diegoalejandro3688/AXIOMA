@@ -42,6 +42,7 @@
     "verify:league-season-foundation-gate": "tsx scripts/verify-league-season-foundation-gate.ts",
     "verify:league-ranking-gate": "tsx scripts/verify-league-ranking-gate.ts",
     "verify:competitive-profile-foundation-gate": "tsx scripts/verify-competitive-profile-foundation-gate.ts",
+    "verify:competitive-profile-endpoint-gate": "tsx scripts/verify-competitive-profile-endpoint-gate.ts",
     "cli:recover-account": "node dist/cli/recover-account.js",
     "db:up": "docker compose -f ../../docker-compose.yml up -d",
     "db:down": "docker compose -f ../../docker-compose.yml down"

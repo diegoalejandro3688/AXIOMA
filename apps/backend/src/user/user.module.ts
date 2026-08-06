@@ -8,6 +8,7 @@ import { PublicProfileController } from './public-profile.controller';
 import { CosmeticEquipmentController } from './cosmetic-equipment.controller';
 import { UserService } from './user.service';
 import { CompetitiveProfileIdentityService } from './competitive-profile-identity.service';
+import { CompetitiveContextService } from './competitive-context.service';
 
 /**
  * `UserProfile` (privado, ADR-0008) y `PublicProfile` (identidad pública,
@@ -34,7 +35,7 @@ import { CompetitiveProfileIdentityService } from './competitive-profile-identit
 @Module({
   imports: [AuthModule, GamificationModule],
   controllers: [UserController, PublicProfileController, CosmeticEquipmentController],
-  providers: [UserProfileRepository, PublicProfileRepository, UserService, CompetitiveProfileIdentityService],
-  exports: [UserService, CompetitiveProfileIdentityService],
+  providers: [UserProfileRepository, PublicProfileRepository, UserService, CompetitiveProfileIdentityService, CompetitiveContextService],
+  exports: [UserService, CompetitiveProfileIdentityService, CompetitiveContextService],
 })
 export class UserModule {}

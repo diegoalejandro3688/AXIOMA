@@ -188,3 +188,57 @@ export type EquipCosmeticRequest = z.infer<typeof equipCosmeticRequestSchema>;
 
 export const equipCosmeticResponseSchema = cosmeticSummarySchema;
 export type EquipCosmeticResponse = z.infer<typeof equipCosmeticResponseSchema>;
+
+/**
+ * Perfil competitivo de otro usuario -- ver docs/adr/0021-perfil-competitivo-cross-cuenta.md.
+ * Deliberadamente SIN ningún identificador interno (`accountId`,
+ * `publicProfileId`, `seasonLeagueParticipationId`, `groupId`,
+ * `inventoryItemId`/`cosmeticItemId`, `titleDefinitionId`) -- lista
+ * blanca de solo datos de producto (ADR-0021 §2/§3, precisión del
+ * Product Owner 2026-08-06: "ninguna respuesta expone IDs internos
+ * correlacionables").
+ */
+export const competitiveEquippedTitleSchema = z.object({
+  titleKey: z.string(),
+  displayText: z.string(),
+  rarityClass: z.string(),
+});
+
+export const competitiveEquippedCosmeticSchema = z.object({
+  cosmeticSlot: cosmeticSlotSchema,
+  itemKey: z.string(),
+  name: z.string(),
+  assetReference: z.string(),
+});
+
+export const publicAchievementSchema = z.object({
+  achievementKey: z.string(),
+  name: z.string(),
+  unlockedAt: isoDateTime,
+});
+
+/** `null` si la cuenta no tiene participación activa en la temporada vigente -- NUNCA motivo de 404 (ADR-0021 §2). */
+export const competitiveContextSchema = z.object({
+  leagueName: z.string(),
+  rankPosition: z.number().int().positive(),
+  metricValue: z.number().int(),
+  calculatedAt: isoDateTime,
+  snapshotVersion: z.number().int().nonnegative(),
+});
+
+export const competitiveProfileResponseSchema = z.object({
+  username: z.string(),
+  avatar: z.string().nullable(),
+  equippedTitle: competitiveEquippedTitleSchema.nullable(),
+  equippedCosmetics: z.array(competitiveEquippedCosmeticSchema),
+  levelNumber: z.number().int().positive(),
+  publicAchievements: z.array(publicAchievementSchema),
+  competitive: competitiveContextSchema.nullable(),
+});
+export type CompetitiveProfileResponse = z.infer<typeof competitiveProfileResponseSchema>;
+
+/** `/me` únicamente -- añade `lifecycleStatus` propio (ADR-0021, precisión 2026-08-06: RETIRED se muestra al dueño, nunca a un tercero). */
+export const meCompetitiveProfileResponseSchema = competitiveProfileResponseSchema.extend({
+  lifecycleStatus: z.enum(['ACTIVE', 'RETIRED']),
+});
+export type MeCompetitiveProfileResponse = z.infer<typeof meCompetitiveProfileResponseSchema>;

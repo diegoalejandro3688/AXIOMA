@@ -11,8 +11,46 @@ import type { InventoryItemWithCosmeticItem } from '../gamification/inventory-it
 import type { CosmeticSlot } from '../generated/prisma/client';
 import { Prisma } from '../generated/prisma/client';
 import type { UserProfile, PublicProfile } from '../generated/prisma/client';
+import { CompetitiveProfileIdentityService, type CompetitiveProfileIdentity } from './competitive-profile-identity.service';
+import { CompetitiveContextService, type CompetitiveContext } from './competitive-context.service';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
+
+/**
+ * Bloque IV, Incremento 3, sub-incremento 3.b (ADR-0021) -- mismo mensaje
+ * y misma forma para PRIVATE/RETIRED/ANONYMIZED/inexistente, en el
+ * endpoint público por `username`. Nunca distingue el motivo (Decision
+ * Gate 1, ADR-0021).
+ */
+const COMPETITIVE_PROFILE_NOT_FOUND_MESSAGE = 'Este perfil no existe o no está disponible.';
+
+/** Forma pública compartida -- NUNCA incluye `accountId` ni ningún identificador interno correlacionable (ADR-0021 §2, precisión 2026-08-06). */
+export interface CompetitiveProfileView {
+  username: string;
+  avatar: string | null;
+  equippedTitle: CompetitiveProfileIdentity['equippedTitle'];
+  equippedCosmetics: CompetitiveProfileIdentity['equippedCosmetics'];
+  levelNumber: number;
+  publicAchievements: CompetitiveProfileIdentity['publicAchievements'];
+  competitive: CompetitiveContext | null;
+}
+
+/** `/me` únicamente -- añade `lifecycleStatus` para que el dueño vea su propio estado (precisión del Product Owner, 2026-08-06: RETIRED se muestra, no se oculta). */
+export interface MeCompetitiveProfileView extends CompetitiveProfileView {
+  lifecycleStatus: 'ACTIVE' | 'RETIRED';
+}
+
+function toCompetitiveProfileView(identity: CompetitiveProfileIdentity, competitive: CompetitiveContext | null): CompetitiveProfileView {
+  return {
+    username: identity.username,
+    avatar: identity.avatar,
+    equippedTitle: identity.equippedTitle,
+    equippedCosmetics: identity.equippedCosmetics,
+    levelNumber: identity.levelNumber,
+    publicAchievements: identity.publicAchievements,
+    competitive,
+  };
+}
 
 /** ADR-0018 §2: mismo período para frecuencia de cambio y ventana de reserva. */
 const USERNAME_CHANGE_COOLDOWN_DAYS = 30;
@@ -29,6 +67,8 @@ export class UserService {
     private readonly publicProfileRepo: PublicProfileRepository,
     private readonly titleEquipmentService: TitleEquipmentService,
     private readonly cosmeticEquipmentService: CosmeticEquipmentService,
+    private readonly competitiveProfileIdentityService: CompetitiveProfileIdentityService,
+    private readonly competitiveContextService: CompetitiveContextService,
   ) {}
 
   /**
@@ -292,6 +332,78 @@ export class UserService {
     ]);
     const equipped = profile ? await this.cosmeticEquipmentService.getEquipped(profile.id) : [];
     return { owned, equipped };
+  }
+
+  /**
+   * Bloque IV, Incremento 3, sub-incremento 3.b (ADR-0021 §5) --
+   * autoconsulta: el dueño de un perfil SIEMPRE ve su propia identidad
+   * completa, ignorando `visibilityStatus` (ADR-0020 §2, "la cuenta misma
+   * siempre ve su fila real"). NO ignora indiscriminadamente
+   * `lifecycleStatus` -- precisión obligatoria del Product Owner
+   * (2026-08-06):
+   * - Sin `public_profile` todavía -> 404 (mismo criterio que
+   *   `getPublicProfile`, el endpoint privado ya existente).
+   * - `ACTIVE` (cualquier visibilidad) -> 200, identidad completa.
+   * - `RETIRED` -> 200, identidad completa, MOSTRANDO el estado
+   *   (`lifecycleStatus` en la respuesta) -- alcanzable solo con una
+   *   sesión nueva iniciada durante la ventana de recuperación, ya que
+   *   `AuthService.requestAccountDeletion` revoca las sesiones
+   *   existentes en el momento de la solicitud (ADR-0005).
+   * - `ANONYMIZED` -> 404 uniforme, MISMO mensaje que el endpoint
+   *   público (§ de abajo) -- defensa en profundidad: en la práctica
+   *   inalcanzable, porque `AuthService.finalizeAccountClosure` borra la
+   *   identidad en el proveedor de autenticación antes de que una cuenta
+   *   llegue a `ANONYMIZED`, así que ninguna sesión nueva podría
+   *   completarse. Este método nunca asume esa garantía externa y aplica
+   *   la misma política de todos modos.
+   */
+  async getMyCompetitiveProfile(accountId: string): Promise<MeCompetitiveProfileView> {
+    const profile = await this.publicProfileRepo.findByAccountId(accountId);
+    if (!profile) throw new NotFoundException('Todavía no existe una identidad pública para esta cuenta.');
+    if (profile.lifecycleStatus === 'ANONYMIZED') {
+      throw new NotFoundException(COMPETITIVE_PROFILE_NOT_FOUND_MESSAGE);
+    }
+
+    const [identity, competitive] = await Promise.all([
+      this.competitiveProfileIdentityService.assembleIdentityForOwnAccount(accountId),
+      this.competitiveContextService.resolveByAccountId(accountId),
+    ]);
+    // `identity` no puede ser null aquí: ya confirmamos que `profile` existe justo arriba.
+    return { ...toCompetitiveProfileView(identity!, competitive), lifecycleStatus: profile.lifecycleStatus };
+  }
+
+  /**
+   * Bloque IV, Incremento 3, sub-incremento 3.b (ADR-0021 §1/§3) --
+   * consulta pública por `username`, SIN excepción para el propio dueño
+   * (nunca compara `accountId` del solicitante contra el perfil
+   * consultado -- por eso existe `getMyCompetitiveProfile` como camino
+   * separado). `PRIVATE`, `RETIRED`, `ANONYMIZED` e inexistente responden
+   * los CUATRO con el mismo `NotFoundException` -- mismo mensaje, mismo
+   * código, sin distinguir el motivo (Decision Gate 1, ADR-0021).
+   *
+   * Normaliza el `username` de entrada con el MISMO criterio canónico de
+   * escritura (ADR-0018 §2, `usernameInputSchema`: NFC + minúsculas) antes
+   * de consultar -- nunca compara contra el valor crudo del parámetro de
+   * ruta.
+   */
+  async getCompetitiveProfileByUsername(rawUsername: string): Promise<CompetitiveProfileView> {
+    const usernameNormalized = rawUsername.normalize('NFC').toLowerCase();
+    const profile = await this.publicProfileRepo.findByUsernameNormalized(usernameNormalized);
+    if (!profile || profile.lifecycleStatus !== 'ACTIVE' || profile.visibilityStatus !== 'VISIBLE') {
+      throw new NotFoundException(COMPETITIVE_PROFILE_NOT_FOUND_MESSAGE);
+    }
+
+    const [resolved, competitive] = await Promise.all([
+      this.competitiveProfileIdentityService.resolveByAccountId(profile.accountId),
+      this.competitiveContextService.resolveByAccountId(profile.accountId),
+    ]);
+    // `resolved.presentable` ya está garantizado por el chequeo de arriba
+    // (misma condición exacta que `isPresentable` dentro del servicio de
+    // identidad) -- pero nunca se asume sin verificar: un `presentable:false`
+    // aquí sería una divergencia de criterio entre este método y el
+    // servicio, y debe fallar de forma segura (404), nunca filtrar datos.
+    if (!resolved.presentable) throw new NotFoundException(COMPETITIVE_PROFILE_NOT_FOUND_MESSAGE);
+    return toCompetitiveProfileView(resolved.identity, competitive);
   }
 
   /**

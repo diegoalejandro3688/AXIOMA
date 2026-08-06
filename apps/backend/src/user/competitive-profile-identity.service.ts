@@ -116,17 +116,51 @@ export class CompetitiveProfileIdentityService {
     for (const accountId of accountIds) {
       result.set(accountId, { presentable: false });
     }
-    if (presentableProfiles.length === 0) return result;
 
-    const publicProfileIds = presentableProfiles.map((p) => p.id);
-    const presentableAccountIds = presentableProfiles.map((p) => p.accountId);
+    const identities = await this.assembleIdentitiesForProfiles(presentableProfiles);
+    for (const [accountId, identity] of identities) {
+      result.set(accountId, { presentable: true, identity });
+    }
+
+    return result;
+  }
+
+  /**
+   * Ensambla la identidad de UNA cuenta SIN comprobar presentabilidad --
+   * uso EXCLUSIVO de la autoconsulta (`/me`, sub-incremento 3.b): el
+   * dueño de un perfil siempre ve su propia identidad completa, sin
+   * importar `visibilityStatus` (ADR-0020 §2) ni, según la precisión del
+   * Product Owner sobre 3.b, `lifecycleStatus = RETIRED`. El llamador
+   * (`UserService`) es quien decide QUÉ cuentas califican para esto
+   * (existe el perfil, no está `ANONYMIZED`) -- este método nunca aplica
+   * el filtro de presentabilidad pública, a propósito.
+   */
+  async assembleIdentityForOwnAccount(accountId: string): Promise<CompetitiveProfileIdentity | null> {
+    const profile = await this.publicProfileRepo.findByAccountId(accountId);
+    if (!profile) return null;
+    const identities = await this.assembleIdentitiesForProfiles([profile]);
+    return identities.get(accountId) ?? null;
+  }
+
+  /**
+   * Ensamblado compartido -- UNA sola consulta por tabla, `WHERE ... IN
+   * (...)`, para el conjunto de perfiles ya decidido por el llamador (ya
+   * sea "los presentables de un lote" o "el propio, sin filtrar"). Nunca
+   * vuelve a consultar `public_profile` -- ya lo recibe resuelto.
+   */
+  private async assembleIdentitiesForProfiles(profiles: PublicProfile[]): Promise<Map<string, CompetitiveProfileIdentity>> {
+    const result = new Map<string, CompetitiveProfileIdentity>();
+    if (profiles.length === 0) return result;
+
+    const publicProfileIds = profiles.map((p) => p.id);
+    const accountIds = profiles.map((p) => p.accountId);
 
     const [equippedTitles, equippedCosmetics, balances, levels, publicUnlocks] = await Promise.all([
       this.equippedTitleRepo.findManyByPublicProfileIds(publicProfileIds),
       this.equippedCosmeticRepo.findManyByPublicProfileIds(publicProfileIds),
-      this.xpBalanceRepo.findManyByAccountIds(presentableAccountIds),
+      this.xpBalanceRepo.findManyByAccountIds(accountIds),
       this.levelDefinitionRepo.findAllActiveOrderedByLevelNumber(),
-      this.achievementUnlockRepo.findManyPublicByAccountIds(presentableAccountIds),
+      this.achievementUnlockRepo.findManyPublicByAccountIds(accountIds),
     ]);
 
     const titleByProfileId = new Map(equippedTitles.map((t) => [t.publicProfileId, t]));
@@ -144,7 +178,7 @@ export class CompetitiveProfileIdentityService {
       achievementsByAccountId.set(unlock.accountId, list);
     }
 
-    for (const profile of presentableProfiles) {
+    for (const profile of profiles) {
       const equippedTitle = titleByProfileId.get(profile.id);
       const lifetimeXp = balanceByAccountId.get(profile.accountId)?.lifetimeXp ?? 0;
       const identity: CompetitiveProfileIdentity = {
@@ -171,7 +205,7 @@ export class CompetitiveProfileIdentityService {
           unlockedAt: u.unlockedAt,
         })),
       };
-      result.set(profile.accountId, { presentable: true, identity });
+      result.set(profile.accountId, identity);
     }
 
     return result;
