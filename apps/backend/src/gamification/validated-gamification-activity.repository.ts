@@ -2,6 +2,38 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../platform/prisma/prisma.service';
 import type { ValidatedGamificationActivity } from '../generated/prisma/client';
 
+interface PendingGrantRow {
+  id: string;
+  account_id: string;
+  source_domain: string;
+  source_entity_type: string;
+  source_entity_id: string;
+  activity_type: string;
+  validation_status: string;
+  validation_rule_version: string;
+  occurred_at: Date;
+  validated_at: Date;
+  deduplication_key: string;
+  integrity_status: string;
+}
+
+function toActivity(row: PendingGrantRow): ValidatedGamificationActivity {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    sourceDomain: row.source_domain,
+    sourceEntityType: row.source_entity_type,
+    sourceEntityId: row.source_entity_id,
+    activityType: row.activity_type,
+    validationStatus: row.validation_status,
+    validationRuleVersion: row.validation_rule_version,
+    occurredAt: row.occurred_at,
+    validatedAt: row.validated_at,
+    deduplicationKey: row.deduplication_key,
+    integrityStatus: row.integrity_status,
+  };
+}
+
 /**
  * Único punto de acceso a `validated_gamification_activity` -- ver
  * docs/adr/0016-gamificacion-fundacion.md. `accountId` SIN FK a Account,
@@ -43,19 +75,46 @@ export class ValidatedGamificationActivityRepository {
    * asociado -- NUNCA un campo mutado en esta tabla (condición
    * arquitectónica explícita, ver docs/adr/0016-gamificacion-fundacion.md).
    * Excluye actividades en backoff (xp_grant_attempt.nextEligibleAt en el
-   * futuro) -- así una actividad sin regla activa no compite por el cupo
-   * de cada ciclo indefinidamente, y nunca bloquea a una actividad nueva
-   * (sin intento todavía, siempre elegible).
+   * futuro).
+   *
+   * Orden: `attempts` (NULLS FIRST) antes que `occurredAt`. El backoff por
+   * sí solo NO evita starvation -- retrasa el reingreso de una actividad
+   * sin regla, pero una vez que `nextEligibleAt` vence, esa actividad
+   * vuelve a competir, y al ser más antigua que cualquier actividad nueva
+   * (occurredAt anterior) la superaría SIEMPRE bajo un orden puro por
+   * occurredAt. Con un backlog de actividades irresolubles (ninguna regla
+   * llegará jamás a existir para su activityType) igual o mayor al tamaño
+   * del lote, esto bloquea indefinidamente a actividades nuevas y
+   * genuinamente pendientes -- se confirmó reproducido contra datos reales
+   * (ver auditoría, Bloque IV Incremento 2). Priorizar por intentos deja
+   * pasar primero a lo nunca intentado (attempts NULL/0) en cada ciclo;
+   * lo que ya falló repetidas veces solo ocupa el cupo sobrante.
+   *
+   * SQL crudo, no `findMany` con `orderBy` anidado: Prisma solo admite el
+   * modificador `nulls` en columnas propias del modelo consultado, no en
+   * campos alcanzados a través de una relación (aquí, `xp_grant_attempt`
+   * vía LEFT JOIN) -- `XpGrantAttemptOrderByWithRelationInput.attempts` es
+   * `SortOrder` puro, sin variante `{ sort, nulls }`. Y el default de
+   * Postgres para ASC es NULLS LAST (justo lo contrario de lo que se
+   * necesita: una actividad sin intento todavía debe ir PRIMERO).
    */
-  findPendingGrant(limit: number, now: Date = new Date()): Promise<ValidatedGamificationActivity[]> {
-    return this.prisma.validatedGamificationActivity.findMany({
-      where: {
-        ledgerEntries: { none: { entryType: 'OTORGAMIENTO' } },
-        OR: [{ grantAttempt: null }, { grantAttempt: { nextEligibleAt: { lte: now } } }],
-      },
-      orderBy: { occurredAt: 'asc' },
-      take: limit,
-    });
+  async findPendingGrant(limit: number, now: Date = new Date()): Promise<ValidatedGamificationActivity[]> {
+    const rows = await this.prisma.$queryRaw<PendingGrantRow[]>`
+      SELECT
+        vga.id, vga.account_id, vga.source_domain, vga.source_entity_type, vga.source_entity_id,
+        vga.activity_type, vga.validation_status, vga.validation_rule_version, vga.occurred_at,
+        vga.validated_at, vga.deduplication_key, vga.integrity_status
+      FROM validated_gamification_activity vga
+      LEFT JOIN xp_grant_attempt xga ON xga.validated_activity_id = vga.id
+      WHERE NOT EXISTS (
+        SELECT 1 FROM xp_ledger_entry xle
+        WHERE xle.validated_activity_id = vga.id AND xle.entry_type = 'OTORGAMIENTO'
+      )
+      AND (xga.validated_activity_id IS NULL OR xga.next_eligible_at <= ${now})
+      ORDER BY xga.attempts ASC NULLS FIRST, vga.occurred_at ASC
+      LIMIT ${limit}
+    `;
+    return rows.map(toActivity);
   }
 
   /**

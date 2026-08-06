@@ -719,9 +719,11 @@ model ValidatedGamificationActivity {
 /// Previene "polling perpetuo" y starvation: una actividad con intentos
 /// fallidos deja de competir por el cupo de cada ciclo hasta
 /// `nextEligibleAt` (backoff creciente y acotado para NO_ACTIVE_RULE;
-/// exactamente la medianoche UTC siguiente para DAILY_CAP_REACHED) -- así
-/// las actividades nuevas, sin intento todavía, nunca quedan bloqueadas
-/// detrás de un backlog viejo sin regla.
+/// exactamente la medianoche UTC siguiente para DAILY_CAP_REACHED). El
+/// backoff por sí solo NO basta: una vez vencido, `attempts` es lo que
+/// mantiene a las actividades nuevas (sin intento todavía) por delante de
+/// un backlog viejo sin regla -- ver orden en
+/// ValidatedGamificationActivityRepository.findPendingGrant.
 model XpGrantAttempt {
   id                  String   @id @default(uuid()) @db.Uuid
   validatedActivityId String   @unique @map("validated_activity_id") @db.Uuid
