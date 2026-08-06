@@ -4,7 +4,7 @@
 **Fase**: Fase 2 — Learning Experience Foundation
 **Bloque**: IV de VIII (Roadmap Learning Experience Foundation)
 **Documentos relacionados**: `docs/adr/BLOCK-III-CLOSURE-REPORT.md`, `docs/adr/BLOCK-III-DEFINITION.md`, `docs/adr/0018-public-profile-foundation.md`, `docs/adr/0016-gamificacion-fundacion.md`, `docs/adr/0020-ranking-materializacion.md`, `docs/PHASE-2-KICKOFF-INVENTORY.md`
-**Estado**: Definición revisada (3ª pasada, 2026-08-05). Incremento 1 ("Fundación de temporadas y ligas") **implementado y gateado** (§9) — cuatro precisiones obligatorias del Product Owner incorporadas y verificadas con gates de concurrencia real. Incremento 2 ("Ranking"): diseño completo (§10) y **ADR-0020 APPROVED (2026-08-05)** — implementación autorizada a continuación. Pendiente: Incrementos 3-5 (perfil competitivo cross-account, pregunta rápida, superficie móvil).
+**Estado**: Definición revisada (4ª pasada, 2026-08-06). Incremento 1 ("Fundación de temporadas y ligas") **implementado y gateado** (§9). Incremento 2 ("Ranking") **implementado, gateado y CERRADO** (§10, ADR-0020 APPROVED) — checkpoint commiteado sin tag (`26c28f1`). La limitación ambiental de `findPendingGrant` (Bloque I) documentada al cierre de Incremento 2 (§10, nota final) fue diagnosticada y corregida en un commit independiente (`0b52122`, starvation real confirmada y resuelta) — ver también `449d654`/`15fcd30` (hallazgo relacionado de Bloque III, clasificado como rate limiting real, no defecto de producto). Incremento 3 ("Perfil competitivo de otro usuario"): **diseño en curso** (§11) — auditoría documental completa, vacíos identificados, pendiente de confirmación del Product Owner antes de redactar ADR y comenzar la implementación. Pendiente: Incrementos 4-5 (pregunta rápida, superficie móvil).
 
 **Nota de nomenclatura**: este documento y su futuro cierre usan el prefijo `LEF-` (`LEF-BLOCK-IV-DEFINITION.md`, `LEF-BLOCK-IV-CLOSURE-REPORT.md`) porque `docs/adr/BLOCK-IV-CLOSURE-REPORT.md` y `BLOCK-V-CLOSURE-REPORT.md` **ya existen**, pertenecientes a un roadmap distinto y anterior (Fase 1 — Vertical Slice M1, "Bloque IV/V de V"). Los Bloques I–III de esta fase (Learning Experience Foundation) no colisionaban con esos nombres y no se renombran retroactivamente — decisión explícita del Product Owner (2026-08-05): prefijo nuevo hacia adelante, historia cerrada intacta.
 
@@ -453,3 +453,121 @@ Gates ejecutados y su resultado:
 6. **Pendiente de decisión del Product Owner**: si corresponde una corrección real a `findPendingGrant` (ej. excluir explícitamente actividades cuyo `activityType` nunca tendrá una `xp_rule`, o aumentar el lote) queda fuera del alcance de Incremento 2 -- no se toca `XpGrantService` (Bloque I, cerrado y gateado) sin autorización explícita.
 
 Con esta causa raíz confirmada y ajena a Incremento 2, `tsc`/`eslint`/`verify:league-ranking-gate`/`verify:league-season-foundation-gate` (los cuatro directamente relevantes a este incremento) están en **PASS** real. El gate consolidado de bloque completo no se pudo confirmar en PASS en esta sesión por la razón ambiental documentada arriba.
+
+**Adenda (2026-08-06) — punto 6 resuelto, commit independiente**: auditoría real contra Postgres (no supuesta) confirmó que las 101 filas no eran temporalmente pendientes, sino un caso genuino de starvation estructural: `findPendingGrant` ordenaba estrictamente por `occurredAt ASC` sin distinguir actividades nunca-resolubles (backoff vencido, siguen elegibles, pero ninguna regla llegará jamás a existir para su `activityType` de fixture) de actividades nuevas — reproducido exactamente contra el propio `verify-gamification-xp-grant-gate.ts`, cuya fixture quedaba con `attempts = NULL`, nunca tocada. Corregido ordenando por `attempts ASC NULLS FIRST, occurredAt ASC` (SQL crudo -- Prisma no expone `nulls` a través de una relación `orderBy`) en `ValidatedGamificationActivityRepository.findPendingGrant`. Verificado con 3 corridas consecutivas del gate contra el backlog real, sin resetear la base. Commit independiente `0b52122` (`fix(gamification)`, sin tag, Bloque I cerrado y gateado permanece intacto salvo esta corrección puntual).
+
+Durante la regresión completa post-fix aparecieron además fallos en `title-equipment-gate`/`cosmetic-equipment-gate`/`challenge-claim-gate`/`gamification-progression-gate`/`public-profile-gate` (`Argument accountId is missing`) — auditados y confirmados como **rate limiting real** (`POST /auth/session`, NFR-SEC-007, 10 req/60s) disparado por ejecutar varios gates seguidos en poco tiempo, no un defecto de producto: los cinco gates comparten un `createSession()` que extraía `accountId` de una respuesta 429 sin comprobar el status. En aislamiento (fuera de la ventana de 60s) los cinco pasan limpio, incluido `public-profile-gate` (sus fixtures ya eran únicos por sufijo). `createSession()` se endureció en los cinco scripts para fallar explícito ante un status inesperado (commit `449d654`, `test(gamification)`), y se añadió una guarda de defensa en profundidad en `RewardEvaluationWorker.deliverBundleComponents` que rechaza un `accountId` ausente antes de tocar `reward_grant` (commit `15fcd30`, `fix(gamification)`, con check nuevo en `verify-reward-delivery-xp-bonus-gate.ts`).
+
+## 11. Incremento 3 — Perfil competitivo de otro usuario: propuesta de diseño (auditoría completa, sin implementar todavía)
+
+Mismo criterio que §10: solo auditoría y diseño en esta pasada. No se toca el esquema, no se implementa el endpoint, no se redacta el ADR hasta confirmación del Product Owner.
+
+### 11.1 Auditoría documental — fuentes revisadas
+
+- **Data Model §16.25 "Privacidad de rankings"**: el ranking usa exclusivamente `public_profile_id`. Lista blanca literal: *"username, avatar, título equipado, nivel o puntos aplicables, posición, liga"*. Lista negra explícita: nombre privado, correo, edad exacta, ubicación, materias débiles, puntajes diagnósticos, objetivos, historial de respuestas, estado Premium, configuración de accesibilidad.
+- **§5 de este documento (Gate 4, ya fijado a nivel de bloque)**: *"nombre visible, avatar, título equipado, nivel, logros públicos, posición competitiva"* — añade **logros públicos**, ausente de la cita literal de §16.25. **Contradicción real, no cosmética** (ver §11.3.1).
+- **Master Context §4.10**: *"el estado Premium no se muestra públicamente salvo cosmético equipado voluntariamente (ya cubierto por Bloque III)"* — exige que el **cosmético equipado** sea visible, un tercer campo tampoco mencionado en la cita literal de §16.25.
+- **PRD PROFILE-006/007/008**: identidad pública limitada (mismo criterio que §16.25); sin comparaciones sobre inteligencia; el estudiante controla su visibilidad, con la opción más privada como predeterminada ante duda.
+- **ADR-0018**: `visibilityStatus = PRIVATE` → perfil "no puede ser referenciado por `leaderboard_entry`" (decisión que ADR-0020 §1/§2 **corrigió** — ver §11.2). `lifecycleStatus = RETIRED` → excluido de "toda superficie pública" (esta parte de ADR-0018 sigue vigente sin cambios: RETIRED nunca es alcanzable desde una superficie pública nueva).
+- **ADR-0020 §1/§2 (la corrección que redefine el problema de este incremento)**: la identidad autoritativa del cálculo de ranking es `season_league_participation`, **nunca** `public_profile`; la visibilidad del perfil **no debe alterar el cálculo competitivo bajo ninguna circunstancia**. Confirmado en el código ya commiteado: `SeasonLeagueParticipationRepository.findAllByGroupId` — *"TODAS las participaciones de un grupo, sin excepción [...] ningún filtro de visibilidad se aplica aquí ni en ningún punto de este repositorio"*. Esto **reemplaza** la lógica de "exclusión desde el origen" descrita en §10.11 de este documento (marcada ahí como corregida, conservada solo como registro auditable).
+- **Código ya commiteado, `LeaderboardCalculationService.recalculateGroup`**: `publicProfileId` se escribe deliberadamente `null` en cada fila de `leaderboard_entry`, con una nota explícita en el propio código: resolverlo exige que GAMIFICATION consulte a USER, lo que crearía un ciclo de módulos (`UserModule` ya importa `GamificationModule` para `TitleEquipmentService`/`CosmeticEquipmentService`) — **diferido explícitamente a este incremento**.
+- **Código ya commiteado, `PublicProfile`/`EquippedTitle`/`EquippedCosmetic`**: `equippedTitle`/`equippedCosmetics` cuelgan de `publicProfileId` (no de `accountId`) — coherente con exponerlos en una vista cross-cuenta que solo conoce `publicProfileId`.
+- **Código ya commiteado, `AchievementDefinition.visibilityClass`** (`PUBLIC`/`PRIVATE`): mecanismo ya existente, sin usar todavía, para filtrar exactamente "logros públicos" — resuelve la contradicción de §11.3.1 sin necesitar un campo nuevo.
+
+### 11.2 El problema central de este incremento (no estaba en el diseño original de §10)
+
+§10.11 (versión original, corregida por ADR-0020) asumía que la privacidad **excluía** perfiles del cálculo — bajo ese modelo, toda fila de `leaderboard_entry` que existiera pertenecía, por construcción, a un perfil elegible para mostrarse. ADR-0020 invirtió esa decisión: **el ranking calcula sobre el 100% de las participaciones, sin importar visibilidad** (correcto para integridad competitiva — la posición de un estudiante no debe cambiar solo porque otro activó/desactivó su privacidad). La consecuencia directa, no resuelta por ningún documento hasta ahora: **`leaderboard_entry` contiene hoy filas de perfiles `PRIVATE` y `RETIRED` mezcladas con las de perfiles elegibles**, en la misma tabla, con posiciones reales y consecutivas.
+
+Este incremento no puede limitarse a "resolver `publicProfileId`" — debe decidir explícitamente **qué hace el endpoint de lectura con una fila cuyo perfil no es presentable**, algo que ningún documento fuente (ni Data Model, ni Master Context, ni ADR-0018/0020) fija.
+
+### 11.3 Vacíos reales identificados, pendientes de decisión del Product Owner
+
+#### 11.3.1 Reconciliación de la lista blanca (§16.25 vs. §5 de este documento vs. Master Context §4.10)
+
+**Propuesta**: la lista blanca real, efectiva, es la **unión** de las tres fuentes — ninguna es más autoritativa que otra (§16.25 es el Data Model general de "Privacidad de rankings", pero §4.10/Bloque III ya construyeron cosméticos específicamente para mostrarse en contextos como este, y el Gate 4 de este propio documento —ya redactado y aprobado a nivel de bloque— exige logros públicos). Campos propuestos, con su fuente de dato exacta:
+
+| Campo expuesto | Fuente | Filtro aplicado |
+|---|---|---|
+| `username` | `PublicProfile.usernameNormalized` | Solo si `visibilityStatus = VISIBLE` y `lifecycleStatus = ACTIVE` — si no, perfil entero no presentable (§11.3.2) |
+| `avatar` | `PublicProfile.avatarReference` | Igual que arriba |
+| `título equipado` | `EquippedTitle` (vía `publicProfileId`) | Ya público por construcción (Bloque III, 3.b) — `null` si no hay ninguno equipado |
+| `cosmético equipado` | `EquippedCosmetic[]` (vía `publicProfileId`) | Igual — refuerza Master Context §4.10, ausente de la cita literal de §16.25 pero exigido explícitamente en el mismo párrafo |
+| `nivel` | `XpBalance.lifetimeXp` (vía `accountId`, resuelto a través de `PublicProfile.accountId`) → `LevelDefinition` | Mismo cálculo que `ProgressionService.getLevelProgress`, sin exponer `lifetimeXp` en crudo — solo `levelNumber` (Data Model dice "nivel **o** puntos aplicables", no ambos; se propone exponer solo nivel, más conservador) |
+| `logros públicos` | `AchievementUnlock` (vía `accountId`) `JOIN AchievementDefinition WHERE visibilityClass = 'PUBLIC'` | Reutiliza un campo ya existente y sin usar — cero migración de esquema nueva |
+| `posición competitiva` | `LeaderboardEntry.rankPosition`/`metricValue` (vía `publicProfileId`, una vez resuelto — §11.4) | Solo si el perfil es presentable (§11.3.2); la posición NUMÉRICA de otros nunca se recalcula por esto (§11.2) |
+| `liga` | `LeagueDefinition` (vía `LeagueGroup` de la `SeasonLeagueParticipation`) | Sin filtro — el tier en sí no es información privada |
+
+**Explícitamente en la lista negra** (ya fijada por §16.25, sin ambigüedad, ninguna fuente la contradice): nombre privado, correo, edad exacta, ubicación, materias débiles, puntajes diagnósticos, objetivos, historial de respuestas, estado Premium, configuración de accesibilidad, `lifetimeXp` en crudo, cualquier campo de `Account`/`AuthIdentity`.
+
+#### 11.3.2 Qué hace el endpoint con una fila no presentable (el vacío central, §11.2)
+
+Tres alternativas, ninguna fijada por ningún documento fuente:
+
+| # | Alternativa | Evaluación |
+|---|---|---|
+| A | **Omitir la fila por completo** de la lista paginada (como si no existiera) | Preserva la privacidad, pero crea "huecos" de `rankPosition` visibles (posiciones 1, 2, 4, 6 sin el 3 ni el 5) — puede filtrar indirectamente CUÁNTOS estudiantes privados hay en el grupo, y contradice "posición competitiva" como campo de lista blanca (§16.25) para los perfiles vecinos, que verían un ranking con huecos inexplicados. |
+| B | **Redactar la fila** (mostrar la posición numérica real, con identidad reemplazada por un marcador genérico, ej. `"Estudiante privado"`, sin avatar/título/nivel/logros) | Preserva la integridad de la tabla de posiciones completa (sin huecos, coherente con Master Context §7.20: *"Cada cálculo deberá conocer [...] estado de cierre"* — el cliente ve una tabla real, completa, consistente con el cálculo autoritativo del servidor) y no revela nada de la lista negra. Es la única alternativa consistente con la decisión ya tomada por ADR-0020 (el cálculo SIEMPRE incluye a todos) — omitir en la presentación después de haber calculado con todos sería reintroducir por la puerta trasera el modelo que ADR-0020 explícitamente rechazó. |
+| C | **Redactar SOLO en "mi posición"/consultas directas, omitir en la lista paginada** | Inconsistente entre dos superficies del mismo dato — un estudiante vería una posición al consultar la suya y un hueco al pasar página hasta ahí. Ningún documento exige esta asimetría; se descarta por complejidad no justificada. |
+
+**Propuesta: alternativa B** (redactar, nunca omitir) — consistente con la decisión ya vigente de ADR-0020 (el ranking es real y completo para todos, la privacidad controla identidad, nunca posición), y es la única que no reabre el mismo debate que ADR-0020 ya cerró. `RETIRED` recibe el mismo tratamiento que `PRIVATE` para esta decisión (ADR-0018: excluido de toda superficie pública) — la diferencia entre ambos estados es irrelevante para el endpoint de lectura, solo importa "presentable o no".
+
+**Corolario de diseño**: el endpoint de lista NUNCA devuelve `publicProfileId`/ningún identificador estable de una fila redactada más allá de su posición — evita que el cliente pueda correlacionar una fila redactada entre dos peticiones y deducir permanencia/movimiento de un estudiante privado (fuga de información indirecta, no cubierta literalmente por §16.25 pero coherente con su espíritu).
+
+#### 11.3.3 Resolución de `publicProfileId` sin ciclo de módulos
+
+`GamificationModule` no puede importar `UserModule` (crearía el ciclo ya anticipado en el comentario del código de Incremento 2 — `UserModule` ya importa `GamificationModule`). Tres alternativas:
+
+| # | Alternativa | Evaluación |
+|---|---|---|
+| A | `LeaderboardCalculationService` resuelve `publicProfileId` en tiempo de cálculo (cada 15 min), guardándolo en la fila | Reintroduce el ciclo que el propio Incremento 2 evitó deliberadamente — se descarta sin más análisis, ya fue evaluado y rechazado. |
+| B | **Resolución en tiempo de lectura, en la capa de presentación de USER** (el endpoint nuevo vive en `UserModule`/`PublicProfileController`, no en `GamificationModule`) | Consistente con la arquitectura ya existente: `UserModule` ya depende de `GamificationModule` para leer `TitleEquipmentService`/`CosmeticEquipmentService` — este endpoint hace lo mismo, uniendo `LeaderboardEntryRepository`/`SeasonLeagueParticipationRepository` (ambos de GAMIFICATION, ya leídos hoy por USER a través de otros repositorios) contra `PublicProfileRepository` (de USER) **en la capa de presentación**, nunca dentro de GAMIFICATION. `accountId` es la clave de unión — ya presente en `SeasonLeagueParticipation.accountId` y en `PublicProfile.accountId`. |
+| C | Vista SQL materializada o columna desnormalizada `publicProfileId` mantenida por un trigger cross-tabla | Introduce acoplamiento a nivel de base de datos entre dos bounded contexts que el propio proyecto ha mantenido separados en cada incremento anterior (GAMIFICATION nunca ha tocado tablas de USER ni viceversa vía trigger) — se descarta, no hay precedente ni necesidad de rendimiento demostrada. |
+
+**Propuesta: alternativa B.** El nuevo endpoint (y su servicio) viven en `UserModule`, mismo patrón que `PublicProfileController` ya usa para exponer datos de GAMIFICATION (títulos/cosméticos equipados) sin que GAMIFICATION conozca a USER. La resolución es: `SeasonLeagueParticipation.accountId` → `PublicProfileRepository.findByAccountId` → filtrar presentable/no presentable (§11.3.2) → ensamblar la respuesta. `leaderboard_entry.publicProfileId` **permanece `null`** (la columna ya existe en el Data Model como parte de la proyección declarada, pero no se puede poblar sin el ciclo — se documenta como campo reservado, no usado en V1, mismo criterio que columnas grammar abiertas sin interpretar en otros incrementos).
+
+### 11.4 Identidad y autorización del endpoint
+
+- **Sin autenticación del sujeto, solo del solicitante** (§4.6, ya fijado): el endpoint requiere `AuthGuard` (sesión válida de QUIEN CONSULTA), pero no exige ninguna relación entre el solicitante y la cuenta consultada — mismo patrón ya usado para "título ajeno → 404" en `verify-title-equipment-gate.ts` Gate 14, ahora aplicado como diseño central en vez de un caso de rechazo aislado.
+- **Identificador de entrada**: por `username` (no `accountId`/`publicProfileId`) — es el único identificador que un cliente (viniendo de una fila de ranking, que ya expone `username`) tendría de forma natural. Alternativa "por `publicProfileId`" se descarta como entrada primaria (expondría un UUID interno sin necesidad — el username ya es la identidad pública canónica, ADR-0018).
+- **404 uniforme, nunca 403** (Gate 5, ya fijado en §5): perfil inexistente, `PRIVATE`, o `RETIRED` responden todos con el mismo 404 — nunca se filtra la existencia ni el motivo de inaccesibilidad (mismo criterio ya usado en 3.b/5.b).
+
+### 11.5 Endpoint propuesto (forma, no contrato final)
+
+```
+GET /user/public-profile/:username/competitive-profile
+```
+
+Respuesta (lista blanca de §11.3.1, perfil presentable):
+
+```
+{
+  username, avatar, equippedTitle, equippedCosmetics[],
+  level, publicAchievements[],
+  competitive: { leagueDefinitionKey, groupId, rankPosition, metricValue, calculatedAt, snapshotVersion }
+}
+```
+
+Perfil inexistente/`PRIVATE`/`RETIRED` → 404 uniforme (§11.4). Perfil presentable pero **sin** participación de liga activa (nunca entró a Competir, o su temporada ya cerró) → `competitive: null`, el resto de la lista blanca sigue disponible (mismo criterio que "propiedad y presentación son capas separadas", ya usado en `equipTitle`/`equipCosmetic`).
+
+**"Mi posición" (§10.10, capacidad ya garantizada por Incremento 2)**: se resuelve con el mismo mecanismo, `request.accountId` en vez de un `username` de otro — probablemente el mismo endpoint que ya expone "me" (`GET /user/public-profile` o un endpoint hermano), no duplicado aquí como decisión nueva.
+
+### 11.6 Decision Gates propuestos (a confirmar antes de implementar)
+
+| # | Gate | Qué verifica |
+|---|---|---|
+| 1 | Lista blanca exacta | La respuesta expone EXACTAMENTE los campos de §11.3.1 — ningún campo de la lista negra alcanzable, verificado por inspección exhaustiva de las claves del JSON (mismo criterio que Gate 2 de `verify-public-profile-gate.ts`, ahora cruzando cuentas). |
+| 2 | 404 uniforme sin filtrar motivo | Perfil inexistente, `PRIVATE` y `RETIRED` responden con el mismo status/cuerpo — indistinguibles entre sí desde fuera. |
+| 3 | Redacción, nunca omisión (§11.3.2) | Un grupo con participantes `PRIVATE`/`RETIRED` mezclados con elegibles produce una lista de ranking SIN huecos de `rankPosition` — las filas no presentables aparecen redactadas, nunca ausentes. |
+| 4 | Redacción sin identificador correlacionable | Una fila redactada no expone `publicProfileId`/`accountId`/ningún campo estable entre dos peticiones sucesivas al mismo endpoint. |
+| 5 | El cálculo de ranking no cambia por privacidad | Cambiar `visibilityStatus` de una cuenta a `PRIVATE` NUNCA altera `rankPosition`/`metricValue` de las demás filas del mismo grupo (regresión directa sobre la garantía ya fijada por ADR-0020 §1/§2). |
+| 6 | Sin dependencia circular de módulos | Verificación estática: ningún archivo de `src/gamification/` importa de `src/user/` (la resolución de `publicProfileId` vive exclusivamente en la capa de presentación de USER, §11.3.3). |
+| 7 | Logros filtrados por `visibilityClass` | Un logro `PRIVATE` desbloqueado por la cuenta consultada nunca aparece en `publicAchievements`, incluso si está `ACTIVE`/desbloqueado. |
+| 8 | Nivel expuesto sin `lifetimeXp` en crudo | La respuesta nunca contiene el campo `lifetimeXp`/ningún monto de XP — solo `level`/`levelNumber` derivado. |
+| 9 | Sin identidad requerida más allá del solicitante | Llamar sin sesión → 401. Llamar con sesión válida sobre CUALQUIER `username` (propio o ajeno) → 200/404 según elegibilidad, nunca 403 (§4.6/§11.4). |
+| 10 | Sin participación de liga no rompe el resto de la lista blanca | `competitive: null` con el resto de campos presentes, para un perfil elegible sin liga activa. |
+
+### 11.7 Determinación de ADR
+
+**Confirma lo ya señalado en §6/§4.6**: este incremento requiere ADR nuevo (`docs/adr/0021-perfil-competitivo-cross-cuenta.md`, propuesto) por ser el primer patrón de autorización cross-cuenta del proyecto — ninguna decisión de arquitectura previa lo cubre. El ADR debe fijar, como mínimo: la decisión de §11.3.2 (redactar, nunca omitir) por ser la más consecuente para la integridad del ranking y la más fácil de malinterpretar sin registro explícito; la lista blanca reconciliada de §11.3.1; y el mecanismo de resolución de §11.3.3 (capa de presentación en USER, sin ciclo de módulos).
+
+**Pendiente de confirmación del Product Owner antes de redactar el ADR y comenzar la implementación** — en particular, la decisión de §11.3.2 (redactar vs. omitir) es la de mayor impacto de producto y la única de las tres genuinamente reversible sin romper compatibilidad si se decide distinto más adelante (cambiar de "redactar" a "omitir" es un cambio de presentación, no de esquema).
