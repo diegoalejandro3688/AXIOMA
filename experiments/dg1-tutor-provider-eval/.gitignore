@@ -1,0 +1,10 @@
+# Artefactos de ejecución -- respuestas crudas de proveedores, payloads
+# completos, trazas. Evidencia temporal de DG-1, nunca versionada.
+output/
+
+# Por si alguna vez se coloca un .env local para desarrollo de este harness
+# (las credenciales reales viven en variables de entorno del shell, nunca
+# en un archivo dentro de este directorio).
+.env
+.env.*
+!.env.example

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dg1-case-schema-v1",
+  "type": "object",
+  "required": ["id", "category", "critical", "protected", "userPrompt"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^C[0-9]+\\.[0-9]+$" },
+    "category": { "type": "string" },
+    "critical": { "type": "boolean" },
+    "protected": { "type": "boolean" },
+    "userPrompt": { "type": "string", "minLength": 1 },
+    "formatConstraint": { "type": ["string", "null"] },
+    "objectiveCheck": { "type": ["object", "null"] },
+    "rubricDimensions": { "type": "array", "items": { "type": "string" } },
+    "manipulationAttempt": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

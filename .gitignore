@@ -19,3 +19,5 @@ prisma/generated/
 # correr los gates localmente (equivalente a la redirección de shell que usa
 # ci.yml) -- artefactos de ejecución, nunca código fuente.
 apps/backend/*.log
+
+.tmp/

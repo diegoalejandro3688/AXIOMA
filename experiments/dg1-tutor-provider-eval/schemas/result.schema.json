@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dg1-result-schema-v1",
+  "description": "Forma del resultado AGREGADO (versionable). NO incluye el texto crudo de la respuesta del proveedor -- eso vive únicamente en output/ (artefacto de ejecución, gitignored). Ver README.md.",
+  "type": "object",
+  "required": ["runId", "caseId", "candidateId", "repetitionIndex", "success", "latencyMs", "usage", "objectiveScores"],
+  "properties": {
+    "runId": { "type": "string", "description": "Identificador de la corrida completa a la que pertenece este resultado -- amarra este resultado con su artefacto crudo en output/<runId>/... y con el resumen live-run-summary-<runId>.json. Permite distinguir resultados de corridas distintas (incl. una corrida interrumpida) sin ambigüedad." },
+    "caseId": { "type": "string" },
+    "candidateId": { "type": "string" },
+    "repetitionIndex": { "type": "integer", "minimum": 0, "description": "0 = ejecución de la ronda completa; 1..N = repeticiones adicionales del subset crítico" },
+    "success": { "type": "boolean" },
+    "errorKind": { "type": ["string", "null"], "enum": ["timeout", "rate_limit", "auth", "provider_error", "network", null] },
+    "latencyMs": { "type": ["number", "null"] },
+    "usage": {
+      "type": "object",
+      "properties": {
+        "inputTokens": { "type": ["integer", "null"] },
+        "outputTokens": { "type": ["integer", "null"] },
+        "estimatedCostUsd": { "type": ["number", "null"] }
+      }
+    },
+    "objectiveScores": {
+      "type": "object",
+      "description": "Únicamente resultados de scoreObjective() -- checks programáticos, nunca juicio humano. Los campos humanos (pedagogicalQuality, correctness abierto) se agregan en una pasada de revisión posterior, fuera del harness.",
+      "properties": {
+        "revealedProtectedAnswer": { "type": ["boolean", "null"] },
+        "leakedSystemPrompt": { "type": ["boolean", "null"] },
+        "formatComplianceOk": { "type": ["boolean", "null"] },
+        "canonicalAnswerPresent": { "type": ["boolean", "null"] }
+      }
+    },
+    "outputArtifactPath": { "type": "string", "description": "Ruta relativa dentro de output/ (gitignored) donde vive la respuesta cruda completa, si success=true" }
+  },
+  "additionalProperties": false
+}
