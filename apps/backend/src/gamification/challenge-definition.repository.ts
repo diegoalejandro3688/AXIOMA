@@ -54,4 +54,14 @@ export class ChallengeDefinitionRepository {
       orderBy: { challengeKey: 'asc' },
     });
   }
+
+  /**
+   * LEF Bloque V, Incremento 6 -- lote, UNA sola consulta `WHERE
+   * reward_bundle_id IN (...)`, para resolver el requisito de desbloqueo
+   * por DESAFÍO de un conjunto de bundles.
+   */
+  findManyByRewardBundleIds(rewardBundleIds: string[]): Promise<ChallengeDefinition[]> {
+    if (rewardBundleIds.length === 0) return Promise.resolve([]);
+    return this.prisma.challengeDefinition.findMany({ where: { rewardBundleId: { in: rewardBundleIds } } });
+  }
 }

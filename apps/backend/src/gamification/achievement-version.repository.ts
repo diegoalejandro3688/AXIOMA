@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../platform/prisma/prisma.service';
-import type { AchievementVersion, AchievementVersionApprovalStatus } from '../generated/prisma/client';
+import type { AchievementVersion, AchievementVersionApprovalStatus, AchievementDefinition } from '../generated/prisma/client';
 import { XpThresholdUnlockRuleSchema, serializeUnlockRule } from './achievement-unlock-rule';
+
+export type AchievementVersionWithDefinition = AchievementVersion & { achievementDefinition: AchievementDefinition };
 
 /**
  * Único punto de acceso a `achievement_version` -- ver
@@ -67,6 +69,21 @@ export class AchievementVersionRepository {
         ],
       },
       orderBy: { effectiveFrom: 'desc' },
+    });
+  }
+
+  /**
+   * LEF Bloque V, Incremento 6 -- lote, UNA sola consulta `WHERE
+   * reward_bundle_id IN (...)`, con `achievementDefinition` ya unido, para
+   * resolver el requisito de desbloqueo por LOGRO de un conjunto de
+   * bundles. Solo versiones `APPROVED` -- una versión `DRAFT`/`RETIRED`
+   * nunca es un requisito real y vigente que mostrar.
+   */
+  findManyApprovedByRewardBundleIds(rewardBundleIds: string[]): Promise<AchievementVersionWithDefinition[]> {
+    if (rewardBundleIds.length === 0) return Promise.resolve([]);
+    return this.prisma.achievementVersion.findMany({
+      where: { rewardBundleId: { in: rewardBundleIds }, approvalStatus: 'APPROVED' },
+      include: { achievementDefinition: true },
     });
   }
 }

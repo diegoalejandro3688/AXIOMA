@@ -28,4 +28,15 @@ export class LevelDefinitionRepository {
   findByLevelNumber(levelNumber: number): Promise<LevelDefinition | null> {
     return this.prisma.levelDefinition.findUnique({ where: { levelNumber } });
   }
+
+  /**
+   * LEF Bloque V, Incremento 6 ("Personalización con elementos
+   * bloqueados") -- lote, UNA sola consulta `WHERE reward_bundle_id IN
+   * (...)`, para resolver el requisito de desbloqueo por NIVEL de un
+   * conjunto de bundles (nunca uno por bundle).
+   */
+  findManyByRewardBundleIds(rewardBundleIds: string[]): Promise<LevelDefinition[]> {
+    if (rewardBundleIds.length === 0) return Promise.resolve([]);
+    return this.prisma.levelDefinition.findMany({ where: { rewardBundleId: { in: rewardBundleIds } } });
+  }
 }

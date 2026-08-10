@@ -27,6 +27,11 @@ import { EquippedCosmeticRepository } from '../src/gamification/equipped-cosmeti
 import { AccountTitleRepository } from '../src/gamification/account-title.repository';
 import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
 import { EquippedTitleRepository } from '../src/gamification/equipped-title.repository';
+import { UnlockRequirementResolverService } from '../src/gamification/unlock-requirement-resolver.service';
+import { RewardBundleRepository } from '../src/gamification/reward-bundle.repository';
+import { LevelDefinitionRepository } from '../src/gamification/level-definition.repository';
+import { AchievementVersionRepository } from '../src/gamification/achievement-version.repository';
+import { ChallengeDefinitionRepository } from '../src/gamification/challenge-definition.repository';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
 
 const base = process.argv[2] ?? 'http://127.0.0.1:3000';
@@ -88,10 +93,21 @@ async function main() {
   // gates (ver verify-gamification-xp-grant-gate.ts).
   const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
   const prisma = new PrismaClient({ adapter }) as unknown as PrismaService;
+  // LEF Bloque V, Incremento 6 -- ambos servicios exigen
+  // UnlockRequirementResolverService desde este incremento; este gate no
+  // ejercita catálogo bloqueado, pero el constructor real de producción sí
+  // lo requiere.
+  const unlockRequirementResolver = new UnlockRequirementResolverService(
+    new RewardBundleRepository(prisma),
+    new LevelDefinitionRepository(prisma),
+    new AchievementVersionRepository(prisma),
+    new ChallengeDefinitionRepository(prisma),
+  );
   const titleEquipmentService = new TitleEquipmentService(
     new AccountTitleRepository(prisma),
     new TitleDefinitionRepository(prisma),
     new EquippedTitleRepository(prisma),
+    unlockRequirementResolver,
   );
   // UserService exige CosmeticEquipmentService desde 5.b -- este gate no
   // ejercita cosméticos, pero el constructor real de producción sí lo requiere.
@@ -99,6 +115,7 @@ async function main() {
     new InventoryItemRepository(prisma),
     new CosmeticItemRepository(prisma),
     new EquippedCosmeticRepository(prisma),
+    unlockRequirementResolver,
   );
   const userService = new UserService(new UserProfileRepository(prisma), new PublicProfileRepository(prisma), titleEquipmentService, cosmeticEquipmentService);
 

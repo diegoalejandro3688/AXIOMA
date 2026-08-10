@@ -19,6 +19,11 @@ import { CosmeticEquipmentService } from '../src/gamification/cosmetic-equipment
 import { CosmeticItemRepository } from '../src/gamification/cosmetic-item.repository';
 import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
 import { EquippedCosmeticRepository } from '../src/gamification/equipped-cosmetic.repository';
+import { UnlockRequirementResolverService } from '../src/gamification/unlock-requirement-resolver.service';
+import { RewardBundleRepository } from '../src/gamification/reward-bundle.repository';
+import { LevelDefinitionRepository } from '../src/gamification/level-definition.repository';
+import { AchievementVersionRepository } from '../src/gamification/achievement-version.repository';
+import { ChallengeDefinitionRepository } from '../src/gamification/challenge-definition.repository';
 import { UserService } from '../src/user/user.service';
 import { UserProfileRepository } from '../src/user/user-profile.repository';
 import { PublicProfileRepository } from '../src/user/public-profile.repository';
@@ -72,13 +77,24 @@ async function main() {
 
   const titleDefinitionRepo = new TitleDefinitionRepository(prisma);
   const accountTitleRepo = new AccountTitleRepository(prisma);
-  const titleEquipmentService = new TitleEquipmentService(accountTitleRepo, titleDefinitionRepo, new EquippedTitleRepository(prisma));
+  // LEF Bloque V, Incremento 6 -- ambos servicios exigen
+  // UnlockRequirementResolverService desde este incremento; este gate no
+  // ejercita catálogo bloqueado, pero el constructor real de producción sí
+  // lo requiere.
+  const unlockRequirementResolver = new UnlockRequirementResolverService(
+    new RewardBundleRepository(prisma),
+    new LevelDefinitionRepository(prisma),
+    new AchievementVersionRepository(prisma),
+    new ChallengeDefinitionRepository(prisma),
+  );
+  const titleEquipmentService = new TitleEquipmentService(accountTitleRepo, titleDefinitionRepo, new EquippedTitleRepository(prisma), unlockRequirementResolver);
   // UserService exige CosmeticEquipmentService desde 5.b -- este gate no ejercita
   // cosméticos, pero el constructor real de producción sí lo requiere.
   const cosmeticEquipmentService = new CosmeticEquipmentService(
     new InventoryItemRepository(prisma),
     new CosmeticItemRepository(prisma),
     new EquippedCosmeticRepository(prisma),
+    unlockRequirementResolver,
   );
   const userService = new UserService(new UserProfileRepository(prisma), new PublicProfileRepository(prisma), titleEquipmentService, cosmeticEquipmentService);
 

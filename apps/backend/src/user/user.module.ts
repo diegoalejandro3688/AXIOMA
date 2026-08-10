@@ -7,6 +7,7 @@ import { UserProfileRepository } from './user-profile.repository';
 import { PublicProfileRepository } from './public-profile.repository';
 import { PublicProfileController } from './public-profile.controller';
 import { CosmeticEquipmentController } from './cosmetic-equipment.controller';
+import { TitleCatalogController } from './title-catalog.controller';
 import { UserService } from './user.service';
 import { CompetitiveProfileIdentityService } from './competitive-profile-identity.service';
 import { CompetitiveContextService } from './competitive-context.service';
@@ -44,7 +45,7 @@ import { AdvancedProfileController } from './advanced-profile.controller';
  */
 @Module({
   imports: [AuthModule, GamificationModule, ProgressModule],
-  controllers: [UserController, PublicProfileController, CosmeticEquipmentController, AdvancedProfileController],
+  controllers: [UserController, PublicProfileController, CosmeticEquipmentController, TitleCatalogController, AdvancedProfileController],
   providers: [
     UserProfileRepository,
     PublicProfileRepository,

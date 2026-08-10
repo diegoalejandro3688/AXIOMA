@@ -2,6 +2,15 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { AccountTitleRepository } from './account-title.repository';
 import { TitleDefinitionRepository } from './title-definition.repository';
 import { EquippedTitleRepository, type EquippedTitleWithDetails } from './equipped-title.repository';
+import { UnlockRequirementResolverService, type UnlockRequirementView } from './unlock-requirement-resolver.service';
+import type { AccountTitle, TitleDefinition } from '../generated/prisma/client';
+
+export type AccountTitleWithDefinition = AccountTitle & { titleDefinition: TitleDefinition };
+
+export interface LockedTitleView {
+  titleDefinition: TitleDefinition;
+  unlockRequirements: UnlockRequirementView[];
+}
 
 /**
  * Bloque III, Incremento 3, sub-incremento 3.b ("Equipamiento de
@@ -24,6 +33,7 @@ export class TitleEquipmentService {
     private readonly accountTitleRepo: AccountTitleRepository,
     private readonly titleDefinitionRepo: TitleDefinitionRepository,
     private readonly equippedTitleRepo: EquippedTitleRepository,
+    private readonly unlockRequirementResolver: UnlockRequirementResolverService,
   ) {}
 
   /**
@@ -56,5 +66,38 @@ export class TitleEquipmentService {
 
   getEquippedTitle(publicProfileId: string): Promise<EquippedTitleWithDetails | null> {
     return this.equippedTitleRepo.findByPublicProfileId(publicProfileId);
+  }
+
+  /** LEF Bloque V, Incremento 6 -- propiedad, independiente de `public_profile` (mismo criterio que `CosmeticEquipmentService.getOwnedByAccountId`). */
+  getOwnedByAccountId(accountId: string): Promise<AccountTitleWithDefinition[]> {
+    return this.accountTitleRepo.findByAccountIdWithDefinition(accountId);
+  }
+
+  /**
+   * LEF Bloque V, Incremento 6 -- catálogo VISIBLE que la cuenta no posee,
+   * con su requisito de desbloqueo real. "Poseído" se calcula sobre TODO
+   * `account_title` de la cuenta (cualquier `ownershipStatus`), mismo
+   * criterio que cosméticos: un título `REVOKED` no reaparece como
+   * "bloqueado".
+   *
+   * Corrección del Product Owner (revisión de cierre): un título SOLO
+   * aparece en `locked` si tiene AL MENOS un `unlockRequirement` canónico
+   * -- mismo criterio exacto que `CosmeticEquipmentService.getLockedByAccountId`.
+   * Sin ruta de recompensa conocida, el título queda fuera del catálogo
+   * descubrible, nunca con un requisito fabricado.
+   */
+  async getLockedByAccountId(accountId: string): Promise<LockedTitleView[]> {
+    const owned = await this.accountTitleRepo.findByAccountId(accountId);
+    const ownedTitleDefinitionIds = owned.map((accountTitle) => accountTitle.titleDefinitionId);
+    const candidates = await this.titleDefinitionRepo.findManyPublicActiveExcludingIds(ownedTitleDefinitionIds);
+    if (candidates.length === 0) return [];
+
+    const requirementsByTitleId = await this.unlockRequirementResolver.resolveMany(
+      'TITLE',
+      candidates.map((title) => title.id),
+    );
+    return candidates
+      .map((titleDefinition) => ({ titleDefinition, unlockRequirements: requirementsByTitleId.get(titleDefinition.id) ?? [] }))
+      .filter((view) => view.unlockRequirements.length > 0);
   }
 }

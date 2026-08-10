@@ -3,9 +3,9 @@ import { DEFAULT_USER_TIMEZONE } from '@axioma/contracts';
 import { UserProfileRepository } from './user-profile.repository';
 import { PublicProfileRepository } from './public-profile.repository';
 import { isReservedOrOffensive } from './reserved-usernames';
-import { TitleEquipmentService } from '../gamification/title-equipment.service';
+import { TitleEquipmentService, type AccountTitleWithDefinition, type LockedTitleView } from '../gamification/title-equipment.service';
 import type { EquippedTitleWithDetails } from '../gamification/equipped-title.repository';
-import { CosmeticEquipmentService } from '../gamification/cosmetic-equipment.service';
+import { CosmeticEquipmentService, type LockedCosmeticView } from '../gamification/cosmetic-equipment.service';
 import type { EquippedCosmeticWithDetails } from '../gamification/equipped-cosmetic.repository';
 import { FeaturedAchievementService } from '../gamification/featured-achievement.service';
 import type { FeaturedAchievementWithDetails } from '../gamification/featured-achievement.repository';
@@ -334,13 +334,32 @@ export class UserService {
    * (las 4 claves en `null`, Gate 64/65) si la cuenta nunca creó perfil,
    * nunca un error.
    */
-  async getCosmetics(accountId: string): Promise<{ owned: InventoryItemWithCosmeticItem[]; equipped: EquippedCosmeticWithDetails[] }> {
-    const [owned, profile] = await Promise.all([
+  async getCosmetics(
+    accountId: string,
+  ): Promise<{ owned: InventoryItemWithCosmeticItem[]; equipped: EquippedCosmeticWithDetails[]; locked: LockedCosmeticView[] }> {
+    const [owned, profile, locked] = await Promise.all([
       this.cosmeticEquipmentService.getOwnedByAccountId(accountId),
       this.publicProfileRepo.findByAccountId(accountId),
+      this.cosmeticEquipmentService.getLockedByAccountId(accountId),
     ]);
     const equipped = profile ? await this.cosmeticEquipmentService.getEquipped(profile.id) : [];
-    return { owned, equipped };
+    return { owned, equipped, locked };
+  }
+
+  /**
+   * LEF Bloque V, Incremento 6 (docs/adr/LEF-BLOCK-V-DEFINITION.md §14) --
+   * mismo criterio exacto que `getCosmetics`: `owned`/`locked` no dependen
+   * de `public_profile`; `equipped` sale `null` si la cuenta nunca creó
+   * perfil, nunca un error.
+   */
+  async getTitles(accountId: string): Promise<{ owned: AccountTitleWithDefinition[]; equipped: EquippedTitleWithDetails | null; locked: LockedTitleView[] }> {
+    const [owned, profile, locked] = await Promise.all([
+      this.titleEquipmentService.getOwnedByAccountId(accountId),
+      this.publicProfileRepo.findByAccountId(accountId),
+      this.titleEquipmentService.getLockedByAccountId(accountId),
+    ]);
+    const equipped = profile ? await this.titleEquipmentService.getEquippedTitle(profile.id) : null;
+    return { owned, equipped, locked };
   }
 
   // --- public_profile_featured_achievement -- ver docs/adr/LEF-BLOCK-V-DEFINITION.md §10 (LEF Bloque V, Incremento 2) ---

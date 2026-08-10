@@ -8,12 +8,14 @@ import {
   type ListCosmeticsResponse,
   type CosmeticSummary,
   type OwnedCosmetic,
+  type LockedCosmetic,
 } from '@axioma/contracts';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { parseRequestBody } from '../platform/validation/parse-request-body';
 import { UserService } from './user.service';
 import type { EquippedCosmeticWithDetails } from '../gamification/equipped-cosmetic.repository';
 import type { InventoryItemWithCosmeticItem } from '../gamification/inventory-item.repository';
+import type { LockedCosmeticView } from '../gamification/cosmetic-equipment.service';
 import type { CosmeticSlot } from '../generated/prisma/client';
 
 const ALL_SLOTS: CosmeticSlot[] = ['AVATAR', 'AVATAR_FRAME', 'PROFILE_BANNER', 'BADGE'];
@@ -29,6 +31,19 @@ function toOwnedCosmetic(item: InventoryItemWithCosmeticItem): OwnedCosmetic {
     rarityClass: item.cosmeticItem.rarityClass,
     assetReference: item.cosmeticItem.assetReference,
     acquiredAt: item.acquiredAt.toISOString(),
+  };
+}
+
+function toLockedCosmetic(locked: LockedCosmeticView): LockedCosmetic {
+  return {
+    cosmeticItemId: locked.cosmeticItem.id,
+    itemKey: locked.cosmeticItem.itemKey,
+    itemType: locked.cosmeticItem.itemType,
+    name: locked.cosmeticItem.name,
+    description: locked.cosmeticItem.description,
+    rarityClass: locked.cosmeticItem.rarityClass,
+    assetReference: locked.cosmeticItem.assetReference,
+    unlockRequirements: locked.unlockRequirements,
   };
 }
 
@@ -63,7 +78,7 @@ export class CosmeticEquipmentController {
 
   @Get()
   async list(@Req() request: AuthenticatedRequest): Promise<ListCosmeticsResponse> {
-    const { owned, equipped } = await this.userService.getCosmetics(request.accountId);
+    const { owned, equipped, locked } = await this.userService.getCosmetics(request.accountId);
     const equippedBySlot = new Map(equipped.map((row) => [row.cosmeticSlot, row]));
 
     // Gate 65: las cuatro claves de `equipped` existen siempre, incluso sin perfil / sin nada equipado.
@@ -74,6 +89,8 @@ export class CosmeticEquipmentController {
     return listCosmeticsResponseSchema.parse({
       owned: owned.map(toOwnedCosmetic),
       equipped: equippedResponse,
+      // LEF Bloque V, Incremento 6 -- catálogo visible no poseído, con requisito real.
+      locked: locked.map(toLockedCosmetic),
     });
   }
 

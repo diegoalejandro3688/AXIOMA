@@ -59,4 +59,9 @@ export class AccountTitleRepository {
   findByAccountId(accountId: string): Promise<AccountTitle[]> {
     return this.prisma.accountTitle.findMany({ where: { accountId } });
   }
+
+  /** LEF Bloque V, Incremento 6 -- con `title_definition` ya unida, para el listado `GET .../titles` (evita N+1 al resolver cada título poseído). */
+  findByAccountIdWithDefinition(accountId: string) {
+    return this.prisma.accountTitle.findMany({ where: { accountId }, include: { titleDefinition: true } });
+  }
 }

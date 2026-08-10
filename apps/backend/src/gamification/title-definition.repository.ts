@@ -31,4 +31,17 @@ export class TitleDefinitionRepository {
   findByTitleKey(titleKey: string): Promise<TitleDefinition | null> {
     return this.prisma.titleDefinition.findUnique({ where: { titleKey } });
   }
+
+  /**
+   * LEF Bloque V, Incremento 6 -- catálogo de títulos VISIBLES
+   * (`visibilityStatus = PUBLIC`, `status = ACTIVE`) que la cuenta NO
+   * posee todavía -- candidatos a "bloqueado". Mismo criterio que
+   * `CosmeticItemRepository.findManyPublicActiveExcludingIds`.
+   */
+  findManyPublicActiveExcludingIds(excludeIds: string[]): Promise<TitleDefinition[]> {
+    return this.prisma.titleDefinition.findMany({
+      where: { visibilityStatus: 'PUBLIC', status: 'ACTIVE', id: { notIn: excludeIds } },
+      orderBy: { titleKey: 'asc' },
+    });
+  }
 }

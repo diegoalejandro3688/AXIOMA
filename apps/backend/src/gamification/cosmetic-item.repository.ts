@@ -32,4 +32,18 @@ export class CosmeticItemRepository {
   findByItemKey(itemKey: string): Promise<CosmeticItem | null> {
     return this.prisma.cosmeticItem.findUnique({ where: { itemKey } });
   }
+
+  /**
+   * LEF Bloque V, Incremento 6 -- catálogo de cosméticos VISIBLES
+   * (`visibilityStatus = PUBLIC`, `status = ACTIVE`) que la cuenta NO
+   * posee todavía -- candidatos a "bloqueado". Mismo criterio de
+   * visibilidad ya usado por el resto del proyecto para catálogo público:
+   * un `PRIVATE`/`RETIRED` nunca aparece, ni siquiera como bloqueado.
+   */
+  findManyPublicActiveExcludingIds(excludeIds: string[]): Promise<CosmeticItem[]> {
+    return this.prisma.cosmeticItem.findMany({
+      where: { visibilityStatus: 'PUBLIC', status: 'ACTIVE', id: { notIn: excludeIds } },
+      orderBy: { itemKey: 'asc' },
+    });
+  }
 }

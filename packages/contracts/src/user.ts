@@ -157,6 +157,46 @@ export type EquippedTitleResponse = z.infer<typeof equippedTitleResponseSchema>;
 export const cosmeticSlotSchema = z.enum(['AVATAR', 'AVATAR_FRAME', 'PROFILE_BANNER', 'BADGE']);
 export type CosmeticSlotValue = z.infer<typeof cosmeticSlotSchema>;
 
+/**
+ * LEF Bloque V, Incremento 6 ("Personalización con elementos bloqueados y
+ * requisito de desbloqueo visible") -- ver docs/adr/LEF-BLOCK-V-DEFINITION.md
+ * §14. Requisito de obtención de un título/cosmético, derivado EXCLUSIVAMENTE
+ * de datos ya persistidos (`reward_bundle_item` -> `reward_bundle` ->
+ * {nivel|logro|desafío}) -- nunca un string arbitrario.
+ *
+ * Corrección del Product Owner (revisión de cierre del Incremento 6): un
+ * elemento SIN ningún origen conocido NUNCA aparece en `locked` -- `[]` no
+ * es un estado expuesto (ver `lockedCosmeticSchema`/`lockedTitleSchema`,
+ * `unlockRequirements` exige mínimo 1). Nunca se fabrica un requisito para
+ * llenar ese hueco.
+ */
+export const levelUnlockRequirementSchema = z.object({
+  source: z.literal('LEVEL'),
+  levelNumber: z.number().int().positive(),
+  minimumLifetimeXp: z.number().int().nonnegative(),
+});
+export const achievementUnlockRequirementSchema = z.object({
+  source: z.literal('ACHIEVEMENT'),
+  achievementKey: z.string(),
+  achievementName: z.string(),
+  // Misma gramática que XpThresholdUnlockRuleSchema (backend, achievement-unlock-rule.ts) -- nunca reinterpretada, solo expuesta.
+  unlockRule: z.object({ schemaVersion: z.literal('v1'), type: z.literal('XP_THRESHOLD'), value: z.number().int().positive() }),
+});
+export const challengeUnlockRequirementSchema = z.object({
+  source: z.literal('CHALLENGE'),
+  challengeKey: z.string(),
+  challengeName: z.string(),
+  challengeType: z.enum(['DAILY', 'WEEKLY']),
+  // Gramática abierta (String) -- misma forma canónica ya almacenada en challenge_definition.completion_rule, sin reinterpretar.
+  completionRule: z.string(),
+});
+export const unlockRequirementSchema = z.discriminatedUnion('source', [
+  levelUnlockRequirementSchema,
+  achievementUnlockRequirementSchema,
+  challengeUnlockRequirementSchema,
+]);
+export type UnlockRequirement = z.infer<typeof unlockRequirementSchema>;
+
 const cosmeticItemInfoSchema = z.object({
   inventoryItemId: entityId,
   cosmeticItemId: entityId,
@@ -174,6 +214,32 @@ export type OwnedCosmetic = z.infer<typeof ownedCosmeticSchema>;
 export const cosmeticSummarySchema = cosmeticItemInfoSchema.extend({ equippedAt: isoDateTime });
 export type CosmeticSummary = z.infer<typeof cosmeticSummarySchema>;
 
+/**
+ * LEF Bloque V, Incremento 6 -- elemento del catálogo VISIBLE que la
+ * cuenta NO posee todavía. Deliberadamente SIN `inventoryItemId` (nunca
+ * existió una fila de inventario) -- solo la identidad pública del
+ * catálogo más el requisito real. `assetReference` SIGUE siendo un asset
+ * controlado por Axioma (nunca un upload de usuario, sin cambio respecto
+ * a los elementos ya obtenidos).
+ *
+ * `unlockRequirements` exige MÍNIMO 1 elemento (decisión del Product
+ * Owner, revisión de cierre): un `CosmeticItem` sin ninguna ruta de
+ * recompensa canónica conocida NUNCA se sirve dentro de `locked` -- queda
+ * fuera del catálogo descubrible por completo hasta que exista un vínculo
+ * real, en vez de aparecer con un requisito vacío/fabricado.
+ */
+export const lockedCosmeticSchema = z.object({
+  cosmeticItemId: entityId,
+  itemKey: z.string(),
+  itemType: cosmeticSlotSchema,
+  name: z.string(),
+  description: z.string().nullable(),
+  rarityClass: z.string(),
+  assetReference: z.string(),
+  unlockRequirements: z.array(unlockRequirementSchema).min(1),
+});
+export type LockedCosmetic = z.infer<typeof lockedCosmeticSchema>;
+
 export const listCosmeticsResponseSchema = z.object({
   owned: z.array(ownedCosmeticSchema),
   equipped: z.object({
@@ -182,6 +248,8 @@ export const listCosmeticsResponseSchema = z.object({
     PROFILE_BANNER: cosmeticSummarySchema.nullable(),
     BADGE: cosmeticSummarySchema.nullable(),
   }),
+  /** LEF Bloque V, Incremento 6 -- catálogo visible no poseído, con requisito real. Aditivo: no reemplaza `owned`/`equipped`. */
+  locked: z.array(lockedCosmeticSchema),
 });
 export type ListCosmeticsResponse = z.infer<typeof listCosmeticsResponseSchema>;
 
@@ -190,6 +258,43 @@ export type EquipCosmeticRequest = z.infer<typeof equipCosmeticRequestSchema>;
 
 export const equipCosmeticResponseSchema = cosmeticSummarySchema;
 export type EquipCosmeticResponse = z.infer<typeof equipCosmeticResponseSchema>;
+
+// --- GET /gamification/me/titles -- LEF Bloque V, Incremento 6 ("Personalización con elementos bloqueados", docs/adr/LEF-BLOCK-V-DEFINITION.md §14) ---
+
+export const ownedTitleSchema = z.object({
+  accountTitleId: entityId,
+  titleDefinitionId: entityId,
+  titleKey: z.string(),
+  displayText: z.string(),
+  description: z.string().nullable(),
+  rarityClass: z.string(),
+  acquiredAt: isoDateTime,
+});
+export type OwnedTitle = z.infer<typeof ownedTitleSchema>;
+
+/**
+ * Mismo criterio que `lockedCosmeticSchema`: identidad de catálogo +
+ * requisito real, sin `accountTitleId` (nunca existió una fila de
+ * propiedad). `unlockRequirements` exige MÍNIMO 1 -- un `TitleDefinition`
+ * sin ninguna ruta de recompensa canónica conocida nunca se sirve dentro
+ * de `locked`.
+ */
+export const lockedTitleSchema = z.object({
+  titleDefinitionId: entityId,
+  titleKey: z.string(),
+  displayText: z.string(),
+  description: z.string().nullable(),
+  rarityClass: z.string(),
+  unlockRequirements: z.array(unlockRequirementSchema).min(1),
+});
+export type LockedTitle = z.infer<typeof lockedTitleSchema>;
+
+export const listTitlesResponseSchema = z.object({
+  owned: z.array(ownedTitleSchema),
+  equipped: equippedTitleResponseSchema.nullable(),
+  locked: z.array(lockedTitleSchema),
+});
+export type ListTitlesResponse = z.infer<typeof listTitlesResponseSchema>;
 
 /**
  * Perfil competitivo de otro usuario -- ver docs/adr/0021-perfil-competitivo-cross-cuenta.md.

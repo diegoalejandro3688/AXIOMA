@@ -2,7 +2,13 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { InventoryItemRepository, type InventoryItemWithCosmeticItem } from './inventory-item.repository';
 import { CosmeticItemRepository } from './cosmetic-item.repository';
 import { EquippedCosmeticRepository, type EquippedCosmeticWithDetails } from './equipped-cosmetic.repository';
-import type { CosmeticSlot } from '../generated/prisma/client';
+import { UnlockRequirementResolverService, type UnlockRequirementView } from './unlock-requirement-resolver.service';
+import type { CosmeticItem, CosmeticSlot } from '../generated/prisma/client';
+
+export interface LockedCosmeticView {
+  cosmeticItem: CosmeticItem;
+  unlockRequirements: UnlockRequirementView[];
+}
 
 /**
  * Bloque III, Incremento 5, sub-incremento 5.b ("Equipamiento de
@@ -24,6 +30,7 @@ export class CosmeticEquipmentService {
     private readonly inventoryItemRepo: InventoryItemRepository,
     private readonly cosmeticItemRepo: CosmeticItemRepository,
     private readonly equippedCosmeticRepo: EquippedCosmeticRepository,
+    private readonly unlockRequirementResolver: UnlockRequirementResolverService,
   ) {}
 
   /**
@@ -64,5 +71,35 @@ export class CosmeticEquipmentService {
    */
   getOwnedByAccountId(accountId: string): Promise<InventoryItemWithCosmeticItem[]> {
     return this.inventoryItemRepo.findActiveByAccountIdWithCosmeticItem(accountId);
+  }
+
+  /**
+   * LEF Bloque V, Incremento 6 -- catálogo VISIBLE que la cuenta no posee,
+   * con su requisito de desbloqueo real. "Poseído" se calcula sobre TODO
+   * `inventory_item` de la cuenta (cualquier `ownershipStatus`), no solo
+   * `ACTIVE` -- un ítem `REVOKED` no debe reaparecer como "bloqueado"
+   * ofreciendo re-obtenerlo por un camino que no es el real.
+   *
+   * Corrección del Product Owner (revisión de cierre): un elemento SOLO
+   * aparece en `locked` si tiene AL MENOS un `unlockRequirement` canónico
+   * (`reward_bundle_item -> reward_bundle -> nivel/logro/desafío`).
+   * `unlockRequirements: []` deja de ser un estado expuesto -- un ítem sin
+   * ninguna ruta de recompensa conocida queda fuera del catálogo
+   * descubrible por completo (nunca se fabrica un requisito, nunca se
+   * inventa un estado "sin disponibilidad" nuevo).
+   */
+  async getLockedByAccountId(accountId: string): Promise<LockedCosmeticView[]> {
+    const owned = await this.inventoryItemRepo.findByAccountId(accountId);
+    const ownedCosmeticItemIds = owned.map((item) => item.cosmeticItemId);
+    const candidates = await this.cosmeticItemRepo.findManyPublicActiveExcludingIds(ownedCosmeticItemIds);
+    if (candidates.length === 0) return [];
+
+    const requirementsByItemId = await this.unlockRequirementResolver.resolveMany(
+      'COSMETIC',
+      candidates.map((item) => item.id),
+    );
+    return candidates
+      .map((cosmeticItem) => ({ cosmeticItem, unlockRequirements: requirementsByItemId.get(cosmeticItem.id) ?? [] }))
+      .filter((view) => view.unlockRequirements.length > 0);
   }
 }

@@ -44,6 +44,7 @@ import { CosmeticItemRepository } from './cosmetic-item.repository';
 import { InventoryItemRepository } from './inventory-item.repository';
 import { EquippedCosmeticRepository } from './equipped-cosmetic.repository';
 import { CosmeticEquipmentService } from './cosmetic-equipment.service';
+import { UnlockRequirementResolverService } from './unlock-requirement-resolver.service';
 import { FeaturedAchievementRepository } from './featured-achievement.repository';
 import { FeaturedAchievementService } from './featured-achievement.service';
 import { GameSeasonRepository } from './game-season.repository';
@@ -309,6 +310,7 @@ import { QuickQuestionController } from './quick-question.controller';
     CosmeticItemRepository,
     InventoryItemRepository,
     EquippedCosmeticRepository,
+    UnlockRequirementResolverService,
     CosmeticEquipmentService,
     FeaturedAchievementRepository,
     FeaturedAchievementService,
@@ -369,6 +371,7 @@ import { QuickQuestionController } from './quick-question.controller';
     CosmeticItemRepository,
     InventoryItemRepository,
     EquippedCosmeticRepository,
+    UnlockRequirementResolverService,
     CosmeticEquipmentService,
     FeaturedAchievementRepository,
     FeaturedAchievementService,
