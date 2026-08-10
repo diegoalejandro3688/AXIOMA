@@ -145,6 +145,10 @@ export class PublicProfileRepository {
       // que equipped_title: limpia PRESENTACIÓN (todas las filas, una por
       // slot), nunca toca inventory_item (propiedad).
       await tx.equippedCosmetic.deleteMany({ where: { publicProfileId: profile.id } });
+      // LEF Bloque V, Incremento 2 -- mismo criterio: limpia PRESENTACIÓN
+      // (la selección de insignias destacadas), nunca toca achievement_unlock
+      // (propiedad del logro).
+      await tx.featuredAchievement.deleteMany({ where: { publicProfileId: profile.id } });
       await tx.profileUsernameHistory.create({
         data: {
           publicProfileId: profile.id,

@@ -535,6 +535,8 @@ model PublicProfile {
   equippedTitle     EquippedTitle?
   /// Bloque III, sub-incremento 5.b -- lado inverso de EquippedCosmetic.publicProfileId (varias filas, una por slot).
   equippedCosmetics EquippedCosmetic[]
+  /// LEF Bloque V, Incremento 2 -- lado inverso de FeaturedAchievement.publicProfileId (0 a 3 filas).
+  featuredAchievements FeaturedAchievement[]
 
   @@map("public_profile")
 }
@@ -1203,6 +1205,8 @@ model AchievementUnlock {
   achievementVersion    AchievementVersion    @relation(fields: [achievementVersionId], references: [id], onDelete: Restrict)
   triggerActivity       XpLedgerEntry?        @relation(fields: [triggerActivityId], references: [id], onDelete: Restrict)
   rewardGrant           RewardGrant?          @relation(fields: [rewardGrantId], references: [id], onDelete: Restrict)
+  /// LEF Bloque V, Incremento 2 -- lado inverso de FeaturedAchievement.achievementUnlockId (a lo sumo una fila, un logro no puede destacarse dos veces).
+  featuredBy            FeaturedAchievement?
 
   @@unique([accountId, achievementDefinitionId, unlockInstance])
   @@map("achievement_unlock")
@@ -1659,6 +1663,56 @@ model EquippedCosmetic {
 
   @@id([publicProfileId, cosmeticSlot])
   @@map("equipped_cosmetic")
+}
+
+/// LEF Bloque V, Incremento 2 ("Visibilidad granular -- insignias
+/// destacadas") -- ver docs/adr/LEF-BLOCK-V-DEFINITION.md §10. Selección
+/// acotada (0-3) de `achievement_unlock` que la cuenta decide destacar en
+/// el encabezado público de su perfil. Posesión (`achievement_unlock`) y
+/// selección (esta tabla) son conceptos DISTINTOS y desacoplados (decisión
+/// del Product Owner, LEF-BLOCK-V-DEFINITION.md §4.6): poseer un logro
+/// nunca lo destaca automáticamente.
+///
+/// `@@id([publicProfileId, achievementUnlockId])` -- mismo criterio que
+/// `equipped_cosmetic`: idempotencia de selección, nunca dos filas para el
+/// mismo par. `displayOrder` fija el orden de presentación (0-based);
+/// `@@unique([publicProfileId, displayOrder])` evita dos elementos
+/// reclamando la misma posición.
+///
+/// Límite de 3 por perfil reforzado por trigger
+/// (`enforce_featured_achievement_capacity`) como respaldo de base de
+/// datos -- la defensa PRIMARIA contra selecciones concurrentes es el
+/// advisory lock por `publicProfileId` en
+/// `FeaturedAchievementService.setFeatured` (namespace 24, mismo patrón
+/// que `ChallengeService.claim`/`LeagueEnrollmentService`): la escritura es
+/// un REEMPLAZO ATÓMICO completo de la selección (DELETE + INSERT dentro
+/// de la misma transacción bloqueada), nunca una adición incremental --
+/// evita la ventana de carrera que un "añadir uno" tendría bajo escritura
+/// concurrente sin coordinación.
+///
+/// Consistencia (misma cuenta, logro ACTIVE, logro con
+/// `achievement_definition.visibility_class = PUBLIC`, perfil ACTIVE)
+/// reforzada por trigger (`enforce_featured_achievement_consistency`) --
+/// mismo criterio "dos capas" que `equipped_title`/`equipped_cosmetic`.
+///
+/// SIN trigger de inmutabilidad: reemplazar o vaciar la selección es una
+/// operación legítima de esta tabla, igual criterio que
+/// `equipped_title`/`equipped_cosmetic`. La limpieza por anonimización
+/// (`PublicProfileRepository.anonymize`) también borra estas filas --
+/// presentación se limpia, `achievement_unlock` (propiedad) nunca se toca.
+model FeaturedAchievement {
+  publicProfileId     String   @map("public_profile_id") @db.Uuid
+  achievementUnlockId String   @map("achievement_unlock_id") @db.Uuid
+  displayOrder        Int      @map("display_order")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  publicProfile     PublicProfile     @relation(fields: [publicProfileId], references: [id], onDelete: Restrict)
+  achievementUnlock AchievementUnlock @relation(fields: [achievementUnlockId], references: [id], onDelete: Restrict)
+
+  @@id([publicProfileId, achievementUnlockId])
+  @@unique([achievementUnlockId])
+  @@unique([publicProfileId, displayOrder])
+  @@map("public_profile_featured_achievement")
 }
 
 // =============================================================================

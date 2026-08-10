@@ -5,6 +5,7 @@ import { EquippedCosmeticRepository } from '../gamification/equipped-cosmetic.re
 import { XpBalanceRepository } from '../gamification/xp-balance.repository';
 import { LevelDefinitionRepository } from '../gamification/level-definition.repository';
 import { AchievementUnlockRepository } from '../gamification/achievement-unlock.repository';
+import { FeaturedAchievementRepository } from '../gamification/featured-achievement.repository';
 import type { PublicProfile, LevelDefinition, EquippedCosmetic } from '../generated/prisma/client';
 
 export interface PublicAchievementSummary {
@@ -35,6 +36,8 @@ export interface CompetitiveProfileIdentity {
   equippedCosmetics: EquippedCosmeticSummary[];
   levelNumber: number;
   publicAchievements: PublicAchievementSummary[];
+  /** LEF Bloque V, Incremento 2 -- subconjunto curado (0-3) de `publicAchievements`, ver docs/adr/LEF-BLOCK-V-DEFINITION.md §10. */
+  featuredAchievements: PublicAchievementSummary[];
 }
 
 export type PresentableProfile = { presentable: true; identity: CompetitiveProfileIdentity } | { presentable: false };
@@ -90,6 +93,7 @@ export class CompetitiveProfileIdentityService {
     private readonly xpBalanceRepo: XpBalanceRepository,
     private readonly levelDefinitionRepo: LevelDefinitionRepository,
     private readonly achievementUnlockRepo: AchievementUnlockRepository,
+    private readonly featuredAchievementRepo: FeaturedAchievementRepository,
   ) {}
 
   /** Resolución individual -- delega en la versión de lote para no duplicar la lógica de ensamblado. */
@@ -156,12 +160,13 @@ export class CompetitiveProfileIdentityService {
     const publicProfileIds = profiles.map((p) => p.id);
     const accountIds = profiles.map((p) => p.accountId);
 
-    const [equippedTitles, equippedCosmetics, balances, levels, publicUnlocks] = await Promise.all([
+    const [equippedTitles, equippedCosmetics, balances, levels, publicUnlocks, featured] = await Promise.all([
       this.equippedTitleRepo.findManyByPublicProfileIds(publicProfileIds),
       this.equippedCosmeticRepo.findManyByPublicProfileIds(publicProfileIds),
       this.xpBalanceRepo.findManyByAccountIds(accountIds),
       this.levelDefinitionRepo.findAllActiveOrderedByLevelNumber(),
       this.achievementUnlockRepo.findManyPublicByAccountIds(accountIds),
+      this.featuredAchievementRepo.findManyPublicByPublicProfileIds(publicProfileIds),
     ]);
 
     const titleByProfileId = new Map(equippedTitles.map((t) => [t.publicProfileId, t]));
@@ -177,6 +182,12 @@ export class CompetitiveProfileIdentityService {
       const list = achievementsByAccountId.get(unlock.accountId) ?? [];
       list.push(unlock);
       achievementsByAccountId.set(unlock.accountId, list);
+    }
+    const featuredByProfileId = new Map<string, typeof featured>();
+    for (const row of featured) {
+      const list = featuredByProfileId.get(row.publicProfileId) ?? [];
+      list.push(row);
+      featuredByProfileId.set(row.publicProfileId, list);
     }
 
     for (const profile of profiles) {
@@ -213,6 +224,13 @@ export class CompetitiveProfileIdentityService {
           achievementKey: u.achievementDefinition.achievementKey,
           name: u.achievementDefinition.name,
           unlockedAt: u.unlockedAt,
+        })),
+        // Ya viene ordenado por displayOrder (findManyPublicByPublicProfileIds)
+        // y ya re-filtrado ACTIVE+PUBLIC en la consulta -- sin trabajo adicional aquí.
+        featuredAchievements: (featuredByProfileId.get(profile.id) ?? []).map((f) => ({
+          achievementKey: f.achievementUnlock.achievementDefinition.achievementKey,
+          name: f.achievementUnlock.achievementDefinition.name,
+          unlockedAt: f.achievementUnlock.unlockedAt,
         })),
       };
       result.set(profile.accountId, identity);

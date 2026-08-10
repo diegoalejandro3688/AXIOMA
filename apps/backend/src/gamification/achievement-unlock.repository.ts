@@ -49,6 +49,22 @@ export class AchievementUnlockRepository {
   }
 
   /**
+   * LEF Bloque V, Incremento 2 -- lote, UNA sola consulta `WHERE id IN
+   * (...)`, para validar la selección de insignias destacadas (0-3
+   * elementos, el límite máximo del propio incremento hace innecesaria
+   * cualquier paginación). Incluye `achievementDefinition.visibilityClass`
+   * para que `FeaturedAchievementService` valide elegibilidad sin una
+   * segunda consulta.
+   */
+  findManyByIds(ids: string[]): Promise<Array<AchievementUnlock & { achievementDefinition: { visibilityClass: string } }>> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.prisma.achievementUnlock.findMany({
+      where: { id: { in: ids } },
+      include: { achievementDefinition: { select: { visibilityClass: true } } },
+    });
+  }
+
+  /**
    * Bloque IV, Incremento 3, sub-incremento 3.a -- logros PÚBLICOS
    * desbloqueados (`achievementDefinition.visibilityClass = 'PUBLIC'`,
    * `status = 'ACTIVE'` -- un logro `REVERSED` nunca aparece en una

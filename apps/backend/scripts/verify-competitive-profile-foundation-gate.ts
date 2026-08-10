@@ -22,6 +22,7 @@ import { CosmeticItemRepository } from '../src/gamification/cosmetic-item.reposi
 import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
 import { AchievementDefinitionRepository } from '../src/gamification/achievement-definition.repository';
 import { AchievementVersionRepository } from '../src/gamification/achievement-version.repository';
+import { FeaturedAchievementRepository } from '../src/gamification/featured-achievement.repository';
 import { CompetitiveProfileIdentityService } from '../src/user/competitive-profile-identity.service';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
 
@@ -60,6 +61,7 @@ async function main() {
   const inventoryItemRepo = new InventoryItemRepository(prisma);
   const achievementDefinitionRepo = new AchievementDefinitionRepository(prisma);
   const achievementVersionRepo = new AchievementVersionRepository(prisma);
+  const featuredAchievementRepo = new FeaturedAchievementRepository(prisma);
 
   const service = new CompetitiveProfileIdentityService(
     publicProfileRepo,
@@ -68,6 +70,7 @@ async function main() {
     xpBalanceRepo,
     levelDefinitionRepo,
     achievementUnlockRepo,
+    featuredAchievementRepo,
   );
 
   const suffix = Date.now();

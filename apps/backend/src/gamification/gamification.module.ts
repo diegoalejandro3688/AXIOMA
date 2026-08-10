@@ -44,6 +44,8 @@ import { CosmeticItemRepository } from './cosmetic-item.repository';
 import { InventoryItemRepository } from './inventory-item.repository';
 import { EquippedCosmeticRepository } from './equipped-cosmetic.repository';
 import { CosmeticEquipmentService } from './cosmetic-equipment.service';
+import { FeaturedAchievementRepository } from './featured-achievement.repository';
+import { FeaturedAchievementService } from './featured-achievement.service';
 import { GameSeasonRepository } from './game-season.repository';
 import { LeagueDefinitionRepository } from './league-definition.repository';
 import { LeagueGroupRepository } from './league-group.repository';
@@ -299,6 +301,8 @@ import { QuickQuestionController } from './quick-question.controller';
     InventoryItemRepository,
     EquippedCosmeticRepository,
     CosmeticEquipmentService,
+    FeaturedAchievementRepository,
+    FeaturedAchievementService,
     GameSeasonRepository,
     LeagueDefinitionRepository,
     LeagueGroupRepository,
@@ -356,6 +360,8 @@ import { QuickQuestionController } from './quick-question.controller';
     InventoryItemRepository,
     EquippedCosmeticRepository,
     CosmeticEquipmentService,
+    FeaturedAchievementRepository,
+    FeaturedAchievementService,
     GameSeasonRepository,
     LeagueDefinitionRepository,
     LeagueGroupRepository,

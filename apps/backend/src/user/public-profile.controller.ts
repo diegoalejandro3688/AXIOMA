@@ -10,11 +10,14 @@ import {
   competitiveProfileResponseSchema,
   meCompetitiveProfileResponseSchema,
   leaderboardPageResponseSchema,
+  featuredAchievementsResponseSchema,
+  setFeaturedAchievementsRequestSchema,
   type PublicProfileResponse,
   type EquippedTitleResponse,
   type CompetitiveProfileResponse,
   type MeCompetitiveProfileResponse,
   type LeaderboardPageResponse,
+  type FeaturedAchievementsResponse,
 } from '@axioma/contracts';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { parseRequestBody } from '../platform/validation/parse-request-body';
@@ -23,6 +26,7 @@ import type { LeaderboardPageView, LeaderboardRowView } from './competitive-lead
 import { MAX_LEADERBOARD_LIMIT } from './competitive-leaderboard.service';
 import type { PublicProfile } from '../generated/prisma/client';
 import type { EquippedTitleWithDetails } from '../gamification/equipped-title.repository';
+import type { FeaturedAchievementWithDetails } from '../gamification/featured-achievement.repository';
 
 function toPublicProfileResponse(profile: PublicProfile): PublicProfileResponse {
   return publicProfileResponseSchema.parse({
@@ -32,6 +36,18 @@ function toPublicProfileResponse(profile: PublicProfile): PublicProfileResponse 
     lifecycleStatus: profile.lifecycleStatus,
     createdAt: profile.createdAt.toISOString(),
     updatedAt: profile.updatedAt.toISOString(),
+  });
+}
+
+function toFeaturedAchievementsResponse(featured: FeaturedAchievementWithDetails[]): FeaturedAchievementsResponse {
+  return featuredAchievementsResponseSchema.parse({
+    featured: featured.map((f) => ({
+      achievementUnlockId: f.achievementUnlockId,
+      achievementKey: f.achievementUnlock.achievementDefinition.achievementKey,
+      name: f.achievementUnlock.achievementDefinition.name,
+      unlockedAt: f.achievementUnlock.unlockedAt.toISOString(),
+      displayOrder: f.displayOrder,
+    })),
   });
 }
 
@@ -52,6 +68,8 @@ function toCompetitiveProfileResponse(view: CompetitiveProfileView): Competitive
     ...view,
     competitive: view.competitive ? { ...view.competitive, calculatedAt: view.competitive.calculatedAt.toISOString() } : null,
     publicAchievements: view.publicAchievements.map((a) => ({ ...a, unlockedAt: a.unlockedAt.toISOString() })),
+    // LEF Bloque V, Incremento 2 -- mismo tratamiento de fecha que publicAchievements.
+    featuredAchievements: view.featuredAchievements.map((a) => ({ ...a, unlockedAt: a.unlockedAt.toISOString() })),
   });
 }
 
@@ -65,7 +83,12 @@ function toMeCompetitiveProfileResponse(view: MeCompetitiveProfileView): MeCompe
 /** Bloque IV, Incremento 3, sub-incremento 3.c -- una fila redactada se pasa TAL CUAL (ya no tiene más claves que serializar). */
 function toLeaderboardRow(row: LeaderboardRowView) {
   if (!row.presentable) return row;
-  return { ...row, publicAchievements: row.publicAchievements.map((a) => ({ ...a, unlockedAt: a.unlockedAt.toISOString() })) };
+  return {
+    ...row,
+    publicAchievements: row.publicAchievements.map((a) => ({ ...a, unlockedAt: a.unlockedAt.toISOString() })),
+    // LEF Bloque V, Incremento 2 -- mismo tratamiento de fecha que publicAchievements.
+    featuredAchievements: row.featuredAchievements.map((a) => ({ ...a, unlockedAt: a.unlockedAt.toISOString() })),
+  };
 }
 
 function toLeaderboardPageResponse(page: LeaderboardPageView): LeaderboardPageResponse {
@@ -149,6 +172,32 @@ export class PublicProfileController {
   async getEquippedTitle(@Req() request: AuthenticatedRequest): Promise<EquippedTitleResponse | null> {
     const equipped = await this.userService.getEquippedTitle(request.accountId);
     return equipped ? toEquippedTitleResponse(equipped) : null;
+  }
+
+  /**
+   * LEF Bloque V, Incremento 2 (docs/adr/LEF-BLOCK-V-DEFINITION.md §10) --
+   * autoservicio de la selección de insignias destacadas. Sin perfil ->
+   * `{ featured: [] }`, nunca un error (mismo criterio que `getCosmetics`).
+   */
+  @Get('featured-achievements')
+  async getFeaturedAchievements(@Req() request: AuthenticatedRequest): Promise<FeaturedAchievementsResponse> {
+    const featured = await this.userService.getFeaturedAchievements(request.accountId);
+    return toFeaturedAchievementsResponse(featured);
+  }
+
+  /**
+   * `achievementUnlockIds` es la selección COMPLETA deseada -- reemplazo
+   * atómico (nunca una adición incremental), 0 a 3 elementos, validado por
+   * `setFeaturedAchievementsRequestSchema` (tamaño máximo y sin
+   * duplicados) antes de llegar a `UserService`. Gates 14/34-equivalentes
+   * (propiedad, elegibilidad, límite) son responsabilidad de
+   * `FeaturedAchievementService` (dominio GAMIFICATION).
+   */
+  @Patch('featured-achievements')
+  async setFeaturedAchievements(@Req() request: AuthenticatedRequest, @Body() body: unknown): Promise<FeaturedAchievementsResponse> {
+    const input = parseRequestBody(setFeaturedAchievementsRequestSchema, body);
+    const featured = await this.userService.setFeaturedAchievements(request.accountId, input.achievementUnlockIds);
+    return toFeaturedAchievementsResponse(featured);
   }
 
   /**

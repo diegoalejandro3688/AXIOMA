@@ -35,6 +35,7 @@ function presentableRow(rankPosition: number, overrides: Partial<Extract<Leaderb
     equippedCosmetics: [],
     levelNumber: 5,
     publicAchievements: [],
+    featuredAchievements: [],
     ...overrides,
   };
 }

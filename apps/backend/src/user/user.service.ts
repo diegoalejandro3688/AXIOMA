@@ -7,6 +7,8 @@ import { TitleEquipmentService } from '../gamification/title-equipment.service';
 import type { EquippedTitleWithDetails } from '../gamification/equipped-title.repository';
 import { CosmeticEquipmentService } from '../gamification/cosmetic-equipment.service';
 import type { EquippedCosmeticWithDetails } from '../gamification/equipped-cosmetic.repository';
+import { FeaturedAchievementService } from '../gamification/featured-achievement.service';
+import type { FeaturedAchievementWithDetails } from '../gamification/featured-achievement.repository';
 import type { InventoryItemWithCosmeticItem } from '../gamification/inventory-item.repository';
 import type { CosmeticSlot } from '../generated/prisma/client';
 import { Prisma } from '../generated/prisma/client';
@@ -34,6 +36,7 @@ export interface CompetitiveProfileView {
   equippedCosmetics: CompetitiveProfileIdentity['equippedCosmetics'];
   levelNumber: number;
   publicAchievements: CompetitiveProfileIdentity['publicAchievements'];
+  featuredAchievements: CompetitiveProfileIdentity['featuredAchievements'];
   competitive: CompetitiveContext | null;
 }
 
@@ -51,6 +54,7 @@ function toCompetitiveProfileView(identity: CompetitiveProfileIdentity, competit
     equippedCosmetics: identity.equippedCosmetics,
     levelNumber: identity.levelNumber,
     publicAchievements: identity.publicAchievements,
+    featuredAchievements: identity.featuredAchievements,
     competitive,
   };
 }
@@ -70,6 +74,7 @@ export class UserService {
     private readonly publicProfileRepo: PublicProfileRepository,
     private readonly titleEquipmentService: TitleEquipmentService,
     private readonly cosmeticEquipmentService: CosmeticEquipmentService,
+    private readonly featuredAchievementService: FeaturedAchievementService,
     private readonly competitiveProfileIdentityService: CompetitiveProfileIdentityService,
     private readonly competitiveContextService: CompetitiveContextService,
     private readonly competitiveLeaderboardService: CompetitiveLeaderboardService,
@@ -336,6 +341,38 @@ export class UserService {
     ]);
     const equipped = profile ? await this.cosmeticEquipmentService.getEquipped(profile.id) : [];
     return { owned, equipped };
+  }
+
+  // --- public_profile_featured_achievement -- ver docs/adr/LEF-BLOCK-V-DEFINITION.md §10 (LEF Bloque V, Incremento 2) ---
+
+  /**
+   * Lectura propia -- sin exigir `lifecycleStatus = ACTIVE` (consultar la
+   * selección actual no es una acción de escritura, mismo criterio que
+   * `getEquippedTitle`). Sin perfil -> lista vacía, nunca un error (mismo
+   * criterio que `getCosmetics`: propiedad/selección y existencia de
+   * perfil son capas separadas).
+   */
+  async getFeaturedAchievements(accountId: string): Promise<FeaturedAchievementWithDetails[]> {
+    const profile = await this.publicProfileRepo.findByAccountId(accountId);
+    if (!profile) return [];
+    return this.featuredAchievementService.getFeatured(profile.id);
+  }
+
+  /**
+   * Mismo criterio exacto que `equipTitle`/`equipCosmetic`: exige perfil
+   * existente (404 vía `getPublicProfile`) y `lifecycleStatus = ACTIVE`
+   * (un perfil `RETIRED`/`ANONYMIZED` no admite una nueva selección). La
+   * validación de propiedad/elegibilidad de cada insignia (existe,
+   * pertenece a la cuenta, ACTIVE, PUBLIC) y el límite de 3 son
+   * responsabilidad de `FeaturedAchievementService` (dominio
+   * GAMIFICATION, dueño de `achievement_unlock`).
+   */
+  async setFeaturedAchievements(accountId: string, achievementUnlockIds: string[]): Promise<FeaturedAchievementWithDetails[]> {
+    const profile = await this.getPublicProfile(accountId);
+    if (profile.lifecycleStatus !== 'ACTIVE') {
+      throw new ConflictException('Esta identidad pública no está activa.');
+    }
+    return this.featuredAchievementService.setFeatured(profile.id, accountId, achievementUnlockIds);
   }
 
   /**

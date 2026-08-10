@@ -22,6 +22,7 @@ import { EquippedCosmeticRepository } from '../src/gamification/equipped-cosmeti
 import { XpBalanceRepository } from '../src/gamification/xp-balance.repository';
 import { LevelDefinitionRepository } from '../src/gamification/level-definition.repository';
 import { AchievementUnlockRepository } from '../src/gamification/achievement-unlock.repository';
+import { FeaturedAchievementRepository } from '../src/gamification/featured-achievement.repository';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
 import { CosmeticItemRepository } from '../src/gamification/cosmetic-item.repository';
 import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
@@ -291,6 +292,7 @@ async function main() {
   const xpBalanceRepoDirect = new XpBalanceRepository(prisma);
   const levelDefinitionRepoDirect = new LevelDefinitionRepository(prisma);
   const achievementUnlockRepoDirect = new AchievementUnlockRepository(prisma);
+  const featuredAchievementRepoDirect = new FeaturedAchievementRepository(prisma);
   const leagueGroupRepoDirect = new LeagueGroupRepository(prisma);
   const identityServiceDirect = new CompetitiveProfileIdentityService(
     publicProfileRepoDirect,
@@ -299,6 +301,7 @@ async function main() {
     xpBalanceRepoDirect,
     levelDefinitionRepoDirect,
     achievementUnlockRepoDirect,
+    featuredAchievementRepoDirect,
   );
   const contextServiceDirect = new CompetitiveContextService(participationRepo, entryRepo, leaderboardDefinitionRepo, leagueGroupRepoDirect, leagueDefinitionRepo);
   const leaderboardServiceDirect = new CompetitiveLeaderboardService(participationRepo, entryRepo, leaderboardDefinitionRepo, identityServiceDirect, contextServiceDirect);

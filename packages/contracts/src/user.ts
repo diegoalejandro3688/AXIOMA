@@ -220,6 +220,43 @@ export const publicAchievementSchema = z.object({
 });
 export type PublicAchievement = z.infer<typeof publicAchievementSchema>;
 
+/**
+ * Insignias destacadas -- ver docs/adr/LEF-BLOCK-V-DEFINITION.md §10 (LEF
+ * Bloque V, Incremento 2). Máximo 3, mínimo 0 (decisión cerrada del
+ * Product Owner, §4.6) -- poseer una insignia y destacarla son conceptos
+ * distintos.
+ *
+ * `featuredAchievementSchema` es la forma PRIVADA (autoservicio, `GET`/
+ * `PUT .../featured-achievements`) -- expone `achievementUnlockId`
+ * (necesario para que el propio dueño pueda referenciar cuál es cuál al
+ * reordenar/quitar); nunca se usa en una superficie pública.
+ */
+export const featuredAchievementSchema = z.object({
+  achievementUnlockId: entityId,
+  achievementKey: z.string(),
+  name: z.string(),
+  unlockedAt: isoDateTime,
+  displayOrder: z.number().int().nonnegative(),
+});
+export type FeaturedAchievement = z.infer<typeof featuredAchievementSchema>;
+
+export const featuredAchievementsResponseSchema = z.object({ featured: z.array(featuredAchievementSchema) });
+export type FeaturedAchievementsResponse = z.infer<typeof featuredAchievementsResponseSchema>;
+
+/**
+ * `achievementUnlockIds` es la selección COMPLETA deseada (reemplazo
+ * atómico, nunca una adición incremental) -- 0 a 3 elementos, sin
+ * duplicados. El duplicado se rechaza explícitamente aquí, en la frontera
+ * de entrada (ADR-0007) -- nunca se deduplica en silencio.
+ */
+export const setFeaturedAchievementsRequestSchema = z.object({
+  achievementUnlockIds: z
+    .array(entityId)
+    .max(3, 'No se pueden destacar más de 3 insignias.')
+    .refine((ids) => new Set(ids).size === ids.length, { message: 'La selección no puede contener la misma insignia repetida.' }),
+});
+export type SetFeaturedAchievementsRequest = z.infer<typeof setFeaturedAchievementsRequestSchema>;
+
 /** `null` si la cuenta no tiene participación activa en la temporada vigente -- NUNCA motivo de 404 (ADR-0021 §2). */
 export const competitiveContextSchema = z.object({
   leagueName: z.string(),
@@ -239,6 +276,8 @@ export const competitiveProfileResponseSchema = z.object({
   equippedCosmetics: z.array(competitiveEquippedCosmeticSchema),
   levelNumber: z.number().int().positive(),
   publicAchievements: z.array(publicAchievementSchema),
+  /** LEF Bloque V, Incremento 2 (docs/adr/LEF-BLOCK-V-DEFINITION.md §10) -- subconjunto curado (0-3) de `publicAchievements` que la cuenta decidió destacar. Nunca contiene un logro ausente de `publicAchievements`. */
+  featuredAchievements: z.array(publicAchievementSchema).max(3),
   competitive: competitiveContextSchema.nullable(),
 });
 export type CompetitiveProfileResponse = z.infer<typeof competitiveProfileResponseSchema>;
@@ -271,6 +310,7 @@ export const leaderboardRowSchema = z.discriminatedUnion('presentable', [
     equippedCosmetics: z.array(competitiveEquippedCosmeticSchema),
     levelNumber: z.number().int().positive(),
     publicAchievements: z.array(publicAchievementSchema),
+    featuredAchievements: z.array(publicAchievementSchema).max(3),
   }),
   z.object({
     presentable: z.literal(false),

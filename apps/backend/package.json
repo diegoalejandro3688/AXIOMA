@@ -48,6 +48,7 @@
     "verify:quick-question-engine-gate": "tsx scripts/verify-quick-question-engine-gate.ts",
     "verify:quick-question-http-gate": "tsx scripts/verify-quick-question-http-gate.ts",
     "verify:league-participation-gate": "tsx scripts/verify-league-participation-gate.ts",
+    "verify:featured-achievement-gate": "tsx scripts/verify-featured-achievement-gate.ts",
     "cli:recover-account": "node dist/cli/recover-account.js",
     "db:up": "docker compose -f ../../docker-compose.yml up -d",
     "db:down": "docker compose -f ../../docker-compose.yml down"
