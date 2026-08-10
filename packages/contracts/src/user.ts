@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { entityId, isoDateTime } from './common';
+import { academicSummaryResponseSchema } from './progress';
+import { competitiveHistoryResponseSchema } from './league-participation';
 
 /**
  * Contratos del dominio USER -- ver docs/adr/0008-gestion-usuarios-perfil-basico.md
@@ -334,3 +336,31 @@ export const leaderboardPageResponseSchema = z.object({
   competitiveContext: competitiveContextSchema.nullable(),
 });
 export type LeaderboardPageResponse = z.infer<typeof leaderboardPageResponseSchema>;
+
+// --- GET /user/me/advanced-profile -- LEF Bloque V, Incremento 5 ("Vista consolidada de perfil propio", docs/adr/LEF-BLOCK-V-DEFINITION.md §13) ---
+
+/**
+ * Agregador de lectura PURO -- compone, sin recalcular nada, las
+ * respuestas YA existentes de los Incrementos 1-4: `profile` (ADR-0008,
+ * `userProfileResponseSchema`), `publicProfile` (identidad pública +
+ * competitiva propia, `meCompetitiveProfileResponseSchema` -- ya incluye
+ * banner/equippedTitle/equippedCosmetics/levelNumber/featuredAchievements/
+ * competitive de los Incrementos 1-2), `academicSummary` (Incremento 3,
+ * `academicSummaryResponseSchema`), `competitiveHistory` (Incremento 4,
+ * `competitiveHistoryResponseSchema`).
+ *
+ * `profile`/`publicProfile` son `nullable()` -- una cuenta nueva puede no
+ * tener `UserProfile` inicializado y/o `PublicProfile` materializado
+ * todavía (LEF-BLOCK-V-DEFINITION.md §13, "fallo parcial de una sección no
+ * rompe el agregado"); `academicSummary`/`competitiveHistory` NUNCA son
+ * `null` -- sus propios contratos (Incrementos 3/4) ya representan
+ * ausencia de actividad/historial como listas/conteos vacíos, no como
+ * ausencia de la sección completa.
+ */
+export const myAdvancedProfileResponseSchema = z.object({
+  profile: userProfileResponseSchema.nullable(),
+  publicProfile: meCompetitiveProfileResponseSchema.nullable(),
+  academicSummary: academicSummaryResponseSchema,
+  competitiveHistory: competitiveHistoryResponseSchema,
+});
+export type MyAdvancedProfileResponse = z.infer<typeof myAdvancedProfileResponseSchema>;

@@ -51,6 +51,7 @@
     "verify:featured-achievement-gate": "tsx scripts/verify-featured-achievement-gate.ts",
     "verify:academic-summary-gate": "tsx scripts/verify-academic-summary-gate.ts",
     "verify:competitive-history-gate": "tsx scripts/verify-competitive-history-gate.ts",
+    "verify:advanced-profile-gate": "tsx scripts/verify-advanced-profile-gate.ts",
     "cli:recover-account": "node dist/cli/recover-account.js",
     "db:up": "docker compose -f ../../docker-compose.yml up -d",
     "db:down": "docker compose -f ../../docker-compose.yml down"

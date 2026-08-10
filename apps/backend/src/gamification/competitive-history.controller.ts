@@ -3,7 +3,8 @@ import { competitiveHistoryResponseSchema, type CompetitiveHistoryResponse } fro
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { CompetitiveHistoryService, type SeasonHistoryEntryView } from './competitive-history.service';
 
-function toResponse(entries: SeasonHistoryEntryView[]): CompetitiveHistoryResponse {
+/** Exportada para reutilización en `AdvancedProfileController` (LEF Bloque V, Incremento 5) -- misma serialización canónica, nunca duplicada. */
+export function toCompetitiveHistoryResponse(entries: SeasonHistoryEntryView[]): CompetitiveHistoryResponse {
   return competitiveHistoryResponseSchema.parse({
     seasons: entries.map((e) => ({
       seasonKey: e.seasonKey,
@@ -42,6 +43,6 @@ export class CompetitiveHistoryController {
   @Get()
   async getHistory(@Req() request: AuthenticatedRequest): Promise<CompetitiveHistoryResponse> {
     const entries = await this.historyService.getHistory(request.accountId);
-    return toResponse(entries);
+    return toCompetitiveHistoryResponse(entries);
   }
 }

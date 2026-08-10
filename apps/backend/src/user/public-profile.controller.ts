@@ -73,7 +73,8 @@ function toCompetitiveProfileResponse(view: CompetitiveProfileView): Competitive
   });
 }
 
-function toMeCompetitiveProfileResponse(view: MeCompetitiveProfileView): MeCompetitiveProfileResponse {
+/** Exportada para reutilización en `AdvancedProfileController` (LEF Bloque V, Incremento 5) -- misma serialización canónica, nunca duplicada. */
+export function toMeCompetitiveProfileResponse(view: MeCompetitiveProfileView): MeCompetitiveProfileResponse {
   return meCompetitiveProfileResponseSchema.parse({
     ...toCompetitiveProfileResponse(view),
     lifecycleStatus: view.lifecycleStatus,

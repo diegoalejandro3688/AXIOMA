@@ -384,6 +384,11 @@ import { QuickQuestionController } from './quick-question.controller';
     LeaderboardCalculationService,
     QuickQuestionSessionRepository,
     QuickQuestionAttemptRepository,
+    // LEF Bloque V, Incremento 5 -- el agregador de UserModule necesita
+    // componer el historial competitivo (Incremento 4) sin reinterpretar su
+    // lógica, mismo criterio que el resto de servicios de lectura ya
+    // exportados aquí para consumo directo desde USER.
+    CompetitiveHistoryService,
   ],
 })
 export class GamificationModule {}

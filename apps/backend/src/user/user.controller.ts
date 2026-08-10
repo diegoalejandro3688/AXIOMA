@@ -11,7 +11,8 @@ import { parseRequestBody } from '../platform/validation/parse-request-body';
 import { UserService } from './user.service';
 import type { UserProfile } from '../generated/prisma/client';
 
-function toProfileResponse(profile: UserProfile): UserProfileResponse {
+/** Exportada para reutilización en `AdvancedProfileController` (LEF Bloque V, Incremento 5) -- misma serialización canónica, nunca duplicada. */
+export function toProfileResponse(profile: UserProfile): UserProfileResponse {
   return userProfileResponseSchema.parse({
     accountId: profile.accountId,
     displayName: profile.displayName,
