@@ -45,4 +45,23 @@ export class StudentResponseRepository {
     const result = await this.prisma.studentResponse.deleteMany({ where: { accountId } });
     return result.count;
   }
+
+  /**
+   * LEF Bloque V, Incremento 3 ("Resumen académico privado") -- total de
+   * respuestas y de respuestas correctas de la cuenta, en UNA sola consulta
+   * agregada (sin traer las filas completas). Fuente única de precisión
+   * ("preguntas respondidas/correctas") -- sin cálculo derivado en otro
+   * lugar, sin duplicar este conteo.
+   */
+  async countByAccountGroupedByCorrectness(accountId: string): Promise<{ total: number; correct: number }> {
+    const rows = await this.prisma.studentResponse.groupBy({ by: ['isCorrect'], where: { accountId }, _count: { _all: true } });
+    const correct = rows.find((r) => r.isCorrect)?._count._all ?? 0;
+    const incorrect = rows.find((r) => !r.isCorrect)?._count._all ?? 0;
+    return { total: correct + incorrect, correct };
+  }
+
+  /** Última actividad académica real de la cuenta (marca de tiempo de la respuesta más reciente) -- `null` si nunca respondió nada. */
+  async findMostRecentByAccountId(accountId: string): Promise<StudentResponse | null> {
+    return this.prisma.studentResponse.findFirst({ where: { accountId }, orderBy: { respondedAt: 'desc' } });
+  }
 }

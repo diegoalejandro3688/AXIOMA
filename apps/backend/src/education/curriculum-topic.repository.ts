@@ -41,4 +41,16 @@ export class CurriculumTopicRepository {
   count(): Promise<number> {
     return this.prisma.curriculumTopic.count();
   }
+
+  /**
+   * LEF Bloque V, Incremento 3 ("Resumen académico privado") -- total de
+   * temas por materia, para toda la base de temas (independiente de
+   * progreso de cualquier cuenta). Es el DENOMINADOR de "temas
+   * completados/N" en el resumen -- una sola consulta agregada, sin N+1
+   * por materia.
+   */
+  async countAllGroupedBySubjectId(): Promise<Map<string, number>> {
+    const rows = await this.prisma.curriculumTopic.groupBy({ by: ['subjectId'], _count: { _all: true } });
+    return new Map(rows.map((r) => [r.subjectId, r._count._all]));
+  }
 }

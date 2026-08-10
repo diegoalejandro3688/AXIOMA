@@ -7,6 +7,7 @@ import {
   type TopicProgressResponse,
   type SubmitResponseResponse,
   type ResponseConflictBody,
+  type AcademicSummaryResponse,
 } from '@axioma/contracts';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { parseRequestBody } from '../platform/validation/parse-request-body';
@@ -25,6 +26,19 @@ import { ProgressService, ResponseConflictError } from './progress.service';
 @UseGuards(AuthGuard)
 export class ProgressController {
   constructor(private readonly progressService: ProgressService) {}
+
+  /**
+   * LEF Bloque V, Incremento 3 (docs/adr/LEF-BLOCK-V-DEFINITION.md §11) --
+   * resumen académico PRIVADO, exclusivamente autoservicio
+   * (`request.accountId`, nunca un id recibido del cliente) -- sin
+   * superficie cross-cuenta, sin exposición pública. Determinista para una
+   * cuenta nueva (200 con conteos en 0, `null` explícito donde no hay
+   * datos) -- nunca un 404 por ausencia de actividad.
+   */
+  @Get('me/summary')
+  getAcademicSummary(@Req() request: AuthenticatedRequest): Promise<AcademicSummaryResponse> {
+    return this.progressService.getAcademicSummary(request.accountId);
+  }
 
   @Get('topics/:topicId')
   getTopicProgress(

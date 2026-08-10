@@ -2,9 +2,11 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import {
   topicProgressResponseSchema,
   submitResponseResponseSchema,
+  academicSummaryResponseSchema,
   GAMIFICATION_SCHEMA_VERSION,
   type TopicProgressResponse,
   type SubmitResponseResponse,
+  type AcademicSummaryResponse,
 } from '@axioma/contracts';
 import { Prisma } from '../generated/prisma/client';
 import type { StudentResponse } from '../generated/prisma/client';
@@ -13,6 +15,7 @@ import { StudentResponseRepository } from './student-response.repository';
 import { CurriculumTopicRepository } from '../education/curriculum-topic.repository';
 import { QuestionVersionRepository } from '../education/question-version.repository';
 import { AnswerOptionRepository } from '../education/answer-option.repository';
+import { SubjectRepository } from '../education/subject.repository';
 import { OutboxService } from '../platform/outbox/outbox.service';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
@@ -50,6 +53,7 @@ export class ProgressService {
     private readonly topicRepo: CurriculumTopicRepository,
     private readonly questionVersionRepo: QuestionVersionRepository,
     private readonly answerOptionRepo: AnswerOptionRepository,
+    private readonly subjectRepo: SubjectRepository,
     private readonly outbox: OutboxService,
   ) {}
 
@@ -78,6 +82,49 @@ export class ProgressService {
         answerOptionId: r.answerOptionId,
         isCorrect: r.isCorrect,
         respondedAt: r.respondedAt.toISOString(),
+      })),
+    });
+  }
+
+  /**
+   * LEF Bloque V, Incremento 3 ("Resumen académico privado" -- ver
+   * docs/adr/LEF-BLOCK-V-DEFINITION.md §11) -- agrega, por lectura pura,
+   * datos YA existentes de `student_response`/`curriculum_topic_progress`/
+   * catálogo. Sin escritura, sin recálculo de mecánica alguna, sin
+   * dependencia de GAMIFICATION/Tutor IA. Determinista para una cuenta
+   * nueva: todas las consultas devuelven conjuntos vacíos/0, nunca un error.
+   */
+  async getAcademicSummary(accountId: string): Promise<AcademicSummaryResponse> {
+    const [correctness, mostRecent, progressRows, subjects, topicCountsBySubject] = await Promise.all([
+      this.responseRepo.countByAccountGroupedByCorrectness(accountId),
+      this.responseRepo.findMostRecentByAccountId(accountId),
+      this.topicProgressRepo.findAllByAccountIdWithSubject(accountId),
+      this.subjectRepo.findAllActive(),
+      this.topicRepo.countAllGroupedBySubjectId(),
+    ]);
+
+    const startedBySubject = new Map<string, number>();
+    const completedBySubject = new Map<string, number>();
+    for (const row of progressRows) {
+      const subjectId = row.curriculumTopic.subjectId;
+      startedBySubject.set(subjectId, (startedBySubject.get(subjectId) ?? 0) + 1);
+      if (row.status === 'COMPLETED') {
+        completedBySubject.set(subjectId, (completedBySubject.get(subjectId) ?? 0) + 1);
+      }
+    }
+
+    return academicSummaryResponseSchema.parse({
+      totalQuestionsAnswered: correctness.total,
+      totalCorrectAnswers: correctness.correct,
+      // `null`, no `0` -- 0% de precisión sin haber respondido nada sería engañoso (LEF-BLOCK-V-DEFINITION.md §11).
+      accuracyPercentage: correctness.total > 0 ? (correctness.correct / correctness.total) * 100 : null,
+      lastActivityAt: mostRecent?.respondedAt.toISOString() ?? null,
+      progressBySubject: subjects.map((subject) => ({
+        subjectKey: subject.subjectKey,
+        subjectName: subject.name,
+        topicsStarted: startedBySubject.get(subject.id) ?? 0,
+        topicsCompleted: completedBySubject.get(subject.id) ?? 0,
+        totalTopics: topicCountsBySubject.get(subject.id) ?? 0,
       })),
     });
   }
