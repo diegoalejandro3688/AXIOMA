@@ -23,6 +23,8 @@ import { XpBalanceRepository } from '../src/gamification/xp-balance.repository';
 import { LevelDefinitionRepository } from '../src/gamification/level-definition.repository';
 import { AchievementUnlockRepository } from '../src/gamification/achievement-unlock.repository';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
+import { CosmeticItemRepository } from '../src/gamification/cosmetic-item.repository';
+import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
 import { PublicProfileRepository } from '../src/user/public-profile.repository';
 import { CompetitiveProfileIdentityService } from '../src/user/competitive-profile-identity.service';
 import { CompetitiveContextService } from '../src/user/competitive-context.service';
@@ -146,6 +148,30 @@ async function main() {
   await profile(accountVisible, `cple-visible-${suffix}`.toLowerCase(), 'VISIBLE', 'ACTIVE');
   await join(accountVisible, 90);
 
+  // LEF Bloque V, Incremento 1 (docs/adr/LEF-BLOCK-V-DEFINITION.md §9;
+  // enmienda ADR-0021 §2) -- banner equipado para el tercero VISIBLE, para
+  // confirmar que la fila COMPLETA de ranking también lo expone.
+  const cosmeticItemRepo = new CosmeticItemRepository(prisma);
+  const inventoryItemRepo = new InventoryItemRepository(prisma);
+  const equippedCosmeticRepoFixture = new EquippedCosmeticRepository(prisma);
+  const bannerCosmetic = await cosmeticItemRepo.create({
+    itemKey: `cple-gate-banner-${suffix}`,
+    itemType: 'PROFILE_BANNER',
+    name: 'Banner de prueba (ranking)',
+    rarityClass: 'RARE',
+    assetReference: `asset://cple-gate/banner-${suffix}`,
+    visibilityStatus: 'PUBLIC',
+  });
+  const profileVisibleRow = await new PublicProfileRepository(prisma).findByAccountId(accountVisible);
+  const { inventoryItem: bannerInventoryItem } = await inventoryItemRepo.createIdempotent({
+    accountId: accountVisible,
+    cosmeticItemId: bannerCosmetic.id,
+    acquisitionSourceType: 'LEVEL',
+    acquisitionSourceId: `${accountVisible}:banner`,
+    acquiredAt: new Date(),
+  });
+  await equippedCosmeticRepoFixture.upsert(profileVisibleRow!.id, 'PROFILE_BANNER', bannerInventoryItem.id);
+
   const accountPrivateOther = randomUUID();
   await profile(accountPrivateOther, `cple-privateother-${suffix}`.toLowerCase(), 'PRIVATE', 'ACTIVE');
   await join(accountPrivateOther, 80);
@@ -195,13 +221,14 @@ async function main() {
   const visibleRow = rows.find((r) => r.username === `cple-visible-${suffix}`.toLowerCase());
   check('tercero VISIBLE -> presentable=true', visibleRow?.presentable === true);
   check('tercero VISIBLE -> isCurrentUser=false', visibleRow?.isCurrentUser === false);
+  check('LEF V, Incremento 1: fila COMPLETA de ranking expone el banner equipado', visibleRow?.banner === bannerCosmetic.assetReference);
 
   console.log('--- 5. Filas de terceros NO presentables (PRIVATE/RETIRED/ANONYMIZED/sin perfil) -> redactadas EXACTAMENTE ---');
   const redactedRows = rows.filter((r) => r.presentable === false);
   check('8 filas redactadas (privateOther, retiredOther, anonOther, 5 sin perfil)', redactedRows.length === 8);
   for (const row of redactedRows) {
     const keys = Object.keys(row).sort();
-    check(`fila redactada (rank ${row.rankPosition}) contiene EXACTAMENTE presentable/isCurrentUser/rankPosition/metricValue`, JSON.stringify(keys) === JSON.stringify(['isCurrentUser', 'metricValue', 'presentable', 'rankPosition']));
+    check(`fila redactada (rank ${row.rankPosition}) contiene EXACTAMENTE presentable/isCurrentUser/rankPosition/metricValue -- incluye la verificación LEF V de que "banner" nunca aparece en una fila redactada`, JSON.stringify(keys) === JSON.stringify(['isCurrentUser', 'metricValue', 'presentable', 'rankPosition']));
   }
 
   console.log('--- 6. Sin identificadores internos correlacionables en NINGUNA fila (ADR-0021) ---');

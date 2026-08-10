@@ -142,3 +142,15 @@ Pendiente — ADR aprobado, implementación aún no iniciada. Decision Gates (su
 12. **Propia posición nunca redactada ni 404 para uno mismo** — la cuenta autenticada consultando su propia fila (en lista) o su propio perfil (consulta directa) siempre ve la forma completa, sin importar su propia visibilidad (ADR-0020 §2, reverificado desde esta capa).
 
 Ninguno ejecutado todavía — se ejecutarán como parte de la implementación de este incremento.
+
+## Enmienda (LEF Bloque V, Incremento 1, 2026-08-10)
+
+La lista blanca de §2 quedaba incompleta frente a PRD PROFILE-006 (que incluye "banner" entre la información pública): el slot `PROFILE_BANNER` ya existía en `CosmeticSlot` desde Bloque III y ya viajaba, sin distinguirse, dentro de `equippedCosmetics[]` — pero ningún campo dedicado lo exponía con el nombre que usa el producto. `docs/adr/LEF-BLOCK-V-DEFINITION.md` §9 (Incremento 1) autorizó cerrar ese gap con una enmienda mínima:
+
+- **Campo nuevo en la lista blanca de §2**: `banner` — fuente `EquippedCosmetic` (slot `PROFILE_BANNER`) vía `publicProfileId`, mismo origen de dato que `equippedCosmetics`, sin migración de esquema ni consulta adicional (se deriva del mismo `EquippedCosmeticRepository.findManyByPublicProfileIds` ya usado por `CompetitiveProfileIdentityService`). `null` si no hay banner equipado — campo vacío legítimo, no una redacción, mismo criterio que `equippedTitle: null`.
+- Aplica a las dos superficies ya definidas en §1 sin alterar su forma: la fila completa de una lista de ranking (§5) gana el mismo campo; una **fila redactada** (§1, definición formal) sigue sin ganar ninguna clave nueva — `banner` está ausente en una fila redactada, igual que el resto de campos identificadores.
+- `equippedCosmetics[]` no se modifica — sigue incluyendo, como ya hacía, la entrada `PROFILE_BANNER` junto a las demás; `banner` es un campo derivado adicional, no un reemplazo.
+
+**Todo lo demás de este ADR permanece sin cambios**: §1 (dos superficies/dos políticas), §3 (elegibilidad), §4 (resolución de identidad en USER), los Decision Gates 1-12 ya fijados, y las alternativas descartadas. Esta enmienda no reabre ninguna de esas decisiones.
+
+Gate de esta enmienda: extensión del Gate 3 (§, "lista blanca exacta") — ver `apps/backend/scripts/verify-competitive-profile-endpoint-gate.ts`, sección de banner añadida en LEF Bloque V, Incremento 1.

@@ -18,6 +18,10 @@ import { LeaguePointLedgerEntryRepository } from '../src/gamification/league-poi
 import { LeaderboardEntryRepository } from '../src/gamification/leaderboard-entry.repository';
 import { LeaderboardCalculationService } from '../src/gamification/leaderboard-calculation.service';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
+import { CosmeticItemRepository } from '../src/gamification/cosmetic-item.repository';
+import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
+import { EquippedCosmeticRepository } from '../src/gamification/equipped-cosmetic.repository';
+import { PublicProfileRepository } from '../src/user/public-profile.repository';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
 
 const base = process.argv[2] ?? 'http://127.0.0.1:3000';
@@ -68,6 +72,10 @@ async function main() {
   const entryRepo = new LeaderboardEntryRepository(prisma);
   const txRunner = new TransactionRunnerService(prisma);
   const calculationService = new LeaderboardCalculationService(leaderboardDefinitionRepo, participationRepo, ledgerRepo, entryRepo);
+  const cosmeticItemRepo = new CosmeticItemRepository(prisma);
+  const inventoryItemRepo = new InventoryItemRepository(prisma);
+  const equippedCosmeticRepo = new EquippedCosmeticRepository(prisma);
+  const publicProfileRepo = new PublicProfileRepository(prisma);
 
   const suffix = Date.now();
   const now = new Date();
@@ -158,6 +166,43 @@ async function main() {
   const leaderboardDefinition = await calculationService.ensureLeaderboardDefinition();
   await txRunner.run((tx) => calculationService.recalculateGroup(tx, leaderboardDefinition.id, season.id, groupId));
 
+  // LEF Bloque V, Incremento 1 (docs/adr/LEF-BLOCK-V-DEFINITION.md §9;
+  // enmienda ADR-0021 §2) -- banner EQUIPADO (slot PROFILE_BANNER) para
+  // accountVisible, y un SEGUNDO banner del mismo catálogo, POSEÍDO pero
+  // NUNCA equipado, para verificar que solo el equipado se filtra.
+  const bannerCosmeticEquipped = await cosmeticItemRepo.create({
+    itemKey: `cpe-gate-banner-equipped-${suffix}`,
+    itemType: 'PROFILE_BANNER',
+    name: 'Banner de prueba (equipado)',
+    rarityClass: 'RARE',
+    assetReference: `asset://cpe-gate/banner-equipped-${suffix}`,
+    visibilityStatus: 'PUBLIC',
+  });
+  const bannerCosmeticOwnedNotEquipped = await cosmeticItemRepo.create({
+    itemKey: `cpe-gate-banner-unequipped-${suffix}`,
+    itemType: 'PROFILE_BANNER',
+    name: 'Banner de prueba (no equipado)',
+    rarityClass: 'RARE',
+    assetReference: `asset://cpe-gate/banner-unequipped-${suffix}`,
+    visibilityStatus: 'PUBLIC',
+  });
+  const profileVisible = await publicProfileRepo.findByAccountId(accountVisible.accountId);
+  const { inventoryItem: bannerInventoryEquipped } = await inventoryItemRepo.createIdempotent({
+    accountId: accountVisible.accountId,
+    cosmeticItemId: bannerCosmeticEquipped.id,
+    acquisitionSourceType: 'LEVEL',
+    acquisitionSourceId: `${accountVisible.accountId}:banner-equipped`,
+    acquiredAt: new Date(),
+  });
+  await inventoryItemRepo.createIdempotent({
+    accountId: accountVisible.accountId,
+    cosmeticItemId: bannerCosmeticOwnedNotEquipped.id,
+    acquisitionSourceType: 'LEVEL',
+    acquisitionSourceId: `${accountVisible.accountId}:banner-unequipped`,
+    acquiredAt: new Date(),
+  });
+  await equippedCosmeticRepo.upsert(profileVisible!.id, 'PROFILE_BANNER', bannerInventoryEquipped.id);
+
   check('fixtures creados sin errores', true);
 
   console.log('--- 1. Sin sesión -> 401 en ambos endpoints ---');
@@ -177,6 +222,7 @@ async function main() {
   check('username == propio', meActive.body?.username === `cpe-active-${suffix}`.toLowerCase());
   check('competitive == null (sin participación activa) -- NUNCA 404 por esto', meActive.body?.competitive === null);
   check('equippedTitle == null, equippedCosmetics == [], publicAchievements == [] (perfil mínimo)', meActive.body?.equippedTitle === null && meActive.body?.equippedCosmetics.length === 0 && meActive.body?.publicAchievements.length === 0);
+  check('LEF V, Incremento 1: sin banner equipado -> banner === null (campo vacío legítimo, no ausente)', 'banner' in (meActive.body ?? {}) && meActive.body?.banner === null);
 
   console.log('--- 4. /me: ACTIVE+VISIBLE, CON contexto competitivo real ---');
   const meVisible = await req('GET', '/user/public-profile/me/competitive-profile', accountVisible.headers);
@@ -185,6 +231,7 @@ async function main() {
   check('competitive.rankPosition == 1 (única participante del grupo)', meVisible.body?.competitive?.rankPosition === 1);
   check('competitive.metricValue == 42 (el LP otorgado)', meVisible.body?.competitive?.metricValue === 42);
   check('competitive.calculatedAt/snapshotVersion presentes', typeof meVisible.body?.competitive?.calculatedAt === 'string' && typeof meVisible.body?.competitive?.snapshotVersion === 'number');
+  check('LEF V, Incremento 1: /me con PROFILE_BANNER equipado -> banner devuelve EXACTAMENTE el assetReference del equipado', meVisible.body?.banner === bannerCosmeticEquipped.assetReference);
 
   console.log('--- 5. /me: RETIRED -> 200 para el dueño, MOSTRANDO su estado ---');
   const meRetired = await req('GET', '/user/public-profile/me/competitive-profile', accountRetiredHeaders);
@@ -222,6 +269,15 @@ async function main() {
   check('username en forma canónica (minúsculas), no la forma con mayúsculas enviada en la URL', publicVisible.body?.username === visibleUsername.toLowerCase());
   check('competitive presente con los mismos datos que /me', publicVisible.body?.competitive?.rankPosition === 1 && publicVisible.body?.competitive?.metricValue === 42);
   check('la respuesta pública NUNCA incluye lifecycleStatus (solo /me lo expone)', !('lifecycleStatus' in (publicVisible.body ?? {})));
+  check('LEF V, Incremento 1: superficie pública cross-cuenta también expone EXACTAMENTE el banner equipado', publicVisible.body?.banner === bannerCosmeticEquipped.assetReference);
+
+  console.log('--- 8.1 LEF Bloque V, Incremento 1: banner poseído pero NO equipado nunca se filtra ---');
+  const publicAllResponses = [meActive.raw, meVisible.raw, meRetired.raw, publicVisible.raw];
+  let leakedUnequippedBanner = false;
+  for (const raw of publicAllResponses) {
+    if (raw.includes(bannerCosmeticOwnedNotEquipped.assetReference)) leakedUnequippedBanner = true;
+  }
+  check('el assetReference del banner POSEÍDO pero NO equipado nunca aparece en ninguna respuesta', !leakedUnequippedBanner);
 
   console.log('--- 9. Normalización canónica del username de entrada (ADR-0018 §2, precisión #4) ---');
   const mixedCaseQuery = await req('GET', `/user/public-profile/${visibleUsername.toUpperCase()}/competitive-profile`, accountActive.headers);

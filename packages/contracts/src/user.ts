@@ -233,6 +233,8 @@ export type CompetitiveContext = z.infer<typeof competitiveContextSchema>;
 export const competitiveProfileResponseSchema = z.object({
   username: z.string(),
   avatar: z.string().nullable(),
+  /** LEF Bloque V, Incremento 1 (enmienda ADR-0021 §2) -- banner YA equipado (slot PROFILE_BANNER, Bloque III). `null` = sin banner equipado, campo vacío legítimo, no redacción. */
+  banner: z.string().nullable(),
   equippedTitle: competitiveEquippedTitleSchema.nullable(),
   equippedCosmetics: z.array(competitiveEquippedCosmeticSchema),
   levelNumber: z.number().int().positive(),
@@ -264,6 +266,7 @@ export const leaderboardRowSchema = z.discriminatedUnion('presentable', [
     metricValue: z.number().int(),
     username: z.string(),
     avatar: z.string().nullable(),
+    banner: z.string().nullable(),
     equippedTitle: competitiveEquippedTitleSchema.nullable(),
     equippedCosmetics: z.array(competitiveEquippedCosmeticSchema),
     levelNumber: z.number().int().positive(),

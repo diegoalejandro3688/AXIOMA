@@ -29,6 +29,7 @@ const COMPETITIVE_PROFILE_NOT_FOUND_MESSAGE = 'Este perfil no existe o no está 
 export interface CompetitiveProfileView {
   username: string;
   avatar: string | null;
+  banner: CompetitiveProfileIdentity['banner'];
   equippedTitle: CompetitiveProfileIdentity['equippedTitle'];
   equippedCosmetics: CompetitiveProfileIdentity['equippedCosmetics'];
   levelNumber: number;
@@ -45,6 +46,7 @@ function toCompetitiveProfileView(identity: CompetitiveProfileIdentity, competit
   return {
     username: identity.username,
     avatar: identity.avatar,
+    banner: identity.banner,
     equippedTitle: identity.equippedTitle,
     equippedCosmetics: identity.equippedCosmetics,
     levelNumber: identity.levelNumber,

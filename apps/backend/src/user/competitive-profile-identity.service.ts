@@ -30,6 +30,7 @@ export interface CompetitiveProfileIdentity {
   accountId: string;
   username: string;
   avatar: string | null;
+  banner: string | null;
   equippedTitle: EquippedTitleSummary | null;
   equippedCosmetics: EquippedCosmeticSummary[];
   levelNumber: number;
@@ -181,10 +182,19 @@ export class CompetitiveProfileIdentityService {
     for (const profile of profiles) {
       const equippedTitle = titleByProfileId.get(profile.id);
       const lifetimeXp = balanceByAccountId.get(profile.accountId)?.lifetimeXp ?? 0;
+      const profileCosmetics = cosmeticsByProfileId.get(profile.id) ?? [];
+      // LEF Bloque V, Incremento 1 (docs/adr/LEF-BLOCK-V-DEFINITION.md §9;
+      // enmienda ADR-0021 §2) -- el banner es el cosmético YA equipado en
+      // el slot PROFILE_BANNER (Bloque III), sin consulta adicional ni
+      // campo nuevo en public_profile. `null` es un campo vacío legítimo
+      // (sin banner equipado), no una redacción -- mismo criterio que
+      // `equippedTitle: null`.
+      const bannerCosmetic = profileCosmetics.find((c) => c.cosmeticSlot === 'PROFILE_BANNER');
       const identity: CompetitiveProfileIdentity = {
         accountId: profile.accountId,
         username: profile.usernameNormalized,
         avatar: profile.avatarReference,
+        banner: bannerCosmetic?.inventoryItem.cosmeticItem.assetReference ?? null,
         equippedTitle: equippedTitle
           ? {
               titleKey: equippedTitle.accountTitle.titleDefinition.titleKey,
@@ -192,7 +202,7 @@ export class CompetitiveProfileIdentityService {
               rarityClass: equippedTitle.accountTitle.titleDefinition.rarityClass,
             }
           : null,
-        equippedCosmetics: (cosmeticsByProfileId.get(profile.id) ?? []).map((c) => ({
+        equippedCosmetics: profileCosmetics.map((c) => ({
           cosmeticSlot: c.cosmeticSlot,
           itemKey: c.inventoryItem.cosmeticItem.itemKey,
           name: c.inventoryItem.cosmeticItem.name,

@@ -21,8 +21,8 @@ export interface LeaderboardPageView {
 }
 
 function omitAccountId(identity: CompetitiveProfileIdentity): Omit<CompetitiveProfileIdentity, 'accountId'> {
-  const { username, avatar, equippedTitle, equippedCosmetics, levelNumber, publicAchievements } = identity;
-  return { username, avatar, equippedTitle, equippedCosmetics, levelNumber, publicAchievements };
+  const { username, avatar, banner, equippedTitle, equippedCosmetics, levelNumber, publicAchievements } = identity;
+  return { username, avatar, banner, equippedTitle, equippedCosmetics, levelNumber, publicAchievements };
 }
 
 /**

@@ -30,6 +30,7 @@ function presentableRow(rankPosition: number, overrides: Partial<Extract<Leaderb
     metricValue: 1000 - rankPosition,
     username: `user-${rankPosition}`,
     avatar: null,
+    banner: null,
     equippedTitle: null,
     equippedCosmetics: [],
     levelNumber: 5,
