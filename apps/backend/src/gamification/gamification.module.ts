@@ -54,6 +54,8 @@ import { LeaguePointRuleRepository } from './league-point-rule.repository';
 import { LeaguePointLedgerEntryRepository } from './league-point-ledger-entry.repository';
 import { LeagueEnrollmentService } from './league-enrollment.service';
 import { LeagueParticipationController } from './league-participation.controller';
+import { CompetitiveHistoryService } from './competitive-history.service';
+import { CompetitiveHistoryController } from './competitive-history.controller';
 import { LeaguePointGrantService } from './league-point-grant.service';
 import { LeaguePointGrantScheduler } from './league-point-grant.scheduler';
 import { SeasonTransitionService } from './season-transition.service';
@@ -262,7 +264,14 @@ import { QuickQuestionController } from './quick-question.controller';
  */
 @Module({
   imports: [AuthModule, EducationModule, InternalOpsModule, ObjectStorageModule, OutboxModule],
-  controllers: [GamificationController, ProgressionController, ChallengeController, QuickQuestionController, LeagueParticipationController],
+  controllers: [
+    GamificationController,
+    ProgressionController,
+    ChallengeController,
+    QuickQuestionController,
+    LeagueParticipationController,
+    CompetitiveHistoryController,
+  ],
   providers: [
     GamificationProgramRepository,
     GamificationProgramVersionRepository,
@@ -325,6 +334,7 @@ import { QuickQuestionController } from './quick-question.controller';
     QuickQuestionSessionRepository,
     QuickQuestionAttemptRepository,
     QuickQuestionService,
+    CompetitiveHistoryService,
   ],
   exports: [
     GamificationProgramRepository,

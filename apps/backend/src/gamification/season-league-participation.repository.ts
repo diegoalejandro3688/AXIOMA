@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../platform/prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
-import type { SeasonLeagueParticipation } from '../generated/prisma/client';
+import type { SeasonLeagueParticipation, GameSeason, LeagueDefinition } from '../generated/prisma/client';
+
+export type FinalizedParticipationWithContext = SeasonLeagueParticipation & { gameSeason: GameSeason; leagueDefinition: LeagueDefinition };
 
 type Client = PrismaService | Prisma.TransactionClient;
 
@@ -119,6 +121,25 @@ export class SeasonLeagueParticipationRepository {
 
   incrementLeaguePoints(tx: Prisma.TransactionClient, id: string, delta: number): Promise<SeasonLeagueParticipation> {
     return tx.seasonLeagueParticipation.update({ where: { id }, data: { leaguePoints: { increment: delta } } });
+  }
+
+  /**
+   * LEF Bloque V, Incremento 4 ("Historial competitivo cross-temporada" --
+   * ver docs/adr/LEF-BLOCK-V-DEFINITION.md §12) -- SOLO participaciones ya
+   * FINALIZADAS (`PROMOTED`/`DEMOTED`/`RETAINED`, resultado congelado por
+   * `LeaderboardFinalizationService`). Deliberadamente EXCLUYE `ACTIVE`
+   * (temporada en curso, no es "historial" todavía) y `SEASON_ENDED`
+   * (temporada terminada pero el grupo aún no cerró -- estado transitorio,
+   * sin instantánea todavía; incluirlo exigiría mostrar un resultado no
+   * definitivo, lo que este incremento no hace). Orden estable y
+   * determinista: temporada más reciente primero, por `gameSeason.startsAt`.
+   */
+  findFinalizedByAccountId(accountId: string): Promise<FinalizedParticipationWithContext[]> {
+    return this.prisma.seasonLeagueParticipation.findMany({
+      where: { accountId, participationStatus: { in: ['PROMOTED', 'DEMOTED', 'RETAINED'] } },
+      include: { gameSeason: true, leagueDefinition: true },
+      orderBy: { gameSeason: { startsAt: 'desc' } },
+    });
   }
 
   /** Cierre de temporada (§9.6) -- toda participación ACTIVE de esa temporada pasa a SEASON_ENDED. */

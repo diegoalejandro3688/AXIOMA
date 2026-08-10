@@ -62,7 +62,7 @@ async function main() {
   const leaderboardDefinitionRepo = new LeaderboardDefinitionRepository(prisma);
   const entryRepo = new LeaderboardEntryRepository(prisma);
   const snapshotRepo = new LeaderboardSnapshotRepository(prisma);
-  const snapshotEntryRepo = new LeaderboardSnapshotEntryRepository();
+  const snapshotEntryRepo = new LeaderboardSnapshotEntryRepository(prisma);
   const txRunner = new TransactionRunnerService(prisma);
 
   const calculationService = new LeaderboardCalculationService(leaderboardDefinitionRepo, participationRepo, ledgerRepo, entryRepo);

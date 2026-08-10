@@ -62,3 +62,41 @@ export const postLeagueParticipationResponseSchema = z.discriminatedUnion('outco
   z.object({ outcome: z.literal('NO_ACTIVE_SEASON') }),
 ]);
 export type PostLeagueParticipationResponse = z.infer<typeof postLeagueParticipationResponseSchema>;
+
+// --- GET /gamification/me/league/history -- LEF Bloque V, Incremento 4 ("Historial competitivo cross-temporada", docs/adr/LEF-BLOCK-V-DEFINITION.md §12) ---
+
+/**
+ * Una temporada YA FINALIZADA en la que la cuenta participó. PRIVADO
+ * exclusivamente (`/gamification/me/league/history`) -- NUNCA se expone en
+ * `competitive-profile`/`leaderboard` (decisión del Product Owner,
+ * LEF-BLOCK-V-DEFINITION.md §4.5: el historial cross-temporada es privado
+ * sin excepción).
+ *
+ * `finalRank`/`metricValue`/`outcome` provienen de `leaderboard_snapshot_entry`
+ * -- la instantánea INMUTABLE congelada al cerrar el grupo (ADR-0020 §5),
+ * nunca recalculada con reglas vigentes. Sin
+ * `seasonLeagueParticipationId`/`gameSeasonId`/`leagueDefinitionId`/
+ * `leagueGroupId`/`accountId` -- mismo criterio "sin IDs internos" que
+ * `competitiveContextSchema` (ADR-0021 §2/§3), aunque esta superficie sea
+ * privada: no hay necesidad de exponerlos para el propósito de este
+ * contrato.
+ */
+export const seasonHistoryEntrySchema = z.object({
+  seasonKey: z.string(),
+  seasonName: z.string(),
+  seasonStartsAt: isoDateTime,
+  seasonEndsAt: isoDateTime,
+  leagueKey: z.string(),
+  leagueName: z.string(),
+  finalRank: z.number().int().positive(),
+  metricValue: z.number().int(),
+  outcome: z.enum(['PROMOTED', 'DEMOTED', 'RETAINED']),
+  finalizedAt: isoDateTime,
+});
+export type SeasonHistoryEntry = z.infer<typeof seasonHistoryEntrySchema>;
+
+/** Orden: temporada más reciente primero (`seasonStartsAt` descendente) -- estable y determinista, nunca por orden de inserción. Cuenta sin historial -> `seasons: []`, nunca un error. */
+export const competitiveHistoryResponseSchema = z.object({
+  seasons: z.array(seasonHistoryEntrySchema),
+});
+export type CompetitiveHistoryResponse = z.infer<typeof competitiveHistoryResponseSchema>;
