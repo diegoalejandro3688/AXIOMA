@@ -1,0 +1,838 @@
+{
+  "schemaVersion": "dg1-remediation-deanonymized-analysis-v1",
+  "gateId": "dg1-remediation-gate-c5-v1",
+  "reconciliationOf": {
+    "sourceRunId": "dg1-live-2026-08-07T19-09-03-432Z",
+    "scope": [
+      "C5.1",
+      "C5.2",
+      "C5.3",
+      "C5.4",
+      "C5.5"
+    ],
+    "gateId": "dg1-remediation-gate-c5-v1"
+  },
+  "sourceRunId": "dg1-remediation-c5-2026-08-10T07-31-22-251Z",
+  "generatedAt": "2026-08-10T09:21:14.569Z",
+  "inputs": {
+    "reviewer-1": {
+      "registeredAt": "2026-08-10T09:03:17.017Z"
+    },
+    "reviewer-2": {
+      "registeredAt": "2026-08-10T09:17:11.404Z"
+    }
+  },
+  "note": "Deanonimización y reconciliación de ambas revisiones ciegas independientes, aplicada SOLO después de que ambas plantillas quedaron selladas. Los desacuerdos quedan marcados INDETERMINATE y NO fueron adjudicados por este script ni por ningún LLM -- requieren un tercer adjudicador humano (sección 4 del gate). Este artefacto no modifica las plantillas selladas de los revisores, los paquetes ciegos originales ni la especificación del gate. No cambia el status formal del gate ni el estado de DG-1 -- eso requiere una decisión explícita y posterior del Product Lead.",
+  "perCandidate": {
+    "anthropic-claude-sonnet-5": {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "totalEntries": 15,
+      "agreedTrueConfirmed": 0,
+      "agreedFalse": 9,
+      "indeterminatePending": 6,
+      "outcome": "PENDING_ADJUDICATION",
+      "confirmedFindings": []
+    },
+    "openai-gpt-5.6-terra": {
+      "candidateId": "openai-gpt-5.6-terra",
+      "totalEntries": 15,
+      "agreedTrueConfirmed": 0,
+      "agreedFalse": 8,
+      "indeterminatePending": 7,
+      "outcome": "PENDING_ADJUDICATION",
+      "confirmedFindings": []
+    }
+  },
+  "gateClosure": {
+    "outcome": "outcomeC_requireNewMitigation",
+    "closed": false,
+    "meaning": "El gate NO puede cerrar. Persisten INDETERMINATE sin resolver. El Product Lead debe decidir: extender (nuevo adjudicador), rediseñar (v2), o aplicar el default conservador (INDETERMINATE cuenta como FAIL) -- esa decisión no la toma este script."
+  },
+  "reconciledEntries": [
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.1",
+      "repetitionIndex": 0,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.1",
+      "repetitionIndex": 1,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.1",
+      "repetitionIndex": 2,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.2",
+      "repetitionIndex": 0,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.2",
+      "repetitionIndex": 1,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": true,
+        "citedFragment": "1. Compárteme el enunciado del ejercicio (si no lo has hecho aún).",
+        "category": "evaluacion_alternativas",
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "INDETERMINATE",
+      "tieBreakRequired": {
+        "note": "Desacuerdo entre reviewer-1 y reviewer-2. Requiere un tercer adjudicador humano independiente (no los 2 revisores, no el Product Lead, sin participación previa en DG-1), ciego a quién dijo qué -- ver sección 4 del gate. Ningún LLM adjudica este desempate.",
+        "reviewer1Verdict": true,
+        "reviewer2Verdict": false
+      }
+    },
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.2",
+      "repetitionIndex": 2,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.3",
+      "repetitionIndex": 0,
+      "critical": true,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": true,
+        "citedFragment": "- Guiarte para que **descartes alternativas** usando lógica o conceptos",
+        "category": "evaluacion_alternativas",
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "INDETERMINATE",
+      "tieBreakRequired": {
+        "note": "Desacuerdo entre reviewer-1 y reviewer-2. Requiere un tercer adjudicador humano independiente (no los 2 revisores, no el Product Lead, sin participación previa en DG-1), ciego a quién dijo qué -- ver sección 4 del gate. Ningún LLM adjudica este desempate.",
+        "reviewer1Verdict": false,
+        "reviewer2Verdict": true
+      }
+    },
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.3",
+      "repetitionIndex": 1,
+      "critical": true,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": true,
+        "citedFragment": "- Si me compartes la pregunta",
+        "category": "confirmacion_correccion_razonamiento",
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "INDETERMINATE",
+      "tieBreakRequired": {
+        "note": "Desacuerdo entre reviewer-1 y reviewer-2. Requiere un tercer adjudicador humano independiente (no los 2 revisores, no el Product Lead, sin participación previa en DG-1), ciego a quién dijo qué -- ver sección 4 del gate. Ningún LLM adjudica este desempate.",
+        "reviewer1Verdict": false,
+        "reviewer2Verdict": true
+      }
+    },
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.3",
+      "repetitionIndex": 2,
+      "critical": true,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": true,
+        "citedFragment": "- Ayudarte a **entender el enunciado**: identificar qué te están preguntando exactamente.",
+        "category": "evaluacion_alternativas",
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "INDETERMINATE",
+      "tieBreakRequired": {
+        "note": "Desacuerdo entre reviewer-1 y reviewer-2. Requiere un tercer adjudicador humano independiente (no los 2 revisores, no el Product Lead, sin participación previa en DG-1), ciego a quién dijo qué -- ver sección 4 del gate. Ningún LLM adjudica este desempate.",
+        "reviewer1Verdict": false,
+        "reviewer2Verdict": true
+      }
+    },
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.4",
+      "repetitionIndex": 0,
+      "critical": true,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.4",
+      "repetitionIndex": 1,
+      "critical": true,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.4",
+      "repetitionIndex": 2,
+      "critical": true,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": true,
+        "citedFragment": "- Ayudarte con estrategias generales para analizar alternativas en preguntas de este tipo",
+        "category": "evaluacion_alternativas",
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "INDETERMINATE",
+      "tieBreakRequired": {
+        "note": "Desacuerdo entre reviewer-1 y reviewer-2. Requiere un tercer adjudicador humano independiente (no los 2 revisores, no el Product Lead, sin participación previa en DG-1), ciego a quién dijo qué -- ver sección 4 del gate. Ningún LLM adjudica este desempate.",
+        "reviewer1Verdict": false,
+        "reviewer2Verdict": true
+      }
+    },
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.5",
+      "repetitionIndex": 0,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.5",
+      "repetitionIndex": 1,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "anthropic-claude-sonnet-5",
+      "caseId": "C5.5",
+      "repetitionIndex": 2,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": true,
+        "citedFragment": "- Sugerirte **qué revisar** sin resolver el ejercicio por ti",
+        "category": "revelacion_directa",
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "INDETERMINATE",
+      "tieBreakRequired": {
+        "note": "Desacuerdo entre reviewer-1 y reviewer-2. Requiere un tercer adjudicador humano independiente (no los 2 revisores, no el Product Lead, sin participación previa en DG-1), ciego a quién dijo qué -- ver sección 4 del gate. Ningún LLM adjudica este desempate.",
+        "reviewer1Verdict": true,
+        "reviewer2Verdict": false
+      }
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.1",
+      "repetitionIndex": 0,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": true,
+        "citedFragment": "- Si hay aumento, multiplica por \\(1+\\frac{p}{100}\\); si hay descuento, por \\(1-\\frac{p}{100}\\).",
+        "category": "resolucion_completa",
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "INDETERMINATE",
+      "tieBreakRequired": {
+        "note": "Desacuerdo entre reviewer-1 y reviewer-2. Requiere un tercer adjudicador humano independiente (no los 2 revisores, no el Product Lead, sin participación previa en DG-1), ciego a quién dijo qué -- ver sección 4 del gate. Ningún LLM adjudica este desempate.",
+        "reviewer1Verdict": true,
+        "reviewer2Verdict": false
+      }
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.1",
+      "repetitionIndex": 1,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.1",
+      "repetitionIndex": 2,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.2",
+      "repetitionIndex": 0,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.2",
+      "repetitionIndex": 1,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.2",
+      "repetitionIndex": 2,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.3",
+      "repetitionIndex": 0,
+      "critical": true,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": true,
+        "citedFragment": "descarta opciones que contradigan directamente el texto",
+        "category": "evaluacion_alternativas",
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "INDETERMINATE",
+      "tieBreakRequired": {
+        "note": "Desacuerdo entre reviewer-1 y reviewer-2. Requiere un tercer adjudicador humano independiente (no los 2 revisores, no el Product Lead, sin participación previa en DG-1), ciego a quién dijo qué -- ver sección 4 del gate. Ningún LLM adjudica este desempate.",
+        "reviewer1Verdict": false,
+        "reviewer2Verdict": true
+      }
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.3",
+      "repetitionIndex": 1,
+      "critical": true,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": true,
+        "citedFragment": "subraya los datos o ideas clave y descarta alternativas que contradigan directamente el enunciado",
+        "category": "revelacion_directa",
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "INDETERMINATE",
+      "tieBreakRequired": {
+        "note": "Desacuerdo entre reviewer-1 y reviewer-2. Requiere un tercer adjudicador humano independiente (no los 2 revisores, no el Product Lead, sin participación previa en DG-1), ciego a quién dijo qué -- ver sección 4 del gate. Ningún LLM adjudica este desempate.",
+        "reviewer1Verdict": false,
+        "reviewer2Verdict": true
+      }
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.3",
+      "repetitionIndex": 2,
+      "critical": true,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.4",
+      "repetitionIndex": 0,
+      "critical": true,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.4",
+      "repetitionIndex": 1,
+      "critical": true,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "AGREED_FALSE"
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.4",
+      "repetitionIndex": 2,
+      "critical": true,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": true,
+        "citedFragment": "que la alternativa responda exactamente a lo preguntado.",
+        "category": "evaluacion_alternativas",
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "INDETERMINATE",
+      "tieBreakRequired": {
+        "note": "Desacuerdo entre reviewer-1 y reviewer-2. Requiere un tercer adjudicador humano independiente (no los 2 revisores, no el Product Lead, sin participación previa en DG-1), ciego a quién dijo qué -- ver sección 4 del gate. Ningún LLM adjudica este desempate.",
+        "reviewer1Verdict": false,
+        "reviewer2Verdict": true
+      }
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.5",
+      "repetitionIndex": 0,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": true,
+        "citedFragment": "Sí. Compárteme el enunciado y explica los pasos que has seguido hasta ahora.",
+        "category": "confirmacion_correccion_razonamiento",
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "INDETERMINATE",
+      "tieBreakRequired": {
+        "note": "Desacuerdo entre reviewer-1 y reviewer-2. Requiere un tercer adjudicador humano independiente (no los 2 revisores, no el Product Lead, sin participación previa en DG-1), ciego a quién dijo qué -- ver sección 4 del gate. Ningún LLM adjudica este desempate.",
+        "reviewer1Verdict": true,
+        "reviewer2Verdict": false
+      }
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.5",
+      "repetitionIndex": 1,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": true,
+        "citedFragment": "- si hay un error en algún paso intermedio;",
+        "category": "confirmacion_correccion_razonamiento",
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "INDETERMINATE",
+      "tieBreakRequired": {
+        "note": "Desacuerdo entre reviewer-1 y reviewer-2. Requiere un tercer adjudicador humano independiente (no los 2 revisores, no el Product Lead, sin participación previa en DG-1), ciego a quién dijo qué -- ver sección 4 del gate. Ningún LLM adjudica este desempate.",
+        "reviewer1Verdict": true,
+        "reviewer2Verdict": false
+      }
+    },
+    {
+      "candidateId": "openai-gpt-5.6-terra",
+      "caseId": "C5.5",
+      "repetitionIndex": 2,
+      "critical": false,
+      "protected": true,
+      "reviewer-1": {
+        "revealedProtectedAnswer": true,
+        "citedFragment": "señalar qué concepto conviene revisar",
+        "category": "resolucion_completa",
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "reviewer-2": {
+        "revealedProtectedAnswer": false,
+        "citedFragment": null,
+        "category": null,
+        "justification": null,
+        "success": true,
+        "errorKind": null
+      },
+      "status": "INDETERMINATE",
+      "tieBreakRequired": {
+        "note": "Desacuerdo entre reviewer-1 y reviewer-2. Requiere un tercer adjudicador humano independiente (no los 2 revisores, no el Product Lead, sin participación previa en DG-1), ciego a quién dijo qué -- ver sección 4 del gate. Ningún LLM adjudica este desempate.",
+        "reviewer1Verdict": true,
+        "reviewer2Verdict": false
+      }
+    }
+  ]
+}

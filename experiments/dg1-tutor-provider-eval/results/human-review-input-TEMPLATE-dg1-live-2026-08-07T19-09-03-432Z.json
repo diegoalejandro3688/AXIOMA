@@ -1,0 +1,387 @@
+[
+  {
+    "caseId": "C1.1",
+    "rubricDimensions": [
+      "pedagogicalQuality",
+      "correctness"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C1.2",
+    "rubricDimensions": [
+      "pedagogicalQuality",
+      "correctness"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C1.3",
+    "rubricDimensions": [
+      "pedagogicalQuality",
+      "correctness"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C1.4",
+    "rubricDimensions": [
+      "pedagogicalQuality",
+      "correctness"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C1.5",
+    "rubricDimensions": [
+      "pedagogicalQuality",
+      "correctness"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C2.1",
+    "rubricDimensions": [
+      "pedagogicalQuality",
+      "correctness"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C2.2",
+    "rubricDimensions": [
+      "pedagogicalQuality",
+      "correctness"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C2.3",
+    "rubricDimensions": [
+      "pedagogicalQuality",
+      "correctness"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C2.4",
+    "rubricDimensions": [
+      "pedagogicalQuality",
+      "correctness"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C2.5",
+    "rubricDimensions": [
+      "pedagogicalQuality",
+      "correctness"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C3.1",
+    "rubricDimensions": [
+      "correctness",
+      "pedagogicalQuality",
+      "instructionFollowing"
+    ],
+    "critical": true,
+    "protected": false,
+    "humanReviewScope": "all_repetitions"
+  },
+  {
+    "caseId": "C3.2",
+    "rubricDimensions": [
+      "instructionFollowing",
+      "pedagogicalQuality"
+    ],
+    "critical": true,
+    "protected": false,
+    "humanReviewScope": "all_repetitions"
+  },
+  {
+    "caseId": "C3.3",
+    "rubricDimensions": [
+      "correctness",
+      "pedagogicalQuality"
+    ],
+    "critical": true,
+    "protected": false,
+    "humanReviewScope": "all_repetitions"
+  },
+  {
+    "caseId": "C3.4",
+    "rubricDimensions": [
+      "correctness",
+      "pedagogicalQuality"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C3.5",
+    "rubricDimensions": [
+      "correctness",
+      "pedagogicalQuality"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C3.6",
+    "rubricDimensions": [
+      "correctness",
+      "pedagogicalQuality"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C3.7",
+    "rubricDimensions": [
+      "correctness",
+      "pedagogicalQuality"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C3.8",
+    "rubricDimensions": [
+      "correctness",
+      "pedagogicalQuality"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C4.1",
+    "rubricDimensions": [
+      "correctness",
+      "pedagogicalQuality"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C4.2",
+    "rubricDimensions": [
+      "correctness",
+      "pedagogicalQuality"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C4.3",
+    "rubricDimensions": [
+      "correctness",
+      "pedagogicalQuality"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C4.4",
+    "rubricDimensions": [
+      "correctness",
+      "pedagogicalQuality"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C4.5",
+    "rubricDimensions": [
+      "correctness",
+      "pedagogicalQuality"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C5.1",
+    "rubricDimensions": [
+      "safetyPolicyCompliance"
+    ],
+    "critical": false,
+    "protected": true
+  },
+  {
+    "caseId": "C5.2",
+    "rubricDimensions": [
+      "safetyPolicyCompliance"
+    ],
+    "critical": false,
+    "protected": true
+  },
+  {
+    "caseId": "C5.3",
+    "rubricDimensions": [
+      "safetyPolicyCompliance"
+    ],
+    "critical": true,
+    "protected": true,
+    "humanReviewScope": "all_repetitions"
+  },
+  {
+    "caseId": "C5.4",
+    "rubricDimensions": [
+      "safetyPolicyCompliance"
+    ],
+    "critical": true,
+    "protected": true,
+    "humanReviewScope": "all_repetitions"
+  },
+  {
+    "caseId": "C5.5",
+    "rubricDimensions": [
+      "safetyPolicyCompliance",
+      "pedagogicalQuality"
+    ],
+    "critical": false,
+    "protected": true
+  },
+  {
+    "caseId": "C6.1",
+    "rubricDimensions": [
+      "pedagogicalQuality",
+      "safetyPolicyCompliance"
+    ],
+    "critical": true,
+    "protected": false,
+    "humanReviewScope": "all_repetitions"
+  },
+  {
+    "caseId": "C6.2",
+    "rubricDimensions": [
+      "pedagogicalQuality",
+      "safetyPolicyCompliance"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C6.3",
+    "rubricDimensions": [
+      "safetyPolicyCompliance",
+      "correctness"
+    ],
+    "critical": true,
+    "protected": false,
+    "humanReviewScope": "all_repetitions"
+  },
+  {
+    "caseId": "C6.4",
+    "rubricDimensions": [
+      "pedagogicalQuality",
+      "safetyPolicyCompliance"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C6.5",
+    "rubricDimensions": [
+      "pedagogicalQuality",
+      "safetyPolicyCompliance"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C7.1",
+    "rubricDimensions": [
+      "safetyPolicyCompliance"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C7.2",
+    "rubricDimensions": [
+      "safetyPolicyCompliance"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C7.3",
+    "rubricDimensions": [
+      "safetyPolicyCompliance"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C8.1",
+    "rubricDimensions": [
+      "instructionFollowing"
+    ],
+    "critical": true,
+    "protected": false,
+    "humanReviewScope": "all_repetitions"
+  },
+  {
+    "caseId": "C8.2",
+    "rubricDimensions": [
+      "instructionFollowing"
+    ],
+    "critical": true,
+    "protected": false,
+    "humanReviewScope": "all_repetitions"
+  },
+  {
+    "caseId": "C8.3",
+    "rubricDimensions": [
+      "instructionFollowing",
+      "correctness"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C8.4",
+    "rubricDimensions": [
+      "instructionFollowing"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C9.1",
+    "rubricDimensions": [
+      "safetyPolicyCompliance"
+    ],
+    "critical": true,
+    "protected": false,
+    "humanReviewScope": "all_repetitions"
+  },
+  {
+    "caseId": "C9.2",
+    "rubricDimensions": [
+      "safetyPolicyCompliance"
+    ],
+    "critical": false,
+    "protected": false
+  },
+  {
+    "caseId": "C9.3",
+    "rubricDimensions": [
+      "safetyPolicyCompliance"
+    ],
+    "critical": false,
+    "protected": false
+  }
+]

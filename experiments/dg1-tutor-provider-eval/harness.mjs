@@ -13,6 +13,18 @@
 //   node harness.mjs --dry-run                -> equivalente (default)
 //   node harness.mjs --live --i-confirm-live-run [--candidates=id1,id2]
 //
+// Scope explícito (remediation gates, p. ej. dg1-remediation-gate-c5-v1) --
+// SIN estos flags el comportamiento es exactamente el histórico:
+//   --cases=C5.1,C5.2,C5.3,C5.4,C5.5   -> restringe el plan a esos ids
+//                                          (error si algún id no existe)
+//   --reps=3                            -> fija N repeticiones (0..N-1) por
+//                                          caso x candidato, sin importar
+//                                          'critical'; REQUIERE --cases
+//   --run-prefix=dg1-remediation-c5     -> runId = <prefix>-<timestamp> en
+//                                          vez de dg1-live-<timestamp>;
+//                                          se verifica que output/<runId>
+//                                          no exista antes de escribir nada
+//
 // Nunca imprime, versiona ni incluye en resultados agregados el valor de
 // ninguna variable de entorno de credenciales.
 
@@ -98,11 +110,27 @@ export function validateManifest(manifest) {
 // Construcción del plan de ejecución
 // ---------------------------------------------------------------------------
 
-export function buildExecutionPlan(cases, candidates, manifest) {
+export function buildExecutionPlan(cases, candidates, manifest, options = {}) {
   const plan = [];
+  const repsOverride = options.repsOverride ?? null;
   const additionalReps = manifest.repeatedCriticalSubset?.additionalRepeatsPerCriticalCase ?? 0;
 
   for (const candidate of candidates) {
+    if (repsOverride != null) {
+      // Modo SCOPED (remediation gates explícitos vía --reps): exactamente
+      // repsOverride repeticiones (0..N-1) para TODOS los casos del
+      // subconjunto entregado, sin importar testCase.critical. Nunca se usa
+      // en la ejecución histórica por defecto -- options.repsOverride solo
+      // llega poblado si el CLI recibió --reps explícito (ver parseArgs/main).
+      for (const testCase of cases) {
+        for (let rep = 0; rep < repsOverride; rep++) {
+          plan.push({ case: testCase, candidate, repetitionIndex: rep });
+        }
+      }
+      continue;
+    }
+    // Comportamiento histórico, sin cambios: ronda completa (rep0 para todos
+    // los casos) + additionalReps SOLO para los casos con critical:true.
     for (const testCase of cases) {
       plan.push({ case: testCase, candidate, repetitionIndex: 0 });
     }
@@ -114,6 +142,47 @@ export function buildExecutionPlan(cases, candidates, manifest) {
     }
   }
   return plan;
+}
+
+// ---------------------------------------------------------------------------
+// Scope explícito para remediation gates (p. ej. dg1-remediation-gate-c5-v1)
+// -- filtrado de casos y runId con prefijo propio. Ninguna de estas
+// funciones toca buildRequestForCase() ni el contenido del prompt: solo
+// deciden QUÉ casos entran al plan y CÓMO se nombra el runId/output.
+// ---------------------------------------------------------------------------
+
+export function resolveCaseFilter(allCases, requestedIds) {
+  const knownIds = new Set(allCases.map((c) => c.id));
+  const unknown = requestedIds.filter((id) => !knownIds.has(id));
+  if (unknown.length > 0) {
+    throw new Error(
+      `--cases incluye id(s) que no existen en dataset/cases.json: ${unknown.join(', ')}. ` +
+        `Ids disponibles: ${allCases.map((c) => c.id).join(', ')}`,
+    );
+  }
+  const filtered = allCases.filter((c) => requestedIds.includes(c.id));
+  if (filtered.length === 0) {
+    throw new Error('--cases no coincidió con ningún caso del dataset.');
+  }
+  return filtered;
+}
+
+export function buildRunId(prefix = 'dg1-live') {
+  if (!/^[a-zA-Z0-9_-]+$/.test(prefix)) {
+    throw new Error(`--run-prefix inválido: '${prefix}'. Solo se permiten letras, números, '-' y '_'.`);
+  }
+  return `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+}
+
+export function assertRunIdAvailable(runId, outputDir) {
+  const runOutputDir = path.join(outputDir, runId);
+  if (existsSync(runOutputDir)) {
+    throw new Error(
+      `output/${runId} ya existe -- una corrida NUNCA sobrescribe artefactos de otra. ` +
+        'Esto no debería ocurrir en la práctica (el runId incluye timestamp de milisegundo); ' +
+        'si ocurre, es señal de una colisión real o de un runId fijado a mano -- aborta y reintenta.',
+    );
+  }
 }
 
 export function estimateMaxCostUsd(plan) {
@@ -230,7 +299,7 @@ function checkFormatCompliance(check, text) {
 // Modo DRY-RUN
 // ---------------------------------------------------------------------------
 
-function runDryRun({ cases, manifest, pedagogicalPolicy, rubric, plan, candidateFilterApplied }) {
+function runDryRun({ cases, manifest, pedagogicalPolicy, rubric, plan, candidateFilterApplied, scope }) {
   const criticalCases = cases.filter((c) => c.critical);
   const maxCostUsd = estimateMaxCostUsd(plan);
   const exampleItem = plan[0];
@@ -245,9 +314,18 @@ function runDryRun({ cases, manifest, pedagogicalPolicy, rubric, plan, candidate
 
   console.log('=== DG-1 Evaluation Harness -- DRY-RUN ===\n');
 
-  console.log(`Dataset cargado: ${cases.length} casos (esperado: 43) -- ${cases.length === 43 ? 'OK' : 'DESAJUSTE, revisar dataset/cases.json'}`);
-  console.log(`Subset crítico: ${criticalCases.length} casos (esperado: ~10) -- ids: ${criticalCases.map((c) => c.id).join(', ')}`);
-  console.log(`Repeticiones adicionales por caso crítico: ${manifest.repeatedCriticalSubset?.additionalRepeatsPerCriticalCase ?? 0}`);
+  if (scope?.caseFilterApplied) {
+    console.log(`SCOPE EXPLICITO APLICADO (--cases) -- casos: ${scope.caseIds.join(', ')} (${cases.length} de 43 del dataset completo)`);
+    if (scope.repsOverrideApplied) {
+      console.log(`Override de repeticiones (--reps) aplicado: ${scope.repsOverrideValue} repeticiones fijas por caso x candidato, sin importar 'critical'.`);
+    } else {
+      console.log('Sin --reps: se usa el comportamiento histórico de repeticiones (rep0 para todos, +additionalReps solo en casos critical:true) restringido al subconjunto de --cases.');
+    }
+  } else {
+    console.log(`Dataset cargado: ${cases.length} casos (esperado: 43) -- ${cases.length === 43 ? 'OK' : 'DESAJUSTE, revisar dataset/cases.json'}`);
+    console.log(`Subset crítico: ${criticalCases.length} casos (esperado: ~10) -- ids: ${criticalCases.map((c) => c.id).join(', ')}`);
+    console.log(`Repeticiones adicionales por caso crítico: ${manifest.repeatedCriticalSubset?.additionalRepeatsPerCriticalCase ?? 0}`);
+  }
 
   console.log('\nCandidatos (provider + exact model):');
   for (const cand of manifest.candidates) {
@@ -267,8 +345,12 @@ function runDryRun({ cases, manifest, pedagogicalPolicy, rubric, plan, candidate
   console.log(`  - Resultados agregados (versionables): ${path.relative(HERE, RESULTS_DIR)}/`);
 
   console.log('\nPlan de ejecución:');
-  console.log(`  - Llamadas de la ronda completa: ${cases.length} casos x ${manifest.candidates.length} candidatos = ${cases.length * manifest.candidates.length}`);
-  console.log(`  - Llamadas adicionales del subset crítico: ${criticalCases.length} casos x ${manifest.candidates.length} candidatos x ${manifest.repeatedCriticalSubset?.additionalRepeatsPerCriticalCase ?? 0} repeticiones = ${criticalCases.length * manifest.candidates.length * (manifest.repeatedCriticalSubset?.additionalRepeatsPerCriticalCase ?? 0)}`);
+  if (scope?.repsOverrideApplied) {
+    console.log(`  - Modo SCOPED: ${cases.length} casos x ${manifest.candidates.length} candidatos x ${scope.repsOverrideValue} repeticiones = ${cases.length * manifest.candidates.length * scope.repsOverrideValue}`);
+  } else {
+    console.log(`  - Llamadas de la ronda completa: ${cases.length} casos x ${manifest.candidates.length} candidatos = ${cases.length * manifest.candidates.length}`);
+    console.log(`  - Llamadas adicionales del subset crítico: ${criticalCases.length} casos x ${manifest.candidates.length} candidatos x ${manifest.repeatedCriticalSubset?.additionalRepeatsPerCriticalCase ?? 0} repeticiones = ${criticalCases.length * manifest.candidates.length * (manifest.repeatedCriticalSubset?.additionalRepeatsPerCriticalCase ?? 0)}`);
+  }
   console.log(`  - TOTAL de llamadas planificadas (máximo real si se autoriza ejecución): ${plan.length}`);
 
   console.log(`\nEstimación de costo máximo (supuesto conservador: ${ASSUMED_INPUT_TOKENS_PER_CALL} input + ${ASSUMED_OUTPUT_TOKENS_PER_CALL} output tokens/llamada, precio más alto de cada candidato): $${maxCostUsd.toFixed(4)} USD`);
@@ -283,6 +365,7 @@ function runDryRun({ cases, manifest, pedagogicalPolicy, rubric, plan, candidate
     mode: 'dry-run',
     datasetVersion: manifest.datasetVersion,
     rubricVersion: manifest.rubricVersion,
+    scope: scope ?? { caseFilterApplied: false, caseIds: cases.map((c) => c.id), repsOverrideApplied: false, repsOverrideValue: null },
     caseCount: cases.length,
     criticalCaseCount: criticalCases.length,
     criticalCaseIds: criticalCases.map((c) => c.id),
@@ -335,7 +418,7 @@ function buildPerCandidateBreakdown(plan, results) {
   return Object.values(byCandidate);
 }
 
-async function runLive({ cases, manifest, pedagogicalPolicy, plan }) {
+async function runLive({ cases, manifest, pedagogicalPolicy, plan, scope, runIdPrefix }) {
   // 1. Verificar credenciales ANTES de cualquier llamada -- fallo claro,
   //    sin realizar ninguna solicitud, si falta alguna.
   const requiredEnvVars = [...new Set(manifest.candidates.map((c) => c.authEnvVar))];
@@ -363,7 +446,11 @@ async function runLive({ cases, manifest, pedagogicalPolicy, plan }) {
   // muera a mitad) y el resumen final (results/live-run-summary-<runId>.json).
   // Sin este identificador, dos corridas parciales serían indistinguibles
   // entre sí una vez mezclados sus artefactos.
-  const runId = `dg1-live-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  const runId = buildRunId(runIdPrefix);
+  // Guarda de seguridad explícita: nunca escribir sobre un output/<runId>
+  // que ya exista -- ver assertRunIdAvailable(). Se hace ANTES de gastar
+  // ninguna llamada real.
+  assertRunIdAvailable(runId, OUTPUT_DIR);
   const startedAt = new Date().toISOString();
   const jsonlPath = path.join(RESULTS_DIR, `live-run-${runId}.jsonl`);
   console.log(`Run ID: ${runId}`);
@@ -483,6 +570,7 @@ async function runLive({ cases, manifest, pedagogicalPolicy, plan }) {
       stopReason,
       datasetVersion: manifest.datasetVersion,
       rubricVersion: manifest.rubricVersion,
+      scope: scope ?? { caseFilterApplied: false, caseIds: cases.map((c) => c.id), repsOverrideApplied: false, repsOverrideValue: null },
       expectedTotalCalls: plan.length,
       totalCallsAttempted: results.length,
       totalCallsSucceeded: results.filter((r) => r.success).length,
@@ -507,18 +595,36 @@ async function runLive({ cases, manifest, pedagogicalPolicy, plan }) {
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const args = { live: false, confirmedLiveRun: false, candidates: null };
+  const args = { live: false, confirmedLiveRun: false, candidates: null, cases: null, reps: null, runPrefix: null };
   for (const arg of argv) {
     if (arg === '--live') args.live = true;
     else if (arg === '--i-confirm-live-run') args.confirmedLiveRun = true;
     else if (arg === '--dry-run') args.live = false;
     else if (arg.startsWith('--candidates=')) args.candidates = arg.slice('--candidates='.length).split(',');
+    else if (arg.startsWith('--cases=')) args.cases = arg.slice('--cases='.length).split(',');
+    else if (arg.startsWith('--reps=')) args.reps = Number(arg.slice('--reps='.length));
+    else if (arg.startsWith('--run-prefix=')) args.runPrefix = arg.slice('--run-prefix='.length);
   }
   return args;
 }
 
+// Validación de --reps: siempre atado a --cases (nunca se aplica un
+// override de repeticiones al dataset completo de 43 casos sin querer) y
+// dentro de un rango razonable para evitar un typo tipo --reps=300.
+export function validateScopeArgs(args) {
+  if (args.reps != null) {
+    if (args.cases == null) {
+      throw new Error('--reps requiere --cases explícito -- nunca se aplica un override de repeticiones al dataset completo.');
+    }
+    if (!Number.isInteger(args.reps) || args.reps < 1 || args.reps > 10) {
+      throw new Error(`--reps debe ser un entero entre 1 y 10 (recibido: ${args.reps})`);
+    }
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  validateScopeArgs(args);
 
   const manifest = loadJson('manifest.json');
   const dataset = loadJson('dataset/cases.json');
@@ -538,7 +644,21 @@ async function main() {
     }
   }
 
-  const plan = buildExecutionPlan(dataset.cases, candidates, manifest);
+  // Scope explícito (--cases / --reps): filtra QUÉ casos entran al plan y,
+  // si se pide, fuerza un número fijo de repeticiones para todos ellos --
+  // sin tocar dataset/cases.json ni el contenido del prompt. Ausentes por
+  // defecto -> comportamiento histórico exacto (43 casos, reps según
+  // repeatedCriticalSubset).
+  let cases = dataset.cases;
+  let caseFilterApplied = false;
+  if (args.cases) {
+    cases = resolveCaseFilter(dataset.cases, args.cases);
+    caseFilterApplied = true;
+  }
+  const repsOverrideApplied = args.reps != null;
+
+  const plan = buildExecutionPlan(cases, candidates, manifest, { repsOverride: args.reps });
+  const scope = { caseFilterApplied, caseIds: cases.map((c) => c.id), repsOverrideApplied, repsOverrideValue: args.reps };
 
   if (args.live) {
     if (!args.confirmedLiveRun) {
@@ -546,9 +666,9 @@ async function main() {
     }
     console.log('=== DG-1 Evaluation Harness -- LIVE RUN ===');
     console.log(`Ejecutando ${plan.length} llamadas reales contra proveedores externos. Esto tiene costo real.`);
-    await runLive({ cases: dataset.cases, manifest: { ...manifest, candidates }, pedagogicalPolicy, plan });
+    await runLive({ cases, manifest: { ...manifest, candidates }, pedagogicalPolicy, plan, scope, runIdPrefix: args.runPrefix ?? 'dg1-live' });
   } else {
-    runDryRun({ cases: dataset.cases, manifest: { ...manifest, candidates }, pedagogicalPolicy, rubric, plan, candidateFilterApplied });
+    runDryRun({ cases, manifest: { ...manifest, candidates }, pedagogicalPolicy, rubric, plan, candidateFilterApplied, scope });
   }
 }
 

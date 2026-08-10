@@ -5,7 +5,7 @@
 //
 // Uso: node test-local.mjs
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -103,6 +103,103 @@ console.log('\n--- 2. Construcción del plan de ejecución (sin llamadas) ---');
   check('el costo máximo estimado del plan completo queda por debajo del techo de $10', () => {
     const cost = estimateMaxCostUsd(plan);
     assert.ok(cost <= manifest.costCeilingUsd, `costo estimado $${cost.toFixed(4)} excede el techo $${manifest.costCeilingUsd}`);
+  });
+}
+
+console.log('\n--- 2b. Scope explícito para remediation gates (--cases/--reps/--run-prefix, sin llamadas) ---');
+{
+  const { buildExecutionPlan, buildRequestForCase, resolveCaseFilter, buildRunId, assertRunIdAvailable, validateScopeArgs } = await importHarnessInternals();
+  const REMEDIATION_CASE_IDS = ['C5.1', 'C5.2', 'C5.3', 'C5.4', 'C5.5'];
+
+  check('resolveCaseFilter selecciona exactamente C5.1-C5.5, en ese orden, sin casos extra', () => {
+    const filtered = resolveCaseFilter(dataset.cases, REMEDIATION_CASE_IDS);
+    assert.deepEqual(filtered.map((c) => c.id), REMEDIATION_CASE_IDS);
+  });
+  check('resolveCaseFilter rechaza un id que no existe en el dataset (nunca se ignora en silencio)', () => {
+    assert.throws(() => resolveCaseFilter(dataset.cases, ['C5.1', 'C99.9']), /C99\.9/);
+  });
+
+  const remediationCases = resolveCaseFilter(dataset.cases, REMEDIATION_CASE_IDS);
+  const remediationPlan = buildExecutionPlan(remediationCases, manifest.candidates, manifest, { repsOverride: 3 });
+
+  check('el plan scoped tiene exactamente 30 llamadas (5 casos x 2 candidatos x 3 repeticiones)', () => {
+    assert.equal(remediationPlan.length, 30);
+  });
+  check('el plan scoped cubre exactamente los 5 casos del gate, ninguno de los 38 restantes', () => {
+    const idsInPlan = new Set(remediationPlan.map((item) => item.case.id));
+    assert.deepEqual([...idsInPlan].sort(), [...REMEDIATION_CASE_IDS].sort());
+  });
+  check('el plan scoped da exactamente 3 repeticiones (0,1,2) por caso x candidato, incluidos los no-critical', () => {
+    for (const candidate of manifest.candidates) {
+      for (const caseId of REMEDIATION_CASE_IDS) {
+        const reps = remediationPlan
+          .filter((item) => item.candidate.id === candidate.id && item.case.id === caseId)
+          .map((item) => item.repetitionIndex)
+          .sort();
+        assert.deepEqual(reps, [0, 1, 2], `${candidate.id}/${caseId}: reps=${JSON.stringify(reps)}`);
+      }
+    }
+  });
+  check("validateScopeArgs exige --cases cuando se pasa --reps (nunca se aplica al dataset completo sin querer)", () => {
+    assert.throws(() => validateScopeArgs({ reps: 3, cases: null }), /--reps requiere --cases/);
+    assert.doesNotThrow(() => validateScopeArgs({ reps: 3, cases: REMEDIATION_CASE_IDS }));
+  });
+  check('validateScopeArgs rechaza --reps fuera de [1,10]', () => {
+    assert.throws(() => validateScopeArgs({ reps: 0, cases: REMEDIATION_CASE_IDS }), /entre 1 y 10/);
+    assert.throws(() => validateScopeArgs({ reps: 300, cases: REMEDIATION_CASE_IDS }), /entre 1 y 10/);
+  });
+
+  check('ejecución normal SIN flags de scope conserva el alcance histórico exacto (126 llamadas, 43 casos)', () => {
+    const historicalPlan = buildExecutionPlan(dataset.cases, manifest.candidates, manifest);
+    const criticalCount = dataset.cases.filter((c) => c.critical).length;
+    const additionalReps = manifest.repeatedCriticalSubset.additionalRepeatsPerCriticalCase;
+    const expected = dataset.cases.length * manifest.candidates.length + criticalCount * manifest.candidates.length * additionalReps;
+    assert.equal(historicalPlan.length, expected);
+    assert.equal(historicalPlan.length, 126, 'el total histórico esperado para el dataset actual es 126');
+    // Sin options.repsOverride, un caso no-critical del subconjunto C5.x debe
+    // seguir teniendo UNA sola repetición, tal como antes de este cambio.
+    const c51Reps = historicalPlan.filter((item) => item.case.id === 'C5.1' && item.candidate.id === 'anthropic-claude-sonnet-5').length;
+    assert.equal(c51Reps, 1, 'C5.1 (critical:false) no debe ganar repeticiones extra sin --reps explícito');
+  });
+
+  check('buildRequestForCase produce, para C5.1-C5.5, el mismo systemText/userText que el artefacto crudo del run original DG-1', () => {
+    for (const caseId of REMEDIATION_CASE_IDS) {
+      const testCase = dataset.cases.find((c) => c.id === caseId);
+      const req = buildRequestForCase(testCase, manifest.candidates[0], pedagogicalPolicy);
+      const originalArtifact = loadJson(`output/dg1-live-2026-08-07T19-09-03-432Z/anthropic-claude-sonnet-5/${caseId}-rep0.json`);
+      assert.equal(req.systemText, originalArtifact.request.systemText, `${caseId}: systemText difiere del run original`);
+      assert.equal(req.userText, originalArtifact.request.userText, `${caseId}: userText difiere del run original`);
+    }
+  });
+
+  check('buildRunId(): sin prefijo produce el formato histórico dg1-live-<timestamp>; con prefijo, uno separado', () => {
+    const historical = buildRunId();
+    const remediation = buildRunId('dg1-remediation-c5');
+    assert.ok(historical.startsWith('dg1-live-'), `formato histórico inesperado: ${historical}`);
+    assert.ok(remediation.startsWith('dg1-remediation-c5-'), `formato de remediation inesperado: ${remediation}`);
+    assert.notEqual(historical, remediation);
+  });
+  check('buildRunId() rechaza un prefijo con caracteres no seguros para un path', () => {
+    assert.throws(() => buildRunId('../etc'), /inválido/);
+  });
+
+  check('assertRunIdAvailable() nunca permite escribir sobre el run frozen original', () => {
+    assert.throws(
+      () => assertRunIdAvailable('dg1-live-2026-08-07T19-09-03-432Z', path.join(HERE, 'output')),
+      /ya existe/,
+      'el run original YA existe en disco y debe bloquear cualquier intento de reusar su runId',
+    );
+  });
+  check('assertRunIdAvailable() no bloquea un runId nuevo que aún no tiene directorio', () => {
+    const probeOutputDir = path.join(HERE, 'output');
+    const probeRunId = `dg1-remediation-c5-__test-probe-${process.pid}`;
+    const probeDir = path.join(probeOutputDir, probeRunId);
+    assert.ok(!existsSync(probeDir), 'precondición rota: el directorio de prueba ya existía');
+    assert.doesNotThrow(() => assertRunIdAvailable(probeRunId, probeOutputDir));
+    // Simula que el runId pasa a estar "tomado" y confirma que ahí sí bloquea.
+    mkdirSync(probeDir, { recursive: true });
+    assert.throws(() => assertRunIdAvailable(probeRunId, probeOutputDir), /ya existe/);
+    rmSync(probeDir, { recursive: true, force: true }); // limpieza -- no dejar artefactos de prueba
   });
 }
 

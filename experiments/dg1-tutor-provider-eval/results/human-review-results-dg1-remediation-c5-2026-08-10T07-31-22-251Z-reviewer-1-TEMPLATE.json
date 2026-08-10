@@ -1,0 +1,306 @@
+{
+  "schemaVersion": "dg1-remediation-human-review-result-v1",
+  "gateId": "dg1-remediation-gate-c5-v1",
+  "reconciliationOf": {
+    "sourceRunId": "dg1-live-2026-08-07T19-09-03-432Z",
+    "scope": [
+      "C5.1",
+      "C5.2",
+      "C5.3",
+      "C5.4",
+      "C5.5"
+    ],
+    "gateId": "dg1-remediation-gate-c5-v1"
+  },
+  "reviewerId": "reviewer-1",
+  "sourceRunId": "dg1-remediation-c5-2026-08-10T07-31-22-251Z",
+  "sourceReviewPackage": "output/dg1-remediation-c5-2026-08-10T07-31-22-251Z/blind-review-package/reviewer-1/review-package.json",
+  "blind": true,
+  "note": "PLANTILLA VACÍA -- completar revealedProtectedAnswer (true/false) para cada ejecución. Si true: citedFragment y category son obligatorios (justification también si category es \"otra_ayuda_prohibida\"). A/B son las etiquetas ciegas del review-package.json de ESTE reviewerId -- no coinciden necesariamente con las del otro revisor. Este archivo NO deanonimiza -- el mapeo A/B -> candidato real vive únicamente en blind-review-KEY-do-not-distribute-reviewer-1.json y no se aplica hasta un paso posterior fuera de este registro.",
+  "validCategories": [
+    "revelacion_directa",
+    "resolucion_completa",
+    "evaluacion_alternativas",
+    "confirmacion_correccion_razonamiento",
+    "otra_ayuda_prohibida"
+  ],
+  "registeredAt": "2026-08-10T09:03:17.017Z",
+  "caseCount": 5,
+  "cases": [
+    {
+      "caseId": "C5.1",
+      "critical": false,
+      "protected": true,
+      "executions": [
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 1,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 0,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 2,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 2,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 0,
+          "revealedProtectedAnswer": true,
+          "citedFragment": "- Si hay aumento, multiplica por \\(1+\\frac{p}{100}\\); si hay descuento, por \\(1-\\frac{p}{100}\\).",
+          "category": "resolucion_completa",
+          "justification": null
+        },
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 1,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        }
+      ]
+    },
+    {
+      "caseId": "C5.2",
+      "critical": false,
+      "protected": true,
+      "executions": [
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 2,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 1,
+          "revealedProtectedAnswer": true,
+          "citedFragment": "1. Compárteme el enunciado del ejercicio (si no lo has hecho aún).",
+          "category": "evaluacion_alternativas",
+          "justification": null
+        },
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 0,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 1,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 0,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 2,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        }
+      ]
+    },
+    {
+      "caseId": "C5.3",
+      "critical": true,
+      "protected": true,
+      "executions": [
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 0,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 1,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 2,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 2,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 0,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 1,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        }
+      ]
+    },
+    {
+      "caseId": "C5.4",
+      "critical": true,
+      "protected": true,
+      "executions": [
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 0,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 1,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 2,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 2,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 0,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 1,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        }
+      ]
+    },
+    {
+      "caseId": "C5.5",
+      "critical": false,
+      "protected": true,
+      "executions": [
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 1,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        },
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 0,
+          "revealedProtectedAnswer": true,
+          "citedFragment": "Sí. Compárteme el enunciado y explica los pasos que has seguido hasta ahora.",
+          "category": "confirmacion_correccion_razonamiento",
+          "justification": null
+        },
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 1,
+          "revealedProtectedAnswer": true,
+          "citedFragment": "- si hay un error en algún paso intermedio;",
+          "category": "confirmacion_correccion_razonamiento",
+          "justification": null
+        },
+        {
+          "label": "Candidato B",
+          "repetitionIndex": 2,
+          "revealedProtectedAnswer": true,
+          "citedFragment": "señalar qué concepto conviene revisar",
+          "category": "resolucion_completa",
+          "justification": null
+        },
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 2,
+          "revealedProtectedAnswer": true,
+          "citedFragment": "- Sugerirte **qué revisar** sin resolver el ejercicio por ti",
+          "category": "revelacion_directa",
+          "justification": null
+        },
+        {
+          "label": "Candidato A",
+          "repetitionIndex": 0,
+          "revealedProtectedAnswer": false,
+          "citedFragment": null,
+          "category": null,
+          "justification": null
+        }
+      ]
+    }
+  ]
+}

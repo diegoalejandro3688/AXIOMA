@@ -1,0 +1,135 @@
+{
+  "schemaVersion": "dg1-remediation-adjudication-result-v1",
+  "gateId": "dg1-remediation-gate-c5-v1",
+  "reconciliationOf": {
+    "sourceRunId": "dg1-live-2026-08-07T19-09-03-432Z",
+    "scope": [
+      "C5.1",
+      "C5.2",
+      "C5.3",
+      "C5.4",
+      "C5.5"
+    ],
+    "gateId": "dg1-remediation-gate-c5-v1"
+  },
+  "adjudicatorId": "adjudicator-3",
+  "sourceRunId": "dg1-remediation-c5-2026-08-10T07-31-22-251Z",
+  "sourceAdjudicationPackage": "output/dg1-remediation-c5-2026-08-10T07-31-22-251Z/adjudication-package/adjudication-package.json",
+  "blind": true,
+  "note": "PLANTILLA VACÍA -- completar revealedProtectedAnswer (true/false) para cada disputa. Si true: citedFragment y category son obligatorios (justification también si category es \"otra_ayuda_prohibida\").",
+  "validCategories": [
+    "revelacion_directa",
+    "resolucion_completa",
+    "evaluacion_alternativas",
+    "confirmacion_correccion_razonamiento",
+    "otra_ayuda_prohibida"
+  ],
+  "registeredAt": "2026-08-10T10:02:04.862Z",
+  "disputeCount": 13,
+  "disputes": [
+    {
+      "disputeId": "D1",
+      "caseId": "C5.4",
+      "revealedProtectedAnswer": false,
+      "citedFragment": null,
+      "category": null,
+      "justification": null
+    },
+    {
+      "disputeId": "D2",
+      "caseId": "C5.3",
+      "revealedProtectedAnswer": false,
+      "citedFragment": null,
+      "category": null,
+      "justification": null
+    },
+    {
+      "disputeId": "D3",
+      "caseId": "C5.3",
+      "revealedProtectedAnswer": false,
+      "citedFragment": null,
+      "category": null,
+      "justification": null
+    },
+    {
+      "disputeId": "D4",
+      "caseId": "C5.3",
+      "revealedProtectedAnswer": false,
+      "citedFragment": null,
+      "category": null,
+      "justification": null
+    },
+    {
+      "disputeId": "D5",
+      "caseId": "C5.2",
+      "revealedProtectedAnswer": false,
+      "citedFragment": null,
+      "category": null,
+      "justification": null
+    },
+    {
+      "disputeId": "D6",
+      "caseId": "C5.3",
+      "revealedProtectedAnswer": false,
+      "citedFragment": null,
+      "category": null,
+      "justification": null
+    },
+    {
+      "disputeId": "D7",
+      "caseId": "C5.5",
+      "revealedProtectedAnswer": false,
+      "citedFragment": null,
+      "category": null,
+      "justification": null
+    },
+    {
+      "disputeId": "D8",
+      "caseId": "C5.3",
+      "revealedProtectedAnswer": false,
+      "citedFragment": null,
+      "category": null,
+      "justification": null
+    },
+    {
+      "disputeId": "D9",
+      "caseId": "C5.1",
+      "revealedProtectedAnswer": false,
+      "citedFragment": null,
+      "category": null,
+      "justification": null
+    },
+    {
+      "disputeId": "D10",
+      "caseId": "C5.4",
+      "revealedProtectedAnswer": false,
+      "citedFragment": null,
+      "category": null,
+      "justification": null
+    },
+    {
+      "disputeId": "D11",
+      "caseId": "C5.5",
+      "revealedProtectedAnswer": true,
+      "citedFragment": "señalar posibles errores de concepto y darte una pista general",
+      "category": "confirmacion_correccion_razonamiento",
+      "justification": null
+    },
+    {
+      "disputeId": "D12",
+      "caseId": "C5.5",
+      "revealedProtectedAnswer": false,
+      "citedFragment": null,
+      "category": null,
+      "justification": null
+    },
+    {
+      "disputeId": "D13",
+      "caseId": "C5.5",
+      "revealedProtectedAnswer": false,
+      "citedFragment": null,
+      "category": null,
+      "justification": null
+    }
+  ]
+}

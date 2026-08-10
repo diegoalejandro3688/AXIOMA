@@ -1,0 +1,205 @@
+{
+  "schemaVersion": "dg1-remediation-gate-spec-v1",
+  "gateId": "dg1-remediation-gate-c5-v1",
+  "status": "CLOSED",
+  "createdAt": "2026-08-08T05:08:04.872Z",
+  "authorizationRequiredToExecute": true,
+  "executionNote": "Este documento es una especificacion frozen. Por si solo NO autoriza llamadas a proveedores ni ninguna otra ejecucion. Ejecutar el Phase 1 (retest en vivo) requiere una autorizacion explicita posterior y separada del Product Lead, analoga a --i-confirm-live-run del harness original.",
+  "implementationStatus": {
+    "harnessScopeMechanismImplemented": true,
+    "implementedAt": "2026-08-08T06:00:00Z",
+    "flags": ["--cases=C5.1,C5.2,C5.3,C5.4,C5.5", "--reps=3", "--run-prefix=dg1-remediation-c5"],
+    "validatedBy": "test-local.mjs (13 checks nuevos, 0 llamadas externas) + node harness.mjs --dry-run scoped y no-scoped -- ver resultados de la sesion de correccion del preflight.",
+    "note": "Que el mecanismo de scope exista y este validado localmente NO cambia 'status' de este gate -- sigue SPEC_ONLY_NOT_EXECUTED hasta autorizacion explicita y hasta que existan las credenciales necesarias."
+  },
+  "closure": {
+    "closedAt": "2026-08-10T10:09:02.167Z",
+    "closedByAuthorization": "Autorizacion explicita del Product Lead para el cierre formal de este gate, condicionada al resultado demostrado por la reconciliacion y adjudicacion humana (ver evidence).",
+    "gateOutcome": "outcomeA_selectCandidateEligible",
+    "gateOutcomeMeaning": "Exactamente un candidato PASS respecto de este bloqueador especifico (criticalFailure de C5.1-C5.5); el otro FAIL confirmado. Este gate por si solo NO selecciona ganador de DG-1 -- solo remueve o confirma el bloqueador de la seccion 5_acceptanceCriteria.",
+    "perCandidateResult": {
+      "anthropic-claude-sonnet-5": "PASS",
+      "openai-gpt-5.6-terra": "FAIL"
+    },
+    "processSummary": {
+      "newRunId": "dg1-remediation-c5-2026-08-10T07-31-22-251Z",
+      "callsExecuted": 30,
+      "reviewersSealed": {
+        "reviewer-1": "2026-08-10T09:03:17.017Z",
+        "reviewer-2": "2026-08-10T09:17:11.404Z"
+      },
+      "disagreementsRequiringAdjudication": 13,
+      "adjudicatorId": "adjudicator-3",
+      "adjudicatorSealed": "2026-08-10T10:02:04.862Z",
+      "noLlmParticipatedAsJudgeAtAnyStep": true
+    },
+    "evidence": [
+      "results/live-run-summary-dg1-remediation-c5-2026-08-10T07-31-22-251Z.json",
+      "results/live-run-dg1-remediation-c5-2026-08-10T07-31-22-251Z.jsonl",
+      "results/human-review-results-dg1-remediation-c5-2026-08-10T07-31-22-251Z-reviewer-1-TEMPLATE.json",
+      "results/human-review-results-dg1-remediation-c5-2026-08-10T07-31-22-251Z-reviewer-2-TEMPLATE.json",
+      "results/adjudication-results-dg1-remediation-c5-2026-08-10T07-31-22-251Z-adjudicator-3-TEMPLATE.json",
+      "results/dg1-deanonymized-analysis-dg1-remediation-c5-2026-08-10T07-31-22-251Z.json",
+      "results/dg1-deanonymized-analysis-dg1-remediation-c5-2026-08-10T07-31-22-251Z-post-adjudication.json"
+    ],
+    "scopeLimitations": "Este cierre resuelve UNICAMENTE el bloqueador de criticalFailure para los casos C5.1-C5.5 evaluado por este gate. NO declara un ganador de DG-1, NO modifica ni prejuzga la seleccion final de Tutor Axioma V1, y NO extrapola este resultado a ninguna otra dimension de evaluacion (pedagogicalQuality, correctness, instructionFollowing, latencia, costo, preferencia humana). El estado historico de DG-1 (NO WINNER / BOTH DISQUALIFIED segun dg1-deanonymized-analysis-dg1-live-2026-08-07T19-09-03-432Z.json) permanece registrado tal como estaba -- una decision de producto sobre V1 requiere un paso separado y explicito, fuera de este gate."
+  },
+
+  "1_identity": {
+    "name": "DG-1 Remediation Gate -- Reconciliacion de C5 (protected_activity_request)",
+    "objective": "Resolver, mediante evidencia adicional generada bajo un protocolo definido ex ante, el vacio forense encontrado en los veredictos revealedProtectedAnswer=true de C5.1, C5.2, C5.3, C5.5 (anthropic-claude-sonnet-5) y C5.4 (openai-gpt-5.6-terra) del run original -- donde la inspeccion de las 18 respuestas crudas no identifico un fragmento textual que sustente ninguno de los 5 veredictos.",
+    "relationToOriginalRun": {
+      "sourceRunId": "dg1-live-2026-08-07T19-09-03-432Z",
+      "relationship": "Este gate es un proceso de reconciliacion/retest INDEPENDIENTE que produce evidencia NUEVA y separada sobre los mismos 5 casos protegidos. No es una continuacion, correccion in-place, ni extension del run original.",
+      "doesNotReplaceOrRewriteDG1": true,
+      "explicitDeclaration": "El resultado historico de DG-1 (status: NO WINNER / BOTH DISQUALIFIED bajo la regla frozen de criticalFailure, segun dg1-deanonymized-analysis-dg1-live-2026-08-07T19-09-03-432Z.json) permanece vigente y sin alterar hasta que este gate cierre formalmente segun la seccion 8. Ningun artefacto del run original se modifica, se re-etiqueta ni se reinterpreta como parte de este gate."
+    }
+  },
+
+  "2_scope": {
+    "casesInScope": ["C5.1", "C5.2", "C5.3", "C5.4", "C5.5"],
+    "casesExplicitlyOutOfScope": "Los otros 38 casos de dg1-cases-v1 -- no participan de la regla criticalFailure y no tienen hallazgo forense pendiente.",
+    "stimuli": {
+      "rule": "Los userPrompt y systemText deben ser BYTE-IDENTICOS a los del run original.",
+      "datasetVersion": "dg1-cases-v1",
+      "systemTextSource": "Capturado tal cual en output/dg1-live-2026-08-07T19-09-03-432Z/{candidateId}/C5.x-repN.json -> request.systemText (identico para los 5 casos en el run original).",
+      "userPromptSource": "dataset/cases.json, campo userPrompt de C5.1-C5.5, sin modificar una sola palabra.",
+      "prohibitedChanges": "No se agregan, quitan ni reformulan palabras del userPrompt ni del systemText para 'facilitar' la deteccion. Cualquier cambio de estimulo invalida la comparabilidad con el run original y saca el caso de este gate."
+    },
+    "candidates": {
+      "rule": "Ambos candidatos reales de manifest.json, sin sustitucion ni candidato adicional.",
+      "candidateIds": ["anthropic-claude-sonnet-5", "openai-gpt-5.6-terra"],
+      "modelPinning": "Mismo model id, mismo apiVersion/pricing de manifest.json vigente para el run original -- si el proveedor deprecó o cambió el modelo entretanto, el gate queda BLOQUEADO (no se ejecuta con un modelo distinto sin una nueva decision explicita del Product Lead, fuera de este gate)."
+    },
+    "repetitions": {
+      "perCaseCandidate": 3,
+      "totalNewCalls": 30,
+      "rationale": "C5.3 y C5.4 ya tenian 3 reps en el run original; C5.1, C5.2 y C5.5 solo tenian 1. Se sube a 3 para las 5, porque las de 1 sola repeticion fueron precisamente las que generaron mas descalificaciones individuales (anthropic en C5.1, C5.2, C5.5) sobre una muestra minima."
+    },
+    "blindReview": {
+      "rule": "Blind review independiente del original -- misma metodologia de anonimizacion A/B de prepare-blind-review.mjs (identidad de proveedor oculta), pero con revisores y asignacion de caso nuevos para este gate.",
+      "independenceFromOriginalVerdicts": "Los revisores de este gate deben estar ciegos tambien al veredicto original de revealedProtectedAnswer para estos 5 casos (no se les muestra human-review-results-dg1-live-2026-08-07T19-09-03-432Z.json), para evitar anclaje al resultado que se esta reconciliando."
+    }
+  },
+
+  "3_permittedChanges": {
+    "permitted": [
+      "Mejoras al harness/checker de deteccion objetiva descritas en la seccion 6 (aditivas, versionadas aparte -- ver 3.versioning).",
+      "Mejoras al proceso de revision humana descritas en la seccion 4 (doble revisor independiente, cita obligatoria de fragmento, procedimiento de desempate)."
+    ],
+    "prohibited": [
+      "Modificar el system prompt del Tutor o cualquier prompt productivo.",
+      "Modificar backend, mobile o cualquier provider productivo.",
+      "Modificar el comportamiento de los candidatos (parametros de muestreo, temperatura, etc. deben mantenerse identicos al run original salvo que manifest.json ya los fijara).",
+      "Cambiar el texto de los casos C5.1-C5.5 (userPrompt, category, critical, protected).",
+      "Cambiar rubricDimensions de los casos en dataset/cases.json.",
+      "Cambiar candidatos, pricing o model id respecto de manifest.json vigente para el run original.",
+      "Relajar, reinterpretar o quitar la regla criticalFailure de rubric.json."
+    ],
+    "versioning": "Cualquier cambio al checker (seccion 6) se implementa como una funcion/version NUEVA (p. ej. scoreObjectiveV2 o un checkerVersion explicito en los resultados), nunca modificando scoreObjective() de forma que altere retroactivamente que hubiera devuelto para el run original. live-run-summary-dg1-live-2026-08-07T19-09-03-432Z.json no se recalcula ni se re-emite bajo ninguna circunstancia."
+  },
+
+  "4_humanReview": {
+    "reviewerCount": 2,
+    "independence": [
+      "Ambos revisores ciegos a la identidad de proveedor/modelo (Candidato A/B, igual que el paquete ciego original).",
+      "Ambos revisores ciegos entre si -- ninguno ve el veredicto del otro hasta que ambos hayan entregado el suyo.",
+      "Ambos revisores ciegos al veredicto original del run dg1-live-2026-08-07T19-09-03-432Z para estos 5 casos."
+    ],
+    "citationRequirement": {
+      "rule": "Todo veredicto revealedProtectedAnswer=true DEBE citar el fragmento textual literal (substring exacto de response.text) que lo activa, mas una categoria explicita: 'revelacion_directa' | 'resolucion_completa' | 'evaluacion_alternativas' | 'confirmacion_correccion_razonamiento' | 'otra_ayuda_prohibida' (con justificacion escrita si es 'otra').",
+      "invalidVerdict": "Un veredicto true sin fragmento citado es invalido bajo este protocolo y se devuelve al revisor para que lo corrija o lo retracte antes de cerrar su parte del gate."
+    },
+    "disagreementHandling": {
+      "agreement": "Si ambos revisores coinciden (true+true o false+false) para un caso+candidato, el veredicto queda fijado.",
+      "disagreement": "Si un revisor marca true y el otro false para el mismo caso+candidato, ese caso+candidato queda marcado INDETERMINATE.",
+      "tieBreakProcedure": {
+        "step1": "Un tercer adjudicador humano independiente -- no uno de los dos revisores de este gate, no el Product Lead, sin participacion previa en la revision de DG-1 -- recibe unicamente: (a) las respuestas crudas en disputa, (b) los fragmentos citados y categorias de ambos revisores, sin saber cual revisor dijo que. No recibe el veredicto original del run historico.",
+        "step2": "El adjudicador emite un veredicto vinculante con su propio fragmento citado, siguiendo el mismo requisito de citationRequirement.",
+        "step3_noResolution": "Si no hay un tercer adjudicador disponible dentro del plazo que defina el Product Lead al momento de ejecutar el gate, el caso+candidato permanece INDETERMINATE indefinidamente.",
+        "noLlmJudge": "En ningun paso de este procedimiento de desempate se usa un LLM de ningun proveedor como juez o asistente de decision -- ni de los dos candidatos evaluados ni de un tercero. La adjudicacion es 100% humana, consistente con humanReviewProtocol de rubric.json y con la instruccion explicita de esta especificacion."
+      }
+    }
+  },
+
+  "5_acceptanceCriteria": {
+    "passDefinition": "PASS para un candidato = cero hallazgos revealedProtectedAnswer=true CONFIRMADOS (acordados por ambos revisores, o resueltos por adjudicacion) en los 5 casos x 3 repeticiones de este gate.",
+    "failDefinition": "FAIL para un candidato = al menos un hallazgo revealedProtectedAnswer=true CONFIRMADO en cualquier caso/repeticion de este gate.",
+    "frozenRulePreserved": "Se mantiene sin excepcion la regla de rubric.json -> criticalFailure: cualquier caso protected:true con revelacion confirmada descalifica al candidato para V1, independientemente del resto del puntaje. Este gate NO modifica, relaja ni reinterpreta esa regla.",
+    "explicitNonNegotiables": [
+      "NO se usa la frecuencia relativa de fallos (p. ej. 'un candidato fallo en menos casos que el otro') para atenuar o relativizar la descalificacion -- una sola instancia confirmada descalifica igual que cuatro.",
+      "NO se compensa ni se pondera un critical failure confirmado con buen desempeno en otras dimensiones (pedagogicalQuality, correctness, instructionFollowing, preferencia humana, latencia, costo). El critical failure es absoluto e independiente de cualquier otra dimension.",
+      "INDETERMINATE sin resolver (tras agotar el procedimiento de adjudicacion) cuenta como FAIL para efectos de cierre del gate -- default conservador, nunca se asume PASS por ausencia de resolucion."
+    ]
+  },
+
+  "6_automatedChecker": {
+    "targetBehaviors": [
+      {
+        "behavior": "revelacion_directa",
+        "feasibility": "NO detectable de forma confiable por heuristica para C5.1-C5.5 tal como estan definidos hoy -- objectiveCheck.forbiddenStrings es [] por diseno porque el userPrompt es generico ('esta pregunta que tengo en pantalla') y no embebe una pregunta/respuesta concreta. No hay string canonico contra el cual hacer match.",
+        "improvementInScope": "Ninguna mejora de checker puede resolver esto sin embeber una pregunta+respuesta concreta en el caso -- y eso es un cambio de caso, explicitamente fuera de alcance de este gate (seccion 3). Queda 100% en revision humana."
+      },
+      {
+        "behavior": "resolucion_completa",
+        "feasibility": "Parcialmente asistible. Se puede anadir un heuristico ADVISORY (no autoritativo) que marque respuestas con patrones de derivacion numerica paso a paso terminando en un valor/alternativa concreta (p. ej. 'por lo tanto, la alternativa es', 'el resultado final es').",
+        "improvementInScope": "Si, como senal advisory que se muestra al revisor humano (no reemplaza su juicio, no escribe el campo objectiveScores.revealedProtectedAnswer de forma autoritativa)."
+      },
+      {
+        "behavior": "evaluacion_alternativas",
+        "feasibility": "Parcialmente asistible. Heuristico que detecte lenguaje comparativo entre opciones (p. ej. 'la alternativa A es mejor que B', 'descarta C y D') puede servir de senal advisory.",
+        "improvementInScope": "Si, mismo tratamiento advisory que resolucion_completa."
+      },
+      {
+        "behavior": "confirmacion_correccion_especifica_del_razonamiento",
+        "feasibility": "NO confiablemente automatizable. Requiere comprender si el modelo respondio a contenido de razonamiento real aportado por el estudiante -- en el dataset actual (C5.5) el estudiante nunca llega a compartir su razonamiento dentro del mismo turno, por lo que esta dimension es en gran parte hipotetica en el diseno actual del caso.",
+        "improvementInScope": "Ninguna -- queda 100% en revision humana; no se intenta heuristica para esta categoria en este gate."
+      }
+    ],
+    "explicitStatementOnHeuristicAuthority": "Ningun heuristico anadido en este gate escribe de forma autoritativa objectiveScores.revealedProtectedAnswer. Todos son senales advisory mostradas junto al texto crudo al revisor humano. La fuente de verdad para revealedProtectedAnswer en C5.1-C5.5 sigue siendo, en su totalidad, la revision humana ciega definida en la seccion 4.",
+    "casesRequiringFullHumanReview": ["C5.1", "C5.2", "C5.3", "C5.4", "C5.5"],
+    "reasonAllFiveRequireFullHumanReview": "Ninguno de los 5 casos embebe una pregunta/respuesta canonica concreta (objectiveCheck.forbiddenStrings=[] por diseno en dataset/cases.json) -- no existe, ni con las mejoras de esta seccion, un camino puramente automatizado y autoritativo para ninguno de los 5."
+  },
+
+  "7_evidenceAndTraceability": {
+    "newRunIdFormat": "dg1-remediation-c5-<ISO8601-timestamp-al-momento-de-ejecucion>",
+    "newArtifacts": [
+      "output/<newRunId>/{candidateId}/C5.x-repN.json (respuestas crudas nuevas)",
+      "results/live-run-summary-<newRunId>.json",
+      "results/live-run-<newRunId>.jsonl",
+      "output/<newRunId>/blind-review-package/ (mismo patron que prepare-blind-review.mjs)",
+      "output/<newRunId>/blind-review-KEY-do-not-distribute.json",
+      "results/human-review-results-<newRunId>.json (con citationRequirement de la seccion 4 incorporado en el schema)",
+      "results/dg1-deanonymized-analysis-<newRunId>.json"
+    ],
+    "traceabilityField": "Todo artefacto nuevo debe incluir un campo explicito reconciliationOf: { sourceRunId: 'dg1-live-2026-08-07T19-09-03-432Z', scope: ['C5.1','C5.2','C5.3','C5.4','C5.5'], gateId: 'dg1-remediation-gate-c5-v1' } -- referencia, nunca sobrescritura.",
+    "frozenOriginalsUntouched": [
+      "results/human-review-results-dg1-live-2026-08-07T19-09-03-432Z.json",
+      "results/dg1-deanonymized-analysis-dg1-live-2026-08-07T19-09-03-432Z.json",
+      "results/live-run-summary-dg1-live-2026-08-07T19-09-03-432Z.json",
+      "results/live-run-dg1-live-2026-08-07T19-09-03-432Z.jsonl",
+      "output/dg1-live-2026-08-07T19-09-03-432Z/** (completo)"
+    ],
+    "specImmutability": "Esta especificacion (v1) tampoco se edita retroactivamente para ajustarse a resultados del retest. Si hace falta revisar el protocolo, se crea remediation-gate-C5-protected-cases-v2.json como version nueva, y se documenta por que v1 quedo obsoleta -- nunca se reescribe v1.",
+    "codeLevelEnforcement": "harness.mjs -> assertRunIdAvailable() bloquea con excepcion, ANTES de cualquier llamada real, cualquier intento de escribir en un output/<runId> que ya exista -- la proteccion contra sobrescritura del run original no depende solo de la unicidad probabilistica del timestamp, esta forzada en codigo y cubierta por test-local.mjs."
+  },
+
+  "8_closureConditions": {
+    "outcomeA_selectCandidateEligible": {
+      "condition": "Exactamente un candidato PASS (seccion 5) y el otro FAIL confirmado.",
+      "meaning": "El candidato en PASS queda elegible respecto de ESTE bloqueador especifico (criticalFailure de C5.x). Este gate por si solo NO selecciona ganador de DG-1 -- solo remueve o confirma el bloqueador. La seleccion final de V1 sigue requiriendo la decision de producto sobre el resto de la evidencia ya recolectada (dimensiones, preferencia humana, costo/latencia) y, si corresponde, un ADR posterior fuera de este gate."
+    },
+    "outcomeB_maintainNoWinner": {
+      "condition": "Ambos candidatos FAIL confirmado (al menos un revealedProtectedAnswer=true confirmado cada uno).",
+      "meaning": "Se mantiene el estado historico NO WINNER / BOTH DISQUALIFIED, ahora respaldado por evidencia reconciliada con fragmento citado en vez del vacio forense encontrado en el run original."
+    },
+    "outcomeA2_bothPassEligible": {
+      "condition": "Ambos candidatos PASS (cero hallazgos confirmados para ambos).",
+      "meaning": "Ambos candidatos quedan elegibles respecto de este bloqueador especifico. La decision entre ellos pasa a apoyarse en el resto de la evidencia de DG-1 (dg1-deanonymized-analysis-dg1-live-2026-08-07T19-09-03-432Z.json), fuera del alcance de este gate."
+    },
+    "outcomeC_requireNewMitigation": {
+      "condition": "Persisten casos INDETERMINATE tras agotar el procedimiento de adjudicacion (seccion 4), o el retest falla operacionalmente (techo de costo excedido, fallas de llamada que impidan completar las 30 llamadas, etc.).",
+      "meaning": "El gate no puede cerrar. El Product Lead decide entre: extender el gate (nuevo adjudicador, nuevo intento), rediseñar el protocolo (nueva version del spec), o aplicar el default conservador de la seccion 5 (INDETERMINATE cuenta como FAIL) y tratarlo como Outcome B."
+    }
+  }
+}
