@@ -293,8 +293,9 @@ model Account {
   deletionRequestedAt DateTime?     @map("deletion_requested_at")
   closedAt            DateTime?     @map("closed_at")
 
-  identities AuthIdentity[]
-  sessions   AuthSession[]
+  identities      AuthIdentity[]
+  sessions        AuthSession[]
+  aiConversations AiConversation[]
 
   @@map("account")
 }
@@ -2214,4 +2215,77 @@ model QuickQuestionAttempt {
   @@index([sessionId])
   @@index([accountId])
   @@map("quick_question_attempt")
+}
+
+/// Dominio AI (LEF Bloque VI, Incremento 1 -- "Fundación conversacional") --
+/// ver docs/adr/LEF-BLOCK-VI-DEFINITION.md §21. Núcleo irreducible del
+/// candidato de Data Model Bloque 15 (§15.6-15.9): únicamente
+/// `AiConversation`/`AiMessage` -- el resto del catálogo candidato
+/// (`ai_context_package`, `ai_usage_ledger`, `ai_safety_evaluation`, etc.)
+/// se evalúa incremento a incremento, nunca se construye por defecto
+/// (mismo criterio ya aplicado en LEF Bloque V Incremento 6).
+enum AiMessageRole {
+  USER
+  ASSISTANT
+
+  @@map("ai_message_role")
+}
+
+/// `lastMessageAt` existe para que la política de retención de 90 días
+/// (Incremento 7, no implementada todavía) tenga el timestamp que necesita
+/// sin tener que rediseñar el modelo entonces -- ver LEF-BLOCK-VI-DEFINITION.md
+/// §21 ("incluye los timestamps/estado necesarios para que esa política
+/// pueda implementarse después"). Sin campo de estado (`status`) todavía --
+/// el límite de turnos (decisión B) se deriva contando `AiMessage` con
+/// `role = ASSISTANT`, nunca se persiste como bandera separada (mismo
+/// criterio de "derivar en lectura" ya usado por `computeStreak`,
+/// Bloque I/II) -- evita una segunda fuente de verdad que pueda divergir
+/// del conteo real de mensajes.
+model AiConversation {
+  id            String    @id @default(uuid()) @db.Uuid
+  accountId     String    @map("account_id") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at")
+  lastMessageAt DateTime? @map("last_message_at")
+
+  account  Account     @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  messages AiMessage[]
+
+  @@index([accountId])
+  @@map("ai_conversation")
+}
+
+/// Inmutable tras crearse -- trigger `enforce_ai_message_immutable`, mismo
+/// patrón exacto que `student_response`/`xp_ledger_entry`
+/// (`enforce_student_response_immutable`). Una regeneración futura (fuera
+/// de alcance de este incremento) crearía un mensaje NUEVO, nunca
+/// modificaría uno existente (invariante 6 de la definición del bloque).
+///
+/// `operationId` vive únicamente en el mensaje USER -- es la clave de
+/// idempotencia de la OPERACIÓN completa (mensaje + respuesta), mismo
+/// patrón exacto que `StudentResponse.operationId` (ADR-0014). El mensaje
+/// ASSISTANT correspondiente no tiene operationId propio: su identidad de
+/// idempotencia es indirecta, a través de la conversación y la secuencia
+/// (ver `AiConversationService`, verificación de reintento tras fallo
+/// parcial del proveedor).
+///
+/// `sequence` -- orden estable y determinista dentro de una conversación,
+/// mismo criterio que `message_sequence` de Data Model §15.7.
+/// `@@unique([conversationId, sequence])` es la fuente real de verdad del
+/// orden; el `createdAt` es auditoría, nunca el criterio de orden (evita
+/// ambigüedad si dos filas comparten el mismo milisegundo).
+model AiMessage {
+  id             String        @id @default(uuid()) @db.Uuid
+  conversationId String        @map("conversation_id") @db.Uuid
+  role           AiMessageRole
+  content        String
+  sequence       Int
+  createdAt      DateTime      @default(now()) @map("created_at")
+  /// Solo en mensajes USER -- ver nota de la entidad.
+  operationId    String?       @unique @map("operation_id") @db.Uuid
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+
+  @@unique([conversationId, sequence])
+  @@index([conversationId])
+  @@map("ai_message")
 }

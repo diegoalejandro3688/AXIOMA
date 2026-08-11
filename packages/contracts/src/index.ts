@@ -8,3 +8,4 @@ export * from './progress';
 export * from './gamification';
 export * from './quick-question';
 export * from './league-participation';
+export * from './ai';
