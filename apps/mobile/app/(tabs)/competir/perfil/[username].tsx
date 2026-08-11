@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import type { CompetitiveProfileResponse } from '@axioma/contracts';
 import { getUserCompetitiveProfile } from '../../../../lib/api/competitive';
-import { CompetitiveIdentityHeader } from '../../../../components/competitive/identity-header';
-import { CompetitivePositionCard } from '../../../../components/competitive/position-card';
-import { CompetitiveCosmeticsRow } from '../../../../components/competitive/cosmetics-row';
-import { CompetitiveAchievementsList } from '../../../../components/competitive/achievements-list';
+import { PublicProfileView } from '../../../../components/competitive/public-profile-view';
 import { LoadingState } from '../../../../components/loading-state';
 import { ErrorState } from '../../../../components/error-state';
 import { useThemedStyles } from '../../../../theme';
@@ -66,22 +63,11 @@ export default function OtherCompetitiveProfileScreen() {
     );
   }
 
-  const { profile } = state;
-
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <CompetitiveIdentityHeader username={profile.username} avatar={profile.avatar} levelNumber={profile.levelNumber} equippedTitle={profile.equippedTitle} />
-      <CompetitivePositionCard competitive={profile.competitive} variant="other" />
-      <CompetitiveCosmeticsRow equippedCosmetics={profile.equippedCosmetics} />
-      <CompetitiveAchievementsList achievements={profile.publicAchievements} />
-    </ScrollView>
-  );
+  return <PublicProfileView profile={state.profile} />;
 }
 
 function createStyles(t: ThemeTokens) {
   return {
-    container: { flex: 1, backgroundColor: t.color.background.default },
-    content: { padding: 16, gap: 12 },
     notFoundContainer: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, padding: 24, backgroundColor: t.color.background.default },
     notFoundMessage: { fontSize: 14, color: t.color.text.secondary, textAlign: 'center' as const },
   };

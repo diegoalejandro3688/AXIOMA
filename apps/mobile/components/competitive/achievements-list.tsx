@@ -3,14 +3,22 @@ import type { PublicAchievement } from '@axioma/contracts';
 import { useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
-/** Logros públicos -- compartido entre el perfil propio y el de un tercero. */
-export function CompetitiveAchievementsList({ achievements }: { achievements: PublicAchievement[] }) {
+/**
+ * Logros públicos -- compartido entre el perfil propio, el de un tercero y
+ * la vista previa pública. `title` es configurable (LEF Bloque V, Incremento 8)
+ * para reutilizar el mismo componente tanto para el listado completo
+ * (`publicAchievements`, título por defecto "Logros") como para el
+ * subconjunto curado (`featuredAchievements`, título "Insignias destacadas")
+ * -- mismos datos, misma forma (`PublicAchievement`), sin componente
+ * paralelo.
+ */
+export function CompetitiveAchievementsList({ achievements, title = 'Logros' }: { achievements: PublicAchievement[]; title?: string }) {
   const styles = useThemedStyles(createStyles);
   if (achievements.length === 0) return null;
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Logros</Text>
+      <Text style={styles.title}>{title}</Text>
       {achievements.map((achievement) => (
         <Text key={achievement.achievementKey} style={styles.achievement}>
           {achievement.name}

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
 import type { CosmeticSlotValue, ListCosmeticsResponse, OwnedCosmetic } from '@axioma/contracts';
 import { listCosmetics, equipCosmetic } from '../lib/api/cosmetics';
-import { COSMETIC_SLOTS, SLOT_LABEL, groupOwnedCosmetics } from '../lib/cosmetics/group-cosmetics';
+import { COSMETIC_SLOTS, SLOT_LABEL, groupOwnedCosmetics, groupLockedCosmetics } from '../lib/cosmetics/group-cosmetics';
+import { describeUnlockRequirements } from '../lib/personalization/unlock-requirement-copy';
 import { LoadingState } from './loading-state';
 import { ErrorState } from './error-state';
 import { useThemedStyles } from '../theme';
@@ -87,6 +88,7 @@ export function CosmeticsSection() {
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
 
   const grouped = groupOwnedCosmetics(state.data.owned);
+  const groupedLocked = groupLockedCosmetics(state.data.locked);
 
   return (
     <View style={styles.container}>
@@ -97,6 +99,7 @@ export function CosmeticsSection() {
       {COSMETIC_SLOTS.map((slot) => {
         const equippedItem = state.data.equipped[slot];
         const ownedForSlot = grouped[slot];
+        const lockedForSlot = groupedLocked[slot];
         const isExpanded = expandedSlot === slot;
         const isEquipping = equippingSlot === slot;
 
@@ -147,6 +150,18 @@ export function CosmeticsSection() {
                     );
                   })
                 )}
+
+                {lockedForSlot.length > 0 ? (
+                  <View style={styles.lockedSection}>
+                    <Text style={styles.lockedSectionTitle}>Bloqueados</Text>
+                    {lockedForSlot.map((item) => (
+                      <View key={item.cosmeticItemId} style={styles.lockedRow}>
+                        <Text style={styles.lockedName}>{item.name}</Text>
+                        <Text style={styles.lockedRequirement}>{describeUnlockRequirements(item.unlockRequirements)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
               </View>
             ) : null}
           </View>
@@ -190,5 +205,18 @@ function createStyles(t: ThemeTokens) {
     optionRowActive: { backgroundColor: t.color.accent.subtleBg },
     optionName: { fontSize: 14, color: t.color.text.primary, fontWeight: '600' as const },
     optionMeta: { fontSize: 12, color: t.color.text.muted },
+    lockedSection: { gap: 6, marginTop: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: t.color.border.default },
+    lockedSectionTitle: { fontSize: 12, fontWeight: '700' as const, color: t.color.text.secondary, textTransform: 'uppercase' as const },
+    lockedRow: {
+      backgroundColor: t.color.action.disabledBackground,
+      borderWidth: 1,
+      borderColor: t.color.action.disabledBorder,
+      borderRadius: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      gap: 2,
+    },
+    lockedName: { fontSize: 13, fontWeight: '600' as const, color: t.color.action.disabledText },
+    lockedRequirement: { fontSize: 11, color: t.color.action.disabledText },
   };
 }
