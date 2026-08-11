@@ -217,6 +217,24 @@ export class PublicProfileController {
   }
 
   /**
+   * LEF Bloque V, Incremento 7 (docs/adr/LEF-BLOCK-V-DEFINITION.md §15) --
+   * vista previa pública fiel de la propia cuenta. Reutiliza EXACTAMENTE el
+   * mismo serializer (`toCompetitiveProfileResponse`) y el mismo contrato
+   * (`competitiveProfileResponseSchema`/`CompetitiveProfileResponse`) que
+   * `getCompetitiveProfileByUsername` -- nunca `meCompetitiveProfileResponseSchema`
+   * (esa forma añade `lifecycleStatus`, privilegio de autoconsulta que un
+   * tercero real nunca ve). Registrada ANTES de `:username/competitive-profile`
+   * por el mismo motivo de orden de rutas que `me/competitive-profile` y
+   * `me/leaderboard` -- si no, "preview" se interpretaría como un username
+   * literal.
+   */
+  @Get('me/preview')
+  async getMyCompetitiveProfilePreview(@Req() request: AuthenticatedRequest): Promise<CompetitiveProfileResponse> {
+    const view = await this.userService.getMyCompetitiveProfilePreview(request.accountId);
+    return toCompetitiveProfileResponse(view);
+  }
+
+  /**
    * Bloque IV, Incremento 3, sub-incremento 3.c (ADR-0021 §1/§5) -- lista
    * de ranking del propio grupo, SIN `groupId` de entrada (precisión
    * obligatoria del Product Owner: se resuelve server-side, nunca lo

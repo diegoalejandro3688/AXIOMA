@@ -467,6 +467,30 @@ export class UserService {
   }
 
   /**
+   * LEF Bloque V, Incremento 7 (docs/adr/LEF-BLOCK-V-DEFINITION.md §15) --
+   * vista previa pública fiel: "¿cómo ve mi perfil otro usuario ahora
+   * mismo?". Deliberadamente NO reutiliza `getMyCompetitiveProfile` (esa
+   * superficie ignora `visibilityStatus` y muestra `RETIRED` al dueño --
+   * privilegios de autoconsulta que un tercero nunca tiene, ver
+   * `assembleIdentityForOwnAccount`). En vez de eso, resuelve el propio
+   * `username` y delega EN EL MISMO método (`getCompetitiveProfileByUsername`)
+   * que usaría cualquier otro usuario autenticado consultando por username --
+   * mismo camino de código exacto, cero lógica de presentación paralela, cero
+   * segunda whitelist. Esto garantiza por construcción que un cambio futuro a
+   * la whitelist pública o a las reglas de presentabilidad nunca pueda
+   * olvidarse de actualizar la vista previa (Gate 5, §5).
+   *
+   * Sin `public_profile` propio -> mismo 404 uniforme que un tercero
+   * consultando un username inexistente (nunca el mensaje distinto de
+   * `getPublicProfile`/`getMyCompetitiveProfile`).
+   */
+  async getMyCompetitiveProfilePreview(accountId: string): Promise<CompetitiveProfileView> {
+    const profile = await this.publicProfileRepo.findByAccountId(accountId);
+    if (!profile) throw new NotFoundException(COMPETITIVE_PROFILE_NOT_FOUND_MESSAGE);
+    return this.getCompetitiveProfileByUsername(profile.usernameNormalized);
+  }
+
+  /**
    * Bloque IV, Incremento 3, sub-incremento 3.c (ADR-0021 §1/§5,
    * precisiones obligatorias del Product Owner 2026-08-06) -- lista
    * paginada del ranking del GRUPO del solicitante. Sin `groupId` de
