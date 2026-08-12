@@ -307,6 +307,51 @@ async function runDeterministicAdapterTests() {
     check('usage.attempts == 1 (éxito en el primer intento)', reply.usage?.attempts === 1);
     check('usage.latencyMs es un número >= 0', typeof reply.usage?.latencyMs === 'number' && reply.usage!.latencyMs >= 0);
   }
+
+  console.log('--- A14 (Incremento 4). El system prompt renderizado NUNCA revela la respuesta de una pregunta sin contestar; SÍ la incluye cuando fue autorizada ---');
+  {
+    let capturedSystemUnanswered: unknown;
+    const clientUnanswered = {
+      messages: {
+        create: async (params: { system?: unknown }) => {
+          capturedSystemUnanswered = params.system;
+          return textMessage('ok');
+        },
+      },
+    } as unknown as Anthropic;
+    const providerUnanswered = new AnthropicAiProvider(fakeConfig(), clientUnanswered);
+    await providerUnanswered.generateReply([], 'hola', {
+      subjectName: 'Matemática',
+      topicName: 'Porcentajes',
+      question: { stemText: '¿Cuánto es 10% de 200?', options: ['20', '10', '200'] },
+    });
+    const systemUnanswered = String(capturedSystemUnanswered);
+    check('A14a. pregunta SIN responder -> el prompt instruye explícitamente NO revelar la alternativa correcta', systemUnanswered.includes('NUNCA reveles'));
+    check('A14b. pregunta SIN responder -> el prompt NUNCA incluye una "explicación validada"', !systemUnanswered.includes('Explicación validada'));
+
+    let capturedSystemAnswered: unknown;
+    const clientAnswered = {
+      messages: {
+        create: async (params: { system?: unknown }) => {
+          capturedSystemAnswered = params.system;
+          return textMessage('ok');
+        },
+      },
+    } as unknown as Anthropic;
+    const providerAnswered = new AnthropicAiProvider(fakeConfig(), clientAnswered);
+    await providerAnswered.generateReply([], 'hola', {
+      subjectName: 'Matemática',
+      topicName: 'Porcentajes',
+      question: {
+        stemText: '¿Cuánto es 10% de 200?',
+        options: ['20', '10', '200'],
+        studentAnswer: { chosenOptionText: '20', isCorrect: true, explanationText: '10% de 200 es 20 porque...' },
+      },
+    });
+    const systemAnswered = String(capturedSystemAnswered);
+    check('A14c. pregunta YA respondida -> el prompt SÍ incluye la explicación validada', systemAnswered.includes('Explicación validada: 10% de 200 es 20 porque...'));
+    check('A14d. pregunta YA respondida -> el prompt indica la alternativa elegida y su corrección', systemAnswered.includes('eligió: "20"') && systemAnswered.includes('correcta'));
+  }
 }
 
 // ---------------------------------------------------------------------------

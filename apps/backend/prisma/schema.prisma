@@ -27,6 +27,8 @@ model CurriculumTopic {
   learningResourceVersions LearningResourceVersion[]
   questionVersions         QuestionVersion[]
   topicProgress            CurriculumTopicProgress[]
+  /// Incremento 4 (Tutor IA) -- ver AiConversation.contextCurriculumTopicId.
+  aiConversationContexts   AiConversation[]          @relation("AiConversationContextTopic")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -180,15 +182,17 @@ model QuestionVersion {
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
-  question              Question               @relation(fields: [questionId], references: [id], onDelete: Restrict)
-  curriculumTopic       CurriculumTopic        @relation(fields: [curriculumTopicId], references: [id], onDelete: Restrict)
-  answerOptions         AnswerOption[]
-  studentResponses      StudentResponse[]
+  question               Question               @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  curriculumTopic        CurriculumTopic        @relation(fields: [curriculumTopicId], references: [id], onDelete: Restrict)
+  answerOptions          AnswerOption[]
+  studentResponses       StudentResponse[]
   /// Bloque IV, Incremento 4, sub-incremento 4.a -- lado inverso de
   /// QuickQuestionSession.currentQuestionVersionId (pregunta pendiente,
   /// nullable) y QuickQuestionAttempt.questionVersionId (intento finalizado).
-  quickQuestionSessions QuickQuestionSession[]
-  quickQuestionAttempts QuickQuestionAttempt[]
+  quickQuestionSessions  QuickQuestionSession[]
+  quickQuestionAttempts  QuickQuestionAttempt[]
+  /// Incremento 4 (Tutor IA) -- ver AiConversation.contextQuestionVersionId.
+  aiConversationContexts AiConversation[]
 
   @@index([questionId])
   @@index([curriculumTopicId])
@@ -2243,18 +2247,30 @@ enum AiMessageRole {
 /// criterio de "derivar en lectura" ya usado por `computeStreak`,
 /// Bloque I/II) -- evita una segunda fuente de verdad que pueda divergir
 /// del conteo real de mensajes.
+/// `contextQuestionVersionId`/`contextCurriculumTopicId` (Incremento 4,
+/// "Contexto académico mínimo") -- referencias OPCIONALES y MUTUAMENTE
+/// EXCLUYENTES, fijadas ÚNICAMENTE al crear la conversación (nunca
+/// actualizadas después -- ningún código las modifica tras el INSERT, ver
+/// `AiConversationService.createConversation`). Guardan solo la REFERENCIA,
+/// nunca una copia/snapshot del contenido académico -- ver
+/// `AiAcademicContextBuilder` (decisión de diseño documentada en el reporte
+/// de cierre del Incremento 4: "construir en lectura", no snapshot).
 model AiConversation {
-  id            String    @id @default(uuid()) @db.Uuid
-  accountId     String    @map("account_id") @db.Uuid
-  createdAt     DateTime  @default(now()) @map("created_at")
-  lastMessageAt DateTime? @map("last_message_at")
+  id                       String    @id @default(uuid()) @db.Uuid
+  accountId                String    @map("account_id") @db.Uuid
+  createdAt                DateTime  @default(now()) @map("created_at")
+  lastMessageAt            DateTime? @map("last_message_at")
+  contextQuestionVersionId String?   @map("context_question_version_id") @db.Uuid
+  contextCurriculumTopicId String?   @map("context_curriculum_topic_id") @db.Uuid
 
-  account            Account              @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  messages           AiMessage[]
+  account                Account              @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  contextQuestionVersion QuestionVersion?     @relation(fields: [contextQuestionVersionId], references: [id], onDelete: Restrict)
+  contextCurriculumTopic CurriculumTopic?     @relation("AiConversationContextTopic", fields: [contextCurriculumTopicId], references: [id], onDelete: Restrict)
+  messages               AiMessage[]
   /// Incremento 3 (cuotas) -- ver AiUsageLedgerEntry.
-  usageLedgerEntries AiUsageLedgerEntry[]
+  usageLedgerEntries     AiUsageLedgerEntry[]
   /// Incremento 3 (concurrencia real) -- ver AiGenerationClaim.
-  generationClaims   AiGenerationClaim[]
+  generationClaims       AiGenerationClaim[]
 
   @@index([accountId])
   @@map("ai_conversation")

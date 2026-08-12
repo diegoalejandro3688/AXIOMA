@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AiProviderTechnicalError, type AiProvider, type AiProviderMessage, type AiProviderReply } from './ai-provider';
+import { AiProviderTechnicalError, type AiAcademicContext, type AiProvider, type AiProviderMessage, type AiProviderReply } from './ai-provider';
 
 /**
  * Sentinel de entrada que fuerza un fallo técnico determinista -- ver
@@ -39,14 +39,22 @@ export class FakeAiProvider implements AiProvider {
   private readonly failOnceAttempts = new Map<string, number>();
   /** Contador de invocaciones físicas por contenido exacto -- ver reporte de auditoría de concurrencia del Incremento 3 ("provider called exactly once"), expuesto solo para gates vía AiInternalAdminController. */
   private readonly callCounts = new Map<string, number>();
+  /** Incremento 4 -- último `academicContext` recibido para un contenido exacto, expuesto SOLO para gates (inspección exacta de qué llegó a la abstracción de proveedor, nunca usado por AiConversationService). */
+  private readonly lastReceivedContext = new Map<string, AiAcademicContext | null | undefined>();
 
   /** Solo para gates -- nunca usado por AiConversationService. */
   getCallCount(content: string): number {
     return this.callCounts.get(content) ?? 0;
   }
 
-  async generateReply(_history: AiProviderMessage[], newMessage: string): Promise<AiProviderReply> {
+  /** Solo para gates -- nunca usado por AiConversationService. */
+  getLastReceivedContext(content: string): AiAcademicContext | null | undefined {
+    return this.lastReceivedContext.get(content);
+  }
+
+  async generateReply(_history: AiProviderMessage[], newMessage: string, academicContext?: AiAcademicContext | null): Promise<AiProviderReply> {
     this.callCounts.set(newMessage, (this.callCounts.get(newMessage) ?? 0) + 1);
+    this.lastReceivedContext.set(newMessage, academicContext);
     if (newMessage === FAKE_AI_PROVIDER_FAILURE_TRIGGER) {
       throw new AiProviderTechnicalError('Fallo técnico simulado por FakeAiProvider (solo para gates/desarrollo).');
     }

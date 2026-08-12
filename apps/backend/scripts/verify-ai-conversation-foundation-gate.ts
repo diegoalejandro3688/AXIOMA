@@ -247,10 +247,19 @@ async function main() {
   // varios archivos (ai-usage-ledger.repository.ts, ai-conversation.service.ts)
   // documentan legítimamente el paralelismo con XpLedgerEntryRepository/
   // XpGrantService (mismo patrón de ledger append-only) en sus docstrings;
-  // eso es esperado y correcto, nunca un import real.
+  // eso es esperado y correcto, nunca un import real. Desde el Incremento 4,
+  // dos excepciones legítimas y esperadas a "sin import de PROGRESS":
+  // `ai-academic-context-builder.service.ts` (la frontera única de contexto
+  // académico, ver docs/adr/LEF-BLOCK-VI-DEFINITION.md §24) y `ai.module.ts`
+  // (importa `ProgressModule` únicamente para el WIRING de DI de Nest --
+  // nunca toca datos de PROGRESS directamente). Ningún otro archivo
+  // (`AiConversationService`, el controller, `AiProvider`,
+  // `AnthropicAiProvider`/`FakeAiProvider`) debe importar esos dominios jamás.
+  const domainImportExceptions = new Set(['ai-academic-context-builder.service.ts', 'ai.module.ts']);
   const forbiddenDomainImports = ["from '../gamification/", "from '../progress/", "XpLedgerEntry", "RewardGrant", "LeaderboardEntry"];
   let leakedDomainImport: string | null = null;
-  for (const { content } of aiSources) {
+  for (const { file, content } of aiSources) {
+    if (domainImportExceptions.has(file)) continue;
     const codeOnly = content
       .split('\n')
       .filter((line) => {
@@ -259,10 +268,10 @@ async function main() {
       })
       .join('\n');
     for (const forbidden of forbiddenDomainImports) {
-      if (codeOnly.includes(forbidden)) leakedDomainImport = forbidden;
+      if (codeOnly.includes(forbidden)) leakedDomainImport = `${forbidden} en ${file}`;
     }
   }
-  check('ningún archivo de src/ai/ importa GAMIFICATION/PROGRESS ni referencia XP/ranking/recompensas directamente en CÓDIGO real (menciones en comentarios de diseño son esperadas)', leakedDomainImport === null);
+  check('ningún archivo de src/ai/ (fuera de las excepciones documentadas del Incremento 4) importa GAMIFICATION/PROGRESS ni referencia XP/ranking/recompensas directamente en CÓDIGO real (menciones en comentarios de diseño son esperadas)', leakedDomainImport === null);
 
   console.log('--- 16. Verificación estática: SDK de Anthropic confinado a anthropic-ai-provider.ts, sin OpenAI, sin red en el fake ---');
   // Incremento 2 (ver docs/adr/LEF-BLOCK-VI-DEFINITION.md §22, criterio exacto de

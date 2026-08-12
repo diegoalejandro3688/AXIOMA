@@ -5,6 +5,7 @@ import { AiUsageLedgerRepository } from './ai-usage-ledger.repository';
 import { AiGenerationClaimRepository } from './ai-generation-claim.repository';
 import { AiEntitlementService, type AiEntitlement } from './ai-entitlement.service';
 import { AiCircuitBreakerService } from './ai-circuit-breaker.service';
+import { AiAcademicContextBuilder, type AcademicContextRefInput, type ResolvedAcademicContextRef } from './ai-academic-context-builder.service';
 import { AI_PROVIDER, AiProviderTechnicalError, type AiProvider } from './ai-provider';
 import { TransactionRunnerService } from '../platform/prisma/transaction-runner.service';
 import { Prisma } from '../generated/prisma/client';
@@ -69,11 +70,18 @@ export interface DailyQuotaView {
   resetAt: Date;
 }
 
+/** Eco mínimo, no sensible -- ver `aiAcademicContextSummarySchema` (packages/contracts). */
+export interface AcademicContextSummaryView {
+  subjectName: string;
+  topicName: string;
+}
+
 export interface AiConversationSummaryView {
   conversation: AiConversation;
   turnCount: number;
   maxTurns: number;
   dailyQuota: DailyQuotaView;
+  academicContext: AcademicContextSummaryView | null;
 }
 
 export interface AiConversationDetailView extends AiConversationSummaryView {
@@ -86,6 +94,7 @@ export interface SendAiMessageView {
   turnCount: number;
   maxTurns: number;
   dailyQuota: DailyQuotaView;
+  academicContext: AcademicContextSummaryView | null;
 }
 
 /**
@@ -156,15 +165,28 @@ export class AiConversationService {
     private readonly claimRepo: AiGenerationClaimRepository,
     private readonly entitlementService: AiEntitlementService,
     private readonly circuitBreaker: AiCircuitBreakerService,
+    private readonly contextBuilder: AiAcademicContextBuilder,
     private readonly txRunner: TransactionRunnerService,
     @Inject(AI_PROVIDER) private readonly provider: AiProvider,
   ) {}
 
-  async createConversation(accountId: string): Promise<AiConversationSummaryView> {
-    const conversation = await this.conversationRepo.create(accountId);
+  /**
+   * `ref` -- Incremento 4, punto de entrada 2 ("entrada contextual desde
+   * Estudio"). Resuelto y VALIDADO por `AiAcademicContextBuilder` ANTES de
+   * crear la fila -- una referencia inválida/inexistente/ajena nunca llega a
+   * persistirse (`NotFoundException`/`BadRequestException`, nunca se llama
+   * al proveedor). `ref` ausente/vacío = punto de entrada 1 (pestaña
+   * dedicada, sin contexto).
+   */
+  async createConversation(accountId: string, ref: AcademicContextRefInput = {}): Promise<AiConversationSummaryView> {
+    const resolvedRef = await this.contextBuilder.resolveContextRef(ref);
+    const conversation = await this.conversationRepo.create(accountId, resolvedRef);
     const entitlement = await this.entitlementService.getEntitlement(accountId);
-    const dailyQuota = await this.getDailyQuotaView(accountId, entitlement);
-    return { conversation, turnCount: 0, maxTurns: entitlement.maxTurns, dailyQuota };
+    const [dailyQuota, academicContext] = await Promise.all([
+      this.getDailyQuotaView(accountId, entitlement),
+      this.getAcademicContextSummary(accountId, resolvedRef),
+    ]);
+    return { conversation, turnCount: 0, maxTurns: entitlement.maxTurns, dailyQuota, academicContext };
   }
 
   async listConversations(accountId: string): Promise<AiConversationSummaryView[]> {
@@ -177,6 +199,7 @@ export class AiConversationService {
         turnCount: await this.messageRepo.countByConversationIdAndRole(conversation.id, 'ASSISTANT'),
         maxTurns: entitlement.maxTurns,
         dailyQuota,
+        academicContext: await this.getAcademicContextSummary(accountId, this.refFromConversation(conversation)),
       })),
     );
   }
@@ -186,13 +209,14 @@ export class AiConversationService {
     if (!conversation) throw new NotFoundException(CONVERSATION_NOT_FOUND_MESSAGE);
 
     const entitlement = await this.entitlementService.getEntitlement(accountId);
-    const [messages, turnCount, dailyQuota] = await Promise.all([
+    const [messages, turnCount, dailyQuota, academicContext] = await Promise.all([
       this.messageRepo.listByConversationId(conversationId),
       this.messageRepo.countByConversationIdAndRole(conversationId, 'ASSISTANT'),
       this.getDailyQuotaView(accountId, entitlement),
+      this.getAcademicContextSummary(accountId, this.refFromConversation(conversation)),
     ]);
 
-    return { conversation, messages, turnCount, maxTurns: entitlement.maxTurns, dailyQuota };
+    return { conversation, messages, turnCount, maxTurns: entitlement.maxTurns, dailyQuota, academicContext };
   }
 
   async sendMessage(accountId: string, conversationId: string, input: { content: string; operationId: string }): Promise<SendAiMessageView> {
@@ -351,11 +375,16 @@ export class AiConversationService {
 
     const priorMessages = (await this.messageRepo.listByConversationId(userMessage.conversationId)).filter((m) => m.id !== userMessage.id);
 
+    // Incremento 4 -- resuelto EN VIVO desde la referencia guardada en la conversación (nunca desde una copia). `null` si la conversación no tiene contexto asociado (punto de entrada 1).
+    const conversation = await this.conversationRepo.findByIdForAccount(userMessage.conversationId, accountId);
+    const academicContext = conversation ? await this.contextBuilder.buildContextPackage(accountId, this.refFromConversation(conversation)) : null;
+
     let reply: Awaited<ReturnType<AiProvider['generateReply']>>;
     try {
       reply = await this.provider.generateReply(
         priorMessages.map((m) => ({ role: m.role, content: m.content })),
         userMessage.content,
+        academicContext,
       );
     } catch (error) {
       // Libera el lease de inmediato -- un reintento inmediato del mismo operationId no debe esperar GENERATION_LEASE_TTL_MS.
@@ -450,17 +479,30 @@ export class AiConversationService {
   }
 
   private async buildSendMessageView(accountId: string, userMessage: AiMessage, assistantMessage: AiMessage, entitlement: AiEntitlement): Promise<SendAiMessageView> {
-    const [turnCount, dailyQuota] = await Promise.all([
+    const conversation = await this.conversationRepo.findByIdForAccount(userMessage.conversationId, accountId);
+    const [turnCount, dailyQuota, academicContext] = await Promise.all([
       this.messageRepo.countByConversationIdAndRole(userMessage.conversationId, 'ASSISTANT'),
       this.getDailyQuotaView(accountId, entitlement),
+      conversation ? this.getAcademicContextSummary(accountId, this.refFromConversation(conversation)) : Promise.resolve(null),
     ]);
-    return { userMessage, assistantMessage, turnCount, maxTurns: entitlement.maxTurns, dailyQuota };
+    return { userMessage, assistantMessage, turnCount, maxTurns: entitlement.maxTurns, dailyQuota, academicContext };
   }
 
   private async getDailyQuotaView(accountId: string, entitlement: AiEntitlement): Promise<DailyQuotaView> {
     const { start, end } = utcDayRange(new Date());
     const consumed = await this.usageLedgerRepo.countConsumedToday(accountId, start, end);
     return { limit: entitlement.dailyRequestLimit, consumed, remaining: Math.max(0, entitlement.dailyRequestLimit - consumed), resetAt: end };
+  }
+
+  private refFromConversation(conversation: AiConversation): ResolvedAcademicContextRef {
+    return { contextQuestionVersionId: conversation.contextQuestionVersionId, contextCurriculumTopicId: conversation.contextCurriculumTopicId };
+  }
+
+  /** Eco mínimo (subjectName/topicName) para la respuesta HTTP -- ver `AcademicContextSummaryView`. Reusa `buildContextPackage` (misma resolución en vivo) y descarta el resto del paquete. */
+  private async getAcademicContextSummary(accountId: string, ref: ResolvedAcademicContextRef): Promise<AcademicContextSummaryView | null> {
+    const full = await this.contextBuilder.buildContextPackage(accountId, ref);
+    if (!full) return null;
+    return { subjectName: full.subjectName, topicName: full.topicName };
   }
 
   /**

@@ -11,6 +11,9 @@ import { ProgressController } from './progress.controller';
   imports: [AuthModule, EducationModule, OutboxModule],
   controllers: [ProgressController],
   providers: [CurriculumTopicProgressRepository, StudentResponseRepository, ProgressService],
-  exports: [ProgressService],
+  // CurriculumTopicProgressRepository/StudentResponseRepository exportados para lectura cruzada
+  // de solo lectura -- mismo criterio que EducationModule (todos sus repos ya se exportan);
+  // consumido por AiAcademicContextBuilder (LEF Bloque VI, Incremento 4).
+  exports: [ProgressService, CurriculumTopicProgressRepository, StudentResponseRepository],
 })
 export class ProgressModule {}

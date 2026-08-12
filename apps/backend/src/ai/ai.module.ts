@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from '../auth/auth.module';
+import { EducationModule } from '../education/education.module';
+import { ProgressModule } from '../progress/progress.module';
 import { InternalOpsModule } from '../platform/internal-ops/internal-ops.module';
 import { AiConversationRepository } from './ai-conversation.repository';
 import { AiMessageRepository } from './ai-message.repository';
@@ -8,6 +10,7 @@ import { AiUsageLedgerRepository } from './ai-usage-ledger.repository';
 import { AiGenerationClaimRepository } from './ai-generation-claim.repository';
 import { AiEntitlementService } from './ai-entitlement.service';
 import { AiCircuitBreakerService } from './ai-circuit-breaker.service';
+import { AiAcademicContextBuilder } from './ai-academic-context-builder.service';
 import { AiConversationService } from './ai-conversation.service';
 import { AiConversationController } from './ai-conversation.controller';
 import { AiInternalAdminController } from './ai-internal-admin.controller';
@@ -33,7 +36,7 @@ import { AnthropicAiProvider } from './anthropic-ai-provider';
  * producción, nunca alcanzable con tráfico real.
  */
 @Module({
-  imports: [AuthModule, ConfigModule, InternalOpsModule],
+  imports: [AuthModule, ConfigModule, InternalOpsModule, EducationModule, ProgressModule],
   controllers: [AiConversationController, AiInternalAdminController],
   providers: [
     AiConversationRepository,
@@ -42,6 +45,7 @@ import { AnthropicAiProvider } from './anthropic-ai-provider';
     AiGenerationClaimRepository,
     AiEntitlementService,
     AiCircuitBreakerService,
+    AiAcademicContextBuilder,
     AiConversationService,
     // Registrado como provider normal (singleton de Nest) -- necesario para que
     // AiInternalAdminController pueda inyectar la MISMA instancia (contador de

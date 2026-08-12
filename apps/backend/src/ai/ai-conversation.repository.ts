@@ -14,8 +14,9 @@ import type { AiConversation } from '../generated/prisma/client';
 export class AiConversationRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(accountId: string): Promise<AiConversation> {
-    return this.prisma.aiConversation.create({ data: { accountId } });
+  /** `context` (Incremento 4) -- referencia YA validada por `AiAcademicContextBuilder`, fijada ÚNICAMENTE aquí, en la creación; ningún otro método de este repositorio la actualiza. */
+  create(accountId: string, context: { contextQuestionVersionId: string | null; contextCurriculumTopicId: string | null } = { contextQuestionVersionId: null, contextCurriculumTopicId: null }): Promise<AiConversation> {
+    return this.prisma.aiConversation.create({ data: { accountId, ...context } });
   }
 
   findByIdForAccount(id: string, accountId: string): Promise<AiConversation | null> {

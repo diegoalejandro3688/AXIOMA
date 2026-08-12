@@ -21,6 +21,40 @@ export interface AiProviderMessage {
 }
 
 /**
+ * Representación NEUTRAL del contexto académico -- ver
+ * docs/adr/LEF-BLOCK-VI-DEFINITION.md §24 (Incremento 4). Construida
+ * EXCLUSIVAMENTE por `AiAcademicContextBuilder` (nunca por `AiProvider`
+ * mismo, que jamás consulta PROGRESS/EDUCATION directamente -- invariante
+ * de frontera única). Texto plano, sin entidades Prisma, sin bloques de
+ * contenido estructurado (JSON de `stemContent`/`explanationContent` ya
+ * aplanados a texto) -- ni `AnthropicAiProvider` ni `FakeAiProvider` conocen
+ * `QuestionVersion`/`CurriculumTopic`/`AnswerOption`.
+ *
+ * `question.studentAnswer` está AUSENTE (no `undefined` explícito en el
+ * objeto, la clave simplemente no existe) salvo cuando el estudiante YA
+ * respondió esa pregunta (`StudentResponse` real para esa cuenta) -- es la
+ * única condición que autoriza incluir la alternativa correcta/explicación
+ * (ver reporte de cierre del Incremento 4, "hallazgo answerKey/pauta").
+ */
+export interface AiAcademicContext {
+  subjectName: string;
+  topicName: string;
+  /** Solo cuando la conversación se abrió con una pregunta específica (`contextQuestionVersionId`). */
+  question?: {
+    stemText: string;
+    options: string[];
+    /** Presente ÚNICAMENTE si `StudentResponse` ya existe para esta cuenta y esta pregunta -- nunca de otra forma. */
+    studentAnswer?: {
+      chosenOptionText: string;
+      isCorrect: boolean;
+      explanationText: string;
+    };
+  };
+  /** Solo cuando hay progreso real registrado para el tema (nunca inventado). */
+  topicProgressStatus?: 'IN_PROGRESS' | 'COMPLETED';
+}
+
+/**
  * Metadata técnica OPCIONAL de la llamada real -- ver
  * docs/adr/LEF-BLOCK-VI-DEFINITION.md §22 (revisión, Incremento 3). NUNCA
  * incluye contenido conversacional (eso es `AiProviderReply.content`,
@@ -80,10 +114,13 @@ export interface AiProvider {
   /**
    * `history` es la conversación previa YA persistida (sin el mensaje nuevo);
    * `newMessage` es el contenido del mensaje que se está procesando ahora.
-   * Debe lanzar `AiProviderTechnicalError` ante cualquier fallo -- nunca
-   * devolver una respuesta parcial silenciosa.
+   * `academicContext` (Incremento 4) es `null`/ausente cuando la
+   * conversación se abrió sin contexto académico (pestaña dedicada, punto de
+   * entrada 1) -- nunca inventado por el proveedor. Debe lanzar
+   * `AiProviderTechnicalError` ante cualquier fallo -- nunca devolver una
+   * respuesta parcial silenciosa.
    */
-  generateReply(history: AiProviderMessage[], newMessage: string): Promise<AiProviderReply>;
+  generateReply(history: AiProviderMessage[], newMessage: string, academicContext?: AiAcademicContext | null): Promise<AiProviderReply>;
 }
 
 export const AI_PROVIDER = Symbol('AI_PROVIDER');

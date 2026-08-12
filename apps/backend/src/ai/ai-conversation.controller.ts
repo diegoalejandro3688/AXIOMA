@@ -52,6 +52,7 @@ function toSummaryResponse(view: AiConversationSummaryView) {
     turnCount: view.turnCount,
     maxTurns: view.maxTurns,
     dailyQuota: toDailyQuotaResponse(view.dailyQuota),
+    academicContext: view.academicContext,
   };
 }
 
@@ -69,6 +70,7 @@ function toSendMessageResponse(view: SendAiMessageView): SendAiMessageResponse {
     turnCount: view.turnCount,
     maxTurns: view.maxTurns,
     dailyQuota: toDailyQuotaResponse(view.dailyQuota),
+    academicContext: view.academicContext,
   });
 }
 
@@ -79,8 +81,11 @@ export class AiConversationController {
 
   @Post()
   async create(@Req() request: AuthenticatedRequest, @Body() body: unknown): Promise<CreateAiConversationResponse> {
-    parseRequestBody(createAiConversationRequestSchema, body);
-    const view = await this.aiConversationService.createConversation(request.accountId);
+    const input = parseRequestBody(createAiConversationRequestSchema, body);
+    const view = await this.aiConversationService.createConversation(request.accountId, {
+      questionVersionId: input.contextQuestionVersionId,
+      curriculumTopicId: input.contextCurriculumTopicId,
+    });
     return createAiConversationResponseSchema.parse(toSummaryResponse(view));
   }
 

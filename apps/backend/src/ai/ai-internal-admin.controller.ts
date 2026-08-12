@@ -72,4 +72,18 @@ export class AiInternalAdminController {
     if (!content) throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'content requerido.' });
     return { count: this.fakeProvider.getCallCount(content) };
   }
+
+  /**
+   * Qué `academicContext` recibió exactamente `FakeAiProvider.generateReply`
+   * para un contenido exacto -- ver reporte de cierre del Incremento 4
+   * ("FakeAiProvider recibe únicamente contexto esperado"). `undefined` =
+   * ese contenido nunca se envió; `null` = se envió sin contexto académico.
+   */
+  @Get('fake-provider-last-context')
+  @UseGuards(InternalOpsGuard)
+  getFakeProviderLastContext(@Query('content') content?: string): { context: unknown } {
+    this.rejectInProduction();
+    if (!content) throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'content requerido.' });
+    return { context: this.fakeProvider.getLastReceivedContext(content) ?? null };
+  }
 }

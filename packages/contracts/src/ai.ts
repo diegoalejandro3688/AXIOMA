@@ -10,10 +10,12 @@ import { entityId, isoDateTime } from './common';
  * detalle interno del proveedor, ni `operationId` (concepto de transporte
  * del cliente, no algo que el cliente necesite leer de vuelta).
  *
- * Fuera de alcance todavía (ver definición del bloque): contexto académico,
- * comportamiento pedagógico progresivo, seguridad de actividades protegidas
- * -- ninguno de esos conceptos aparece en estos contratos. La cuota diaria
- * (`dailyQuota`) SÍ es parte del contrato desde el Incremento 3.
+ * Fuera de alcance todavía (ver definición del bloque): comportamiento
+ * pedagógico progresivo, seguridad de actividades protegidas -- ninguno de
+ * esos conceptos aparece en estos contratos. La cuota diaria (`dailyQuota`)
+ * es parte del contrato desde el Incremento 3; el contexto académico
+ * (`academicContext`, `contextQuestionVersionId`/`contextCurriculumTopicId`)
+ * desde el Incremento 4.
  */
 
 export const aiMessageRoleSchema = z.enum(['USER', 'ASSISTANT']);
@@ -51,6 +53,22 @@ export type AiDailyQuotaResponse = z.infer<typeof aiDailyQuotaResponseSchema>;
  * de `turnCount`/`maxTurns` -- uno es por conversación, el otro por cuenta y
  * por día (Incremento 3).
  */
+/**
+ * Eco MÍNIMO y no sensible del contexto académico resuelto por el servidor
+ * (Incremento 4) -- solo nombres públicos de materia/tema (ya expuestos hoy
+ * por `GET /education/subjects`/`GET /education/topics/...`), NUNCA el
+ * enunciado/alternativas/explicación de la pregunta (eso solo lo ve el
+ * proveedor, vía `AiAcademicContext`, nunca la respuesta HTTP). `null` cuando
+ * la conversación no tiene contexto asociado (punto de entrada 1, pestaña dedicada).
+ */
+export const aiAcademicContextSummarySchema = z
+  .object({
+    subjectName: z.string(),
+    topicName: z.string(),
+  })
+  .nullable();
+export type AiAcademicContextSummary = z.infer<typeof aiAcademicContextSummarySchema>;
+
 export const aiConversationSummaryResponseSchema = z.object({
   conversationId: entityId,
   createdAt: isoDateTime,
@@ -58,12 +76,31 @@ export const aiConversationSummaryResponseSchema = z.object({
   turnCount: z.number().int().nonnegative(),
   maxTurns: z.number().int().positive(),
   dailyQuota: aiDailyQuotaResponseSchema,
+  academicContext: aiAcademicContextSummarySchema,
 });
 export type AiConversationSummaryResponse = z.infer<typeof aiConversationSummaryResponseSchema>;
 
 // --- POST /ai/me/conversations ---
 
-export const createAiConversationRequestSchema = z.object({}).strict();
+/**
+ * Punto de entrada 2 ("entrada contextual desde Estudio") -- el cliente
+ * SOLO puede enviar un identificador mínimo/autorizado (`questionVersionId`
+ * O `curriculumTopicId`, nunca ambos); el backend resuelve el contexto real
+ * desde fuentes canónicas (`AiAcademicContextBuilder`). Whitelisting
+ * estricto (`.strict()`): un intento de enviar `subject`/`correctAnswer`/
+ * `studentProgress`/cualquier otro campo es rechazado por el propio
+ * esquema, nunca silenciosamente ignorado con datos parciales confiables.
+ * Ambos campos ausentes = punto de entrada 1 (pestaña dedicada, sin contexto).
+ */
+export const createAiConversationRequestSchema = z
+  .object({
+    contextQuestionVersionId: entityId.optional(),
+    contextCurriculumTopicId: entityId.optional(),
+  })
+  .strict()
+  .refine((data) => !(data.contextQuestionVersionId && data.contextCurriculumTopicId), {
+    message: 'Especifica como máximo un contexto académico (pregunta O tema, nunca ambos).',
+  });
 export type CreateAiConversationRequest = z.infer<typeof createAiConversationRequestSchema>;
 
 export const createAiConversationResponseSchema = aiConversationSummaryResponseSchema;
@@ -107,5 +144,6 @@ export const sendAiMessageResponseSchema = z.object({
   turnCount: z.number().int().nonnegative(),
   maxTurns: z.number().int().positive(),
   dailyQuota: aiDailyQuotaResponseSchema,
+  academicContext: aiAcademicContextSummarySchema,
 });
 export type SendAiMessageResponse = z.infer<typeof sendAiMessageResponseSchema>;
