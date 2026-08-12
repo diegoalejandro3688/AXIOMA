@@ -25,6 +25,19 @@ export const FAKE_AI_PROVIDER_FAILURE_TRIGGER = '__FAKE_AI_PROVIDER_FORCE_FAILUR
 export const FAKE_AI_PROVIDER_FAIL_ONCE_PREFIX = '__FAKE_AI_PROVIDER_FAIL_ONCE__';
 
 /**
+ * Sentinel de entrada que fuerza un `AiProviderTechnicalError` con categoría
+ * `provider_safety_refusal` -- ver revisión del Product Owner sobre
+ * Incremento 6 (2026-08-12). Permite al gate ejercitar el outcome HTTP de
+ * seguridad (422/`AI_SAFETY_BLOCKED`, ver `AiConversationService`) de punta a
+ * punta contra el backend real, SIN depender de `AnthropicAiProvider`/de un
+ * `stop_reason: 'refusal'` real -- mismo espíritu EXACTO que
+ * `FAKE_AI_PROVIDER_FAILURE_TRIGGER` (fallo técnico genérico -> 503), solo
+ * que con la categoría específica que distingue un rechazo de seguridad de
+ * cualquier otro fallo técnico.
+ */
+export const FAKE_AI_PROVIDER_SAFETY_REFUSAL_TRIGGER = '__FAKE_AI_PROVIDER_FORCE_SAFETY_REFUSAL__';
+
+/**
  * Implementación fake/determinista de `AiProvider` -- ver
  * docs/adr/LEF-BLOCK-VI-DEFINITION.md §7 (mismo espíritu que
  * `StubIdentityProvider` en AUTH). Sin red, sin SDK, sin variabilidad --
@@ -70,6 +83,9 @@ export class FakeAiProvider implements AiProvider {
     this.lastReceivedMode.set(newMessage, assistanceMode);
     if (newMessage === FAKE_AI_PROVIDER_FAILURE_TRIGGER) {
       throw new AiProviderTechnicalError('Fallo técnico simulado por FakeAiProvider (solo para gates/desarrollo).');
+    }
+    if (newMessage === FAKE_AI_PROVIDER_SAFETY_REFUSAL_TRIGGER) {
+      throw new AiProviderTechnicalError('Rechazo de seguridad simulado por FakeAiProvider (solo para gates/desarrollo).', 'provider_safety_refusal');
     }
     if (newMessage.startsWith(FAKE_AI_PROVIDER_FAIL_ONCE_PREFIX)) {
       const attempts = this.failOnceAttempts.get(newMessage) ?? 0;

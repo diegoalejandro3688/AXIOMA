@@ -59,6 +59,7 @@
     "verify:ai-quota-gate": "tsx scripts/verify-ai-quota-gate.ts",
     "verify:ai-academic-context-gate": "tsx scripts/verify-ai-academic-context-gate.ts",
     "verify:ai-pedagogy-gate": "tsx scripts/verify-ai-pedagogy-gate.ts",
+    "verify:ai-safety-gate": "tsx scripts/verify-ai-safety-gate.ts",
     "cli:recover-account": "node dist/cli/recover-account.js",
     "db:up": "docker compose -f ../../docker-compose.yml up -d",
     "db:down": "docker compose -f ../../docker-compose.yml down"

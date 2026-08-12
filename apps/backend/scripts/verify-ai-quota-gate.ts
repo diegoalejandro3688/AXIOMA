@@ -147,10 +147,22 @@ async function main() {
   // ------------------------------------------------------------------
   console.log('--- 12-13. Timeout / error permanente no consumen (prueba arquitectónica + referencia cruzada al gate de Incremento 2) ---');
   const serviceSource = readFileSync(join(__dirname, '..', 'src', 'ai', 'ai-conversation.service.ts'), 'utf8');
-  const catchBlockMatch = serviceSource.match(/catch \(error\) \{[\s\S]{0,300}?if \(error instanceof AiProviderTechnicalError\) \{[\s\S]{0,400}?ServiceUnavailableException/);
+  // Incremento 6 (revisión Product Owner, 2026-08-12): el catch de AiProviderTechnicalError ahora bifurca el OUTCOME HTTP
+  // (422/AI_SAFETY_BLOCKED para 'provider_safety_refusal', 503 para cualquier otra categoría) -- pero para TODA categoría,
+  // el resultado de DOMINIO sigue siendo idéntico: nunca se llega a `persistConsumedReply` (cero consumo, cero ASSISTANT,
+  // cero fila de ledger). Esta verificación se actualiza para reflejar esa bifurcación intencional sin perder la propiedad
+  // original que prueba (timeout/error permanente/transitorio NUNCA consumen) -- ver verify-ai-safety-gate.ts (sección
+  // B3-safety) para la cobertura completa y explícita del nuevo outcome 422.
+  const catchAnchorIndex = serviceSource.indexOf('if (error instanceof AiProviderTechnicalError) {');
+  const throwErrorIndex = catchAnchorIndex >= 0 ? serviceSource.indexOf('throw error;', catchAnchorIndex) : -1;
+  const catchBlockSlice = catchAnchorIndex >= 0 && throwErrorIndex >= 0 ? serviceSource.slice(catchAnchorIndex, throwErrorIndex) : '';
   check(
-    '12/13. el ÚNICO catch de AiProviderTechnicalError en completeAssistantReply trata TODAS las categorías igual (nunca distingue timeout/permanente/transitorio) -- por construcción, timeout y error permanente NUNCA llegan a persistConsumedReply, igual que el fallo técnico genérico ya probado en el punto 10',
-    catchBlockMatch !== null,
+    '12/13. el catch de AiProviderTechnicalError en completeAssistantReply cubre TODAS las categorías (nunca llega a persistConsumedReply) -- bifurca el outcome HTTP (422 seguridad / 503 técnico) sin excepción sin capturar',
+    catchAnchorIndex >= 0 &&
+      catchBlockSlice.includes('ServiceUnavailableException') &&
+      catchBlockSlice.includes('UnprocessableEntityException') &&
+      catchBlockSlice.includes('provider_safety_refusal') &&
+      !catchBlockSlice.includes('persistConsumedReply'),
   );
   check(
     '12/13. las categorías timeout/provider_invalid_request/provider_auth_error están definidas y mapeadas en AnthropicAiProvider (ver gate del Incremento 2, A6/A7/A8) -- mismo AiProviderTechnicalError, mismo catch category-agnóstico aquí probado',

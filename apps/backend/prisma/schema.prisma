@@ -302,6 +302,7 @@ model Account {
   aiConversations      AiConversation[]
   aiUsageLedgerEntries AiUsageLedgerEntry[]
   aiGenerationClaims   AiGenerationClaim[]
+  aiResponseReports    AiResponseReport[]
 
   @@map("account")
 }
@@ -2310,6 +2311,8 @@ model AiMessage {
   conversation     AiConversation      @relation(fields: [conversationId], references: [id], onDelete: Restrict)
   /// Incremento 3 -- presente únicamente en el mensaje ASSISTANT que consumió una consulta (ver AiUsageLedgerEntry).
   usageLedgerEntry AiUsageLedgerEntry?
+  /// Incremento 6 -- ver AiResponseReport. Solo mensajes ASSISTANT son reportables (verificado por AiConversationService, no por el esquema).
+  responseReports  AiResponseReport[]
 
   @@unique([conversationId, sequence])
   @@index([conversationId])
@@ -2434,4 +2437,43 @@ model AiGenerationClaim {
   /// Admisión de límite de turnos: cuenta reservas activas de una conversación.
   @@index([conversationId, reservationExpiresAt])
   @@map("ai_generation_claim")
+}
+
+/// LEF Bloque VI, Incremento 6 ("Seguridad y actividades protegidas") -- ver
+/// docs/adr/LEF-BLOCK-VI-DEFINITION.md §26 (PRD AI-015, Data Model §15.28).
+/// Mecanismo MÍNIMO contractual: el estudiante marca una respuesta del Tutor
+/// como incorrecta/confusa/demasiado extensa/poco relacionada/inapropiada.
+/// Deliberadamente SIN el resto del catálogo candidato de Data Model §15.28
+/// (`status`/`severity`/`resolved_at`/`resolution_code`) -- ese es el flujo
+/// operativo humano de revisión, explícitamente fuera de alcance de I6 (sin
+/// SLAs humanos, sin plataforma de moderación completa). "Un reporte no
+/// modifica automáticamente la respuesta" (PRD AI-015) -- esta tabla es
+/// puramente de registro, ningún código de este incremento reacciona a un
+/// reporte para ocultar/corregir un mensaje.
+model AiResponseReport {
+  id                 String               @id @default(uuid()) @db.Uuid
+  assistantMessageId String               @map("assistant_message_id") @db.Uuid
+  accountId          String               @map("account_id") @db.Uuid
+  reportType         AiResponseReportType @map("report_type")
+  /// Comentario opcional del estudiante -- NUNCA usado por AiConversationService, expuesto únicamente para un futuro flujo humano de revisión (fuera de alcance de I6).
+  description        String?
+  createdAt          DateTime             @default(now()) @map("created_at")
+
+  assistantMessage AiMessage @relation(fields: [assistantMessageId], references: [id], onDelete: Restrict)
+  account          Account   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([assistantMessageId])
+  @@index([accountId])
+  @@map("ai_response_report")
+}
+
+/// Subconjunto EXACTO de PRD AI-015 ("Incorrecta / Confusa / Demasiado extensa / Poco relacionada / Inapropiada") -- 5 categorías, sin taxonomía adicional inventada.
+enum AiResponseReportType {
+  INCORRECT
+  CONFUSING
+  TOO_LONG
+  OFF_TOPIC
+  INAPPROPRIATE
+
+  @@map("ai_response_report_type")
 }

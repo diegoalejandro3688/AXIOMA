@@ -8,6 +8,7 @@ import { AiConversationRepository } from './ai-conversation.repository';
 import { AiMessageRepository } from './ai-message.repository';
 import { AiUsageLedgerRepository } from './ai-usage-ledger.repository';
 import { AiGenerationClaimRepository } from './ai-generation-claim.repository';
+import { AiResponseReportRepository } from './ai-response-report.repository';
 import { AiEntitlementService } from './ai-entitlement.service';
 import { AiCircuitBreakerService } from './ai-circuit-breaker.service';
 import { AiAcademicContextBuilder } from './ai-academic-context-builder.service';
@@ -43,6 +44,7 @@ import { AnthropicAiProvider } from './anthropic-ai-provider';
     AiMessageRepository,
     AiUsageLedgerRepository,
     AiGenerationClaimRepository,
+    AiResponseReportRepository,
     AiEntitlementService,
     AiCircuitBreakerService,
     AiAcademicContextBuilder,

@@ -87,11 +87,18 @@ export interface AiProviderReply {
 
 /**
  * Categorías internas de fallo técnico -- ver docs/adr/LEF-BLOCK-VI-DEFINITION.md
- * §22 e Incremento 2 (mapeo de errores). Uso EXCLUSIVAMENTE interno
- * (reintento/observabilidad): `AiConversationService` solo distingue
- * `instanceof AiProviderTechnicalError` (siempre 503 genérico al cliente),
- * nunca expone `category` ni `message` por HTTP -- el contrato público no
- * cambia respecto a I1.
+ * §22 e Incremento 2 (mapeo de errores). Uso interno (reintento/
+ * observabilidad) -- `AiConversationService` distingue `instanceof
+ * AiProviderTechnicalError` para TODA categoría (cero consumo, cero
+ * ASSISTANT, cero fila de ledger, mensaje USER persistido y reintentable),
+ * pero desde Incremento 6 (revisión Product Owner) el OUTCOME HTTP sí se
+ * bifurca por categoría: `provider_safety_refusal` -> 422/`AI_SAFETY_BLOCKED`
+ * (el proveedor SÍ respondió, solo que sin contenido pedagógico utilizable);
+ * cualquier otra categoría -> 503 genérico ("servicio no disponible", sigue
+ * siendo la semántica correcta -- un timeout/error real del proveedor NO es
+ * lo mismo que un rechazo de seguridad). Nunca se expone `category`/`message`
+ * crudos del SDK por HTTP en ningún caso -- ambos outcomes usan textos
+ * propios de Axioma.
  */
 export type AiProviderErrorCategory =
   | 'timeout'
@@ -100,9 +107,23 @@ export type AiProviderErrorCategory =
   | 'provider_auth_error'
   | 'provider_invalid_request'
   | 'provider_unavailable'
-  | 'unknown_provider_error';
+  | 'unknown_provider_error'
+  | 'provider_safety_refusal';
 
-/** Lanzado por una implementación de `AiProvider` ante un fallo técnico (timeout, red, error del proveedor) -- nunca ante un bloqueo de seguridad (fuera de alcance de I1). */
+/**
+ * Lanzado por una implementación de `AiProvider` ante un fallo técnico
+ * (timeout, red, error del proveedor) -- INCLUYE, desde Incremento 6, un
+ * bloqueo de seguridad NATIVO del proveedor (`provider_safety_refusal`,
+ * `stop_reason: 'refusal'` de Anthropic -- ver `ai-pedagogy.ts`, categoría
+ * (C)). Todas las categorías comparten el mismo comportamiento de DOMINIO
+ * (cero consumo de cupo, cero `AiMessage` ASSISTANT, cero fila de ledger,
+ * mensaje USER persistido y reintentable) -- pero, desde la revisión del
+ * Product Owner sobre este incremento, `AiConversationService` bifurca el
+ * OUTCOME HTTP público exclusivamente para `provider_safety_refusal`
+ * (422/`AI_SAFETY_BLOCKED`, nunca el mismo 503 de "servicio no disponible"
+ * que usa cualquier otra categoría) -- ver
+ * `AiConversationService.completeAssistantReply`.
+ */
 export class AiProviderTechnicalError extends Error {
   readonly category: AiProviderErrorCategory;
 

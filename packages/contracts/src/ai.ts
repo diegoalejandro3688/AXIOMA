@@ -177,3 +177,30 @@ export const sendAiMessageResponseSchema = z.object({
   academicContext: aiAcademicContextSummarySchema,
 });
 export type SendAiMessageResponse = z.infer<typeof sendAiMessageResponseSchema>;
+
+// --- POST /ai/me/conversations/:conversationId/messages/:messageId/report ---
+
+/**
+ * Incremento 6 (PRD AI-015, Data Model §15.28) -- subconjunto EXACTO de las
+ * 5 categorías del PRD, sin taxonomía adicional. "Un reporte no modifica
+ * automáticamente la respuesta" (PRD AI-015) -- este endpoint NUNCA altera
+ * `AiMessage.content`, solo registra el reporte.
+ */
+export const aiResponseReportTypeSchema = z.enum(['INCORRECT', 'CONFUSING', 'TOO_LONG', 'OFF_TOPIC', 'INAPPROPRIATE']);
+export type AiResponseReportType = z.infer<typeof aiResponseReportTypeSchema>;
+
+export const reportAiMessageRequestSchema = z
+  .object({
+    reportType: aiResponseReportTypeSchema,
+    description: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+export type ReportAiMessageRequest = z.infer<typeof reportAiMessageRequestSchema>;
+
+/** Eco mínimo -- nunca expone `accountId`/`description` de vuelta (whitelisting, mismo criterio que el resto de `ai.ts`). */
+export const reportAiMessageResponseSchema = z.object({
+  reportId: entityId,
+  reportType: aiResponseReportTypeSchema,
+  createdAt: isoDateTime,
+});
+export type ReportAiMessageResponse = z.infer<typeof reportAiMessageResponseSchema>;

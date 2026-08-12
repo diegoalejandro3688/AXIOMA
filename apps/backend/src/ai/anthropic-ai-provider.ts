@@ -172,6 +172,16 @@ export class AnthropicAiProvider implements AiProvider {
           { timeout: remainingMs, maxRetries: 0 },
         );
 
+        // Incremento 6 (seguridad general, categoría C -- ver ai-pedagogy.ts) -- Anthropic puede rehusarse a
+        // generar contenido por su propia política de seguridad, señalado por `stop_reason: 'refusal'`, INDEPENDIENTE
+        // de cualquier excepción del SDK (la llamada HTTP en sí fue exitosa). Tratado igual que cualquier otro fallo
+        // técnico -- degradación controlada uniforme, nunca se muestra al estudiante contenido parcial de un rechazo
+        // de seguridad, nunca se intenta "reformular" automáticamente para evadirlo.
+        if (response.stop_reason === 'refusal') {
+          this.logObservability({ attempt, durationMs: Date.now() - startedAt, result: 'provider_safety_refusal' });
+          throw new AiProviderTechnicalError('El proveedor de IA rehusó generar una respuesta para esta solicitud.', 'provider_safety_refusal');
+        }
+
         const text = response.content
           .filter((block): block is Extract<typeof block, { type: 'text' }> => block.type === 'text')
           .map((block) => block.text)

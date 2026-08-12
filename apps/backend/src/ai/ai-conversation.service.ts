@@ -1,15 +1,25 @@
-import { ConflictException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { AiConversationRepository } from './ai-conversation.repository';
 import { AiMessageRepository } from './ai-message.repository';
 import { AiUsageLedgerRepository } from './ai-usage-ledger.repository';
 import { AiGenerationClaimRepository } from './ai-generation-claim.repository';
+import { AiResponseReportRepository } from './ai-response-report.repository';
 import { AiEntitlementService, type AiEntitlement } from './ai-entitlement.service';
 import { AiCircuitBreakerService } from './ai-circuit-breaker.service';
 import { AiAcademicContextBuilder, type AcademicContextRefInput, type ResolvedAcademicContextRef } from './ai-academic-context-builder.service';
 import { AI_PROVIDER, AiProviderTechnicalError, type AiAssistanceMode, type AiProvider } from './ai-provider';
 import { TransactionRunnerService } from '../platform/prisma/transaction-runner.service';
 import { Prisma } from '../generated/prisma/client';
-import type { AiConversation, AiMessage, AiUsageLedgerEntry } from '../generated/prisma/client';
+import type { AiConversation, AiMessage, AiResponseReport, AiResponseReportType, AiUsageLedgerEntry } from '../generated/prisma/client';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 const SERIALIZATION_CONFLICT_CODE = 'P2034';
@@ -38,6 +48,21 @@ const LOSER_POLL_INTERVAL_MS = 250;
  * proyecto para recursos privados ajenos.
  */
 const CONVERSATION_NOT_FOUND_MESSAGE = 'Esta conversación no existe o no está disponible.';
+
+/**
+ * Incremento 6 (revisión del Product Owner, 2026-08-12) -- código público
+ * ESTABLE para "el proveedor rehusó generar una respuesta por seguridad"
+ * (`AiProviderErrorCategory === 'provider_safety_refusal'`). Distinto de un
+ * fallo técnico genérico (503) -- ver `completeAssistantReply`: el
+ * proveedor SÍ respondió, simplemente no produjo una respuesta pedagógica
+ * utilizable. Mismo criterio de whitelisting que el resto del dominio: el
+ * mensaje público es SIEMPRE este texto propio de Axioma, NUNCA el mensaje
+ * crudo de `AiProviderTechnicalError`/del SDK (que puede describir
+ * internamente la causa, pero solo se loguea -- ver AnthropicAiProvider.
+ * logObservability -- nunca se propaga al cliente).
+ */
+const AI_SAFETY_BLOCKED_CODE = 'AI_SAFETY_BLOCKED';
+const AI_SAFETY_BLOCKED_MESSAGE = 'El Tutor IA no puede responder a esta solicitud. Intenta reformular tu mensaje.';
 
 function isUniqueConstraintViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION;
@@ -163,6 +188,7 @@ export class AiConversationService {
     private readonly messageRepo: AiMessageRepository,
     private readonly usageLedgerRepo: AiUsageLedgerRepository,
     private readonly claimRepo: AiGenerationClaimRepository,
+    private readonly responseReportRepo: AiResponseReportRepository,
     private readonly entitlementService: AiEntitlementService,
     private readonly circuitBreaker: AiCircuitBreakerService,
     private readonly contextBuilder: AiAcademicContextBuilder,
@@ -265,6 +291,40 @@ export class AiConversationService {
     const userMessage = await this.createUserMessageWithRetry(conversationId, input);
 
     return this.completeAssistantReply(accountId, userMessage, entitlement);
+  }
+
+  /**
+   * Incremento 6 (PRD AI-015) -- mecanismo MÍNIMO de reporte, ver
+   * `AiResponseReport`. "Un reporte no modifica automáticamente la
+   * respuesta" -- este método NUNCA toca `AiMessage.content`, solo persiste
+   * el reporte. Mismo criterio de ownership 404-uniforme que el resto del
+   * dominio (conversación ajena/inexistente -> mismo mensaje/código que
+   * `getConversation`). Solo mensajes `ASSISTANT` son reportables -- reportar
+   * el propio mensaje del estudiante no tiene sentido de producto.
+   */
+  async reportMessage(
+    accountId: string,
+    conversationId: string,
+    messageId: string,
+    input: { reportType: AiResponseReportType; description?: string },
+  ): Promise<AiResponseReport> {
+    const conversation = await this.conversationRepo.findByIdForAccount(conversationId, accountId);
+    if (!conversation) throw new NotFoundException(CONVERSATION_NOT_FOUND_MESSAGE);
+
+    const message = await this.messageRepo.findById(messageId);
+    if (!message || message.conversationId !== conversationId) {
+      throw new NotFoundException('Este mensaje no existe o no está disponible.');
+    }
+    if (message.role !== 'ASSISTANT') {
+      throw new BadRequestException('Solo se puede reportar una respuesta del Tutor.');
+    }
+
+    return this.responseReportRepo.create({
+      assistantMessageId: messageId,
+      accountId,
+      reportType: input.reportType,
+      description: input.description ?? null,
+    });
   }
 
   /** Espera acotada (poll) a que OTRA petición concurrente, que ganó la reserva de admisión para el MISMO operationId, termine de crear el mensaje USER. Nunca llama al proveedor. */
@@ -401,6 +461,13 @@ export class AiConversationService {
       // Libera el lease de inmediato -- un reintento inmediato del mismo operationId no debe esperar GENERATION_LEASE_TTL_MS.
       await this.claimRepo.releaseGenerationLease(operationId);
       if (error instanceof AiProviderTechnicalError) {
+        // Incremento 6 (revisión Product Owner) -- un bloqueo de seguridad NATIVO del proveedor NUNCA es "servicio no disponible":
+        // el proveedor SÍ respondió, simplemente no hay respuesta pedagógica utilizable. Outcome de aplicación estable y distinto
+        // (422/AI_SAFETY_BLOCKED), nunca el mismo 503 que un fallo técnico real -- pero mismo criterio de cero consumo/cero ASSISTANT/
+        // cero ledger que cualquier otro AiProviderTechnicalError (el mensaje USER YA está persistido y sigue estándolo, reintentable).
+        if (error.category === 'provider_safety_refusal') {
+          throw new UnprocessableEntityException({ code: AI_SAFETY_BLOCKED_CODE, message: AI_SAFETY_BLOCKED_MESSAGE });
+        }
         // Degradación controlada (invariante 14) -- el mensaje USER YA está persistido y sigue estándolo; el estudiante puede reintentar con el mismo operationId sin duplicar nada. Cero consumo.
         throw new ServiceUnavailableException('El Tutor IA no está disponible en este momento. Puedes reintentar.');
       }

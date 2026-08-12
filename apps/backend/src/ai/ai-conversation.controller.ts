@@ -6,10 +6,13 @@ import {
   aiConversationDetailResponseSchema,
   sendAiMessageRequestSchema,
   sendAiMessageResponseSchema,
+  reportAiMessageRequestSchema,
+  reportAiMessageResponseSchema,
   type CreateAiConversationResponse,
   type ListAiConversationsResponse,
   type AiConversationDetailResponse,
   type SendAiMessageResponse,
+  type ReportAiMessageResponse,
 } from '@axioma/contracts';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { parseRequestBody } from '../platform/validation/parse-request-body';
@@ -118,5 +121,33 @@ export class AiConversationController {
       requestedMode: input.requestedMode ?? null,
     });
     return toSendMessageResponse(view);
+  }
+
+  /**
+   * Incremento 6 (PRD AI-015) -- reporte mínimo de una respuesta del Tutor.
+   * Sin `operationId`/idempotencia de transporte -- a diferencia de
+   * `sendMessage`, esta operación no tiene coste externo ni efecto
+   * irreversible: un doble envío accidental crea, a lo sumo, un segundo
+   * registro de reporte (mismo criterio de minimización que el resto de I6,
+   * "mecanismo mínimo contractual", sin la complejidad de idempotencia que sí
+   * exige una llamada real al proveedor).
+   */
+  @Post(':conversationId/messages/:messageId/report')
+  async reportMessage(
+    @Req() request: AuthenticatedRequest,
+    @Param('conversationId') conversationId: string,
+    @Param('messageId') messageId: string,
+    @Body() body: unknown,
+  ): Promise<ReportAiMessageResponse> {
+    const input = parseRequestBody(reportAiMessageRequestSchema, body);
+    const report = await this.aiConversationService.reportMessage(request.accountId, conversationId, messageId, {
+      reportType: input.reportType,
+      description: input.description,
+    });
+    return reportAiMessageResponseSchema.parse({
+      reportId: report.id,
+      reportType: report.reportType,
+      createdAt: report.createdAt.toISOString(),
+    });
   }
 }
