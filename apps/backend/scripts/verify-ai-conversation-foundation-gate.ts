@@ -12,6 +12,7 @@ import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identit
 import { FAKE_AI_PROVIDER_FAILURE_TRIGGER } from '../src/ai/fake-ai-provider';
 
 const base = process.argv[2] ?? 'http://127.0.0.1:3000';
+const opsKey = process.env.INTERNAL_OPS_KEY ?? '';
 let failures = 0;
 function check(label: string, condition: boolean) {
   if (condition) {
@@ -156,82 +157,112 @@ async function main() {
   const detailAfterRetry = await req('GET', `/ai/me/conversations/${failConversationId}`, alice.headers);
   check('tras el reintento, SIGUE habiendo EXACTAMENTE 1 mensaje USER -- nunca se duplicó', (detailAfterRetry.body?.messages ?? []).length === 1);
 
-  console.log('--- A-C. Enforcement real del límite de turnos: 6 permitidos, el 7º rechazado ANTES de persistir nada ---');
-  const turnLimitConversation = await req('POST', '/ai/me/conversations', alice.headers, {});
+  console.log('--- A-C. Enforcement real del límite de turnos (independiente de la cuota diaria, Incremento 3) ---');
+  // Este bloque necesita más de 3 consultas EXITOSAS (cuota FREE/día) en una sola cuenta para poder
+  // probar el límite de turnos hasta agotarlo -- se usa una cuenta dedicada con override PREMIUM
+  // (50 consultas/día, ver AiInternalAdminController, solo alcanzable en gate/desarrollo, NUNCA en
+  // producción). El límite de turnos verificado sigue siendo el MISMO mecanismo (turnCount >= maxTurns)
+  // -- probarlo con maxTurns=15 (Premium) en vez de 6 (Free) es una prueba igual de válida del mecanismo,
+  // nunca del valor numérico específico (ese ya está cubierto por el punto A siguiente).
+  const turnLimitTester = await createSession('turnlimit-premium');
+  const premiumOverride = await req('POST', `/ai/_internal/set-tier-override?accountId=${turnLimitTester.accountId}&tier=PREMIUM`, { 'x-internal-ops-key': opsKey });
+  check('fixture: override PREMIUM aplicado a la cuenta dedicada de este bloque', premiumOverride.status === 200 || premiumOverride.status === 201);
+
+  const turnLimitConversation = await req('POST', '/ai/me/conversations', turnLimitTester.headers, {});
   const turnLimitConversationId = turnLimitConversation.body?.conversationId as string;
+  const maxTurns = turnLimitConversation.body?.maxTurns as number;
   check('A. conversación nueva: turnCount == 0', turnLimitConversation.body?.turnCount === 0);
-  check('A. conversación nueva: maxTurns == 6 (Free, frontera provisional)', turnLimitConversation.body?.maxTurns === 6);
+  check('A. conversación nueva: maxTurns == 15 (Premium, vía override de prueba)', maxTurns === 15);
+  check('A. dailyQuota.limit == 50 (Premium)', turnLimitConversation.body?.dailyQuota?.limit === 50);
 
   const turnOperationIds: string[] = [];
   const turnResponses: Array<{ userMessageId: string; assistantMessageId: string }> = [];
-  for (let turn = 1; turn <= 6; turn++) {
+  for (let turn = 1; turn <= maxTurns; turn++) {
     const operationId = randomOperationId();
     turnOperationIds.push(operationId);
-    const send = await req('POST', `/ai/me/conversations/${turnLimitConversationId}/messages`, alice.headers, { content: `Turno ${turn}`, operationId });
-    check(`B. turno ${turn}/6 -> permitido (200/201)`, send.status === 200 || send.status === 201);
-    check(`B. turno ${turn}/6 -> turnCount == ${turn}`, send.body?.turnCount === turn);
+    const send = await req('POST', `/ai/me/conversations/${turnLimitConversationId}/messages`, turnLimitTester.headers, { content: `Turno ${turn}`, operationId });
+    check(`B. turno ${turn}/${maxTurns} -> permitido (200/201)`, send.status === 200 || send.status === 201);
+    check(`B. turno ${turn}/${maxTurns} -> turnCount == ${turn}`, send.body?.turnCount === turn);
     turnResponses.push({ userMessageId: send.body?.userMessage?.id, assistantMessageId: send.body?.assistantMessage?.id });
   }
-  const detailAtLimit = await req('GET', `/ai/me/conversations/${turnLimitConversationId}`, alice.headers);
+  const detailAtLimit = await req('GET', `/ai/me/conversations/${turnLimitConversationId}`, turnLimitTester.headers);
   const messagesAtLimit = detailAtLimit.body?.messages ?? [];
-  check('B. exactamente 12 mensajes tras 6 turnos (6 USER + 6 ASSISTANT)', messagesAtLimit.length === 12);
-  check('B. exactamente 6 mensajes USER', messagesAtLimit.filter((m: { role: string }) => m.role === 'USER').length === 6);
-  check('B. exactamente 6 mensajes ASSISTANT', messagesAtLimit.filter((m: { role: string }) => m.role === 'ASSISTANT').length === 6);
-  check('B. turnCount == 6 == maxTurns', detailAtLimit.body?.turnCount === 6 && detailAtLimit.body?.maxTurns === 6);
+  check(`B. exactamente ${maxTurns * 2} mensajes tras ${maxTurns} turnos (${maxTurns} USER + ${maxTurns} ASSISTANT)`, messagesAtLimit.length === maxTurns * 2);
+  check(`B. exactamente ${maxTurns} mensajes USER`, messagesAtLimit.filter((m: { role: string }) => m.role === 'USER').length === maxTurns);
+  check(`B. exactamente ${maxTurns} mensajes ASSISTANT`, messagesAtLimit.filter((m: { role: string }) => m.role === 'ASSISTANT').length === maxTurns);
+  check('B. turnCount == maxTurns', detailAtLimit.body?.turnCount === maxTurns && detailAtLimit.body?.maxTurns === maxTurns);
 
-  const seventhOperationId = randomOperationId();
-  const seventhSend = await req('POST', `/ai/me/conversations/${turnLimitConversationId}/messages`, alice.headers, { content: 'Turno 7 -- debe rechazarse', operationId: seventhOperationId });
-  check('C. 7º turno (operación NUEVA) -> rechazado (409, mismo criterio que otros límites fijos del proyecto, ej. featured-achievements)', seventhSend.status === 409);
-  const detailAfterSeventh = await req('GET', `/ai/me/conversations/${turnLimitConversationId}`, alice.headers);
-  const messagesAfterSeventh = detailAfterSeventh.body?.messages ?? [];
-  check('C. SIGUEN siendo exactamente 12 mensajes -- el intento 7 NO persistió ningún USER huérfano', messagesAfterSeventh.length === 12);
-  check('C. turnCount SIGUE en 6 -- ningún ASSISTANT nuevo, el FakeAiProvider NUNCA se invocó para el turno 7', detailAfterSeventh.body?.turnCount === 6);
-  const repeatSeventhSend = await req('POST', `/ai/me/conversations/${turnLimitConversationId}/messages`, alice.headers, { content: 'Turno 7 -- reintento del mismo rechazo', operationId: randomOperationId() });
-  check('C. repetir el intento (operationId distinto, sigue siendo un turno 7 nuevo) -> sigue rechazado, sin alterar estado', repeatSeventhSend.status === 409);
-  const detailAfterRepeatSeventh = await req('GET', `/ai/me/conversations/${turnLimitConversationId}`, alice.headers);
-  check('C. estado sin cambios tras el reintento del rechazo (siguen 12 mensajes)', (detailAfterRepeatSeventh.body?.messages ?? []).length === 12);
+  const overLimitOperationId = randomOperationId();
+  const overLimitSend = await req('POST', `/ai/me/conversations/${turnLimitConversationId}/messages`, turnLimitTester.headers, { content: 'Turno extra -- debe rechazarse', operationId: overLimitOperationId });
+  check('C. turno extra (operación NUEVA) -> rechazado (409, mismo criterio que otros límites fijos del proyecto, ej. featured-achievements)', overLimitSend.status === 409);
+  const detailAfterOverLimit = await req('GET', `/ai/me/conversations/${turnLimitConversationId}`, turnLimitTester.headers);
+  const messagesAfterOverLimit = detailAfterOverLimit.body?.messages ?? [];
+  check('C. SIGUE el mismo número de mensajes -- el intento extra NO persistió ningún USER huérfano', messagesAfterOverLimit.length === maxTurns * 2);
+  check('C. turnCount SIGUE en el límite -- ningún ASSISTANT nuevo, el FakeAiProvider NUNCA se invocó para el turno extra', detailAfterOverLimit.body?.turnCount === maxTurns);
+  const repeatOverLimitSend = await req('POST', `/ai/me/conversations/${turnLimitConversationId}/messages`, turnLimitTester.headers, { content: 'Turno extra -- reintento del mismo rechazo', operationId: randomOperationId() });
+  check('C. repetir el intento (operationId distinto, sigue siendo un turno extra nuevo) -> sigue rechazado, sin alterar estado', repeatOverLimitSend.status === 409);
+  const detailAfterRepeatOverLimit = await req('GET', `/ai/me/conversations/${turnLimitConversationId}`, turnLimitTester.headers);
+  check('C. estado sin cambios tras el reintento del rechazo', (detailAfterRepeatOverLimit.body?.messages ?? []).length === maxTurns * 2);
+  check('C. NINGUNO de los rechazos por límite de turnos consumió cuota diaria', detailAfterRepeatOverLimit.body?.dailyQuota?.consumed === maxTurns);
 
   console.log('--- D. Replay de una operación YA completada, en una conversación en el límite -> sigue siendo idempotente, NUNCA rechazado por el límite ---');
-  const replayAtLimit = await req('POST', `/ai/me/conversations/${turnLimitConversationId}/messages`, alice.headers, { content: 'Turno 1', operationId: turnOperationIds[0] });
+  const replayAtLimit = await req('POST', `/ai/me/conversations/${turnLimitConversationId}/messages`, turnLimitTester.headers, { content: 'Turno 1', operationId: turnOperationIds[0] });
   check('D. replay del 1er turno (ya completado) -> 200/201, NUNCA 409 pese a que la conversación está en el límite', replayAtLimit.status === 200 || replayAtLimit.status === 201);
   check('D. replay devuelve EXACTAMENTE el mismo userMessage.id/assistantMessage.id del turno 1 original (replay puro, sin nueva llamada al provider)', replayAtLimit.body?.userMessage?.id === turnResponses[0]?.userMessageId && replayAtLimit.body?.assistantMessage?.id === turnResponses[0]?.assistantMessageId);
-  const detailAfterReplayAtLimit = await req('GET', `/ai/me/conversations/${turnLimitConversationId}`, alice.headers);
-  check('D. el replay NO alteró el conteo -- siguen 12 mensajes, turnCount sigue en 6', (detailAfterReplayAtLimit.body?.messages ?? []).length === 12 && detailAfterReplayAtLimit.body?.turnCount === 6);
+  const detailAfterReplayAtLimit = await req('GET', `/ai/me/conversations/${turnLimitConversationId}`, turnLimitTester.headers);
+  check('D. el replay NO alteró el conteo de mensajes ni el turnCount', (detailAfterReplayAtLimit.body?.messages ?? []).length === maxTurns * 2 && detailAfterReplayAtLimit.body?.turnCount === maxTurns);
+  check('D. el replay NO consumió cuota adicional (sigue en el mismo consumed que antes)', detailAfterReplayAtLimit.body?.dailyQuota?.consumed === maxTurns);
 
-  console.log('--- E/F. Fallo técnico dentro del turno pendiente (5/6) no consume turno; el retry de ESE turno sigue permitido aunque sea el turno 6 lógico ---');
-  const nearLimitConversation = await req('POST', '/ai/me/conversations', alice.headers, {});
+  console.log('--- E/F. Fallo técnico dentro del turno pendiente (justo antes del límite) no consume turno ni cuota; el retry de ESE turno sigue permitido ---');
+  const nearLimitConversation = await req('POST', '/ai/me/conversations', turnLimitTester.headers, {});
   const nearLimitConversationId = nearLimitConversation.body?.conversationId as string;
-  for (let turn = 1; turn <= 5; turn++) {
-    await req('POST', `/ai/me/conversations/${nearLimitConversationId}/messages`, alice.headers, { content: `Turno ${turn}`, operationId: randomOperationId() });
+  const turnsBeforeLast = maxTurns - 1;
+  for (let turn = 1; turn <= turnsBeforeLast; turn++) {
+    await req('POST', `/ai/me/conversations/${nearLimitConversationId}/messages`, turnLimitTester.headers, { content: `Turno ${turn}`, operationId: randomOperationId() });
   }
-  const detailBeforeSixth = await req('GET', `/ai/me/conversations/${nearLimitConversationId}`, alice.headers);
-  check('E/F. fixture: turnCount == 5 antes del turno 6 (todavía dentro del límite de 6)', detailBeforeSixth.body?.turnCount === 5);
+  const detailBeforeLast = await req('GET', `/ai/me/conversations/${nearLimitConversationId}`, turnLimitTester.headers);
+  check(`E/F. fixture: turnCount == ${turnsBeforeLast} antes del último turno permitido`, detailBeforeLast.body?.turnCount === turnsBeforeLast);
+  const consumedBeforeLastAttempt = detailBeforeLast.body?.dailyQuota?.consumed as number;
 
-  const sixthOperationId = randomOperationId();
-  const sixthFailedSend = await req('POST', `/ai/me/conversations/${nearLimitConversationId}/messages`, alice.headers, { content: FAKE_AI_PROVIDER_FAILURE_TRIGGER, operationId: sixthOperationId });
-  check('E. el turno 6 (dentro del límite) falla técnicamente -> 503, nunca 409 (el límite SÍ permitía este turno)', sixthFailedSend.status === 503);
-  const detailAfterSixthFailure = await req('GET', `/ai/me/conversations/${nearLimitConversationId}`, alice.headers);
-  check('E. turnCount SIGUE en 5 -- el fallo técnico no consumió el turno (sin ASSISTANT persistido)', detailAfterSixthFailure.body?.turnCount === 5);
-  check('E. el mensaje USER del turno 6 SÍ quedó persistido (11 mensajes: 5 pares + 1 USER huérfano legítimo, reintentable)', (detailAfterSixthFailure.body?.messages ?? []).length === 11);
+  const lastOperationId = randomOperationId();
+  const lastFailedSend = await req('POST', `/ai/me/conversations/${nearLimitConversationId}/messages`, turnLimitTester.headers, { content: FAKE_AI_PROVIDER_FAILURE_TRIGGER, operationId: lastOperationId });
+  check('E. el último turno permitido falla técnicamente -> 503, nunca 409 (el límite SÍ permitía este turno)', lastFailedSend.status === 503);
+  const detailAfterLastFailure = await req('GET', `/ai/me/conversations/${nearLimitConversationId}`, turnLimitTester.headers);
+  check('E. turnCount SIGUE en el mismo valor -- el fallo técnico no consumió el turno (sin ASSISTANT persistido)', detailAfterLastFailure.body?.turnCount === turnsBeforeLast);
+  check('E. el mensaje USER del último turno SÍ quedó persistido (1 USER huérfano legítimo, reintentable)', (detailAfterLastFailure.body?.messages ?? []).length === turnsBeforeLast * 2 + 1);
+  check('E. el fallo técnico NO consumió cuota diaria', detailAfterLastFailure.body?.dailyQuota?.consumed === consumedBeforeLastAttempt);
 
-  const sixthRetry = await req('POST', `/ai/me/conversations/${nearLimitConversationId}/messages`, alice.headers, { content: FAKE_AI_PROVIDER_FAILURE_TRIGGER, operationId: sixthOperationId });
-  check('F. reintento del MISMO operationId (turno 6 pendiente) -> sigue permitido (503 por el mismo fallo determinista, NUNCA 409 por límite)', sixthRetry.status === 503);
-  const detailAfterSixthRetry = await req('GET', `/ai/me/conversations/${nearLimitConversationId}`, alice.headers);
-  check('F. sin duplicar el USER del turno 6 pendiente tras el retry (sigue en 11 mensajes)', (detailAfterSixthRetry.body?.messages ?? []).length === 11);
-  check('F. turnCount sigue en 5 -- el turno 6 pendiente todavía no cuenta como completado', detailAfterSixthRetry.body?.turnCount === 5);
+  const lastRetry = await req('POST', `/ai/me/conversations/${nearLimitConversationId}/messages`, turnLimitTester.headers, { content: FAKE_AI_PROVIDER_FAILURE_TRIGGER, operationId: lastOperationId });
+  check('F. reintento del MISMO operationId (turno pendiente) -> sigue permitido (503 por el mismo fallo determinista, NUNCA 409 por límite)', lastRetry.status === 503);
+  const detailAfterLastRetry = await req('GET', `/ai/me/conversations/${nearLimitConversationId}`, turnLimitTester.headers);
+  check('F. sin duplicar el USER del turno pendiente tras el retry', (detailAfterLastRetry.body?.messages ?? []).length === turnsBeforeLast * 2 + 1);
+  check('F. turnCount sigue igual -- el turno pendiente todavía no cuenta como completado', detailAfterLastRetry.body?.turnCount === turnsBeforeLast);
+  check('F. el retry técnico tampoco consumió cuota diaria', detailAfterLastRetry.body?.dailyQuota?.consumed === consumedBeforeLastAttempt);
 
   console.log('--- 15. Verificación estática: ningún archivo de src/ai/ escribe en dominio de Gamificación/Progreso/Ranking ---');
   const aiDir = join(__dirname, '..', 'src', 'ai');
   const aiFiles = readdirSync(aiDir).filter((f) => f.endsWith('.ts'));
   const aiSources = aiFiles.map((f) => ({ file: f, content: readFileSync(join(aiDir, f), 'utf8') }));
+  // Se busca CÓDIGO real, no prosa de comentarios -- desde el Incremento 3
+  // varios archivos (ai-usage-ledger.repository.ts, ai-conversation.service.ts)
+  // documentan legítimamente el paralelismo con XpLedgerEntryRepository/
+  // XpGrantService (mismo patrón de ledger append-only) en sus docstrings;
+  // eso es esperado y correcto, nunca un import real.
   const forbiddenDomainImports = ["from '../gamification/", "from '../progress/", "XpLedgerEntry", "RewardGrant", "LeaderboardEntry"];
   let leakedDomainImport: string | null = null;
   for (const { content } of aiSources) {
+    const codeOnly = content
+      .split('\n')
+      .filter((line) => {
+        const trimmed = line.trim();
+        return !trimmed.startsWith('*') && !trimmed.startsWith('//') && !trimmed.startsWith('/**');
+      })
+      .join('\n');
     for (const forbidden of forbiddenDomainImports) {
-      if (content.includes(forbidden)) leakedDomainImport = forbidden;
+      if (codeOnly.includes(forbidden)) leakedDomainImport = forbidden;
     }
   }
-  check('ningún archivo de src/ai/ importa GAMIFICATION/PROGRESS ni referencia XP/ranking/recompensas directamente', leakedDomainImport === null);
+  check('ningún archivo de src/ai/ importa GAMIFICATION/PROGRESS ni referencia XP/ranking/recompensas directamente en CÓDIGO real (menciones en comentarios de diseño son esperadas)', leakedDomainImport === null);
 
   console.log('--- 16. Verificación estática: SDK de Anthropic confinado a anthropic-ai-provider.ts, sin OpenAI, sin red en el fake ---');
   // Incremento 2 (ver docs/adr/LEF-BLOCK-VI-DEFINITION.md §22, criterio exacto de

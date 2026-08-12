@@ -288,6 +288,25 @@ async function runDeterministicAdapterTests() {
     const provider = new AnthropicAiProvider(fakeConfig()) as unknown as { client: Anthropic };
     check('el cliente Anthropic real se construye con maxRetries: 0', provider.client.maxRetries === 0);
   }
+
+  console.log('--- A13 (Incremento 3). usage se puebla desde response.usage -- provider/model/promptVersion propios, tokens/attempts/latencia reales, sin red ---');
+  {
+    const { client } = fakeClient([
+      () =>
+        ({
+          content: [{ type: 'text', text: 'respuesta con usage real', citations: null }],
+          usage: { input_tokens: 123, output_tokens: 45, cache_creation_input_tokens: null, cache_read_input_tokens: null, server_tool_use: null },
+        }) as unknown as Anthropic.Message,
+    ]);
+    const provider = new AnthropicAiProvider(fakeConfig({ ANTHROPIC_MODEL: 'claude-sonnet-5' }), client);
+    const reply = await provider.generateReply([], 'hola');
+    check('usage.provider == "anthropic"', reply.usage?.provider === 'anthropic');
+    check('usage.model == el modelo configurado (claude-sonnet-5)', reply.usage?.model === 'claude-sonnet-5');
+    check('usage.promptVersion == AXIOMA_TUTOR_SYSTEM_PROMPT_VERSION', reply.usage?.promptVersion === AXIOMA_TUTOR_SYSTEM_PROMPT_VERSION);
+    check('usage.inputTokens/outputTokens == los valores reales de response.usage (123/45)', reply.usage?.inputTokens === 123 && reply.usage?.outputTokens === 45);
+    check('usage.attempts == 1 (éxito en el primer intento)', reply.usage?.attempts === 1);
+    check('usage.latencyMs es un número >= 0', typeof reply.usage?.latencyMs === 'number' && reply.usage!.latencyMs >= 0);
+  }
 }
 
 // ---------------------------------------------------------------------------

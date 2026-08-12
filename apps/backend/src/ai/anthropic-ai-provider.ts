@@ -91,19 +91,36 @@ function classifyError(error: unknown): { category: AiProviderErrorCategory; saf
  * autenticación/configuración, solicitud inválida y error no clasificado
  * NUNCA se reintentan automáticamente.
  *
- * `maxOutputTokens` es un guardrail técnico PROVISIONAL de este incremento
- * (ver constructor) -- la política de tokens/coste definitiva pertenece al
- * Incremento 3 y puede reemplazar este valor sin tocar este archivo excepto
- * en la línea de configuración, sin rediseñar `AiConversationService` ni el
- * contrato `AiProvider`.
+ * `maxOutputTokens` (default 512) -- AUDITADO explícitamente en el
+ * Incremento 3 (no se cambia por intuición, ver reporte de cierre):
+ * - Coste: acota el gasto máximo por llamada de forma predecible,
+ *   proporcional a la cuota diaria (3/50 consultas) -- un techo generoso por
+ *   consulta no es grave cuando el NÚMERO de consultas ya está acotado por
+ *   cuenta y día.
+ * - UX: ~350-450 palabras es suficiente para una explicación o pista
+ *   tutorial completa y enfocada en una interfaz conversacional; una
+ *   respuesta más larga sistemáticamente sugeriría que falta dividir la
+ *   interacción en turnos, no que falte presupuesto de tokens.
+ * - DG-1: la evidencia disponible (`experiments/dg1-tutor-provider-eval/results/`)
+ *   es cualitativa (calidad pedagógica vía revisión humana), sin conteo de
+ *   tokens/longitud -- no ofrece una referencia cuantitativa mejor que 512.
+ * - Sonnet 5: 512 está muy por debajo de cualquier límite técnico del
+ *   modelo; el riesgo aceptado es que una derivación paso a paso
+ *   excepcionalmente larga corte en `stop_reason: "max_tokens"` -- tradeoff
+ *   consciente para V1, no un error.
+ * Conclusión: se MANTIENE 512 como política V1 explícita y revisable (no
+ * partida por tier -- ninguna decisión de producto exige que Premium
+ * reciba respuestas más largas todavía), no como un valor heredado sin
+ * revisar. El propio ledger de este incremento (`ai_usage_ledger.outputTokens`)
+ * es la fuente de evidencia real para reabrir esta decisión más adelante.
  *
- * Exclusión de alcance DELIBERADA (no una limitación desconocida): la
- * respuesta de Anthropic incluye `usage.input_tokens`/`usage.output_tokens`
- * (metadata real de consumo por llamada). Este incremento NO la persiste, no
- * la loguea ni la incorpora a analytics/ledger -- el accounting de
- * tokens/coste pertenece íntegramente al Incremento 3 (cuotas, ledger de
- * uso, política de coste). `generateReply` descarta `response.usage` sin
- * leerlo; I3 puede empezar a consumirlo sin rediseñar ni I1 ni I2.
+ * Incremento 3 (ver reporte de cierre): `generateReply` ahora puebla
+ * `AiProviderReply.usage` (attempts/inputTokens/outputTokens/latencyMs) a
+ * partir de `response.usage`, exactamente el campo que I2 documentó como
+ * "descartado deliberadamente" -- I3 empieza a consumirlo SIN rediseñar esta
+ * clase ni `AiProvider` (el campo ya era opcional desde I2). Sigue sin
+ * incluir contenido conversacional: `usage` nunca lleva prompt/mensaje/
+ * respuesta, solo metadata numérica de coste/latencia.
  */
 @Injectable()
 export class AnthropicAiProvider implements AiProvider {
@@ -137,7 +154,8 @@ export class AnthropicAiProvider implements AiProvider {
   }
 
   async generateReply(history: AiProviderMessage[], newMessage: string): Promise<AiProviderReply> {
-    const deadline = Date.now() + this.timeoutMs;
+    const operationStartedAt = Date.now();
+    const deadline = operationStartedAt + this.timeoutMs;
     const messages = [...history.map((m) => ({ role: toAnthropicRole(m.role), content: m.content })), { role: 'user' as const, content: newMessage }];
 
     let lastError: { category: AiProviderErrorCategory; safeMessage: string } | undefined;
@@ -171,7 +189,18 @@ export class AnthropicAiProvider implements AiProvider {
         if (!text) {
           throw new AiProviderTechnicalError('El proveedor de IA no devolvió contenido de texto utilizable.', 'unknown_provider_error');
         }
-        return { content: text };
+        return {
+          content: text,
+          usage: {
+            provider: 'anthropic',
+            model: this.model,
+            promptVersion: AXIOMA_TUTOR_SYSTEM_PROMPT_VERSION,
+            attempts: attempt,
+            inputTokens: response.usage?.input_tokens ?? null,
+            outputTokens: response.usage?.output_tokens ?? null,
+            latencyMs: Date.now() - operationStartedAt,
+          },
+        };
       } catch (error) {
         if (error instanceof AiProviderTechnicalError) throw error;
 

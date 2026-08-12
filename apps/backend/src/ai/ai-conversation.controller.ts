@@ -35,6 +35,15 @@ function toMessageResponse(message: AiMessage) {
   };
 }
 
+function toDailyQuotaResponse(dailyQuota: AiConversationSummaryView['dailyQuota']) {
+  return {
+    limit: dailyQuota.limit,
+    consumed: dailyQuota.consumed,
+    remaining: dailyQuota.remaining,
+    resetAt: dailyQuota.resetAt.toISOString(),
+  };
+}
+
 function toSummaryResponse(view: AiConversationSummaryView) {
   return {
     conversationId: view.conversation.id,
@@ -42,6 +51,7 @@ function toSummaryResponse(view: AiConversationSummaryView) {
     lastMessageAt: view.conversation.lastMessageAt?.toISOString() ?? null,
     turnCount: view.turnCount,
     maxTurns: view.maxTurns,
+    dailyQuota: toDailyQuotaResponse(view.dailyQuota),
   };
 }
 
@@ -58,6 +68,7 @@ function toSendMessageResponse(view: SendAiMessageView): SendAiMessageResponse {
     assistantMessage: toMessageResponse(view.assistantMessage),
     turnCount: view.turnCount,
     maxTurns: view.maxTurns,
+    dailyQuota: toDailyQuotaResponse(view.dailyQuota),
   });
 }
 

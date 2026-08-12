@@ -20,8 +20,33 @@ export interface AiProviderMessage {
   content: string;
 }
 
+/**
+ * Metadata técnica OPCIONAL de la llamada real -- ver
+ * docs/adr/LEF-BLOCK-VI-DEFINITION.md §22 (revisión, Incremento 3). NUNCA
+ * incluye contenido conversacional (eso es `AiProviderReply.content`,
+ * persistido únicamente en `AiMessage`). `inputTokens`/`outputTokens` son
+ * `null` cuando el proveedor no los provee (`FakeAiProvider`) -- el llamador
+ * (`AiConversationService`) los persiste tal cual, sin inventar un valor.
+ *
+ * `provider`/`model`/`promptVersion` los reporta CADA implementación sobre
+ * sí misma -- `AiConversationService` los persiste tal cual en el ledger sin
+ * inferirlos ni conocer qué proveedor concreto está activo (mantiene la
+ * frontera de la interfaz: el dominio nunca sabe si es Anthropic o el fake).
+ */
+export interface AiProviderUsage {
+  provider: string;
+  model: string;
+  promptVersion: string;
+  attempts: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  latencyMs: number;
+}
+
 export interface AiProviderReply {
   content: string;
+  /** Ausente = el proveedor no reporta metadata de uso (compatibilidad hacia atrás con I1/I2, nunca obligatorio). */
+  usage?: AiProviderUsage;
 }
 
 /**

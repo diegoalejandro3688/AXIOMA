@@ -10,10 +10,10 @@ import { entityId, isoDateTime } from './common';
  * detalle interno del proveedor, ni `operationId` (concepto de transporte
  * del cliente, no algo que el cliente necesite leer de vuelta).
  *
- * Fuera de alcance de este incremento (ver definición del bloque):
- * contexto académico, cuota diaria, comportamiento pedagógico, seguridad de
- * actividades protegidas -- ninguno de esos conceptos aparece en estos
- * contratos todavía.
+ * Fuera de alcance todavía (ver definición del bloque): contexto académico,
+ * comportamiento pedagógico progresivo, seguridad de actividades protegidas
+ * -- ninguno de esos conceptos aparece en estos contratos. La cuota diaria
+ * (`dailyQuota`) SÍ es parte del contrato desde el Incremento 3.
  */
 
 export const aiMessageRoleSchema = z.enum(['USER', 'ASSISTANT']);
@@ -29,9 +29,27 @@ export const aiMessageResponseSchema = z.object({
 export type AiMessageResponse = z.infer<typeof aiMessageResponseSchema>;
 
 /**
+ * Cuota diaria de consultas (Incremento 3, día calendario UTC) -- el
+ * cliente NUNCA decide localmente cuántas consultas quedan, siempre lee este
+ * valor ya resuelto por el servidor. `consumed`/`remaining` reflejan el
+ * ledger append-only (`ai_usage_ledger`); `resetAt` es el inicio del
+ * siguiente día UTC. Nunca incluye coste ni tokens -- esos son detalles
+ * internos, no información que el cliente necesite.
+ */
+export const aiDailyQuotaResponseSchema = z.object({
+  limit: z.number().int().positive(),
+  consumed: z.number().int().nonnegative(),
+  remaining: z.number().int().nonnegative(),
+  resetAt: isoDateTime,
+});
+export type AiDailyQuotaResponse = z.infer<typeof aiDailyQuotaResponseSchema>;
+
+/**
  * `turnCount`/`maxTurns` ya reflejan la decisión B del bloque (6 Free / 15
  * Premium) -- el cliente NUNCA decide localmente si quedan turnos, siempre
- * lee este valor ya resuelto por el servidor.
+ * lee este valor ya resuelto por el servidor. `dailyQuota` es independiente
+ * de `turnCount`/`maxTurns` -- uno es por conversación, el otro por cuenta y
+ * por día (Incremento 3).
  */
 export const aiConversationSummaryResponseSchema = z.object({
   conversationId: entityId,
@@ -39,6 +57,7 @@ export const aiConversationSummaryResponseSchema = z.object({
   lastMessageAt: isoDateTime.nullable(),
   turnCount: z.number().int().nonnegative(),
   maxTurns: z.number().int().positive(),
+  dailyQuota: aiDailyQuotaResponseSchema,
 });
 export type AiConversationSummaryResponse = z.infer<typeof aiConversationSummaryResponseSchema>;
 
@@ -87,5 +106,6 @@ export const sendAiMessageResponseSchema = z.object({
   assistantMessage: aiMessageResponseSchema,
   turnCount: z.number().int().nonnegative(),
   maxTurns: z.number().int().positive(),
+  dailyQuota: aiDailyQuotaResponseSchema,
 });
 export type SendAiMessageResponse = z.infer<typeof sendAiMessageResponseSchema>;

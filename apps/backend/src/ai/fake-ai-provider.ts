@@ -11,6 +11,20 @@ import { AiProviderTechnicalError, type AiProvider, type AiProviderMessage, type
 export const FAKE_AI_PROVIDER_FAILURE_TRIGGER = '__FAKE_AI_PROVIDER_FORCE_FAILURE__';
 
 /**
+ * Prefijo de entrada que fuerza EXACTAMENTE un fallo técnico y luego éxito
+ * determinista para el MISMO contenido -- ver reporte de cierre del
+ * Incremento 3 ("retry de una operación pendiente que finalmente consume").
+ * Necesario porque `AiConversationService` reintenta la generación
+ * reusando el `content` YA persistido del mensaje USER (nunca acepta
+ * contenido nuevo en un retry) -- `FAKE_AI_PROVIDER_FAILURE_TRIGGER` por sí
+ * solo no puede probar "falla una vez, luego tiene éxito" porque su fallo es
+ * permanente para ese contenido exacto. Estado en memoria por instancia del
+ * proceso (nunca persistido) -- cada string distinto con este prefijo tiene
+ * su propio contador independiente.
+ */
+export const FAKE_AI_PROVIDER_FAIL_ONCE_PREFIX = '__FAKE_AI_PROVIDER_FAIL_ONCE__';
+
+/**
  * Implementación fake/determinista de `AiProvider` -- ver
  * docs/adr/LEF-BLOCK-VI-DEFINITION.md §7 (mismo espíritu que
  * `StubIdentityProvider` en AUTH). Sin red, sin SDK, sin variabilidad --
@@ -22,10 +36,31 @@ export const FAKE_AI_PROVIDER_FAILURE_TRIGGER = '__FAKE_AI_PROVIDER_FORCE_FAILUR
  */
 @Injectable()
 export class FakeAiProvider implements AiProvider {
+  private readonly failOnceAttempts = new Map<string, number>();
+  /** Contador de invocaciones físicas por contenido exacto -- ver reporte de auditoría de concurrencia del Incremento 3 ("provider called exactly once"), expuesto solo para gates vía AiInternalAdminController. */
+  private readonly callCounts = new Map<string, number>();
+
+  /** Solo para gates -- nunca usado por AiConversationService. */
+  getCallCount(content: string): number {
+    return this.callCounts.get(content) ?? 0;
+  }
+
   async generateReply(_history: AiProviderMessage[], newMessage: string): Promise<AiProviderReply> {
+    this.callCounts.set(newMessage, (this.callCounts.get(newMessage) ?? 0) + 1);
     if (newMessage === FAKE_AI_PROVIDER_FAILURE_TRIGGER) {
       throw new AiProviderTechnicalError('Fallo técnico simulado por FakeAiProvider (solo para gates/desarrollo).');
     }
-    return { content: `[FakeAiProvider -- respuesta determinista de prueba] Recibido: "${newMessage}"` };
+    if (newMessage.startsWith(FAKE_AI_PROVIDER_FAIL_ONCE_PREFIX)) {
+      const attempts = this.failOnceAttempts.get(newMessage) ?? 0;
+      this.failOnceAttempts.set(newMessage, attempts + 1);
+      if (attempts === 0) {
+        throw new AiProviderTechnicalError('Fallo técnico simulado (una sola vez) por FakeAiProvider (solo para gates/desarrollo).');
+      }
+    }
+    return {
+      content: `[FakeAiProvider -- respuesta determinista de prueba] Recibido: "${newMessage}"`,
+      // Incremento 3: usage determinista y explícito -- sin tokens reales (nunca inventados), 1 intento siempre, latencia ~0.
+      usage: { provider: 'fake', model: 'fake', promptVersion: 'fake', attempts: 1, inputTokens: null, outputTokens: null, latencyMs: 0 },
+    };
   }
 }

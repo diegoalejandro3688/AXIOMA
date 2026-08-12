@@ -56,6 +56,7 @@
     "verify:public-profile-preview-gate": "tsx scripts/verify-public-profile-preview-gate.ts",
     "verify:ai-conversation-foundation-gate": "tsx scripts/verify-ai-conversation-foundation-gate.ts",
     "verify:ai-anthropic-integration-gate": "tsx scripts/verify-ai-anthropic-integration-gate.ts",
+    "verify:ai-quota-gate": "tsx scripts/verify-ai-quota-gate.ts",
     "cli:recover-account": "node dist/cli/recover-account.js",
     "db:up": "docker compose -f ../../docker-compose.yml up -d",
     "db:down": "docker compose -f ../../docker-compose.yml down"

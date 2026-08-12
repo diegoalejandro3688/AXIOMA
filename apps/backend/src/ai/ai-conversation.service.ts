@@ -1,12 +1,34 @@
-import { ConflictException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { AiConversationRepository } from './ai-conversation.repository';
 import { AiMessageRepository } from './ai-message.repository';
-import { AiEntitlementService } from './ai-entitlement.service';
+import { AiUsageLedgerRepository } from './ai-usage-ledger.repository';
+import { AiGenerationClaimRepository } from './ai-generation-claim.repository';
+import { AiEntitlementService, type AiEntitlement } from './ai-entitlement.service';
+import { AiCircuitBreakerService } from './ai-circuit-breaker.service';
 import { AI_PROVIDER, AiProviderTechnicalError, type AiProvider } from './ai-provider';
+import { TransactionRunnerService } from '../platform/prisma/transaction-runner.service';
 import { Prisma } from '../generated/prisma/client';
-import type { AiConversation, AiMessage } from '../generated/prisma/client';
+import type { AiConversation, AiMessage, AiUsageLedgerEntry } from '../generated/prisma/client';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
+const SERIALIZATION_CONFLICT_CODE = 'P2034';
+const MAX_SERIALIZABLE_RETRIES = 3;
+/** Backoff acotado entre reintentos de conflicto serializable -- mismo criterio que XpGrantService.runSerializable. */
+const RETRY_BACKOFF_MS = [25, 75, 150];
+
+/**
+ * Ventana durante la cual una reserva de admisión (`AiGenerationClaim`)
+ * cuenta contra cuota/turnos sin haberse resuelto todavía -- recuperación
+ * ante caídas (ver reporte de auditoría de concurrencia, Incremento 3).
+ * Deliberadamente mucho mayor que `GENERATION_LEASE_TTL_MS`: nunca debe
+ * expirar mientras una generación física sigue legítimamente en curso.
+ */
+const RESERVATION_TTL_MS = 60_000;
+/** Mayor que el presupuesto total de AnthropicAiProvider (8000ms por defecto) + margen -- ver AiGenerationClaim.generationLeaseExpiresAt. */
+const GENERATION_LEASE_TTL_MS = 15_000;
+/** Cuánto espera (acotado) una petición que perdió la carrera del lease de generación antes de devolver 503 sin haber llamado nunca al proveedor. */
+const LOSER_POLL_TIMEOUT_MS = 10_000;
+const LOSER_POLL_INTERVAL_MS = 250;
 
 /**
  * Mismo mensaje/código uniforme para "no existe" y "existe pero no es tuya"
@@ -20,10 +42,38 @@ function isUniqueConstraintViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION;
 }
 
+function isSerializationConflict(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === SERIALIZATION_CONFLICT_CODE;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** "YYYY-MM-DDT00:00:00Z" a "YYYY-MM-DDT23:59:59.999Z" -- día calendario UTC, mismo criterio EXACTO que utcDayRange() en xp-grant.service.ts/league-point-grant.service.ts (daily_cap). Duplicado deliberadamente (mismo patrón que esos dos archivos, que tampoco comparten un util). */
+function utcDayRange(at: Date): { start: Date; end: Date } {
+  const start = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()));
+  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
+}
+
+/** Señales internas de rechazo en admisión -- nunca cruzan el límite del servicio, se traducen a ConflictException con el mensaje correspondiente. */
+class TurnLimitExceededError extends Error {}
+class DailyQuotaExceededError extends Error {}
+/** Señal interna: OTRA petición concurrente con el MISMO operationId ya existe (ganó la admisión, o incluso ya completó el ciclo entero) -- ver admitNewOperation. Nunca un rechazo real. */
+class OperationAlreadyExistsError extends Error {}
+
+export interface DailyQuotaView {
+  limit: number;
+  consumed: number;
+  remaining: number;
+  resetAt: Date;
+}
+
 export interface AiConversationSummaryView {
   conversation: AiConversation;
   turnCount: number;
   maxTurns: number;
+  dailyQuota: DailyQuotaView;
 }
 
 export interface AiConversationDetailView extends AiConversationSummaryView {
@@ -35,52 +85,98 @@ export interface SendAiMessageView {
   assistantMessage: AiMessage;
   turnCount: number;
   maxTurns: number;
+  dailyQuota: DailyQuotaView;
 }
 
 /**
- * LEF Bloque VI, Incremento 1 ("Fundación conversacional") -- ver
- * docs/adr/LEF-BLOCK-VI-DEFINITION.md §21. Dominio mínimo de
- * conversación/mensajería, SIN proveedor real, SIN cuota diaria, SIN
- * contexto académico, SIN comportamiento pedagógico, SIN seguridad de
- * actividades protegidas -- todo eso pertenece a incrementos posteriores.
+ * LEF Bloque VI, Incrementos 1-3 -- ver docs/adr/LEF-BLOCK-VI-DEFINITION.md
+ * §21/§22. Incremento 3 ("Cuotas, idempotencia y control de coste") añade:
+ * cuota diaria de consultas (independiente del límite de turnos por
+ * conversación, decisión B/Incremento 3), ledger append-only de consumo
+ * (`AiUsageLedgerEntry`), circuit breaker operativo, y (revisión de
+ * concurrencia real) admisión serializada + lease de generación
+ * (`AiGenerationClaim`). SIN contexto académico, SIN pedagogía avanzada, SIN
+ * actividades protegidas, SIN retención/borrado, SIN mobile, SIN billing.
  *
- * Semántica de atomicidad (decisión documentada explícitamente, ver reporte
- * de cierre del incremento): el mensaje USER se persiste de inmediato y de
- * forma durable, ANTES de invocar al proveedor -- un fallo del proveedor
- * NUNCA hace desaparecer el mensaje del estudiante. Si el proveedor falla,
- * la operación queda en un estado reintentable (USER persistido, ASSISTANT
- * ausente); un reintento con el MISMO `operationId` reutiliza el mensaje
- * USER ya existente y reintenta ÚNICAMENTE el paso de generación -- nunca
- * duplica el mensaje del estudiante. Esta semántica generaliza
- * correctamente al proveedor REAL del Incremento 2 (con latencia de red de
- * hasta 8s) -- envolver la llamada al proveedor dentro de la misma
- * transacción que el `INSERT` habría mantenido una transacción de Postgres
- * abierta por ese tiempo, un anti-patrón real de agotamiento del pool de
- * conexiones; se evita deliberadamente desde este incremento.
+ * MODELO DE TRES EVENTOS (contractual): (1) solicitud válida; (2) intento
+ * técnico de generación (puede repetirse, ver Incremento 2); (3) consulta
+ * consumida -- ÚNICAMENTE cuando existe una respuesta ASSISTANT utilizable
+ * persistida para esa operación lógica. Un bloqueo de admisión, un error
+ * previo al proveedor, un timeout, un fallo del proveedor sin respuesta
+ * utilizable, un reintento técnico de la MISMA operación o un replay
+ * idempotente NUNCA consumen.
+ *
+ * CONCURRENCIA REAL (revisión de auditoría, Incremento 3) -- dos carreras
+ * distintas, dos mecanismos distintos, ambos sobre `AiGenerationClaim`
+ * (tabla EFÍMERA/mutable, nunca un ledger histórico):
+ *
+ * 1. ADMISIÓN (operationId DISTINTOS compitiendo por el mismo cupo de
+ *    cuota/turnos): `admitNewOperation` corre en una transacción
+ *    SERIALIZABLE (mismo patrón que `XpGrantService.runSerializable`) que
+ *    cuenta `AiUsageLedgerEntry` YA confirmadas + `AiGenerationClaim`
+ *    ACTIVAS (reserva no expirada) antes de admitir -- y crea la reserva
+ *    dentro de esa misma transacción corta. Garantiza `consumed <= límite`
+ *    y `turnCount <= maxTurns` de forma ABSOLUTA, nunca solo "probable" --
+ *    nunca se abre mientras se llama al proveedor.
+ * 2. GENERACIÓN EN VUELO (mismo operationId, dos peticiones concurrentes
+ *    reintentando la misma operación pendiente): `tryAcquireGenerationLease`
+ *    adquiere un lease ATÓMICO (UPDATE condicional en Postgres, nunca un
+ *    Map/mutex en memoria -- funciona igual con múltiples instancias del
+ *    backend) INMEDIATAMENTE antes de invocar a `AiProvider`. Quien no lo
+ *    adquiere NUNCA llama al proveedor -- espera acotadamente
+ *    (`waitForConcurrentCompletion`) el resultado de quien sí lo tiene, o
+ *    devuelve 503 sin coste externo si el plazo se agota.
+ *
+ * Garantías distinguidas explícitamente (ver reporte de auditoría): "exactly-
+ * once DB consumption" se mantiene SIEMPRE (unicidad de
+ * `AiUsageLedgerEntry.operationId` + transacción atómica con el ASSISTANT).
+ * "At-most-once llamada física al proveedor" se garantiza bajo concurrencia
+ * NORMAL (sin caídas de proceso) vía el lease. Frente a una caída real entre
+ * el éxito del proveedor y la persistencia (`persistConsumedReply`), el
+ * lease expira (`GENERATION_LEASE_TTL_MS`) y un reintento POSTERIOR sí puede
+ * volver a invocar al proveedor -- el resultado de la llamada perdida se
+ * descarta, nunca se persiste dos veces. No es "exactly-once" universal
+ * frente a cualquier caída; es una decisión deliberada, documentada,
+ * proporcionada a la complejidad que I3 justifica.
+ *
+ * ATOMICIDAD del consumo: el `AiMessage` ASSISTANT + `AiUsageLedgerEntry` +
+ * el borrado de `AiGenerationClaim` se crean/eliminan en la MISMA
+ * transacción (`persistConsumedReply`) -- nunca un ASSISTANT sin su
+ * consumo, ni un consumo sin su ASSISTANT. La llamada al proveedor sigue
+ * SIEMPRE fuera de cualquier transacción explícita.
  */
 @Injectable()
 export class AiConversationService {
+  private readonly logger = new Logger(AiConversationService.name);
+
   constructor(
     private readonly conversationRepo: AiConversationRepository,
     private readonly messageRepo: AiMessageRepository,
+    private readonly usageLedgerRepo: AiUsageLedgerRepository,
+    private readonly claimRepo: AiGenerationClaimRepository,
     private readonly entitlementService: AiEntitlementService,
+    private readonly circuitBreaker: AiCircuitBreakerService,
+    private readonly txRunner: TransactionRunnerService,
     @Inject(AI_PROVIDER) private readonly provider: AiProvider,
   ) {}
 
   async createConversation(accountId: string): Promise<AiConversationSummaryView> {
     const conversation = await this.conversationRepo.create(accountId);
-    const maxTurns = await this.entitlementService.getMaxTurns(accountId);
-    return { conversation, turnCount: 0, maxTurns };
+    const entitlement = await this.entitlementService.getEntitlement(accountId);
+    const dailyQuota = await this.getDailyQuotaView(accountId, entitlement);
+    return { conversation, turnCount: 0, maxTurns: entitlement.maxTurns, dailyQuota };
   }
 
   async listConversations(accountId: string): Promise<AiConversationSummaryView[]> {
     const conversations = await this.conversationRepo.listByAccountId(accountId);
-    const maxTurns = await this.entitlementService.getMaxTurns(accountId);
+    const entitlement = await this.entitlementService.getEntitlement(accountId);
+    const dailyQuota = await this.getDailyQuotaView(accountId, entitlement);
     return Promise.all(
       conversations.map(async (conversation) => ({
         conversation,
         turnCount: await this.messageRepo.countByConversationIdAndRole(conversation.id, 'ASSISTANT'),
-        maxTurns,
+        maxTurns: entitlement.maxTurns,
+        dailyQuota,
       })),
     );
   }
@@ -89,13 +185,14 @@ export class AiConversationService {
     const conversation = await this.conversationRepo.findByIdForAccount(conversationId, accountId);
     if (!conversation) throw new NotFoundException(CONVERSATION_NOT_FOUND_MESSAGE);
 
-    const [messages, turnCount, maxTurns] = await Promise.all([
+    const entitlement = await this.entitlementService.getEntitlement(accountId);
+    const [messages, turnCount, dailyQuota] = await Promise.all([
       this.messageRepo.listByConversationId(conversationId),
       this.messageRepo.countByConversationIdAndRole(conversationId, 'ASSISTANT'),
-      this.entitlementService.getMaxTurns(accountId),
+      this.getDailyQuotaView(accountId, entitlement),
     ]);
 
-    return { conversation, messages, turnCount, maxTurns };
+    return { conversation, messages, turnCount, maxTurns: entitlement.maxTurns, dailyQuota };
   }
 
   async sendMessage(accountId: string, conversationId: string, input: { content: string; operationId: string }): Promise<SendAiMessageView> {
@@ -113,34 +210,98 @@ export class AiConversationService {
       return this.resolveExistingOperation(accountId, existingUserMessage);
     }
 
-    // 2. Límite de turnos (decisión B) -- verificado ANTES de crear el mensaje USER nuevo.
-    const [turnCount, maxTurns] = await Promise.all([
-      this.messageRepo.countByConversationIdAndRole(conversationId, 'ASSISTANT'),
-      this.entitlementService.getMaxTurns(accountId),
-    ]);
-    if (turnCount >= maxTurns) {
-      throw new ConflictException('Se alcanzó el límite de turnos de esta conversación. Inicia una conversación nueva para continuar.');
+    const entitlement = await this.entitlementService.getEntitlement(accountId);
+
+    // 2-3. Admisión ATÓMICA (límite de turnos + cuota diaria) -- ver docstring de la clase. Reserva un cupo (AiGenerationClaim) ANTES de crear el mensaje USER.
+    try {
+      await this.admitNewOperation(accountId, conversationId, input.operationId, entitlement);
+    } catch (error) {
+      if (error instanceof TurnLimitExceededError) {
+        throw new ConflictException('Se alcanzó el límite de turnos de esta conversación. Inicia una conversación nueva para continuar.');
+      }
+      if (error instanceof DailyQuotaExceededError) {
+        throw new ConflictException('Se alcanzó el límite diario de consultas al Tutor IA. Vuelve a intentarlo cuando se reinicie tu cuota.');
+      }
+      if (error instanceof OperationAlreadyExistsError || isUniqueConstraintViolation(error)) {
+        // Carrera real: OTRA petición concurrente con el MISMO operationId ya existe (ganó la admisión, o incluso ya completó el ciclo entero) --
+        // NUNCA un rechazo real, es el mismo caso que un replay/retry. Esperar acotadamente a que el USER exista y delegar en la misma ruta
+        // que cualquier operación ya vista (que a su vez detecta correctamente si ya está completa -- replay puro -- o todavía pendiente).
+        const winnerUserMessage = await this.waitForUserMessageByOperationId(input.operationId);
+        if (winnerUserMessage) return this.resolveExistingOperation(accountId, winnerUserMessage);
+        throw new ServiceUnavailableException('El Tutor IA está procesando esta operación. Vuelve a intentarlo en unos segundos.');
+      }
+      throw error;
     }
 
-    // 3. Insertar el mensaje USER -- durable de inmediato, independiente del resultado del proveedor.
+    // 4. Insertar el mensaje USER -- durable de inmediato, independiente del resultado del proveedor.
     const userMessage = await this.createUserMessageWithRetry(conversationId, input);
 
-    return this.completeAssistantReply(accountId, userMessage);
+    return this.completeAssistantReply(accountId, userMessage, entitlement);
   }
 
-  /** Operación ya vista antes (mismo operationId) -- replay puro si ya está completa, o reintento del paso de generación si quedó parcial. */
+  /** Espera acotada (poll) a que OTRA petición concurrente, que ganó la reserva de admisión para el MISMO operationId, termine de crear el mensaje USER. Nunca llama al proveedor. */
+  private async waitForUserMessageByOperationId(operationId: string): Promise<AiMessage | null> {
+    const deadline = Date.now() + LOSER_POLL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const found = await this.messageRepo.findByOperationId(operationId);
+      if (found) return found;
+      await sleep(LOSER_POLL_INTERVAL_MS);
+    }
+    return null;
+  }
+
+  /**
+   * Admisión serializada (turnos + cuota) -- ver docstring de la clase,
+   * mecanismo 1. Cuenta ASSISTANT ya persistidos + reservas activas
+   * (`AiGenerationClaim` no expiradas) DENTRO de la misma transacción
+   * SERIALIZABLE que crea la reserva -- nunca dos operaciones distintas
+   * pueden observar el mismo cupo "libre" y admitirse ambas.
+   *
+   * Primero re-verifica, DENTRO de la misma transacción, que ningún
+   * `AiMessage` con este `operationId` exista ya -- cierra una carrera real
+   * (ver reporte de auditoría de concurrencia): la comprobación NO
+   * transaccional al inicio de `sendMessage` puede quedar obsoleta si, entre
+   * esa lectura y este punto, OTRA petición concurrente con el MISMO
+   * operationId ya ganó la admisión, creó el USER, generó la respuesta Y
+   * borró su propia reserva (ciclo completo) -- sin esta re-verificación, la
+   * reserva ya eliminada dejaría de bloquear el `INSERT` por PK, permitiendo
+   * una segunda admisión fantasma para una operación que ya terminó.
+   */
+  private async admitNewOperation(accountId: string, conversationId: string, operationId: string, entitlement: AiEntitlement): Promise<void> {
+    await this.runSerializable(async (tx) => {
+      const alreadyExists = await this.messageRepo.findByOperationId(operationId, tx);
+      if (alreadyExists) throw new OperationAlreadyExistsError();
+
+      const now = new Date();
+      const { start, end } = utcDayRange(now);
+      const [turnCount, activeTurnReservations, consumedToday, activeQuotaReservations] = await Promise.all([
+        this.messageRepo.countByConversationIdAndRole(conversationId, 'ASSISTANT', tx),
+        this.claimRepo.countActiveReservationsForConversation(tx, conversationId, now),
+        this.usageLedgerRepo.countConsumedToday(accountId, start, end, tx),
+        this.claimRepo.countActiveReservationsForAccount(tx, accountId, now),
+      ]);
+
+      if (turnCount + activeTurnReservations >= entitlement.maxTurns) {
+        throw new TurnLimitExceededError();
+      }
+      if (consumedToday + activeQuotaReservations >= entitlement.dailyRequestLimit) {
+        throw new DailyQuotaExceededError();
+      }
+
+      await this.claimRepo.create({ operationId, accountId, conversationId, reservationExpiresAt: new Date(now.getTime() + RESERVATION_TTL_MS) }, tx);
+    });
+  }
+
+  /** Operación ya vista antes (mismo operationId) -- replay puro si ya está completa, o reintento del paso de generación si quedó parcial. NUNCA re-verifica cuota ni límite de turnos -- la reserva de admisión ya existe (mismo criterio que I1 para el límite de turnos, extendido a la cuota diaria). */
   private async resolveExistingOperation(accountId: string, userMessage: AiMessage): Promise<SendAiMessageView> {
+    const entitlement = await this.entitlementService.getEntitlement(accountId);
     const nextSequenceMessage = await this.messageRepo.findBySequence(userMessage.conversationId, userMessage.sequence + 1);
     if (nextSequenceMessage && nextSequenceMessage.role === 'ASSISTANT') {
-      // Operación ya completada -- replay puro, el proveedor NUNCA se invoca de nuevo (invariante 11/12 del bloque).
-      const [turnCount, maxTurns] = await Promise.all([
-        this.messageRepo.countByConversationIdAndRole(userMessage.conversationId, 'ASSISTANT'),
-        this.entitlementService.getMaxTurns(accountId),
-      ]);
-      return { userMessage, assistantMessage: nextSequenceMessage, turnCount, maxTurns };
+      // Operación ya completada -- replay puro, el proveedor NUNCA se invoca de nuevo (invariante 11/12 del bloque). Tampoco se vuelve a consumir cuota (la fila del ledger ya existe, se lee tal cual).
+      return this.buildSendMessageView(accountId, userMessage, nextSequenceMessage, entitlement);
     }
-    // USER existe, ASSISTANT todavía no -- fallo parcial anterior; reintenta ÚNICAMENTE la generación, sin duplicar el mensaje USER.
-    return this.completeAssistantReply(accountId, userMessage);
+    // USER existe, ASSISTANT todavía no -- fallo parcial anterior; reintenta ÚNICAMENTE la generación, sin duplicar el mensaje USER ni re-chequear admisión.
+    return this.completeAssistantReply(accountId, userMessage, entitlement);
   }
 
   private async createUserMessageWithRetry(conversationId: string, input: { content: string; operationId: string }, attempt = 0): Promise<AiMessage> {
@@ -166,39 +327,163 @@ export class AiConversationService {
     }
   }
 
-  private async completeAssistantReply(accountId: string, userMessage: AiMessage): Promise<SendAiMessageView> {
+  /**
+   * Fase "provider call" -- adquiere el lease de generación (mecanismo 2 de
+   * la docstring de la clase) antes de invocar al proveedor. Quien no lo
+   * adquiere NUNCA llama al proveedor.
+   */
+  private async completeAssistantReply(accountId: string, userMessage: AiMessage, entitlement: AiEntitlement): Promise<SendAiMessageView> {
+    if (this.circuitBreaker.isGenerationDisabled()) {
+      // Degradación controlada idéntica a un fallo técnico del proveedor -- el proveedor NUNCA se invoca, cero consumo, USER sigue persistido y reintentable.
+      throw new ServiceUnavailableException('El Tutor IA no está disponible en este momento. Puedes reintentar.');
+    }
+
+    const operationId = userMessage.operationId!;
+    const now = new Date();
+    const leaseAcquired = await this.claimRepo.tryAcquireGenerationLease(operationId, new Date(now.getTime() + GENERATION_LEASE_TTL_MS), now);
+
+    if (!leaseAcquired) {
+      // Otra petición física está generando AHORA MISMO para esta misma operación -- esperar acotadamente su resultado en vez de pagar una segunda llamada al proveedor.
+      const winnerAssistant = await this.waitForConcurrentCompletion(userMessage);
+      if (winnerAssistant) return this.buildSendMessageView(accountId, userMessage, winnerAssistant, entitlement);
+      throw new ServiceUnavailableException('El Tutor IA está procesando esta operación. Vuelve a intentarlo en unos segundos.');
+    }
+
     const priorMessages = (await this.messageRepo.listByConversationId(userMessage.conversationId)).filter((m) => m.id !== userMessage.id);
 
-    let reply: { content: string };
+    let reply: Awaited<ReturnType<AiProvider['generateReply']>>;
     try {
       reply = await this.provider.generateReply(
         priorMessages.map((m) => ({ role: m.role, content: m.content })),
         userMessage.content,
       );
     } catch (error) {
+      // Libera el lease de inmediato -- un reintento inmediato del mismo operationId no debe esperar GENERATION_LEASE_TTL_MS.
+      await this.claimRepo.releaseGenerationLease(operationId);
       if (error instanceof AiProviderTechnicalError) {
-        // Degradación controlada (invariante 14) -- el mensaje USER YA está persistido y sigue estándolo; el estudiante puede reintentar con el mismo operationId sin duplicar nada.
+        // Degradación controlada (invariante 14) -- el mensaje USER YA está persistido y sigue estándolo; el estudiante puede reintentar con el mismo operationId sin duplicar nada. Cero consumo.
         throw new ServiceUnavailableException('El Tutor IA no está disponible en este momento. Puedes reintentar.');
       }
       throw error;
     }
 
-    const assistantSequence = await this.messageRepo.nextSequence(userMessage.conversationId);
-    const assistantMessage = await this.messageRepo.create({
-      conversationId: userMessage.conversationId,
-      role: 'ASSISTANT',
-      content: reply.content,
-      sequence: assistantSequence,
-    });
+    const { assistantMessage } = await this.persistConsumedReply(accountId, userMessage, reply);
 
-    const now = new Date();
-    await this.conversationRepo.touchLastMessageAt(userMessage.conversationId, now);
+    const now2 = new Date();
+    await this.conversationRepo.touchLastMessageAt(userMessage.conversationId, now2);
 
-    const [turnCount, maxTurns] = await Promise.all([
+    return this.buildSendMessageView(accountId, userMessage, assistantMessage, entitlement);
+  }
+
+  /** Espera acotada (poll) a que la petición que sí tiene el lease de generación termine -- nunca llama al proveedor. */
+  private async waitForConcurrentCompletion(userMessage: AiMessage): Promise<AiMessage | null> {
+    const deadline = Date.now() + LOSER_POLL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const next = await this.messageRepo.findBySequence(userMessage.conversationId, userMessage.sequence + 1);
+      if (next && next.role === 'ASSISTANT') return next;
+      await sleep(LOSER_POLL_INTERVAL_MS);
+    }
+    return null;
+  }
+
+  /**
+   * Fase "after provider": persiste el ASSISTANT + la fila de consumo +
+   * borra la reserva/lease, en UNA transacción atómica (ver docstring de la
+   * clase). `userMessage.operationId` nunca es null aquí -- solo los
+   * mensajes USER llegan a esta función, y `operationId` es obligatorio en
+   * la creación de todo mensaje USER.
+   */
+  private async persistConsumedReply(
+    accountId: string,
+    userMessage: AiMessage,
+    reply: Awaited<ReturnType<AiProvider['generateReply']>>,
+  ): Promise<{ assistantMessage: AiMessage; ledgerEntry: AiUsageLedgerEntry }> {
+    const operationId = userMessage.operationId!;
+    const occurredAt = new Date();
+
+    try {
+      return await this.txRunner.run(async (tx) => {
+        const assistantSequence = await this.messageRepo.nextSequence(userMessage.conversationId, tx);
+        const assistantMessage = await this.messageRepo.create(
+          {
+            conversationId: userMessage.conversationId,
+            role: 'ASSISTANT',
+            content: reply.content,
+            sequence: assistantSequence,
+          },
+          tx,
+        );
+
+        const ledgerEntry = await this.usageLedgerRepo.create(
+          {
+            accountId,
+            conversationId: userMessage.conversationId,
+            assistantMessageId: assistantMessage.id,
+            operationId,
+            provider: reply.usage?.provider ?? 'unknown',
+            model: reply.usage?.model ?? 'unknown',
+            promptVersion: reply.usage?.promptVersion ?? 'unknown',
+            inputTokens: reply.usage?.inputTokens ?? null,
+            outputTokens: reply.usage?.outputTokens ?? null,
+            attempts: reply.usage?.attempts ?? 1,
+            latencyMs: reply.usage?.latencyMs ?? 0,
+            occurredAt,
+          },
+          tx,
+        );
+
+        await this.claimRepo.deleteByOperationId(operationId, tx);
+
+        return { assistantMessage, ledgerEntry };
+      });
+    } catch (error) {
+      if (!isUniqueConstraintViolation(error)) throw error;
+
+      // Carrera real: otra petición concurrente reintentando la MISMA operación pendiente ya ganó -- releer FUERA de cualquier transacción (mismo patrón que XpGrantService.grantForActivity) y devolver su resultado, nunca duplicar el consumo.
+      const existingLedgerEntry = await this.usageLedgerRepo.findByOperationId(operationId);
+      if (existingLedgerEntry) {
+        const winnerAssistant = await this.messageRepo.findById(existingLedgerEntry.assistantMessageId);
+        if (winnerAssistant) return { assistantMessage: winnerAssistant, ledgerEntry: existingLedgerEntry };
+      }
+      throw error;
+    }
+  }
+
+  private async buildSendMessageView(accountId: string, userMessage: AiMessage, assistantMessage: AiMessage, entitlement: AiEntitlement): Promise<SendAiMessageView> {
+    const [turnCount, dailyQuota] = await Promise.all([
       this.messageRepo.countByConversationIdAndRole(userMessage.conversationId, 'ASSISTANT'),
-      this.entitlementService.getMaxTurns(accountId),
+      this.getDailyQuotaView(accountId, entitlement),
     ]);
+    return { userMessage, assistantMessage, turnCount, maxTurns: entitlement.maxTurns, dailyQuota };
+  }
 
-    return { userMessage, assistantMessage, turnCount, maxTurns };
+  private async getDailyQuotaView(accountId: string, entitlement: AiEntitlement): Promise<DailyQuotaView> {
+    const { start, end } = utcDayRange(new Date());
+    const consumed = await this.usageLedgerRepo.countConsumedToday(accountId, start, end);
+    return { limit: entitlement.dailyRequestLimit, consumed, remaining: Math.max(0, entitlement.dailyRequestLimit - consumed), resetAt: end };
+  }
+
+  /**
+   * Aislamiento SERIALIZABLE -- mismo criterio EXACTO que
+   * `XpGrantService.runSerializable` (Bloque I): un conteo seguido de un
+   * INSERT dentro de una transacción normal no impide que dos transacciones
+   * concurrentes lean el mismo total "bajo el tope" antes de que cualquiera
+   * confirme. Ante conflicto real, Postgres aborta una de las dos (P2034) --
+   * reintento acotado (máx. 3, backoff fijo pequeño).
+   */
+  private async runSerializable<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    let attempt = 0;
+    for (;;) {
+      attempt++;
+      try {
+        return await this.txRunner.run(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      } catch (error) {
+        if (!isSerializationConflict(error) || attempt >= MAX_SERIALIZABLE_RETRIES) throw error;
+        const cause = error instanceof Prisma.PrismaClientKnownRequestError ? (error.meta?.cause ?? error.message) : String(error);
+        this.logger.warn(`Conflicto serializable en admisión (intento ${attempt}/${MAX_SERIALIZABLE_RETRIES}): ${cause} -- reintentando`);
+        const backoffIndex = Math.min(attempt - 1, RETRY_BACKOFF_MS.length - 1);
+        await sleep(RETRY_BACKOFF_MS[backoffIndex] ?? RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1]!);
+      }
+    }
   }
 }

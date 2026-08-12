@@ -14,8 +14,9 @@ import type { AiMessage, AiMessageRole, Prisma } from '../generated/prisma/clien
 export class AiMessageRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findByOperationId(operationId: string): Promise<AiMessage | null> {
-    return this.prisma.aiMessage.findUnique({ where: { operationId } });
+  findByOperationId(operationId: string, tx?: Prisma.TransactionClient): Promise<AiMessage | null> {
+    const client = tx ?? this.prisma;
+    return client.aiMessage.findUnique({ where: { operationId } });
   }
 
   listByConversationId(conversationId: string): Promise<AiMessage[]> {
@@ -26,17 +27,24 @@ export class AiMessageRepository {
   }
 
   /** `sequence` == número de filas ya existentes en la conversación -- primera fila es 0, mismo criterio 0-based que `displayOrder` en otras partes del proyecto. */
-  async nextSequence(conversationId: string): Promise<number> {
-    const count = await this.prisma.aiMessage.count({ where: { conversationId } });
+  async nextSequence(conversationId: string, tx?: Prisma.TransactionClient): Promise<number> {
+    const client = tx ?? this.prisma;
+    const count = await client.aiMessage.count({ where: { conversationId } });
     return count;
   }
 
-  countByConversationIdAndRole(conversationId: string, role: AiMessageRole): Promise<number> {
-    return this.prisma.aiMessage.count({ where: { conversationId, role } });
+  countByConversationIdAndRole(conversationId: string, role: AiMessageRole, tx?: Prisma.TransactionClient): Promise<number> {
+    const client = tx ?? this.prisma;
+    return client.aiMessage.count({ where: { conversationId, role } });
   }
 
-  create(data: Prisma.AiMessageUncheckedCreateInput): Promise<AiMessage> {
-    return this.prisma.aiMessage.create({ data });
+  create(data: Prisma.AiMessageUncheckedCreateInput, tx?: Prisma.TransactionClient): Promise<AiMessage> {
+    const client = tx ?? this.prisma;
+    return client.aiMessage.create({ data });
+  }
+
+  findById(id: string): Promise<AiMessage | null> {
+    return this.prisma.aiMessage.findUnique({ where: { id } });
   }
 
   findLastByConversationId(conversationId: string): Promise<AiMessage | null> {

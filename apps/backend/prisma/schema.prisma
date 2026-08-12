@@ -180,15 +180,15 @@ model QuestionVersion {
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
-  question         Question          @relation(fields: [questionId], references: [id], onDelete: Restrict)
-  curriculumTopic  CurriculumTopic   @relation(fields: [curriculumTopicId], references: [id], onDelete: Restrict)
-  answerOptions    AnswerOption[]
-  studentResponses StudentResponse[]
+  question              Question               @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  curriculumTopic       CurriculumTopic        @relation(fields: [curriculumTopicId], references: [id], onDelete: Restrict)
+  answerOptions         AnswerOption[]
+  studentResponses      StudentResponse[]
   /// Bloque IV, Incremento 4, sub-incremento 4.a -- lado inverso de
   /// QuickQuestionSession.currentQuestionVersionId (pregunta pendiente,
   /// nullable) y QuickQuestionAttempt.questionVersionId (intento finalizado).
-  quickQuestionSessions  QuickQuestionSession[]
-  quickQuestionAttempts  QuickQuestionAttempt[]
+  quickQuestionSessions QuickQuestionSession[]
+  quickQuestionAttempts QuickQuestionAttempt[]
 
   @@index([questionId])
   @@index([curriculumTopicId])
@@ -211,8 +211,8 @@ model AnswerOption {
   isCorrect         Boolean  @default(false) @map("is_correct")
   createdAt         DateTime @default(now()) @map("created_at")
 
-  questionVersion  QuestionVersion   @relation(fields: [questionVersionId], references: [id], onDelete: Cascade)
-  studentResponses StudentResponse[]
+  questionVersion       QuestionVersion        @relation(fields: [questionVersionId], references: [id], onDelete: Cascade)
+  studentResponses      StudentResponse[]
   /// Bloque IV, Incremento 4, sub-incremento 4.a -- lado inverso de QuickQuestionAttempt.answerOptionId.
   quickQuestionAttempts QuickQuestionAttempt[]
 
@@ -293,9 +293,11 @@ model Account {
   deletionRequestedAt DateTime?     @map("deletion_requested_at")
   closedAt            DateTime?     @map("closed_at")
 
-  identities      AuthIdentity[]
-  sessions        AuthSession[]
-  aiConversations AiConversation[]
+  identities           AuthIdentity[]
+  sessions             AuthSession[]
+  aiConversations      AiConversation[]
+  aiUsageLedgerEntries AiUsageLedgerEntry[]
+  aiGenerationClaims   AiGenerationClaim[]
 
   @@map("account")
 }
@@ -531,11 +533,11 @@ model PublicProfile {
   createdAt          DateTime                      @default(now()) @map("created_at")
   updatedAt          DateTime                      @updatedAt @map("updated_at")
 
-  usernameHistory   ProfileUsernameHistory[]
+  usernameHistory      ProfileUsernameHistory[]
   /// Bloque III, sub-incremento 3.b -- lado inverso de EquippedTitle.publicProfileId.
-  equippedTitle     EquippedTitle?
+  equippedTitle        EquippedTitle?
   /// Bloque III, sub-incremento 5.b -- lado inverso de EquippedCosmetic.publicProfileId (varias filas, una por slot).
-  equippedCosmetics EquippedCosmetic[]
+  equippedCosmetics    EquippedCosmetic[]
   /// LEF Bloque V, Incremento 2 -- lado inverso de FeaturedAchievement.publicProfileId (0 a 3 filas).
   featuredAchievements FeaturedAchievement[]
 
@@ -1705,7 +1707,7 @@ model FeaturedAchievement {
   publicProfileId     String   @map("public_profile_id") @db.Uuid
   achievementUnlockId String   @map("achievement_unlock_id") @db.Uuid
   displayOrder        Int      @map("display_order")
-  createdAt            DateTime @default(now()) @map("created_at")
+  createdAt           DateTime @default(now()) @map("created_at")
 
   publicProfile     PublicProfile     @relation(fields: [publicProfileId], references: [id], onDelete: Restrict)
   achievementUnlock AchievementUnlock @relation(fields: [achievementUnlockId], references: [id], onDelete: Restrict)
@@ -2247,8 +2249,12 @@ model AiConversation {
   createdAt     DateTime  @default(now()) @map("created_at")
   lastMessageAt DateTime? @map("last_message_at")
 
-  account  Account     @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  messages AiMessage[]
+  account            Account              @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  messages           AiMessage[]
+  /// Incremento 3 (cuotas) -- ver AiUsageLedgerEntry.
+  usageLedgerEntries AiUsageLedgerEntry[]
+  /// Incremento 3 (concurrencia real) -- ver AiGenerationClaim.
+  generationClaims   AiGenerationClaim[]
 
   @@index([accountId])
   @@map("ai_conversation")
@@ -2283,9 +2289,121 @@ model AiMessage {
   /// Solo en mensajes USER -- ver nota de la entidad.
   operationId    String?       @unique @map("operation_id") @db.Uuid
 
-  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  conversation     AiConversation      @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  /// Incremento 3 -- presente únicamente en el mensaje ASSISTANT que consumió una consulta (ver AiUsageLedgerEntry).
+  usageLedgerEntry AiUsageLedgerEntry?
 
   @@unique([conversationId, sequence])
   @@index([conversationId])
   @@map("ai_message")
+}
+
+/// LEF Bloque VI, Incremento 3 ("Cuotas, idempotencia y control de coste") --
+/// ver docs/adr/LEF-BLOCK-VI-DEFINITION.md §22 (revisión), reporte de cierre
+/// del Incremento 3. Libro mayor APPEND-ONLY e INMUTABLE (mismo patrón que
+/// `xp_ledger_entry`/`league_point_ledger_entry` -- triggers
+/// `enforce_ai_usage_ledger_entry_immutable`/`_no_delete`, migración de este
+/// incremento).
+///
+/// UNA fila == UNA "consulta consumida" (modelo de tres eventos del bloque):
+/// se crea ÚNICA Y EXCLUSIVAMENTE cuando existe una respuesta ASSISTANT
+/// utilizable persistida para una operación lógica dada -- NUNCA para un
+/// intento técnico fallido, timeout, error permanente del proveedor, retry
+/// técnico o replay (esos eventos, cuando ocurren, solo se observan vía log
+/// estructurado efímero de `AnthropicAiProvider`/`AiConversationService`,
+/// nunca generan una fila aquí). `operationId` es la clave de idempotencia
+/// propia del ledger (copia del `AiMessage.operationId` del mensaje USER de
+/// esa operación) -- su UNICIDAD es la garantía de "a lo sumo 1 consumo por
+/// operación", incluso ante dos peticiones HTTP concurrentes con el mismo
+/// operationId (ver AiConversationService.completeAssistantReply: el INSERT
+/// de esta fila y el INSERT del AiMessage ASSISTANT ocurren en la MISMA
+/// transacción; un conflicto de unicidad aquí revierte también el mensaje
+/// ASSISTANT de esa transacción perdedora -- nunca queda un ASSISTANT
+/// huérfano sin su consumo, ni un consumo sin su ASSISTANT).
+///
+/// `inputTokens`/`outputTokens` son NULLABLE porque `FakeAiProvider` (gates
+/// deterministas) no simula tokens reales -- `AnthropicAiProvider` sí los
+/// puebla desde `response.usage`. NUNCA se almacena aquí el prompt completo,
+/// el mensaje del usuario ni la respuesta del modelo -- ese contenido vive
+/// exclusivamente en `AiMessage.content`; esta fila es metadata de
+/// coste/auditoría, no una segunda copia del contenido conversacional.
+///
+/// `occurredAt` = momento de la consulta consumida (createdAt del ASSISTANT)
+/// -- es el campo usado para la ventana de cuota diaria (UTC, ver
+/// `utcDayRange` en `ai-conversation.service.ts`, mismo criterio que
+/// `XpLedgerEntry.occurredAt`/`utcDayRange` en `xp-grant.service.ts`).
+model AiUsageLedgerEntry {
+  id                 String   @id @default(uuid()) @db.Uuid
+  accountId          String   @map("account_id") @db.Uuid
+  conversationId     String   @map("conversation_id") @db.Uuid
+  assistantMessageId String   @unique @map("assistant_message_id") @db.Uuid
+  /// Copia de AiMessage.operationId (mensaje USER) -- clave de idempotencia propia del ledger.
+  operationId        String   @unique @map("operation_id") @db.Uuid
+  provider           String
+  model              String
+  promptVersion      String   @map("prompt_version")
+  inputTokens        Int?     @map("input_tokens")
+  outputTokens       Int?     @map("output_tokens")
+  /// Intentos físicos del proveedor para esta operación (1 o 2 -- ver Incremento 2, máximo 1 reintento técnico).
+  attempts           Int
+  latencyMs          Int      @map("latency_ms")
+  occurredAt         DateTime @map("occurred_at")
+  recordedAt         DateTime @default(now()) @map("recorded_at")
+
+  account          Account        @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  conversation     AiConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  assistantMessage AiMessage      @relation(fields: [assistantMessageId], references: [id], onDelete: Restrict)
+
+  /// Consulta de cuota diaria: cuenta filas de una cuenta dentro de una ventana UTC -- índice compuesto para esa lectura frecuente.
+  @@index([accountId, occurredAt])
+  @@map("ai_usage_ledger")
+}
+
+/// LEF Bloque VI, Incremento 3 (revisión de concurrencia real, ver reporte de
+/// auditoría) -- fila de reserva/lease EFÍMERA (no un ledger histórico, no
+/// append-only por diseño) que resuelve DOS carreras que el ledger por sí
+/// solo NO podía prevenir (solo deduplicaba DESPUÉS de pagar el coste):
+///
+/// 1. ADMISIÓN (cuota diaria / límite de turnos) entre operationId
+///    DISTINTOS: `AiConversationService` cuenta
+///    `AiUsageLedgerEntry` YA confirmadas + `AiGenerationClaim` activas
+///    (`reservationExpiresAt > now()`) dentro de una transacción
+///    SERIALIZABLE antes de admitir una operación NUEVA -- mismo patrón que
+///    `XpGrantService.runSerializable` (daily_cap). La fila se crea DENTRO
+///    de esa misma transacción corta (nunca durante la llamada al
+///    proveedor).
+/// 2. GENERACIÓN EN VUELO para el MISMO operationId: `generationLeaseExpiresAt`
+///    es un lease independiente, adquirido con un UPDATE condicional atómico
+///    (`WHERE generation_lease_expires_at IS NULL OR < now()`) INMEDIATAMENTE
+///    antes de invocar a `AiProvider` -- garantiza como máximo una llamada
+///    física en vuelo por operación, funciona igual con múltiples instancias
+///    del backend (el lease vive en Postgres, nunca en memoria de proceso).
+///
+/// Ambos TTL son recuperación ante caídas, no ledger de auditoría -- se
+/// borra la fila completa dentro de la MISMA transacción que persiste
+/// ASSISTANT + AiUsageLedgerEntry (éxito). Si el proceso cae entre el éxito
+/// del proveedor y esa persistencia, la fila sigue existiendo hasta que el
+/// lease expira (`generationLeaseExpiresAt`) -- un reintento posterior a esa
+/// expiración SÍ puede volver a invocar al proveedor (ver reporte,
+/// "exactly-once DB consumption" se mantiene SIEMPRE vía la unicidad de
+/// `AiUsageLedgerEntry.operationId`; "at-most-once provider call" se
+/// garantiza bajo concurrencia normal, NO frente a cualquier caída).
+model AiGenerationClaim {
+  operationId              String    @id @map("operation_id") @db.Uuid
+  accountId                String    @map("account_id") @db.Uuid
+  conversationId           String    @map("conversation_id") @db.Uuid
+  claimedAt                DateTime  @default(now()) @map("claimed_at")
+  /// Ventana durante la cual esta operación cuenta como "reservada" contra cuota/turnos -- recuperación ante caídas, no re-verificado en reintentos normales de la MISMA operación (ver AiConversationService).
+  reservationExpiresAt     DateTime  @map("reservation_expires_at")
+  /// NULL = ningún intento físico en vuelo ahora mismo para esta operación.
+  generationLeaseExpiresAt DateTime? @map("generation_lease_expires_at")
+
+  account      Account        @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+
+  /// Admisión de cuota diaria: cuenta reservas activas de una cuenta.
+  @@index([accountId, reservationExpiresAt])
+  /// Admisión de límite de turnos: cuenta reservas activas de una conversación.
+  @@index([conversationId, reservationExpiresAt])
+  @@map("ai_generation_claim")
 }
