@@ -22,6 +22,8 @@ const SENSITIVE_KEYS = new Set([
   'password',
   'internalopskey',
   'analyticsactorsecret',
+  'apikey',
+  'anthropicapikey',
 ]);
 
 function normalizeKey(key: string): string {

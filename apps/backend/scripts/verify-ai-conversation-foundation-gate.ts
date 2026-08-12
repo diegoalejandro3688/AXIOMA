@@ -233,22 +233,36 @@ async function main() {
   }
   check('ningún archivo de src/ai/ importa GAMIFICATION/PROGRESS ni referencia XP/ranking/recompensas directamente', leakedDomainImport === null);
 
-  console.log('--- 16. Verificación estática: sin SDK de Anthropic/OpenAI, sin llamada de red ---');
-  // Se busca CÓDIGO real (import/require/instanciación), no prosa de comentarios --
-  // varios archivos documentan legítimamente que Anthropic llegará en el Incremento 2
-  // (ai.module.ts, ai-provider.ts, fake-ai-provider.ts), eso es esperado y correcto.
+  console.log('--- 16. Verificación estática: SDK de Anthropic confinado a anthropic-ai-provider.ts, sin OpenAI, sin red en el fake ---');
+  // Incremento 2 (ver docs/adr/LEF-BLOCK-VI-DEFINITION.md §22, criterio exacto de
+  // cierre): "ningún archivo de DOMINIO importa el SDK de Anthropic directamente" --
+  // el propio proveedor real (anthropic-ai-provider.ts) es la única excepción
+  // legítima y esperada; ai-conversation.service.ts, el controller, los repos, la
+  // interfaz AiProvider y ai.module.ts (que solo importa la CLASE, nunca el SDK)
+  // deben seguir sin conocer el SDK. OpenAI nunca es aceptable en ningún archivo.
   const forbiddenProviderCodePatterns = [/from\s+['"]@anthropic-ai/i, /from\s+['"]openai['"]/i, /require\(\s*['"]@anthropic-ai/i, /require\(\s*['"]openai['"]/i, /new\s+Anthropic\s*\(/, /new\s+OpenAI\s*\(/];
+  const forbiddenOpenAiOnlyPatterns = [/from\s+['"]openai['"]/i, /require\(\s*['"]openai['"]/i, /new\s+OpenAI\s*\(/];
   let leakedProviderCode: string | null = null;
   for (const { file, content } of aiSources) {
+    if (file === 'anthropic-ai-provider.ts') {
+      for (const pattern of forbiddenOpenAiOnlyPatterns) {
+        if (pattern.test(content)) leakedProviderCode = `${pattern} en ${file}`;
+      }
+      continue;
+    }
     for (const pattern of forbiddenProviderCodePatterns) {
       if (pattern.test(content)) leakedProviderCode = `${pattern} en ${file}`;
     }
   }
-  check('ningún archivo de src/ai/ importa/instancia un SDK real de Anthropic/OpenAI (menciones en comentarios de diseño son esperadas y correctas)', leakedProviderCode === null);
+  check(
+    'ningún archivo de dominio de src/ai/ (fuera de anthropic-ai-provider.ts) importa/instancia un SDK real de Anthropic/OpenAI; anthropic-ai-provider.ts nunca importa OpenAI',
+    leakedProviderCode === null,
+  );
   const fakeProviderSource = aiSources.find((s) => s.file === 'fake-ai-provider.ts')?.content ?? '';
   check('fake-ai-provider.ts nunca usa fetch/red -- determinista, en memoria', !fakeProviderSource.includes('fetch(') && !fakeProviderSource.includes('http'));
   const backendPackageJson = readFileSync(join(__dirname, '..', 'package.json'), 'utf8');
-  check('apps/backend/package.json sin dependencia de @anthropic-ai/openai', !backendPackageJson.toLowerCase().includes('anthropic') && !backendPackageJson.toLowerCase().includes('openai'));
+  check('apps/backend/package.json sin dependencia de openai', !backendPackageJson.toLowerCase().includes('"openai"'));
+  check('apps/backend/package.json SÍ declara @anthropic-ai/sdk (Incremento 2, ADR-0022)', backendPackageJson.includes('"@anthropic-ai/sdk"'));
 
   console.log('--- 14 (contratos). Ningún tipo/endpoint de este incremento permite mutar XP/progreso/ranking/recompensas ---');
   const contractsSource = readFileSync(join(__dirname, '..', '..', '..', 'packages', 'contracts', 'src', 'ai.ts'), 'utf8');

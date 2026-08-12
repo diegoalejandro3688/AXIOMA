@@ -24,8 +24,32 @@ export interface AiProviderReply {
   content: string;
 }
 
+/**
+ * Categorías internas de fallo técnico -- ver docs/adr/LEF-BLOCK-VI-DEFINITION.md
+ * §22 e Incremento 2 (mapeo de errores). Uso EXCLUSIVAMENTE interno
+ * (reintento/observabilidad): `AiConversationService` solo distingue
+ * `instanceof AiProviderTechnicalError` (siempre 503 genérico al cliente),
+ * nunca expone `category` ni `message` por HTTP -- el contrato público no
+ * cambia respecto a I1.
+ */
+export type AiProviderErrorCategory =
+  | 'timeout'
+  | 'transient_provider_error'
+  | 'provider_rate_limited'
+  | 'provider_auth_error'
+  | 'provider_invalid_request'
+  | 'provider_unavailable'
+  | 'unknown_provider_error';
+
 /** Lanzado por una implementación de `AiProvider` ante un fallo técnico (timeout, red, error del proveedor) -- nunca ante un bloqueo de seguridad (fuera de alcance de I1). */
-export class AiProviderTechnicalError extends Error {}
+export class AiProviderTechnicalError extends Error {
+  readonly category: AiProviderErrorCategory;
+
+  constructor(message: string, category: AiProviderErrorCategory = 'unknown_provider_error') {
+    super(message);
+    this.category = category;
+  }
+}
 
 export interface AiProvider {
   /**
