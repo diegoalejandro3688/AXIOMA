@@ -15,6 +15,8 @@
  * detrás de esta misma interfaz -- ninguna llamada real ni SDK se introduce
  * en este incremento.
  */
+import type { AiAssistanceMode } from './ai-pedagogy';
+
 export interface AiProviderMessage {
   role: 'USER' | 'ASSISTANT';
   content: string;
@@ -110,17 +112,33 @@ export class AiProviderTechnicalError extends Error {
   }
 }
 
+/**
+ * Incremento 5 -- ver `ai-pedagogy.ts` (`AiAssistanceMode`). Reexportado
+ * aquí para que `AiProvider` no dependa de importar el módulo de pedagogía
+ * completo solo por el tipo; la ÚNICA fuente de verdad del valor/lista de
+ * modos sigue siendo `ai-pedagogy.ts`.
+ */
+export type { AiAssistanceMode };
+
 export interface AiProvider {
   /**
    * `history` es la conversación previa YA persistida (sin el mensaje nuevo);
    * `newMessage` es el contenido del mensaje que se está procesando ahora.
    * `academicContext` (Incremento 4) es `null`/ausente cuando la
    * conversación se abrió sin contexto académico (pestaña dedicada, punto de
-   * entrada 1) -- nunca inventado por el proveedor. Debe lanzar
-   * `AiProviderTechnicalError` ante cualquier fallo -- nunca devolver una
-   * respuesta parcial silenciosa.
+   * entrada 1) -- nunca inventado por el proveedor. `assistanceMode`
+   * (Incremento 5) es el modo EXPLÍCITAMENTE solicitado por el estudiante
+   * para este turno (`AiMessage.requestedMode`, ya persistido) -- `null`/
+   * ausente cuando no solicitó ninguno (progresión conservadora por
+   * defecto, ver `ai-pedagogy.ts`). Debe lanzar `AiProviderTechnicalError`
+   * ante cualquier fallo -- nunca devolver una respuesta parcial silenciosa.
    */
-  generateReply(history: AiProviderMessage[], newMessage: string, academicContext?: AiAcademicContext | null): Promise<AiProviderReply>;
+  generateReply(
+    history: AiProviderMessage[],
+    newMessage: string,
+    academicContext?: AiAcademicContext | null,
+    assistanceMode?: AiAssistanceMode | null,
+  ): Promise<AiProviderReply>;
 }
 
 export const AI_PROVIDER = Symbol('AI_PROVIDER');

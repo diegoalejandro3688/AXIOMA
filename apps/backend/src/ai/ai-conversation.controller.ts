@@ -14,6 +14,7 @@ import {
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { parseRequestBody } from '../platform/validation/parse-request-body';
 import { AiConversationService, type AiConversationSummaryView, type AiConversationDetailView, type SendAiMessageView } from './ai-conversation.service';
+import { AXIOMA_TUTOR_DISCLAIMER } from './ai-pedagogy';
 import type { AiMessage } from '../generated/prisma/client';
 
 /**
@@ -32,6 +33,7 @@ function toMessageResponse(message: AiMessage) {
     content: message.content,
     sequence: message.sequence,
     createdAt: message.createdAt.toISOString(),
+    requestedMode: message.requestedMode,
   };
 }
 
@@ -53,6 +55,8 @@ function toSummaryResponse(view: AiConversationSummaryView) {
     maxTurns: view.maxTurns,
     dailyQuota: toDailyQuotaResponse(view.dailyQuota),
     academicContext: view.academicContext,
+    // Incremento 5, decisión N -- valor constante del backend, nunca generado por el modelo (ver ai-pedagogy.ts).
+    disclaimer: AXIOMA_TUTOR_DISCLAIMER,
   };
 }
 
@@ -108,7 +112,11 @@ export class AiConversationController {
     @Body() body: unknown,
   ): Promise<SendAiMessageResponse> {
     const input = parseRequestBody(sendAiMessageRequestSchema, body);
-    const view = await this.aiConversationService.sendMessage(request.accountId, conversationId, input);
+    const view = await this.aiConversationService.sendMessage(request.accountId, conversationId, {
+      content: input.content,
+      operationId: input.operationId,
+      requestedMode: input.requestedMode ?? null,
+    });
     return toSendMessageResponse(view);
   }
 }

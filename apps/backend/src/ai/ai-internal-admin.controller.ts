@@ -86,4 +86,19 @@ export class AiInternalAdminController {
     if (!content) throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'content requerido.' });
     return { context: this.fakeProvider.getLastReceivedContext(content) ?? null };
   }
+
+  /**
+   * Qué `assistanceMode` recibió exactamente `FakeAiProvider.generateReply`
+   * para un contenido exacto -- ver reporte de cierre del Incremento 5
+   * ("WORKED_SOLUTION nunca llega al proveedor sin solicitud explícita").
+   * `undefined` = ese contenido nunca se envió; `null` = se envió sin modo
+   * explícito (progresión por defecto).
+   */
+  @Get('fake-provider-last-mode')
+  @UseGuards(InternalOpsGuard)
+  getFakeProviderLastMode(@Query('content') content?: string): { mode: unknown } {
+    this.rejectInProduction();
+    if (!content) throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'content requerido.' });
+    return { mode: this.fakeProvider.getLastReceivedMode(content) ?? null };
+  }
 }

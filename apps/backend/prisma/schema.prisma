@@ -2304,6 +2304,8 @@ model AiMessage {
   createdAt      DateTime      @default(now()) @map("created_at")
   /// Solo en mensajes USER -- ver nota de la entidad.
   operationId    String?       @unique @map("operation_id") @db.Uuid
+  /// Incremento 5 (comportamiento pedagógico) -- modo de asistencia solicitado EXPLÍCITAMENTE por el estudiante para este turno (ver docs/adr/LEF-BLOCK-VI-DEFINITION.md §25, decisión E). Solo en mensajes USER; persistido junto con `content`/`operationId` para que un reintento/replay de la MISMA operación reutilice el mismo modo, nunca uno inferido de nuevo. `null` = sin solicitud explícita (progresión conservadora por defecto).
+  requestedMode  AiAssistanceMode? @map("requested_mode")
 
   conversation     AiConversation      @relation(fields: [conversationId], references: [id], onDelete: Restrict)
   /// Incremento 3 -- presente únicamente en el mensaje ASSISTANT que consumió una consulta (ver AiUsageLedgerEntry).
@@ -2312,6 +2314,16 @@ model AiMessage {
   @@unique([conversationId, sequence])
   @@index([conversationId])
   @@map("ai_message")
+}
+
+/// Incremento 5 -- subconjunto EXPLÍCITO de "15.11 Modos de respuesta educativa" (Data Model canónico) autorizado por decisión E del Product Owner (docs/adr/LEF-BLOCK-VI-DEFINITION.md §5/§25): "pista -> orientación conceptual -> pasos -> explicación -> solución completa". Mapeo documentado en ai-pedagogy.ts -- los otros tres modos candidatos del Data Model (`check_reasoning`/`brief_clarification`/`resource_redirect`) NO se habilitan en este incremento (ninguna fuente de decisión A-Q los exige todavía).
+enum AiAssistanceMode {
+  HINT_FIRST
+  CONCEPTUAL_EXPLANATION
+  GUIDED_STEPS
+  WORKED_SOLUTION
+
+  @@map("ai_assistance_mode")
 }
 
 /// LEF Bloque VI, Incremento 3 ("Cuotas, idempotencia y control de coste") --

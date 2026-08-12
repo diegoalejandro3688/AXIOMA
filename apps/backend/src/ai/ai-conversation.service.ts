@@ -6,7 +6,7 @@ import { AiGenerationClaimRepository } from './ai-generation-claim.repository';
 import { AiEntitlementService, type AiEntitlement } from './ai-entitlement.service';
 import { AiCircuitBreakerService } from './ai-circuit-breaker.service';
 import { AiAcademicContextBuilder, type AcademicContextRefInput, type ResolvedAcademicContextRef } from './ai-academic-context-builder.service';
-import { AI_PROVIDER, AiProviderTechnicalError, type AiProvider } from './ai-provider';
+import { AI_PROVIDER, AiProviderTechnicalError, type AiAssistanceMode, type AiProvider } from './ai-provider';
 import { TransactionRunnerService } from '../platform/prisma/transaction-runner.service';
 import { Prisma } from '../generated/prisma/client';
 import type { AiConversation, AiMessage, AiUsageLedgerEntry } from '../generated/prisma/client';
@@ -219,7 +219,11 @@ export class AiConversationService {
     return { conversation, messages, turnCount, maxTurns: entitlement.maxTurns, dailyQuota, academicContext };
   }
 
-  async sendMessage(accountId: string, conversationId: string, input: { content: string; operationId: string }): Promise<SendAiMessageView> {
+  async sendMessage(
+    accountId: string,
+    conversationId: string,
+    input: { content: string; operationId: string; requestedMode?: AiAssistanceMode | null },
+  ): Promise<SendAiMessageView> {
     // 404 uniforme -- misma verificación de propiedad que getConversation, nunca solo por id.
     const conversation = await this.conversationRepo.findByIdForAccount(conversationId, accountId);
     if (!conversation) throw new NotFoundException(CONVERSATION_NOT_FOUND_MESSAGE);
@@ -328,7 +332,11 @@ export class AiConversationService {
     return this.completeAssistantReply(accountId, userMessage, entitlement);
   }
 
-  private async createUserMessageWithRetry(conversationId: string, input: { content: string; operationId: string }, attempt = 0): Promise<AiMessage> {
+  private async createUserMessageWithRetry(
+    conversationId: string,
+    input: { content: string; operationId: string; requestedMode?: AiAssistanceMode | null },
+    attempt = 0,
+  ): Promise<AiMessage> {
     const sequence = await this.messageRepo.nextSequence(conversationId);
     try {
       return await this.messageRepo.create({
@@ -337,6 +345,7 @@ export class AiConversationService {
         content: input.content,
         sequence,
         operationId: input.operationId,
+        requestedMode: input.requestedMode ?? null,
       });
     } catch (error) {
       if (!isUniqueConstraintViolation(error)) throw error;
@@ -385,6 +394,8 @@ export class AiConversationService {
         priorMessages.map((m) => ({ role: m.role, content: m.content })),
         userMessage.content,
         academicContext,
+        // Incremento 5 -- leído del propio mensaje USER YA persistido (nunca del body de la petición actual), para que un retry/replay de la MISMA operación reutilice el mismo modo, nunca uno distinto.
+        userMessage.requestedMode as AiAssistanceMode | null,
       );
     } catch (error) {
       // Libera el lease de inmediato -- un reintento inmediato del mismo operationId no debe esperar GENERATION_LEASE_TTL_MS.

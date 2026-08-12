@@ -21,12 +21,25 @@ import { entityId, isoDateTime } from './common';
 export const aiMessageRoleSchema = z.enum(['USER', 'ASSISTANT']);
 export type AiMessageRole = z.infer<typeof aiMessageRoleSchema>;
 
+/**
+ * Modos de asistencia progresivos (Incremento 5, decisión E) -- subconjunto
+ * explícito de "15.11 Modos de respuesta educativa" (Data Model canónico),
+ * ver `apps/backend/src/ai/ai-pedagogy.ts` para el mapeo exacto y la
+ * justificación de por qué solo estos cuatro. `WORKED_SOLUTION` (solución
+ * completa) solo se honra cuando el estudiante lo solicita EXPLÍCITAMENTE
+ * aquí -- nunca por defecto (invariante estructural, no solo de prompt).
+ */
+export const aiAssistanceModeSchema = z.enum(['HINT_FIRST', 'CONCEPTUAL_EXPLANATION', 'GUIDED_STEPS', 'WORKED_SOLUTION']);
+export type AiAssistanceMode = z.infer<typeof aiAssistanceModeSchema>;
+
 export const aiMessageResponseSchema = z.object({
   id: entityId,
   role: aiMessageRoleSchema,
   content: z.string(),
   sequence: z.number().int().nonnegative(),
   createdAt: isoDateTime,
+  /** Solo tiene significado en mensajes `role: 'USER'` -- `null` en mensajes ASSISTANT y en mensajes USER sin modo solicitado explícitamente. */
+  requestedMode: aiAssistanceModeSchema.nullable(),
 });
 export type AiMessageResponse = z.infer<typeof aiMessageResponseSchema>;
 
@@ -69,6 +82,14 @@ export const aiAcademicContextSummarySchema = z
   .nullable();
 export type AiAcademicContextSummary = z.infer<typeof aiAcademicContextSummarySchema>;
 
+/**
+ * Disclaimer breve y visible (Incremento 5, decisión N) -- valor CONSTANTE
+ * de configuración del backend, nunca texto generado por el modelo (ver
+ * `apps/backend/src/ai/ai-pedagogy.ts`, `AXIOMA_TUTOR_DISCLAIMER`). Presente
+ * en la superficie de conversación (create/list/get) -- deliberadamente
+ * AUSENTE de `sendAiMessageResponseSchema` (decisión N: "sin repetición
+ * invasiva por respuesta", nunca uno por cada mensaje).
+ */
 export const aiConversationSummaryResponseSchema = z.object({
   conversationId: entityId,
   createdAt: isoDateTime,
@@ -77,6 +98,7 @@ export const aiConversationSummaryResponseSchema = z.object({
   maxTurns: z.number().int().positive(),
   dailyQuota: aiDailyQuotaResponseSchema,
   academicContext: aiAcademicContextSummarySchema,
+  disclaimer: z.string(),
 });
 export type AiConversationSummaryResponse = z.infer<typeof aiConversationSummaryResponseSchema>;
 
@@ -130,10 +152,18 @@ export type AiConversationDetailResponse = z.infer<typeof aiConversationDetailRe
  * caracteres -- límite técnico de entrada razonable para este incremento,
  * nunca el límite de tokens/coste real del proveedor (eso es Incremento 3).
  */
+/**
+ * `requestedMode` (Incremento 5, opcional) -- modo de asistencia EXPLÍCITO
+ * solicitado por el estudiante para este turno (ver `aiAssistanceModeSchema`).
+ * Ausente = progresión conservadora por defecto (ver `ai-pedagogy.ts`,
+ * `buildAssistanceInstructionBlock`) -- el cliente NUNCA está obligado a
+ * enviarlo; su ausencia nunca implica `WORKED_SOLUTION`.
+ */
 export const sendAiMessageRequestSchema = z
   .object({
     content: z.string().trim().min(1).max(4000),
     operationId: entityId,
+    requestedMode: aiAssistanceModeSchema.optional(),
   })
   .strict();
 export type SendAiMessageRequest = z.infer<typeof sendAiMessageRequestSchema>;

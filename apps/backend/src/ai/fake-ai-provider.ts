@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AiProviderTechnicalError, type AiAcademicContext, type AiProvider, type AiProviderMessage, type AiProviderReply } from './ai-provider';
+import { AiProviderTechnicalError, type AiAcademicContext, type AiAssistanceMode, type AiProvider, type AiProviderMessage, type AiProviderReply } from './ai-provider';
 
 /**
  * Sentinel de entrada que fuerza un fallo técnico determinista -- ver
@@ -41,6 +41,8 @@ export class FakeAiProvider implements AiProvider {
   private readonly callCounts = new Map<string, number>();
   /** Incremento 4 -- último `academicContext` recibido para un contenido exacto, expuesto SOLO para gates (inspección exacta de qué llegó a la abstracción de proveedor, nunca usado por AiConversationService). */
   private readonly lastReceivedContext = new Map<string, AiAcademicContext | null | undefined>();
+  /** Incremento 5 -- último `assistanceMode` recibido para un contenido exacto, expuesto SOLO para gates (ver AiInternalAdminController.getFakeProviderLastMode). Permite verificar, sin proveedor real, que WORKED_SOLUTION nunca llega sin solicitud explícita del estudiante. */
+  private readonly lastReceivedMode = new Map<string, AiAssistanceMode | null | undefined>();
 
   /** Solo para gates -- nunca usado por AiConversationService. */
   getCallCount(content: string): number {
@@ -52,9 +54,20 @@ export class FakeAiProvider implements AiProvider {
     return this.lastReceivedContext.get(content);
   }
 
-  async generateReply(_history: AiProviderMessage[], newMessage: string, academicContext?: AiAcademicContext | null): Promise<AiProviderReply> {
+  /** Solo para gates -- nunca usado por AiConversationService. */
+  getLastReceivedMode(content: string): AiAssistanceMode | null | undefined {
+    return this.lastReceivedMode.get(content);
+  }
+
+  async generateReply(
+    _history: AiProviderMessage[],
+    newMessage: string,
+    academicContext?: AiAcademicContext | null,
+    assistanceMode?: AiAssistanceMode | null,
+  ): Promise<AiProviderReply> {
     this.callCounts.set(newMessage, (this.callCounts.get(newMessage) ?? 0) + 1);
     this.lastReceivedContext.set(newMessage, academicContext);
+    this.lastReceivedMode.set(newMessage, assistanceMode);
     if (newMessage === FAKE_AI_PROVIDER_FAILURE_TRIGGER) {
       throw new AiProviderTechnicalError('Fallo técnico simulado por FakeAiProvider (solo para gates/desarrollo).');
     }
