@@ -432,3 +432,19 @@ Mismo patrón que Bloques II-V: el bloque se considera cerrado cuando exista `LE
 **Gate verificable**: verificación manual en Browser pane (mismo criterio que el cierre de Bloques IV/V) — conversación, envío de mensaje, cupo restante, turnos, disclaimer, degradación simulada, todos ejercitados contra backend real con proveedor fake (nunca gastando llamadas reales para verificación manual rutinaria).
 
 **Criterio exacto de cierre**: verificación manual completa en PASS + regresión LEF I-V en PASS + gate consolidado del bloque (`verify:lef-block-vi-gate` o nombre equivalente) encadenando todos los gates de los Incrementos 1-7 más los de Bloques I-V.
+
+### 28.1 Addendum — `GET /ai/me/status` (hueco detectado en la verificación práctica del Incremento 8)
+
+**Hallazgo**: el Incremento 8 se definió con "**Datos/contratos afectados**: ninguno nuevo". La verificación práctica demostró que esa premisa era incompleta: `dailyQuota` y `disclaimer` solo viajaban dentro de la respuesta de una **conversación** (crear/listar/obtener), de modo que una cuenta **sin conversaciones** no podía mostrar su cupo diario ni el disclaimer sin fabricarlos en el cliente — exactamente lo que este mismo incremento prohíbe ("el cliente no recalcula como autoridad").
+
+**Decisión (Product Owner)**: superficie backend **mínima**, exclusivamente `me` y de solo lectura.
+
+- **Endpoint**: `GET /ai/me/status` (`AiStatusController`, `AuthGuard`, sin sesión → 401).
+- **Respuesta**: EXACTAMENTE `{ dailyQuota: { limit, consumed, remaining, resetAt }, disclaimer }` (`aiMeStatusResponseSchema`). Sin `turnCount`/`maxTurns` (son por conversación, no por cuenta), sin tier/entitlement crudo, sin proveedor/modelo/tokens/coste.
+- **Invariantes**: no crea conversación, no crea mensaje, no consume cuota (no escribe en `ai_usage_ledger`, solo lo cuenta), no crea `AiGenerationClaim`, **nunca invoca a `AiProvider`**.
+- **Reutilización canónica**: `AiConversationService.getAccountStatus` → la MISMA `getDailyQuotaView` que alimenta create/list/get/sendMessage; el disclaimer es la MISMA constante `AXIOMA_TUTOR_DISCLAIMER` (`ai-pedagogy.ts`). Ninguna fórmula de cuota se duplica en el controller.
+- **Consumo en mobile**: el hub IA solo lo pide cuando el historial está **vacío**; con conversaciones sigue usando los valores canónicos de la respuesta de historial. Si el fetch falla, el hub muestra error/carga honestos — nunca un valor por defecto.
+
+**Gates**: `apps/backend` → `verify:ai-status-gate` (backend real + Postgres real + FakeAiProvider); `apps/mobile` → `verify:ai-mobile-gate`, secciones 26/26b (cero fallback hardcodeado de cuota/disclaimer).
+
+**Limitación conocida, NO corregida aquí** (hallazgo de origen en el Incremento 3): `dailyQuota.remaining` no descuenta un `AiGenerationClaim` activo. El valor expuesto puede ser temporalmente optimista durante una generación concurrente; la admisión real del backend sigue contando reservas y protege el límite; no permite sobreconsumo. Una mejora futura podría exponer `availableIncludingReservations` o ajustar `remaining`, pero no es necesaria para cerrar el Incremento 8.

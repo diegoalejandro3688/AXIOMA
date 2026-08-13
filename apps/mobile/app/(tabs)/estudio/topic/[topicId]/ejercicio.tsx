@@ -231,6 +231,25 @@ export default function EjercicioScreen() {
               {answered.isCorrect ? 'Correcto' : 'Incorrecto'}
             </Text>
             <ContentBlockRenderer blocks={currentQuestion.explanationContent} />
+            {/*
+              Acceso contextual al Tutor IA -- LEF Bloque VI, Incremento 8
+              (punto de entrada 2, §28). Solo se envía el IDENTIFICADOR de la
+              versión de pregunta: el backend resuelve por su cuenta materia,
+              tema, alternativa elegida, corrección y explicación desde sus
+              fuentes canónicas (`AiAcademicContextBuilder`). Mobile NUNCA
+              envía `correctAnswer`/`isCorrect`/explicación/progreso.
+              Deliberadamente aparece solo DESPUÉS de responder (la
+              retroalimentación ya está revelada), sin alterar en nada el
+              flujo del ejercicio.
+            */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Preguntar al Tutor IA sobre esta pregunta"
+              onPress={() => router.push({ pathname: '/(tabs)/ia', params: { contextQuestionVersionId: currentQuestion.versionId } })}
+              style={styles.tutorButton}
+            >
+              <Text style={styles.tutorButtonText}>Preguntar al Tutor IA</Text>
+            </Pressable>
           </View>
         ) : null}
       </ScrollView>
@@ -282,6 +301,16 @@ function createStyles(t: ThemeTokens) {
     feedbackIncorrect: { backgroundColor: t.color.state.error.background, borderColor: t.color.state.error.border },
     feedbackTextCorrect: { color: t.color.state.success.text, fontWeight: '700' as const },
     feedbackTextIncorrect: { color: t.color.state.error.text, fontWeight: '700' as const },
+    tutorButton: {
+      alignSelf: 'flex-start' as const,
+      borderWidth: 1,
+      borderColor: t.color.accent.default,
+      borderRadius: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      marginTop: 4,
+    },
+    tutorButtonText: { color: t.color.accent.strong, fontWeight: '600' as const, fontSize: 13 },
     completedScreen: {
       flex: 1,
       alignItems: 'center' as const,

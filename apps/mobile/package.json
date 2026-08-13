@@ -18,7 +18,8 @@
     "verify:leaderboard-gate": "tsx scripts/verify-leaderboard-gate.ts",
     "verify:competitive-profile-gate": "tsx scripts/verify-competitive-profile-gate.ts",
     "verify:quick-question-gate": "tsx scripts/verify-quick-question-gate.ts",
-    "verify:advanced-profile-mobile-gate": "tsx scripts/verify-advanced-profile-mobile-gate.ts"
+    "verify:advanced-profile-mobile-gate": "tsx scripts/verify-advanced-profile-mobile-gate.ts",
+    "verify:ai-mobile-gate": "tsx scripts/verify-ai-mobile-gate.ts"
   },
   "dependencies": {
     "@axioma/contracts": "workspace:*",

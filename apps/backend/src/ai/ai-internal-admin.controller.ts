@@ -74,6 +74,21 @@ export class AiInternalAdminController {
   }
 
   /**
+   * Invocaciones físicas TOTALES de `FakeAiProvider.generateReply` desde el
+   * arranque del proceso (Incremento 8) -- permite al gate de
+   * `GET /ai/me/status` demostrar CERO llamadas al proveedor en una
+   * operación que no tiene `content` con el que consultar el contador por
+   * contenido. Mismas garantías que el resto de este controller
+   * (`InternalOpsGuard` + rechazo en producción).
+   */
+  @Get('fake-provider-total-call-count')
+  @UseGuards(InternalOpsGuard)
+  getFakeProviderTotalCallCount(): { count: number } {
+    this.rejectInProduction();
+    return { count: this.fakeProvider.getTotalCallCount() };
+  }
+
+  /**
    * Qué `academicContext` recibió exactamente `FakeAiProvider.generateReply`
    * para un contenido exacto -- ver reporte de cierre del Incremento 4
    * ("FakeAiProvider recibe únicamente contexto esperado"). `undefined` =

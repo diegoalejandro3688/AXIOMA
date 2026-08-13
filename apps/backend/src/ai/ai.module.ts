@@ -15,6 +15,7 @@ import { AiCircuitBreakerService } from './ai-circuit-breaker.service';
 import { AiAcademicContextBuilder } from './ai-academic-context-builder.service';
 import { AiConversationService } from './ai-conversation.service';
 import { AiConversationController } from './ai-conversation.controller';
+import { AiStatusController } from './ai-status.controller';
 import { AiInternalAdminController } from './ai-internal-admin.controller';
 import { AI_PROVIDER } from './ai-provider';
 import { FakeAiProvider } from './fake-ai-provider';
@@ -39,7 +40,7 @@ import { AnthropicAiProvider } from './anthropic-ai-provider';
  */
 @Module({
   imports: [AuthModule, ConfigModule, InternalOpsModule, EducationModule, ProgressModule],
-  controllers: [AiConversationController, AiInternalAdminController],
+  controllers: [AiConversationController, AiStatusController, AiInternalAdminController],
   providers: [
     AiConversationRepository,
     AiMessageRepository,

@@ -57,9 +57,24 @@ export class FakeAiProvider implements AiProvider {
   /** Incremento 5 -- último `assistanceMode` recibido para un contenido exacto, expuesto SOLO para gates (ver AiInternalAdminController.getFakeProviderLastMode). Permite verificar, sin proveedor real, que WORKED_SOLUTION nunca llega sin solicitud explícita del estudiante. */
   private readonly lastReceivedMode = new Map<string, AiAssistanceMode | null | undefined>();
 
+  /**
+   * Incremento 8 -- invocaciones físicas TOTALES de `generateReply`,
+   * independientemente del contenido. `callCounts` (por contenido exacto) no
+   * sirve para demostrar una AUSENCIA de llamada en una operación que no
+   * tiene contenido alguno (`GET /ai/me/status`): sin un total no se puede
+   * distinguir "no llamó" de "llamó con otro contenido". Aditivo y solo para
+   * gates -- ninguna lógica de dominio lo lee.
+   */
+  private totalCalls = 0;
+
   /** Solo para gates -- nunca usado por AiConversationService. */
   getCallCount(content: string): number {
     return this.callCounts.get(content) ?? 0;
+  }
+
+  /** Solo para gates -- ver `totalCalls`. */
+  getTotalCallCount(): number {
+    return this.totalCalls;
   }
 
   /** Solo para gates -- nunca usado por AiConversationService. */
@@ -78,6 +93,7 @@ export class FakeAiProvider implements AiProvider {
     academicContext?: AiAcademicContext | null,
     assistanceMode?: AiAssistanceMode | null,
   ): Promise<AiProviderReply> {
+    this.totalCalls += 1;
     this.callCounts.set(newMessage, (this.callCounts.get(newMessage) ?? 0) + 1);
     this.lastReceivedContext.set(newMessage, academicContext);
     this.lastReceivedMode.set(newMessage, assistanceMode);

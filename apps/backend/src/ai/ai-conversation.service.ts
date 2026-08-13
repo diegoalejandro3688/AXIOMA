@@ -114,6 +114,16 @@ export interface AiConversationDetailView extends AiConversationSummaryView {
   messages: AiMessage[];
 }
 
+/**
+ * Estado de cuenta (Incremento 8) -- SOLO lectura. Deliberadamente NO
+ * incluye `turnCount`/`maxTurns` (conceptos por conversación) ni el
+ * `AiEntitlement` crudo (tier interno): `dailyQuota.limit` ya es la única
+ * proyección del entitlement que el cliente necesita.
+ */
+export interface AiAccountStatusView {
+  dailyQuota: DailyQuotaView;
+}
+
 export interface SendAiMessageView {
   userMessage: AiMessage;
   assistantMessage: AiMessage;
@@ -231,6 +241,25 @@ export class AiConversationService {
       this.getAcademicContextSummary(accountId, resolvedRef),
     ]);
     return { conversation, turnCount: 0, maxTurns: entitlement.maxTurns, dailyQuota, academicContext };
+  }
+
+  /**
+   * Incremento 8 (cierre del hueco detectado en la verificación práctica) --
+   * estado de cuenta del Tutor, SIN conversación previa. Es una operación
+   * PURAMENTE DE LECTURA: no crea conversación, no crea mensaje, no escribe
+   * en `ai_usage_ledger` (solo lo CUENTA, vía `getDailyQuotaView`), no toca
+   * `AiGenerationClaim`, y NUNCA invoca a `AiProvider` (ni siquiera al fake:
+   * este método no tiene ninguna referencia al proveedor).
+   *
+   * Reutiliza EXACTAMENTE la misma `getDailyQuotaView` que ya alimenta
+   * `createConversation`/`listConversations`/`getConversation`/`sendMessage`
+   * -- la fórmula de cuota (día UTC + ledger + entitlement) existe en UN
+   * solo lugar y no se duplica aquí ni en el controller.
+   */
+  async getAccountStatus(accountId: string): Promise<AiAccountStatusView> {
+    const entitlement = await this.entitlementService.getEntitlement(accountId);
+    const dailyQuota = await this.getDailyQuotaView(accountId, entitlement);
+    return { dailyQuota };
   }
 
   async listConversations(accountId: string): Promise<AiConversationSummaryView[]> {

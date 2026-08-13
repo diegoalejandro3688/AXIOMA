@@ -102,6 +102,30 @@ export const aiConversationSummaryResponseSchema = z.object({
 });
 export type AiConversationSummaryResponse = z.infer<typeof aiConversationSummaryResponseSchema>;
 
+// --- GET /ai/me/status ---
+
+/**
+ * Estado de cuenta del Tutor IA (Incremento 8, cierre del hueco detectado en
+ * la verificación práctica) -- superficie MÍNIMA de solo lectura que permite
+ * a un cliente mostrar cuota diaria y disclaimer SIN necesitar una
+ * conversación previa. Antes de este endpoint, ambos valores solo viajaban
+ * dentro de la respuesta de una conversación (create/list/get), de modo que
+ * una cuenta sin conversaciones no podía mostrarlos sin fabricarlos
+ * localmente -- exactamente lo que el contrato de I8 prohíbe.
+ *
+ * EXACTAMENTE dos campos, ambos ya contractuales y ya expuestos hoy por la
+ * superficie de conversación: `dailyQuota` (por cuenta y día UTC) y
+ * `disclaimer` (constante del backend). Deliberadamente NO incluye
+ * `turnCount`/`maxTurns` (son POR CONVERSACIÓN, no por cuenta), ni tier/
+ * plan/entitlement crudo, ni proveedor/modelo/tokens/coste -- mismo
+ * whitelisting estricto que el resto de `ai.ts`.
+ */
+export const aiMeStatusResponseSchema = z.object({
+  dailyQuota: aiDailyQuotaResponseSchema,
+  disclaimer: z.string(),
+});
+export type AiMeStatusResponse = z.infer<typeof aiMeStatusResponseSchema>;
+
 // --- POST /ai/me/conversations ---
 
 /**
