@@ -4,6 +4,7 @@ import { AuthService } from '../auth/auth.service';
 import { OutboxService } from '../platform/outbox/outbox.service';
 import { UserService } from '../user/user.service';
 import { ProgressService } from '../progress/progress.service';
+import { AiRetentionService } from '../ai/ai-retention.service';
 import { PrivacyRequestRepository } from './privacy-request.repository';
 import type { PrivacyRequest } from '../generated/prisma/client';
 
@@ -25,6 +26,7 @@ export class PrivacyService {
     private readonly authService: AuthService,
     private readonly userService: UserService,
     private readonly progressService: ProgressService,
+    private readonly aiRetentionService: AiRetentionService,
     private readonly outbox: OutboxService,
   ) {}
 
@@ -134,6 +136,13 @@ export class PrivacyService {
         // falla, la solicitud queda PROCESSING para reintento -- nunca se
         // marca completada con una eliminación parcial (ver ADR-0014, punto 2).
         await this.progressService.deleteProgressForAccountClosure(request.accountId);
+        // LEF Bloque VI, Incremento 7 -- dato personal del Tutor IA (conversaciones/mensajes/reportes/reservas
+        // efímeras): se elimina por completo, mismo criterio que USER/PROGRESS arriba. El usage ledger de la
+        // cuenta NO se borra aquí -- se DESVINCULA (conversationId/assistantMessageId/operationId -> NULL) y sigue
+        // su propia política independiente de 90 días desde occurredAt (ver AiRetentionService, política del
+        // Product Owner 2026-08-12) -- Account nunca se borra al cerrar una cuenta, así que accountId permanece
+        // válido en esas filas sin ningún FK roto.
+        await this.aiRetentionService.deleteAllForAccountClosure(request.accountId);
         await this.privacyRequestRepo.markCompleted(request.id);
         processed++;
         this.logger.log(
@@ -156,6 +165,22 @@ export class PrivacyService {
   async runSessionCleanupSweep(): Promise<{ deleted: number }> {
     const deleted = await this.authService.cleanupExpiredSessions();
     return { deleted };
+  }
+
+  /**
+   * LEF Bloque VI, Incremento 7 -- barrido de retención del Tutor IA, TRES
+   * políticas independientes en una sola llamada (ver `AiRetentionService`):
+   * conversaciones expiradas (90 días desde última actividad), entradas de
+   * ledger expiradas (90 días propios desde `occurredAt`), y reservas de
+   * generación huérfanas/expiradas. Cada una es su propio barrido acotado
+   * por batch e idempotente -- un fallo aislado en una conversación nunca
+   * detiene a las demás (ver `AiRetentionService.purgeExpiredConversations`).
+   */
+  async runAiRetentionSweep(): Promise<{ conversations: { purged: number; failed: number }; ledgerEntries: { deleted: number }; claims: { deleted: number } }> {
+    const conversations = await this.aiRetentionService.purgeExpiredConversations();
+    const ledgerEntries = await this.aiRetentionService.purgeExpiredLedgerEntries();
+    const claims = await this.aiRetentionService.cleanupExpiredClaims();
+    return { conversations, ledgerEntries, claims };
   }
 
   /**

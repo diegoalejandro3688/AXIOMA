@@ -2363,30 +2363,57 @@ enum AiAssistanceMode {
 /// -- es el campo usado para la ventana de cuota diaria (UTC, ver
 /// `utcDayRange` en `ai-conversation.service.ts`, mismo criterio que
 /// `XpLedgerEntry.occurredAt`/`utcDayRange` en `xp-grant.service.ts`).
+/// Incremento 7 (privacidad/retención) -- `conversationId`/`assistantMessageId`/
+/// `operationId` pasaron a NULLABLE, ver docs/adr/LEF-BLOCK-VI-DEFINITION.md
+/// §27 y la política final del Product Owner (2026-08-12): una conversación
+/// puede eliminarse (borrado manual, purga por retención, cierre de cuenta)
+/// ANTES de que sus filas de ledger cumplan sus propios 90 días -- la fila de
+/// ledger SOBREVIVE, con esos tres identificadores desvinculados a `NULL`
+/// (nunca la fila entera, mientras no cumpla su propia expiración). Esta es
+/// la ÚNICA mutación autorizada del ledger tras crearse -- ver
+/// `enforce_ai_usage_ledger_entry_immutable` (migración de este incremento),
+/// que permite ESTRUCTURALMENTE únicamente la transición one-way
+/// valor -> NULL de esos tres campos, verificado columna por columna, nunca
+/// un flag de sesión ni una desactivación global del trigger. `accountId` y
+/// el resto de columnas (provider/model/promptVersion/tokens/attempts/
+/// latencyMs/occurredAt/recordedAt) permanecen inmutables sin excepción --
+/// `accountId` no se toca porque `Account` nunca se borra al cerrar una
+/// cuenta (mismo patrón ya vigente para `xp_ledger_entry`/
+/// `league_point_ledger_entry`, verificado por auditoría: ninguna cuenta
+/// cerrada anonimiza esas tablas hoy).
+///
+/// La purga de la fila COMPLETA (90 días desde `occurredAt`, política final
+/// del Product Owner, independiente de la retención de 90 días del
+/// contenido conversacional) la autoriza `enforce_ai_usage_ledger_entry_no_delete`
+/// -- el propio trigger verifica `OLD.occurred_at <= now() - 90 días` antes
+/// de permitir el DELETE; no existe ningún otro camino de borrado, ni
+/// siquiera para código interno del dominio.
 model AiUsageLedgerEntry {
-  id                 String   @id @default(uuid()) @db.Uuid
-  accountId          String   @map("account_id") @db.Uuid
-  conversationId     String   @map("conversation_id") @db.Uuid
-  assistantMessageId String   @unique @map("assistant_message_id") @db.Uuid
-  /// Copia de AiMessage.operationId (mensaje USER) -- clave de idempotencia propia del ledger.
-  operationId        String   @unique @map("operation_id") @db.Uuid
+  id                 String    @id @default(uuid()) @db.Uuid
+  accountId          String    @map("account_id") @db.Uuid
+  conversationId     String?   @map("conversation_id") @db.Uuid
+  assistantMessageId String?   @unique @map("assistant_message_id") @db.Uuid
+  /// Copia de AiMessage.operationId (mensaje USER) -- clave de idempotencia propia del ledger, MIENTRAS la operación original siga siendo alcanzable (ver nota de la entidad, Incremento 7).
+  operationId        String?   @unique @map("operation_id") @db.Uuid
   provider           String
   model              String
-  promptVersion      String   @map("prompt_version")
-  inputTokens        Int?     @map("input_tokens")
-  outputTokens       Int?     @map("output_tokens")
+  promptVersion      String    @map("prompt_version")
+  inputTokens        Int?      @map("input_tokens")
+  outputTokens       Int?      @map("output_tokens")
   /// Intentos físicos del proveedor para esta operación (1 o 2 -- ver Incremento 2, máximo 1 reintento técnico).
   attempts           Int
-  latencyMs          Int      @map("latency_ms")
-  occurredAt         DateTime @map("occurred_at")
-  recordedAt         DateTime @default(now()) @map("recorded_at")
+  latencyMs          Int       @map("latency_ms")
+  occurredAt         DateTime  @map("occurred_at")
+  recordedAt         DateTime  @default(now()) @map("recorded_at")
 
-  account          Account        @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  conversation     AiConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
-  assistantMessage AiMessage      @relation(fields: [assistantMessageId], references: [id], onDelete: Restrict)
+  account          Account         @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  conversation     AiConversation? @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  assistantMessage AiMessage?      @relation(fields: [assistantMessageId], references: [id], onDelete: Restrict)
 
   /// Consulta de cuota diaria: cuenta filas de una cuenta dentro de una ventana UTC -- índice compuesto para esa lectura frecuente.
   @@index([accountId, occurredAt])
+  /// Incremento 7 -- localizar filas expiradas (occurredAt + 90 días) para el barrido de purga, acotado por batch.
+  @@index([occurredAt])
   @@map("ai_usage_ledger")
 }
 

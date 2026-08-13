@@ -49,7 +49,8 @@ export class PrivacyController {
       this.logger.log('Iniciando barrido de PRIVACY');
       const deletion = await this.privacyService.runAccountDeletionSweep();
       const sessions = await this.privacyService.runSessionCleanupSweep();
-      return { deletion, sessions };
+      const aiRetention = await this.privacyService.runAiRetentionSweep();
+      return { deletion, sessions, aiRetention };
     });
   }
 }

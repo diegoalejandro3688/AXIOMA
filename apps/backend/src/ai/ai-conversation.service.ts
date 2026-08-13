@@ -13,6 +13,7 @@ import { AiMessageRepository } from './ai-message.repository';
 import { AiUsageLedgerRepository } from './ai-usage-ledger.repository';
 import { AiGenerationClaimRepository } from './ai-generation-claim.repository';
 import { AiResponseReportRepository } from './ai-response-report.repository';
+import { AiRetentionService } from './ai-retention.service';
 import { AiEntitlementService, type AiEntitlement } from './ai-entitlement.service';
 import { AiCircuitBreakerService } from './ai-circuit-breaker.service';
 import { AiAcademicContextBuilder, type AcademicContextRefInput, type ResolvedAcademicContextRef } from './ai-academic-context-builder.service';
@@ -189,12 +190,29 @@ export class AiConversationService {
     private readonly usageLedgerRepo: AiUsageLedgerRepository,
     private readonly claimRepo: AiGenerationClaimRepository,
     private readonly responseReportRepo: AiResponseReportRepository,
+    private readonly retentionService: AiRetentionService,
     private readonly entitlementService: AiEntitlementService,
     private readonly circuitBreaker: AiCircuitBreakerService,
     private readonly contextBuilder: AiAcademicContextBuilder,
     private readonly txRunner: TransactionRunnerService,
     @Inject(AI_PROVIDER) private readonly provider: AiProvider,
   ) {}
+
+  /**
+   * Incremento 7 -- borrado manual, propio de la cuenta ("me"). Mismo
+   * criterio 404-uniforme que el resto del dominio (`findByIdForAccount`):
+   * conversación inexistente y conversación de otra cuenta son
+   * INDISTINGUIBLES para quien pregunta -- cuenta B nunca puede inferir que
+   * la conversación de A existe. La eliminación real (mensajes, reportes,
+   * desvinculación del ledger, claims) vive en `AiRetentionService`
+   * (reutilizada también por el barrido de retención y el cierre de
+   * cuenta) -- este método SOLO añade la verificación de ownership.
+   */
+  async deleteConversation(accountId: string, conversationId: string): Promise<void> {
+    const conversation = await this.conversationRepo.findByIdForAccount(conversationId, accountId);
+    if (!conversation) throw new NotFoundException(CONVERSATION_NOT_FOUND_MESSAGE);
+    await this.retentionService.deleteConversationForAccount(conversationId);
+  }
 
   /**
    * `ref` -- Incremento 4, punto de entrada 2 ("entrada contextual desde
@@ -548,7 +566,9 @@ export class AiConversationService {
 
       // Carrera real: otra petición concurrente reintentando la MISMA operación pendiente ya ganó -- releer FUERA de cualquier transacción (mismo patrón que XpGrantService.grantForActivity) y devolver su resultado, nunca duplicar el consumo.
       const existingLedgerEntry = await this.usageLedgerRepo.findByOperationId(operationId);
-      if (existingLedgerEntry) {
+      // assistantMessageId nunca es null aquí -- esta fila se creó hace instantes (misma operación, carrera de INSERT),
+      // la desvinculación de Incremento 7 solo ocurre al eliminar una conversación, imposible en esta ventana.
+      if (existingLedgerEntry?.assistantMessageId) {
         const winnerAssistant = await this.messageRepo.findById(existingLedgerEntry.assistantMessageId);
         if (winnerAssistant) return { assistantMessage: winnerAssistant, ledgerEntry: existingLedgerEntry };
       }

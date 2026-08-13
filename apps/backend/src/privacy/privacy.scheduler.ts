@@ -39,4 +39,17 @@ export class PrivacyScheduler {
       }
     });
   }
+
+  /** LEF Bloque VI, Incremento 7 -- retención/purga del Tutor IA (conversaciones, usage ledger, reservas de generación). */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async handleAiRetentionSweep() {
+    await runWithCorrelationId(generateCorrelationId(), async () => {
+      const result = await this.privacyService.runAiRetentionSweep();
+      if (result.conversations.purged > 0 || result.conversations.failed > 0 || result.ledgerEntries.deleted > 0 || result.claims.deleted > 0) {
+        this.logger.log(
+          `Barrido de retención del Tutor IA: ${result.conversations.purged} conversación(es) purgada(s) (${result.conversations.failed} fallo(s)), ${result.ledgerEntries.deleted} fila(s) de ledger eliminada(s), ${result.claims.deleted} reserva(s) huérfana(s) eliminada(s)`,
+        );
+      }
+    });
+  }
 }

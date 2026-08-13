@@ -57,4 +57,25 @@ export class AiMessageRepository {
   findBySequence(conversationId: string, sequence: number): Promise<AiMessage | null> {
     return this.prisma.aiMessage.findUnique({ where: { conversationId_sequence: { conversationId, sequence } } });
   }
+
+  /**
+   * Incremento 7 -- borrado real de TODOS los mensajes de una conversación
+   * (borrado manual, purga por retención, o cierre de cuenta). `ai_message`
+   * solo tiene trigger de inmutabilidad en UPDATE (`enforce_ai_message_immutable`,
+   * Incremento 1) -- nunca bloqueó DELETE, a diferencia de `ai_usage_ledger`.
+   * El llamador es responsable de haber desvinculado ya cualquier
+   * `AiUsageLedgerEntry`/`AiResponseReport` dependiente ANTES de llamar esto
+   * (ver `AiRetentionService`) -- las FK de esas tablas hacia `ai_message`
+   * son `Restrict`, deliberadamente, como red de seguridad.
+   */
+  async deleteByConversationId(conversationId: string, tx?: Prisma.TransactionClient): Promise<void> {
+    const client = tx ?? this.prisma;
+    await client.aiMessage.deleteMany({ where: { conversationId } });
+  }
+
+  /** Mismo criterio que `deleteByConversationId`, para el cierre de cuenta (todas las conversaciones de una cuenta a la vez, en una sola consulta vía relación). */
+  async deleteByAccountId(accountId: string, tx?: Prisma.TransactionClient): Promise<void> {
+    const client = tx ?? this.prisma;
+    await client.aiMessage.deleteMany({ where: { conversation: { accountId } } });
+  }
 }

@@ -65,4 +65,36 @@ export class AiGenerationClaimRepository {
   async deleteByOperationId(operationId: string, tx: Prisma.TransactionClient): Promise<void> {
     await tx.aiGenerationClaim.deleteMany({ where: { operationId } });
   }
+
+  /** Incremento 7 -- todas las reservas de UNA conversación, para su eliminación (borrado manual/purga/cierre de cuenta). En la práctica casi siempre vacío (la reserva se borra al completar la operación, o expira a los 60s) -- existe para el caso huérfano real: un proceso caído a mitad de una generación. */
+  async deleteByConversationId(conversationId: string, tx?: Prisma.TransactionClient): Promise<void> {
+    const client = tx ?? this.prisma;
+    await client.aiGenerationClaim.deleteMany({ where: { conversationId } });
+  }
+
+  /** Mismo criterio que `deleteByConversationId`, para el cierre de cuenta. */
+  async deleteByAccountId(accountId: string, tx?: Prisma.TransactionClient): Promise<void> {
+    const client = tx ?? this.prisma;
+    await client.aiGenerationClaim.deleteMany({ where: { accountId } });
+  }
+
+  /**
+   * Incremento 7 -- limpieza de reservas EXPIRADAS/huérfanas (proceso caído a
+   * mitad de una generación, o simplemente una reserva cuyo TTL de 60s ya
+   * pasó sin completarse). `reservationExpiresAt < now` es la MISMA condición
+   * que ya usa `admitNewOperation` para no contarla como activa -- una fila
+   * que la cumple ya no tiene ningún efecto sobre cuota/turnos, es basura
+   * operativa segura de borrar. Sin retención histórica (estado efímero, ver
+   * docstring de la entidad) -- acotado por batch para el barrido periódico.
+   */
+  async deleteExpired(now: Date, limit: number): Promise<number> {
+    const expired = await this.prisma.aiGenerationClaim.findMany({
+      where: { reservationExpiresAt: { lt: now } },
+      take: limit,
+      select: { operationId: true },
+    });
+    if (expired.length === 0) return 0;
+    const result = await this.prisma.aiGenerationClaim.deleteMany({ where: { operationId: { in: expired.map((c) => c.operationId) } } });
+    return result.count;
+  }
 }

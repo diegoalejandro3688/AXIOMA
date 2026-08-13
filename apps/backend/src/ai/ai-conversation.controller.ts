@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Req, UseGuards } from '@nestjs/common';
 import {
   createAiConversationRequestSchema,
   createAiConversationResponseSchema,
@@ -106,6 +106,19 @@ export class AiConversationController {
   async getOne(@Req() request: AuthenticatedRequest, @Param('conversationId') conversationId: string): Promise<AiConversationDetailResponse> {
     const view = await this.aiConversationService.getConversation(request.accountId, conversationId);
     return toDetailResponse(view);
+  }
+
+  /**
+   * Incremento 7 -- borrado manual, propio ("me"). Hard delete real (sin
+   * papelera/restauración -- fuera de alcance) -- ver
+   * `AiConversationService.deleteConversation`/`AiRetentionService` para el
+   * orden exacto de eliminación. 404 uniforme si la conversación no existe o
+   * no es de esta cuenta -- nunca revela si existe para otra cuenta.
+   */
+  @Delete(':conversationId')
+  @HttpCode(204)
+  async delete(@Req() request: AuthenticatedRequest, @Param('conversationId') conversationId: string): Promise<void> {
+    await this.aiConversationService.deleteConversation(request.accountId, conversationId);
   }
 
   @Post(':conversationId/messages')

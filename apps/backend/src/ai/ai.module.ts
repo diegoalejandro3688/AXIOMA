@@ -9,6 +9,7 @@ import { AiMessageRepository } from './ai-message.repository';
 import { AiUsageLedgerRepository } from './ai-usage-ledger.repository';
 import { AiGenerationClaimRepository } from './ai-generation-claim.repository';
 import { AiResponseReportRepository } from './ai-response-report.repository';
+import { AiRetentionService } from './ai-retention.service';
 import { AiEntitlementService } from './ai-entitlement.service';
 import { AiCircuitBreakerService } from './ai-circuit-breaker.service';
 import { AiAcademicContextBuilder } from './ai-academic-context-builder.service';
@@ -45,6 +46,7 @@ import { AnthropicAiProvider } from './anthropic-ai-provider';
     AiUsageLedgerRepository,
     AiGenerationClaimRepository,
     AiResponseReportRepository,
+    AiRetentionService,
     AiEntitlementService,
     AiCircuitBreakerService,
     AiAcademicContextBuilder,
@@ -64,6 +66,7 @@ import { AnthropicAiProvider } from './anthropic-ai-provider';
       },
     },
   ],
-  exports: [AiConversationService],
+  // AiRetentionService exportado para PrivacyModule (integración con cierre de cuenta, ADR-0005) -- mismo criterio que ProgressModule exporta ProgressService.
+  exports: [AiConversationService, AiRetentionService],
 })
 export class AiModule {}
