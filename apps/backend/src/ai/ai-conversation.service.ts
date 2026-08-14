@@ -24,6 +24,28 @@ import type { AiConversation, AiMessage, AiResponseReport, AiResponseReportType,
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 const SERIALIZATION_CONFLICT_CODE = 'P2034';
+/**
+ * SQLSTATE de Postgres para `serialization_failure`. `@prisma/adapter-pg` lo
+ * mapea explícitamente a `{ kind: 'TransactionWriteConflict' }` y ADEMÁS
+ * conserva el código crudo en `originalCode` -- ver
+ * `node_modules/@prisma/adapter-pg/dist/index.js` (`convertDriverError`:
+ * `{ originalCode: error.code, originalMessage: error.message, ...mapDriverError(error) }`,
+ * y `mapDriverError`: `case '40001': return { kind: 'TransactionWriteConflict' }`).
+ */
+const SERIALIZATION_CONFLICT_SQLSTATE = '40001';
+/**
+ * Nombre/forma del error que el runtime de Prisma 7 deja escapar cuando el
+ * conflicto de serialización lo detecta Postgres en el `COMMIT` y no en una
+ * sentencia intermedia: en ese caso NO se traduce a
+ * `PrismaClientKnownRequestError`/P2034. Ver
+ * `node_modules/@prisma/driver-adapter-utils/dist/index.js`:
+ * `isDriverAdapterError(error) { return error['name'] === 'DriverAdapterError' && typeof error['cause'] === 'object'; }`.
+ * `DriverAdapterError` NO es API pública estable (no se reexporta desde
+ * `@prisma/client`), así que se replica ESA MISMA comprobación estructural en
+ * vez de un `instanceof` contra una clase interna.
+ */
+const DRIVER_ADAPTER_ERROR_NAME = 'DriverAdapterError';
+const DRIVER_ADAPTER_WRITE_CONFLICT_KIND = 'TransactionWriteConflict';
 const MAX_SERIALIZABLE_RETRIES = 3;
 /** Backoff acotado entre reintentos de conflicto serializable -- mismo criterio que XpGrantService.runSerializable. */
 const RETRY_BACKOFF_MS = [25, 75, 150];
@@ -65,12 +87,68 @@ const CONVERSATION_NOT_FOUND_MESSAGE = 'Esta conversación no existe o no está 
 const AI_SAFETY_BLOCKED_CODE = 'AI_SAFETY_BLOCKED';
 const AI_SAFETY_BLOCKED_MESSAGE = 'El Tutor IA no puede responder a esta solicitud. Intenta reformular tu mensaje.';
 
+/**
+ * Hallazgo correctivo de concurrencia (Fase B) -- mensaje público para el caso
+ * en que el conflicto de serialización de la ADMISIÓN persiste tras agotar los
+ * `MAX_SERIALIZABLE_RETRIES`. Deliberadamente NO se traduce a 409 de
+ * cuota/turnos: un conflicto de escritura no resuelto no es evidencia de que
+ * ESTA operación deba perder por regla de negocio (nadie confirmó todavía).
+ * Es una degradación TÉCNICA, mismo estilo/patrón que los otros 503 del
+ * dominio (circuit breaker, fallo técnico del proveedor, espera de lease
+ * agotada): mensaje propio de Axioma, accionable, y NUNCA el
+ * `DriverAdapterError`, el SQLSTATE ni ningún detalle interno de Prisma (que
+ * solo se loguean, igual que en AnthropicAiProvider.logObservability).
+ */
+const AI_ADMISSION_CONTENTION_MESSAGE = 'El Tutor IA está recibiendo muchas solicitudes en este momento. Vuelve a intentarlo en unos segundos.';
+
 function isUniqueConstraintViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION;
 }
 
+/**
+ * Comprobación ESTRUCTURAL de `DriverAdapterError` -- réplica literal de
+ * `isDriverAdapterError()` de `@prisma/driver-adapter-utils` (ver constante
+ * `DRIVER_ADAPTER_ERROR_NAME`). Deliberadamente NO usa `instanceof`: esa clase
+ * es interna del runtime de Prisma, no forma parte de la API pública de
+ * `@prisma/client` y puede venir de otra copia del paquete.
+ */
+function isDriverAdapterErrorShape(error: unknown): error is { name: string; cause: Record<string, unknown> } {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { name?: unknown; cause?: unknown };
+  return candidate.name === DRIVER_ADAPTER_ERROR_NAME && typeof candidate.cause === 'object' && candidate.cause !== null;
+}
+
+/**
+ * Hallazgo correctivo de concurrencia (Fase B) -- el predicado original solo
+ * reconocía `P2034`, que es como Prisma traduce un conflicto de serialización
+ * detectado en una SENTENCIA intermedia. Cuando Postgres lo detecta en el
+ * `COMMIT` de la transacción SERIALIZABLE (caso real de `admitNewOperation`,
+ * que solo hace 4 counts + 1 insert y por tanto casi siempre falla EN EL
+ * COMMIT), Prisma 7 + `@prisma/adapter-pg` lo dejan escapar como
+ * `DriverAdapterError` sin traducir -- se propagaba como 500 genérico en vez
+ * de entrar al retry acotado ya existente.
+ */
 function isSerializationConflict(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === SERIALIZATION_CONFLICT_CODE;
+  // Señal 1 (primaria, documentada): traducción de Prisma para conflictos detectados en sentencia intermedia.
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === SERIALIZATION_CONFLICT_CODE) return true;
+
+  // Señal 2 (primaria): forma estructural del DriverAdapterError sin traducir -- conflicto detectado en el COMMIT.
+  if (isDriverAdapterErrorShape(error)) {
+    const cause = error.cause as { kind?: unknown; code?: unknown; originalCode?: unknown };
+    if (cause.kind === DRIVER_ADAPTER_WRITE_CONFLICT_KIND) return true;
+    // SQLSTATE crudo preservado por adapter-pg junto al `kind` mapeado (`originalCode`),
+    // y en `code` para el `kind: 'postgres'` genérico (rama `default` de `mapDriverError`).
+    if (cause.originalCode === SERIALIZATION_CONFLICT_SQLSTATE) return true;
+    if (cause.kind === 'postgres' && cause.code === SERIALIZATION_CONFLICT_SQLSTATE) return true;
+  }
+
+  // Señal 3 (ÚLTIMO RECURSO, nunca criterio primario): red de seguridad textual. Justificación explícita:
+  // `DriverAdapterError` es interno y no estable; si una versión futura del runtime lo re-envolviera en otro
+  // error (perdiendo `name`/`cause` pero conservando el texto), la degradación correcta es volver a reintentar,
+  // no devolver un 500. El coste de un falso positivo está acotado por construcción (máx. 3 reintentos de una
+  // transacción idempotente de admisión) y el de un falso negativo es el bug que este fix corrige. NUNCA se
+  // apoya en el texto libre del driver: solo en el identificador de `kind` de Prisma, que es un token estable.
+  return error instanceof Error && error.message.includes(DRIVER_ADAPTER_WRITE_CONFLICT_KIND);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -637,8 +715,19 @@ export class AiConversationService {
    * `XpGrantService.runSerializable` (Bloque I): un conteo seguido de un
    * INSERT dentro de una transacción normal no impide que dos transacciones
    * concurrentes lean el mismo total "bajo el tope" antes de que cualquiera
-   * confirme. Ante conflicto real, Postgres aborta una de las dos (P2034) --
+   * confirme. Ante conflicto real, Postgres aborta una de las dos --
    * reintento acotado (máx. 3, backoff fijo pequeño).
+   *
+   * IMPORTANTE (hallazgo correctivo Fase B): el conflicto NO siempre llega
+   * como `P2034`. Ver `isSerializationConflict` -- aquí casi siempre lo
+   * detecta Postgres en el COMMIT y llega como `DriverAdapterError`
+   * (`cause.kind === 'TransactionWriteConflict'`). Si tras agotar los
+   * reintentos el conflicto persiste, se degrada a 503 técnico
+   * (`AI_ADMISSION_CONTENTION_MESSAGE`), NUNCA a un 409 de cuota/turnos.
+   *
+   * Este retry es COMPLETAMENTE INDEPENDIENTE del retry de red del proveedor
+   * Anthropic (`AnthropicAiProvider`): aquel es sobre llamadas HTTP externas,
+   * este es sobre conflictos de aislamiento de Postgres.
    */
   private async runSerializable<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
     let attempt = 0;
@@ -647,7 +736,17 @@ export class AiConversationService {
       try {
         return await this.txRunner.run(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
       } catch (error) {
-        if (!isSerializationConflict(error) || attempt >= MAX_SERIALIZABLE_RETRIES) throw error;
+        if (!isSerializationConflict(error)) throw error;
+        if (attempt >= MAX_SERIALIZABLE_RETRIES) {
+          // Retries AGOTADOS con el conflicto todavía sin resolver -- ver AI_ADMISSION_CONTENTION_MESSAGE.
+          // La transacción abortó ENTERA (ningún AiGenerationClaim creado), y `admitNewOperation` es el paso
+          // PREVIO a crear el mensaje USER: por construcción no hay USER nuevo, no hay ASSISTANT, no hay fila
+          // de ledger y el proveedor nunca se invoca. Solo el detalle interno se loguea, jamás se propaga.
+          this.logger.error(
+            `Conflicto serializable en admisión NO resuelto tras ${MAX_SERIALIZABLE_RETRIES} intentos -- degradando a 503: ${String(error)}`,
+          );
+          throw new ServiceUnavailableException(AI_ADMISSION_CONTENTION_MESSAGE);
+        }
         const cause = error instanceof Prisma.PrismaClientKnownRequestError ? (error.meta?.cause ?? error.message) : String(error);
         this.logger.warn(`Conflicto serializable en admisión (intento ${attempt}/${MAX_SERIALIZABLE_RETRIES}): ${cause} -- reintentando`);
         const backoffIndex = Math.min(attempt - 1, RETRY_BACKOFF_MS.length - 1);

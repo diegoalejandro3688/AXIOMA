@@ -286,6 +286,11 @@ export class XpGrantService {
       try {
         return await this.txRunner.run(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
       } catch (error) {
+        // TODO(hallazgo-latente): mismo predicado insuficiente que ai-conversation.service.ts -- ver
+        // `isSerializationConflict` allí (hallazgo correctivo de concurrencia, Fase B): un conflicto de
+        // serialización detectado por Postgres en el COMMIT llega como `DriverAdapterError`
+        // (`cause.kind === 'TransactionWriteConflict'`, SQLSTATE 40001), NO como P2034, y por tanto NO
+        // entra a este retry. No reproducido, no corregido en este scope.
         const isSerializationConflict =
           error instanceof Prisma.PrismaClientKnownRequestError && error.code === SERIALIZATION_CONFLICT_CODE;
         if (!isSerializationConflict || attempt >= MAX_SERIALIZABLE_RETRIES) throw error;

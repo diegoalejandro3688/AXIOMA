@@ -24,6 +24,37 @@ function check(label: string, condition: boolean) {
 }
 
 /**
+ * Hallazgo correctivo de concurrencia (Fase B) -- una aserción DERIVADA solo
+ * es evaluable si la clasificación ganador/perdedor de la carrera fue
+ * UNÍVOCA. Antes se usaba `raceA.status === 409 ? A : B`, un ternario sin
+ * rama para "ninguno fue 409": cuando el perdedor real devolvía 500 en vez de
+ * 409, el ternario caía por defecto y evaluaba al GANADOR como si fuera el
+ * perdedor, produciendo FALLOS EN CASCADA falsos (F2e/F2f) a partir de un
+ * único evento real. Ahora se marca explícitamente SKIPPED con el motivo --
+ * NUNCA FAIL, para no inventar defectos -- mientras la aserción PRIMARIA
+ * separada (F2b/F3b, "exactamente uno fue rechazado con 409") sigue fallando
+ * claramente, de modo que el problema real nunca desaparece tras un SKIPPED.
+ */
+let skipped = 0;
+function skip(label: string, reason: string) {
+  console.warn(`SKIPPED  ${label} -- ${reason}`);
+  skipped++;
+}
+
+/**
+ * Identificación del perdedor por EVIDENCIA POSITIVA: primero se identifica al
+ * GANADOR (la única respuesta 2xx), y el perdedor se deriva por complemento
+ * SOLO si hay exactamente un ganador. Devuelve `null` si la clasificación no
+ * es unívoca (0 o 2+ ganadores).
+ */
+function classifyRace<T extends { status: number }>(a: T, b: T): { winner: T; loser: T } | null {
+  const successes = [a, b].filter((r) => r.status === 200 || r.status === 201);
+  if (successes.length !== 1) return null;
+  const winner = successes[0]!;
+  return { winner, loser: winner === a ? b : a };
+}
+
+/**
  * Este gate hace MUCHAS más peticiones que los demás (Incremento 3, PARTE F
  * de concurrencia + secuencias de hasta 49 consultas) -- puede chocar con el
  * límite GLOBAL de `ThrottlerModule` (100 req/60s, ver app.module.ts), que
@@ -352,19 +383,33 @@ async function main() {
     const rejections = [raceA, raceB].filter((r) => r.status === 409);
     check('F2a. EXACTAMENTE una de las dos operaciones tuvo éxito', successes.length === 1);
     check('F2b. EXACTAMENTE una de las dos operaciones fue rechazada (409, cuota agotada)', rejections.length === 1);
+    // Check NUEVO (Fase B) -- explícito y NUNCA ocultable por un SKIPPED: con el fix del predicado de conflicto
+    // serializable, el retry acotado reconcilia la carrera y ninguna de las dos respuestas debe ser 5xx.
+    check(
+      `F2b2. ninguna de las dos respuestas concurrentes es 5xx (observado: ${raceA.status}/${raceB.status})`,
+      raceA.status < 500 && raceB.status < 500,
+    );
     const detailAfterRace = await req('GET', `/ai/me/conversations/${convF2}`, freeF2.headers);
     check('F2c. dailyQuota.consumed == 3 EXACTAMENTE (nunca 4)', detailAfterRace.body?.dailyQuota?.consumed === 3);
     check('F2d. dailyQuota.remaining == 0', detailAfterRace.body?.dailyQuota?.remaining === 0);
 
-    // La operación rechazada en ADMISIÓN nunca debió llamar al proveedor.
-    const loserContent = raceA.status === 409 ? contentRaceA : contentRaceB;
-    const callCountLoser = await req('GET', `/ai/_internal/fake-provider-call-count?content=${encodeURIComponent(loserContent)}`, { 'x-internal-ops-key': opsKey });
-    check('F2e. la operación rechazada en admisión NUNCA llamó al proveedor (0 invocaciones)', callCountLoser.body?.count === 0);
-
-    // Sin USER huérfano de la operación rechazada.
-    const loserOperationId = raceA.status === 409 ? opIdRaceA : opIdRaceB;
-    const orphanCheck = await pg.query('SELECT count(*) FROM ai_message WHERE operation_id = $1', [loserOperationId]);
-    check('F2f. sin USER huérfano de la operación rechazada en admisión', Number(orphanCheck.rows[0].count) === 0);
+    // Aserciones DERIVADAS -- ver `classifyRace`: el perdedor se deriva por complemento del ÚNICO ganador 2xx,
+    // nunca por un ternario "si no es 409 entonces es el otro" (que confundía ganador y perdedor).
+    const classified = classifyRace(raceA, raceB);
+    if (!classified) {
+      const reason = `clasificación ganador/perdedor NO unívoca (${successes.length} respuestas 2xx: ${raceA.status}/${raceB.status}) -- el defecto real ya está reportado por F2a/F2b/F2b2`;
+      skip('F2e. la operación rechazada en admisión NUNCA llamó al proveedor (0 invocaciones)', reason);
+      skip('F2f. sin USER huérfano de la operación rechazada en admisión', reason);
+    } else {
+      const loserContent = classified.loser === raceA ? contentRaceA : contentRaceB;
+      const loserOperationId = classified.loser === raceA ? opIdRaceA : opIdRaceB;
+      const callCountLoser = await req('GET', `/ai/_internal/fake-provider-call-count?content=${encodeURIComponent(loserContent)}`, { 'x-internal-ops-key': opsKey });
+      check('F2e. la operación rechazada en admisión NUNCA llamó al proveedor (0 invocaciones)', callCountLoser.body?.count === 0);
+      const orphanCheck = await pg.query('SELECT count(*) FROM ai_message WHERE operation_id = $1', [loserOperationId]);
+      check('F2f. sin USER huérfano de la operación rechazada en admisión', Number(orphanCheck.rows[0].count) === 0);
+      const loserLedger = await pg.query('SELECT count(*) FROM ai_usage_ledger WHERE operation_id = $1', [loserOperationId]);
+      check('F2g. sin fila de ledger de la operación rechazada en admisión', Number(loserLedger.rows[0].count) === 0);
+    }
   }
 
   console.log('--- F3. turnCount=maxTurns-1: dos operationId DISTINTOS concurrentes -> turnCount final EXACTAMENTE maxTurns, nunca maxTurns+1 ---');
@@ -391,12 +436,28 @@ async function main() {
     const turnRejections = [turnRaceA, turnRaceB].filter((r) => r.status === 409);
     check('F3a. EXACTAMENTE una de las dos operaciones tuvo éxito', turnSuccesses.length === 1);
     check('F3b. EXACTAMENTE una fue rechazada (409, límite de turnos)', turnRejections.length === 1);
+    // Check NUEVO (Fase B) -- mismo criterio que F2b2, nunca ocultable por un SKIPPED.
+    check(
+      `F3b2. ninguna de las dos respuestas concurrentes es 5xx (observado: ${turnRaceA.status}/${turnRaceB.status})`,
+      turnRaceA.status < 500 && turnRaceB.status < 500,
+    );
     const detailAfterTurnRace = await req('GET', `/ai/me/conversations/${convF3}`, freeF3.headers);
     check(`F3c. turnCount == ${maxTurnsF3} EXACTAMENTE (nunca ${maxTurnsF3 + 1})`, detailAfterTurnRace.body?.turnCount === maxTurnsF3);
 
-    const loserTurnOperationId = turnRaceA.status === 409 ? opIdTurnA : opIdTurnB;
-    const orphanTurnCheck = await pg.query('SELECT count(*) FROM ai_message WHERE operation_id = $1', [loserTurnOperationId]);
-    check('F3d. sin USER huérfano de la operación rechazada por límite de turnos', Number(orphanTurnCheck.rows[0].count) === 0);
+    // F3d comparte EXACTAMENTE el mismo defecto de ternario que F2e/F2f -- misma corrección metodológica.
+    const classifiedTurn = classifyRace(turnRaceA, turnRaceB);
+    if (!classifiedTurn) {
+      skip(
+        'F3d. sin USER huérfano de la operación rechazada por límite de turnos',
+        `clasificación ganador/perdedor NO unívoca (${turnSuccesses.length} respuestas 2xx: ${turnRaceA.status}/${turnRaceB.status}) -- el defecto real ya está reportado por F3a/F3b/F3b2`,
+      );
+    } else {
+      const loserTurnOperationId = classifiedTurn.loser === turnRaceA ? opIdTurnA : opIdTurnB;
+      const orphanTurnCheck = await pg.query('SELECT count(*) FROM ai_message WHERE operation_id = $1', [loserTurnOperationId]);
+      check('F3d. sin USER huérfano de la operación rechazada por límite de turnos', Number(orphanTurnCheck.rows[0].count) === 0);
+      const loserTurnLedger = await pg.query('SELECT count(*) FROM ai_usage_ledger WHERE operation_id = $1', [loserTurnOperationId]);
+      check('F3e. sin fila de ledger de la operación rechazada por límite de turnos', Number(loserTurnLedger.rows[0].count) === 0);
+    }
   }
 
   console.log('--- F5. Replay/retry siguen funcionando después de las carreras anteriores (sanity adicional) ---');
@@ -462,6 +523,9 @@ async function main() {
   await pg.end();
 
   console.log('');
+  if (skipped > 0) {
+    console.warn(`${skipped} verificación(es) DERIVADA(S) omitidas por clasificación no unívoca (ver SKIPPED arriba) -- las aserciones primarias correspondientes siguen evaluadas.`);
+  }
   if (failures > 0) {
     console.error(`${failures} verificación(es) fallaron.`);
     process.exit(1);
