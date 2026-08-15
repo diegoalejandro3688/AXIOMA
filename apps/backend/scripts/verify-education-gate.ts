@@ -140,28 +140,108 @@ async function main() {
   check('el borrador recién insertado NO se sirve', rResourceAfterDraft.body?.versionId !== draftId);
   check('sigue sirviéndose la versión publicada original', rResourceAfterDraft.body?.versionId === rResource.body.versionId);
 
-  // --- 5b. Bloque image se resuelve a URL firmada (ADR-0013, punto 4) ---
-  console.log('--- 5b. Bloque image: objectKey nunca sale, url firmada sí ---');
+  // --- 5b. Bloque image se resuelve a URL firmada (ADR-0013, punto 4), sobre
+  // una sustitución de versión REAL (old -> new) ---
+  //
+  // NOTA DE TRAZABILIDAD -- evolución de cobertura, LEF Bloque VII, Incremento 1
+  // (2026-08-15). Este bloque probaba antes el escenario "DOS versiones
+  // PUBLISHED del mismo learning_resource conviven y el lector sirve la más
+  // reciente (orderBy publishedAt desc)", montándolo así:
+  //   1. INSERT de una segunda `learning_resource_version` directamente en
+  //      PUBLISHED sobre el MISMO `learning_resource` sembrado;
+  //   2. aserción "la versión con imagen (más reciente) pasa a ser la servida";
+  //   3. teardown con `UPDATE ... SET editorial_status='DRAFT'` sobre esa fila
+  //      publicada, y aserción "tras revertir, vuelve a servirse la original".
+  //
+  // Ese escenario quedó formalmente SUPERSEDED por DG-11
+  // (LEF-BLOCK-VII-DEFINITION.md §8.6, invariante 16): el índice único parcial
+  // `learning_resource_version_one_published_per_resource` vuelve
+  // IRREPRESENTABLE el estado "dos PUBLISHED de la misma identidad", de modo
+  // que la aserción antigua ya no describe ningún estado alcanzable del
+  // sistema. Su teardown, además, es hoy una transición PUBLISHED -> DRAFT que
+  // §8.4 rechaza de forma cerrada.
+  //
+  // La INTENCIÓN útil original -- "el sistema sirve la versión vigente
+  // correcta cuando el contenido se sustituye" -- se conserva íntegra, y de
+  // hecho con más fuerza, reexpresada sobre la nueva realidad contractual:
+  //   (a) la sustitución se hace por el ÚNICO camino válido, en una sola
+  //       transacción: DEPRECATED(old) -> PUBLISHED(new) (§8.6, orden de T7);
+  //   (b) se verifica que el lector devuelve `new`;
+  //   (c) se verifica que PostgreSQL RECHAZA tener dos PUBLISHED simultáneas
+  //       del mismo padre -- el estado que la aserción antigua daba por
+  //       posible (mismo check que
+  //       scripts/verify-education-published-immutability-gate.ts demuestra en
+  //       detalle para ambas familias de versión).
+  //
+  // Higiene entre corridas (LEF VII §8.4, invariante 3): las versiones
+  // publicadas por este gate ya NO se borran ni se revierten -- no puede
+  // hacerse sin debilitar la garantía. Por eso la fixture cuelga de un
+  // `learning_resource` y un `curriculum_topic` PROPIOS y ÚNICOS por corrida,
+  // igual que ya hacían verify-academic-summary-gate y
+  // verify-advanced-profile-gate: el contenido sembrado queda intacto y las
+  // filas de prueba simplemente persisten, como persiste lo que siembra
+  // `prisma/seed.ts`.
+  console.log('--- 5b. Sustitución old->new (DEPRECATED(old) -> PUBLISHED(new)) y bloque image: objectKey nunca sale, url firmada sí ---');
+  const gateSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const isolatedTopicId = randomUUID();
+  await pg.query(
+    `INSERT INTO curriculum_topic (id, code, name, "order", subject_id, created_at, updated_at)
+     VALUES ($1, $2, 'Tema aislado del gate de EDUCATION', 900, $3, now(), now())`,
+    [isolatedTopicId, `GATE.EDU.TOPIC.${gateSuffix}`, matematica.id],
+  );
+  const isolatedResourceId = randomUUID();
+  await pg.query(
+    `INSERT INTO learning_resource (id, resource_key, primary_subject_id, resource_type, status, created_at, updated_at)
+     VALUES ($1, $2, $3, 'LESSON', 'ACTIVE', now(), now())`,
+    [isolatedResourceId, `GATE.EDU.RESOURCE.${gateSuffix}`, matematica.id],
+  );
+
+  // Versión `old`: se construye en DRAFT y se publica (DRAFT -> PUBLISHED),
+  // que es el único orden válido del nuevo contrato.
+  const oldVersionId = randomUUID();
+  await pg.query(
+    `INSERT INTO learning_resource_version (id, learning_resource_id, curriculum_topic_id, title, content_blocks, editorial_status, created_at, updated_at)
+     VALUES ($1, $2, $3, 'Versión vigente (gate)', '[{"type":"paragraph","order":0,"text":"contenido vigente"}]', 'DRAFT', now(), now())`,
+    [oldVersionId, isolatedResourceId, isolatedTopicId],
+  );
+  await pg.query(`UPDATE learning_resource_version SET editorial_status = 'PUBLISHED', published_at = now() WHERE id = $1`, [oldVersionId]);
+  const rIsolatedBefore = await req('GET', `/education/topics/${isolatedTopicId}/resource`, authHeaders);
+  check('el lector sirve la versión publicada inicial del recurso aislado', rIsolatedBefore.body?.versionId === oldVersionId);
+
+  // Versión `new` (la que trae el bloque image), todavía en DRAFT.
   const imageVersionId = randomUUID();
   await pg.query(
-    `INSERT INTO learning_resource_version (id, learning_resource_id, curriculum_topic_id, title, content_blocks, editorial_status, published_at, created_at, updated_at)
+    `INSERT INTO learning_resource_version (id, learning_resource_id, curriculum_topic_id, title, content_blocks, editorial_status, created_at, updated_at)
      VALUES ($1, $2, $3, 'Versión con imagen (gate)',
        '[{"type":"image","order":0,"objectKey":"gate/fixture-image.png","altText":"Imagen de prueba del gate"}]',
-       'PUBLISHED', now(), now(), now())`,
-    [imageVersionId, learningResourceId, unidad.id],
+       'DRAFT', now(), now())`,
+    [imageVersionId, isolatedResourceId, isolatedTopicId],
   );
-  const rResourceWithImage = await req('GET', `/education/topics/${unidad.id}/resource`, authHeaders);
-  check('la versión con imagen (más reciente) pasa a ser la servida', rResourceWithImage.body?.versionId === imageVersionId);
+
+  // (c) Dos PUBLISHED simultáneas del mismo padre: irrepresentable (DG-11).
+  await expectRejected(
+    pg,
+    'publicar una SEGUNDA versión del mismo learning_resource sin despublicar la anterior -> rechazado por PostgreSQL (DG-11, unicidad de versión publicada)',
+    `UPDATE learning_resource_version SET editorial_status = 'PUBLISHED', published_at = now() WHERE id = $1`,
+    [imageVersionId],
+  );
+
+  // (a) Sustitución por el único camino válido, en UNA transacción:
+  // DEPRECATED(old) primero, PUBLISHED(new) después (§8.6).
+  await pg.query('BEGIN');
+  await pg.query(`UPDATE learning_resource_version SET editorial_status = 'DEPRECATED' WHERE id = $1`, [oldVersionId]);
+  await pg.query(`UPDATE learning_resource_version SET editorial_status = 'PUBLISHED', published_at = now() WHERE id = $1`, [imageVersionId]);
+  await pg.query('COMMIT');
+
+  // (b) El lector devuelve `new` -- misma intención que la aserción antigua.
+  const rResourceWithImage = await req('GET', `/education/topics/${isolatedTopicId}/resource`, authHeaders);
+  check('tras la sustitución transaccional DEPRECATED(old) -> PUBLISHED(new), el lector sirve la versión NUEVA', rResourceWithImage.body?.versionId === imageVersionId);
   const imageBlock = rResourceWithImage.body?.contentBlocks?.[0];
   check('el bloque image de la respuesta NO tiene objectKey', imageBlock && !('objectKey' in imageBlock));
   check('el bloque image de la respuesta SÍ tiene url (string)', typeof imageBlock?.url === 'string' && imageBlock.url.length > 0);
   check('la url es una URL firmada real (contiene parámetros de firma S3)', /X-Amz-Signature|Signature=/.test(imageBlock?.url ?? ''));
-  // Revierte a DRAFT -- deja la base en el mismo estado que antes de este check.
-  await pg.query(`UPDATE learning_resource_version SET editorial_status = 'DRAFT', published_at = NULL WHERE id = $1`, [
-    imageVersionId,
-  ]);
-  const rResourceRestored = await req('GET', `/education/topics/${unidad.id}/resource`, authHeaders);
-  check('tras revertir, vuelve a servirse la versión publicada original', rResourceRestored.body?.versionId === rResource.body.versionId);
+  const rSeededResourceIntact = await req('GET', `/education/topics/${unidad.id}/resource`, authHeaders);
+  check('el recurso SEMBRADO no fue tocado por esta prueba (sigue sirviéndose su versión publicada original)', rSeededResourceIntact.body?.versionId === rResource.body.versionId);
 
   // --- 6. questionType restringido a SINGLE_CHOICE a nivel de base de datos ---
   console.log('--- 6. question_type distinto de SINGLE_CHOICE es rechazado por Postgres ---');

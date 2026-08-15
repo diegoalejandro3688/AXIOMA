@@ -111,24 +111,37 @@ async function seedQuestion(input: {
   const stemContent = resourceContentBlocksSchema.parse([{ type: 'paragraph', order: 0, text: input.stem }]);
   const explanationContent = explanationContentSchema.parse([{ type: 'paragraph', order: 0, text: input.explanation }]);
 
-  const version = await prisma.questionVersion.create({
+  // LEF Bloque VII, Incremento 1: una `question_version` que alcanzó
+  // publicación (PUBLISHED o DEPRECATED) es inmutable y no admite INSERT de
+  // `answer_option` -- lo aplica PostgreSQL
+  // (`trg_answer_option_published_parent_immutable`,
+  // 20260815120000_lef_vii_i1_published_immutability_uniqueness). El orden de
+  // construcción, por tanto, es el único válido del nuevo contrato y el mismo
+  // que ejercerá T1+T7 del Incremento 4: crear en DRAFT -> insertar las
+  // alternativas -> publicar (DRAFT -> PUBLISHED). El seed NO cambia ninguna
+  // regla de producto ni ningún dato sembrado: solo el ORDEN de escritura.
+  const draftVersion = await prisma.questionVersion.create({
     data: {
       questionId: question.id,
       curriculumTopicId: input.topicId,
       stemContent,
       explanationContent,
-      editorialStatus: 'PUBLISHED',
-      publishedAt: new Date(),
+      editorialStatus: 'DRAFT',
     },
   });
 
   await prisma.answerOption.createMany({
     data: input.options.map((option, index) => ({
-      questionVersionId: version.id,
+      questionVersionId: draftVersion.id,
       content: answerOptionContentSchema.parse({ type: 'paragraph', order: 0, text: option.text }),
       displayOrder: index,
       isCorrect: option.correct,
     })),
+  });
+
+  const version = await prisma.questionVersion.update({
+    where: { id: draftVersion.id },
+    data: { editorialStatus: 'PUBLISHED', publishedAt: new Date() },
   });
 
   return { question, version };

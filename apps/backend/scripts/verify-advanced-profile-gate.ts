@@ -223,9 +223,15 @@ async function main() {
      VALUES ($1, $2, $3, 'SINGLE_CHOICE', 'ACTIVE', now(), now())`,
     [questionId, `adv-prof-q-${suffix}`, subjectId],
   );
+  // LEF Bloque VII, Incremento 1: crear en DRAFT -> insertar alternativas ->
+  // publicar. `answer_option` no admite INSERT bajo una versión que ya alcanzó
+  // publicación (`trg_answer_option_published_parent_immutable`). Ninguna
+  // aserción de este gate cambia; cambia solo el ORDEN de escritura de la
+  // fixture. Este gate ya aislaba materia/tema/pregunta por corrida y nunca los
+  // borraba, así que su higiene ya era compatible con la prohibición de DELETE.
   await pg.query(
-    `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, published_at, created_at, updated_at)
-     VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"x"}]', '[{"type":"paragraph","order":0,"text":"x"}]', 'PUBLISHED', now(), now(), now())`,
+    `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, created_at, updated_at)
+     VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"x"}]', '[{"type":"paragraph","order":0,"text":"x"}]', 'DRAFT', now(), now())`,
     [versionId, questionId, topicId],
   );
   await pg.query(
@@ -233,6 +239,7 @@ async function main() {
      VALUES ($1, $2, '{"type":"paragraph","order":0,"text":"correcta"}', 0, true, now())`,
     [correctOptionId, versionId],
   );
+  await pg.query(`UPDATE question_version SET editorial_status = 'PUBLISHED', published_at = now() WHERE id = $1`, [versionId]);
   await req('POST', `/progress/topics/${topicId}/responses`, alice.headers, {
     questionVersionId: versionId,
     answerOptionId: correctOptionId,

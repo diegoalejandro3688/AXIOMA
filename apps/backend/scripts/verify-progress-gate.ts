@@ -205,6 +205,35 @@ async function main() {
   console.log('--- 8. QuestionVersion no publicada; 9. Question retirada ---');
   const subjectId = (await pg.query(`SELECT subject_id FROM curriculum_topic WHERE id = $1`, [topicId])).rows[0].subject_id;
 
+  // LEF Bloque VII, Incremento 1 -- higiene de fixtures compatible con
+  // producción. Una `question_version` que alcanzó publicación ya NO puede
+  // borrarse (invariante 3, `trg_question_version_published_no_delete`), así
+  // que las fixtures PUBLICADAS de este gate ya no se limpian en el teardown:
+  // cuelgan de temas PROPIOS y ÚNICOS por corrida (mismo criterio que
+  // verify-academic-summary-gate y verify-advanced-profile-gate, que nunca
+  // borraron los suyos) y simplemente persisten, igual que persiste el
+  // contenido de `prisma/seed.ts`. El tema SEMBRADO queda intacto: sigue
+  // teniendo exactamente sus 2 preguntas publicadas, que es de lo que dependen
+  // las aserciones 1-2/10/12 de este mismo gate.
+  //
+  // Son DOS temas aislados, no uno, porque la fixture de pregunta RETIRADA es
+  // publicada y no respondible: dejarla junto a la del check 11 impediría para
+  // siempre alcanzar COMPLETED en ese tema (`countPublishedByTopicId` cuenta
+  // toda versión publicada del tema, sin mirar el estado de la identidad).
+  const gateSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const gateRejectTopicId = randomUUID();
+  await pg.query(
+    `INSERT INTO curriculum_topic (id, code, name, "order", subject_id, created_at, updated_at)
+     VALUES ($1, $2, 'Tema aislado del gate de PROGRESS (rechazos)', 901, $3, now(), now())`,
+    [gateRejectTopicId, `GATE.PROGRESS.REJECT.${gateSuffix}`, subjectId],
+  );
+  const gateMonotonicTopicId = randomUUID();
+  await pg.query(
+    `INSERT INTO curriculum_topic (id, code, name, "order", subject_id, created_at, updated_at)
+     VALUES ($1, $2, 'Tema aislado del gate de PROGRESS (monotonía)', 902, $3, now(), now())`,
+    [gateMonotonicTopicId, `GATE.PROGRESS.MONOTONIC.${gateSuffix}`, subjectId],
+  );
+
   const draftQuestionId = randomUUID();
   const draftVersionId = randomUUID();
   const draftOptionId = randomUUID();
@@ -230,25 +259,29 @@ async function main() {
   });
   check('8. QuestionVersion DRAFT -> 400', r8.status === 400);
 
+  // Fixture PUBLICADA: se construye en DRAFT, se le insertan las alternativas
+  // y recién entonces se publica (DRAFT -> PUBLISHED) -- único orden válido
+  // desde LEF Bloque VII, Incremento 1 (`trg_answer_option_published_parent_immutable`).
   const retiredQuestionId = randomUUID();
   const retiredVersionId = randomUUID();
   const retiredOptionId = randomUUID();
   await pg.query(
     `INSERT INTO question (id, question_key, primary_subject_id, question_type, status, created_at, updated_at)
      VALUES ($1, $2, $3, 'SINGLE_CHOICE', 'RETIRED', now(), now())`,
-    [retiredQuestionId, `GATE.RETIRED.Q.${Date.now()}`, subjectId],
+    [retiredQuestionId, `GATE.RETIRED.Q.${gateSuffix}`, subjectId],
   );
   await pg.query(
-    `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, published_at, created_at, updated_at)
-     VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"x"}]', '[{"type":"paragraph","order":0,"text":"x"}]', 'PUBLISHED', now(), now(), now())`,
-    [retiredVersionId, retiredQuestionId, topicId],
+    `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, created_at, updated_at)
+     VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"x"}]', '[{"type":"paragraph","order":0,"text":"x"}]', 'DRAFT', now(), now())`,
+    [retiredVersionId, retiredQuestionId, gateRejectTopicId],
   );
   await pg.query(
     `INSERT INTO answer_option (id, question_version_id, content, display_order, is_correct, created_at)
      VALUES ($1, $2, '{"type":"paragraph","order":0,"text":"x"}', 0, true, now())`,
     [retiredOptionId, retiredVersionId],
   );
-  const r9 = await req('POST', `/progress/topics/${topicId}/responses`, d.authHeaders, {
+  await pg.query(`UPDATE question_version SET editorial_status = 'PUBLISHED', published_at = now() WHERE id = $1`, [retiredVersionId]);
+  const r9 = await req('POST', `/progress/topics/${gateRejectTopicId}/responses`, d.authHeaders, {
     questionVersionId: retiredVersionId,
     answerOptionId: retiredOptionId,
     operationId: randomUUID(),
@@ -259,19 +292,51 @@ async function main() {
   // 11. COMPLETED monotónico -- publicar contenido nuevo no downgradea
   // ============================================================
   console.log('--- 11. COMPLETED no retrocede al publicar contenido nuevo ---');
+  // Sobre el tema aislado de monotonía: una cuenta lo completa (1/1) y
+  // DESPUÉS se publica contenido nuevo en ese mismo tema. Aserción idéntica a
+  // la histórica; lo único que cambia es que el tema es propio del gate en vez
+  // del sembrado -- lo que permite que la fixture publicada persista sin
+  // borrarse (invariante 3) y sin alterar el catálogo compartido.
+  const f = await newSession('f');
+  const monotonicBaseQuestionId = randomUUID();
+  const monotonicBaseVersionId = randomUUID();
+  const monotonicBaseOptionId = randomUUID();
+  await pg.query(
+    `INSERT INTO question (id, question_key, primary_subject_id, question_type, status, created_at, updated_at)
+     VALUES ($1, $2, $3, 'SINGLE_CHOICE', 'ACTIVE', now(), now())`,
+    [monotonicBaseQuestionId, `GATE.MONOTONIC.BASE.Q.${gateSuffix}`, subjectId],
+  );
+  await pg.query(
+    `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, created_at, updated_at)
+     VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"x"}]', '[{"type":"paragraph","order":0,"text":"x"}]', 'DRAFT', now(), now())`,
+    [monotonicBaseVersionId, monotonicBaseQuestionId, gateMonotonicTopicId],
+  );
+  await pg.query(
+    `INSERT INTO answer_option (id, question_version_id, content, display_order, is_correct, created_at)
+     VALUES ($1, $2, '{"type":"paragraph","order":0,"text":"x"}', 0, true, now())`,
+    [monotonicBaseOptionId, monotonicBaseVersionId],
+  );
+  await pg.query(`UPDATE question_version SET editorial_status = 'PUBLISHED', published_at = now() WHERE id = $1`, [monotonicBaseVersionId]);
+  const rMonotonicComplete = await req('POST', `/progress/topics/${gateMonotonicTopicId}/responses`, f.authHeaders, {
+    questionVersionId: monotonicBaseVersionId,
+    answerOptionId: monotonicBaseOptionId,
+    operationId: randomUUID(),
+  });
+  check('11. el tema aislado queda COMPLETED al responder todo su contenido publicado', rMonotonicComplete.body?.topicStatus === 'COMPLETED');
+
   const newQuestionId = randomUUID();
   const newVersionId = randomUUID();
   await pg.query(
     `INSERT INTO question (id, question_key, primary_subject_id, question_type, status, created_at, updated_at)
      VALUES ($1, $2, $3, 'SINGLE_CHOICE', 'ACTIVE', now(), now())`,
-    [newQuestionId, `GATE.NEWCONTENT.Q.${Date.now()}`, subjectId],
+    [newQuestionId, `GATE.NEWCONTENT.Q.${gateSuffix}`, subjectId],
   );
   await pg.query(
     `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, published_at, created_at, updated_at)
      VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"x"}]', '[{"type":"paragraph","order":0,"text":"x"}]', 'PUBLISHED', now(), now(), now())`,
-    [newVersionId, newQuestionId, topicId],
+    [newVersionId, newQuestionId, gateMonotonicTopicId],
   );
-  const rAfterNewContent = await req('GET', `/progress/topics/${topicId}`, a.authHeaders);
+  const rAfterNewContent = await req('GET', `/progress/topics/${gateMonotonicTopicId}`, f.authHeaders);
   check('11. status sigue COMPLETED tras publicarse una pregunta nueva sin responderla', rAfterNewContent.body?.status === 'COMPLETED');
 
   await pg.query(
@@ -358,10 +423,20 @@ async function main() {
   const statusAfterRetry = await pg.query(`SELECT status FROM privacy_request WHERE account_id = $1`, [e.accountId]);
   check('la solicitud ahora sí quedó COMPLETED', statusAfterRetry.rows[0]?.status === 'COMPLETED');
 
-  // Limpieza de fixtures de este gate (temas/preguntas GATE.*).
-  await pg.query(`DELETE FROM answer_option WHERE question_version_id IN ($1, $2, $3)`, [draftVersionId, retiredVersionId, newVersionId]);
-  await pg.query(`DELETE FROM question_version WHERE id IN ($1, $2, $3)`, [draftVersionId, retiredVersionId, newVersionId]);
-  await pg.query(`DELETE FROM question WHERE id IN ($1, $2, $3)`, [draftQuestionId, retiredQuestionId, newQuestionId]);
+  // Limpieza de fixtures de este gate.
+  //
+  // LEF Bloque VII, Incremento 1: solo se borra lo que NUNCA alcanzó
+  // publicación -- la fixture en DRAFT del check 8, cuyo padre sigue en DRAFT
+  // y por tanto es borrable sin tocar ninguna garantía. Las fixtures
+  // PUBLICADAS (checks 9 y 11) ya no se borran: el `DELETE` sobre contenido
+  // que alcanzó publicación está prohibido sin excepciones, también para
+  // tests, y NO existe ningún bypass de trigger, session flag ni mecanismo SQL
+  // especial para saltárselo. Su aislamiento lo dan los temas propios y únicos
+  // por corrida creados arriba, así que persistir es inocuo -- exactamente
+  // igual que persiste el contenido sembrado por `prisma/seed.ts`.
+  await pg.query(`DELETE FROM answer_option WHERE question_version_id = $1`, [draftVersionId]);
+  await pg.query(`DELETE FROM question_version WHERE id = $1`, [draftVersionId]);
+  await pg.query(`DELETE FROM question WHERE id = $1`, [draftQuestionId]);
 
   await pg.end();
 

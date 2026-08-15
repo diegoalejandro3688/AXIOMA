@@ -51,10 +51,55 @@ async function main() {
 
   console.log('--- 0. Fixtures: preguntas publicadas dedicadas a este gate ---');
   const topicRow = await pg.query(`SELECT id, subject_id FROM curriculum_topic WHERE code = 'M1.NUMEROS.PORCENTAJES'`);
-  const topicId = topicRow.rows[0].id as string;
   const subjectId = topicRow.rows[0].subject_id as string;
 
+  // LEF Bloque VII, Incremento 1 -- higiene compatible con producción: las
+  // fixtures publicadas ya no pueden borrarse (invariante 3,
+  // `trg_question_version_published_no_delete`), así que cuelgan de un tema
+  // PROPIO y ÚNICO por corrida en vez del tema sembrado.
+  const topicId = randomUUID();
+  await pg.query(
+    `INSERT INTO curriculum_topic (id, code, name, "order", subject_id, created_at, updated_at)
+     VALUES ($1, $2, 'Tema aislado del gate HTTP de Pregunta rápida (4.c)', 905, $3, now(), now())`,
+    [topicId, `GATE.QQH.TOPIC.${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, subjectId],
+  );
+
   const trackedQuestionIds: string[] = [];
+
+  /**
+   * Aísla el universo ELEGIBLE de UNA sesión concreta, sin tocar el catálogo
+   * editorial.
+   *
+   * LEF Bloque VII, Incremento 1 -- sustituye la estrategia histórica de este
+   * gate, que despublicaba TEMPORALMENTE toda otra `question_version`
+   * (`UPDATE ... SET editorial_status='DEPRECATED'`) y la restauraba a
+   * `PUBLISHED` en el `finally`. Esa maniobra es hoy irrepresentable:
+   * `DEPRECATED` es TERMINAL en V1 y no existe `DEPRECATED -> PUBLISHED`
+   * (§8.4), además de que despublicar contenido sembrado sería un efecto
+   * permanente sobre el catálogo real.
+   *
+   * El reemplazo usa el mecanismo que el propio incremento define (§13.2): la
+   * elegibilidad excluye toda pregunta ya intentada EN ESA SESIÓN. Es
+   * estrictamente local a la sesión del gate, no toca ninguna fila de
+   * contenido y se limpia con el `DELETE FROM quick_question_attempt` que este
+   * gate ya hacía.
+   */
+  async function isolateEligibleUniverse(sessionId: string, accountId: string, keepIds: string[]): Promise<number> {
+    const inserted = await pg.query(
+      `INSERT INTO quick_question_attempt (id, session_id, account_id, question_version_id, answer_option_id, is_correct, presented_at, responded_at, operation_id, created_at)
+       SELECT gen_random_uuid(), $1, $2, qv."id",
+              COALESCE(
+                (SELECT ao."id" FROM answer_option ao WHERE ao."question_version_id" = qv."id" LIMIT 1),
+                (SELECT ao2."id" FROM answer_option ao2 LIMIT 1)
+              ),
+              false, now(), now(), gen_random_uuid(), now()
+         FROM question_version qv
+        WHERE qv."editorial_status" = 'PUBLISHED'
+          AND qv."id" <> ALL($3::uuid[])`,
+      [sessionId, accountId, keepIds],
+    );
+    return inserted.rowCount ?? 0;
+  }
 
   async function makePublishedQuestion(): Promise<{ questionVersionId: string; correctOptionId: string; wrongOptionId: string }> {
     const questionId = randomUUID();
@@ -66,9 +111,11 @@ async function main() {
        VALUES ($1, $2, $3, 'SINGLE_CHOICE', 'ACTIVE', now(), now())`,
       [questionId, `GATE.QQH.${randomUUID()}`, subjectId],
     );
+    // Orden válido y único desde LEF Bloque VII, Incremento 1: crear en DRAFT
+    // -> insertar alternativas -> publicar (DRAFT -> PUBLISHED).
     await pg.query(
-      `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, published_at, created_at, updated_at)
-       VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"¿Cuánto es 10% de 200?"}]', '[{"type":"paragraph","order":0,"text":"10% de 200 es 20."}]', 'PUBLISHED', now(), now(), now())`,
+      `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, created_at, updated_at)
+       VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"¿Cuánto es 10% de 200?"}]', '[{"type":"paragraph","order":0,"text":"10% de 200 es 20."}]', 'DRAFT', now(), now())`,
       [questionVersionId, questionId, topicId],
     );
     await pg.query(
@@ -81,24 +128,13 @@ async function main() {
        VALUES ($1, $2, '{"type":"paragraph","order":0,"text":"30"}', 1, false, now())`,
       [wrongOptionId, questionVersionId],
     );
+    await pg.query(`UPDATE question_version SET editorial_status = 'PUBLISHED', published_at = now() WHERE id = $1`, [questionVersionId]);
     trackedQuestionIds.push(questionVersionId);
     return { questionVersionId, correctOptionId, wrongOptionId };
   }
 
   const qMain = await makePublishedQuestion();
   const qForeign = await makePublishedQuestion();
-
-  // Aísla el universo elegible a estas dos fixtures -- evita que /next
-  // seleccione una pregunta ajena al azar y rompa las aserciones sobre
-  // "cuál pregunta se presentó" en este gate.
-  const otherPublished = await pg.query(
-    `SELECT id FROM question_version WHERE editorial_status = 'PUBLISHED' AND id NOT IN ($1, $2)`,
-    [qMain.questionVersionId, qForeign.questionVersionId],
-  );
-  await pg.query(`UPDATE question_version SET editorial_status = 'DEPRECATED' WHERE editorial_status = 'PUBLISHED' AND id NOT IN ($1, $2)`, [
-    qMain.questionVersionId,
-    qForeign.questionVersionId,
-  ]);
 
   const trackedSessionIds: string[] = [];
 
@@ -122,6 +158,10 @@ async function main() {
     check('status ACTIVE', open1.body?.status === 'ACTIVE');
     const sessionId = open1.body?.sessionId as string;
     trackedSessionIds.push(sessionId);
+    // Aísla el universo elegible de ESTA sesión a las dos fixtures -- evita que
+    // /next seleccione una pregunta ajena al azar y rompa las aserciones sobre
+    // "cuál pregunta se presentó" en este gate (ver `isolateEligibleUniverse`).
+    await isolateEligibleUniverse(sessionId, alice.accountId, [qMain.questionVersionId, qForeign.questionVersionId]);
 
     const openUnexpectedBody = await req('POST', QQ, alice.authHeaders, { foo: 'bar' });
     check('POST /sessions con propiedad inesperada -> 400 (.strict())', openUnexpectedBody.status === 400);
@@ -241,38 +281,28 @@ async function main() {
     check('/answers sobre sesión CLOSED -> 409', answerOnClosed.status === 409);
 
     console.log('--- 14. Nueva sesión: NO_QUESTIONS_AVAILABLE real cuando el catálogo aislado ya no tiene elegibles ---');
-    // Vacía el catálogo aislado POR COMPLETO -- una sesión NUEVA (de Bob) no
-    // hereda exclusión alguna de lo que Alice ya respondió (la exclusión es
-    // por SESIÓN, §13.2), así que ambas fixtures (qMain Y qForeign) deben
-    // dejar de ser PUBLISHED para que esta sesión nueva se quede sin nada elegible.
-    await pg.query(`UPDATE question_version SET editorial_status = 'DEPRECATED' WHERE id IN ($1, $2)`, [
-      qMain.questionVersionId,
-      qForeign.questionVersionId,
-    ]);
+    // Una sesión NUEVA (de Bob) no hereda exclusión alguna de lo que Alice ya
+    // respondió -- la exclusión es por SESIÓN (§13.2). Se agota el universo
+    // elegible DE ESA SESIÓN por completo, sin conservar ninguna fixture.
+    // (Antes esto se conseguía despublicando qMain y qForeign y
+    // republicándolas después; `DEPRECATED -> PUBLISHED` ya no existe, §8.4.)
     const openForExhaustion = await req('POST', QQ, bob.authHeaders, {});
     trackedSessionIds.push(openForExhaustion.body?.sessionId as string);
+    await isolateEligibleUniverse(openForExhaustion.body?.sessionId as string, bob.accountId, []);
     const exhaustedNext = await req('POST', `${QQ}/${openForExhaustion.body?.sessionId}/next`, bob.authHeaders, {});
     check('sin preguntas elegibles -> 200 (nunca error)', exhaustedNext.status === 200);
     check('outcome NO_QUESTIONS_AVAILABLE', exhaustedNext.body?.outcome === 'NO_QUESTIONS_AVAILABLE');
     check('respuesta NO_QUESTIONS_AVAILABLE no incluye stemContent/answerOptions', !('stemContent' in (exhaustedNext.body ?? {})) && !('answerOptions' in (exhaustedNext.body ?? {})));
-    await pg.query(`UPDATE question_version SET editorial_status = 'PUBLISHED' WHERE id IN ($1, $2)`, [
-      qMain.questionVersionId,
-      qForeign.questionVersionId,
-    ]);
   } finally {
     console.log('--- 15. Limpieza de fixtures de este gate ---');
+    // LEF Bloque VII, Incremento 1: solo se limpia lo que sigue siendo
+    // borrable (sesiones e intentos). Las `question_version` publicadas y sus
+    // `answer_option` ya NO se borran -- prohibido sin excepciones, también
+    // para tests, sin ningún bypass. Su aislamiento lo da el tema propio y
+    // único por corrida, y el universo elegible se aísla por SESIÓN.
     await pg.query('DELETE FROM quick_question_attempt WHERE session_id = ANY($1::uuid[])', [trackedSessionIds]);
     await pg.query('DELETE FROM quick_question_session WHERE id = ANY($1::uuid[])', [trackedSessionIds]);
-    await pg.query(
-      `DELETE FROM answer_option WHERE question_version_id IN (SELECT id FROM question_version WHERE question_id IN (SELECT id FROM question WHERE question_key LIKE 'GATE.QQH.%'))`,
-    );
-    await pg.query(`DELETE FROM question_version WHERE question_id IN (SELECT id FROM question WHERE question_key LIKE 'GATE.QQH.%')`);
-    await pg.query(`DELETE FROM question WHERE question_key LIKE 'GATE.QQH.%'`);
-    if (otherPublished.rowCount) {
-      await pg.query(`UPDATE question_version SET editorial_status = 'PUBLISHED' WHERE id = ANY($1::uuid[])`, [
-        otherPublished.rows.map((r) => r.id as string),
-      ]);
-    }
+    void trackedQuestionIds;
   }
 
   await pg.end();

@@ -81,9 +81,17 @@ async function main() {
        VALUES ($1, $2, $3, 'SINGLE_CHOICE', 'ACTIVE', now(), now())`,
       [questionId, `acad-sum-q-${label}-${suffix}`, subjectId],
     );
+    // LEF Bloque VII, Incremento 1: `answer_option` no puede insertarse bajo
+    // una `question_version` que ya alcanzó publicación
+    // (`trg_answer_option_published_parent_immutable`). Orden válido y único:
+    // crear en DRAFT -> insertar alternativas -> publicar (DRAFT -> PUBLISHED).
+    // Ninguna aserción de este gate cambia; cambia solo el ORDEN de escritura
+    // de la fixture. Este gate ya aislaba sus fixtures (materia/temas propios
+    // por corrida) y nunca las borraba, así que su higiene ya era compatible
+    // con la prohibición de DELETE sobre contenido publicado.
     await pg.query(
-      `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, published_at, created_at, updated_at)
-       VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"x"}]', '[{"type":"paragraph","order":0,"text":"x"}]', 'PUBLISHED', now(), now(), now())`,
+      `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, created_at, updated_at)
+       VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"x"}]', '[{"type":"paragraph","order":0,"text":"x"}]', 'DRAFT', now(), now())`,
       [versionId, questionId, topicId],
     );
     await pg.query(
@@ -96,6 +104,7 @@ async function main() {
        VALUES ($1, $2, $3, 1, false, now())`,
       [wrongOptionId, versionId, JSON.stringify({ type: 'paragraph', order: 1, text: wrongText })],
     );
+    await pg.query(`UPDATE question_version SET editorial_status = 'PUBLISHED', published_at = now() WHERE id = $1`, [versionId]);
     return { versionId, correctOptionId, wrongOptionId };
   }
 

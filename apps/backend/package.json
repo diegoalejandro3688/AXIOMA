@@ -21,6 +21,7 @@
     "verify:user-gate": "tsx scripts/verify-user-gate.ts",
     "verify:object-storage-gate": "tsx scripts/verify-object-storage-gate.ts",
     "verify:education-gate": "tsx scripts/verify-education-gate.ts",
+    "verify:education-published-immutability-gate": "tsx scripts/verify-education-published-immutability-gate.ts",
     "verify:progress-gate": "tsx scripts/verify-progress-gate.ts",
     "verify:gamification-schema-gate": "tsx scripts/verify-gamification-schema-gate.ts",
     "verify:gamification-integration-gate": "tsx scripts/verify-gamification-integration-gate.ts",

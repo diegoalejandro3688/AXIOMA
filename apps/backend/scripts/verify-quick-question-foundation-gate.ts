@@ -39,8 +39,21 @@ async function main() {
   console.log('--- 0. Fixtures: dos QuestionVersion/AnswerOption publicadas (mismo criterio que verify-progress-gate) ---');
   const topicRow = await pg.query(`SELECT id, subject_id FROM curriculum_topic WHERE code = 'M1.NUMEROS.PORCENTAJES'`);
   if (topicRow.rowCount === 0) throw new Error('Fixture de currículo no encontrada -- ¿seed ejecutado?');
-  const topicId = topicRow.rows[0].id as string;
   const subjectId = topicRow.rows[0].subject_id as string;
+
+  // LEF Bloque VII, Incremento 1 -- higiene compatible con producción. Las
+  // fixtures publicadas de este gate ya no pueden borrarse en el teardown
+  // (invariante 3, `trg_question_version_published_no_delete`), así que dejan
+  // de colgar del tema SEMBRADO y cuelgan de un tema PROPIO y ÚNICO por
+  // corrida. Así persisten sin contaminar el catálogo compartido -- el tema
+  // sembrado conserva exactamente sus 2 preguntas publicadas, de lo que
+  // dependen verify-progress-gate y verify-education-gate.
+  const topicId = randomUUID();
+  await pg.query(
+    `INSERT INTO curriculum_topic (id, code, name, "order", subject_id, created_at, updated_at)
+     VALUES ($1, $2, 'Tema aislado del gate de Pregunta rápida (4.a)', 903, $3, now(), now())`,
+    [topicId, `GATE.QQ.TOPIC.${suffix}-${Math.random().toString(36).slice(2, 8)}`, subjectId],
+  );
 
   async function makePublishedQuestion(): Promise<{ questionVersionId: string; answerOptionId: string }> {
     const questionId = randomUUID();
@@ -51,9 +64,12 @@ async function main() {
        VALUES ($1, $2, $3, 'SINGLE_CHOICE', 'ACTIVE', now(), now())`,
       [questionId, `GATE.QQ.${randomUUID()}`, subjectId],
     );
+    // Orden válido y único desde LEF Bloque VII, Incremento 1: crear en DRAFT
+    // -> insertar la alternativa -> publicar (DRAFT -> PUBLISHED). Ninguna
+    // aserción de este gate cambia.
     await pg.query(
-      `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, published_at, created_at, updated_at)
-       VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"x"}]', '[{"type":"paragraph","order":0,"text":"x"}]', 'PUBLISHED', now(), now(), now())`,
+      `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, created_at, updated_at)
+       VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"x"}]', '[{"type":"paragraph","order":0,"text":"x"}]', 'DRAFT', now(), now())`,
       [questionVersionId, questionId, topicId],
     );
     await pg.query(
@@ -61,6 +77,7 @@ async function main() {
        VALUES ($1, $2, '{"type":"paragraph","order":0,"text":"x"}', 0, true, now())`,
       [answerOptionId, questionVersionId],
     );
+    await pg.query(`UPDATE question_version SET editorial_status = 'PUBLISHED', published_at = now() WHERE id = $1`, [questionVersionId]);
     return { questionVersionId, answerOptionId };
   }
 
@@ -275,11 +292,16 @@ async function main() {
   check('ningún repositorio de 4.a publica al outbox directamente (publicación es responsabilidad de 4.b, fuera de la transacción de escritura)', !outboxUsage);
 
   console.log('--- 14. Limpieza de fixtures de este gate (mismo criterio que verify-progress-gate: nunca dejar contaminación en curriculum_topic compartido) ---');
+  // LEF Bloque VII, Incremento 1: se limpia todo lo que sigue siendo borrable
+  // (sesiones e intentos de Pregunta rápida). Las `question_version`
+  // PUBLICADAS y sus `answer_option` ya NO se borran -- el DELETE sobre
+  // contenido que alcanzó publicación está prohibido sin excepciones, también
+  // para tests, y no existe ningún bypass. La contaminación del
+  // `curriculum_topic` compartido, que era el motivo original de esta
+  // limpieza, se evita ahora en el ORIGEN: las fixtures cuelgan de un tema
+  // propio y único por corrida (ver bloque 0).
   await pg.query('DELETE FROM quick_question_attempt WHERE session_id IN ($1, $2, $3, $4)', [session1.id, session2.id, session3.id, session4.id]);
   await pg.query('DELETE FROM quick_question_session WHERE id IN ($1, $2, $3, $4)', [session1.id, session2.id, session3.id, session4.id]);
-  await pg.query('DELETE FROM answer_option WHERE question_version_id IN ($1, $2)', [q1.questionVersionId, q2.questionVersionId]);
-  await pg.query('DELETE FROM question_version WHERE id IN ($1, $2)', [q1.questionVersionId, q2.questionVersionId]);
-  await pg.query(`DELETE FROM question WHERE question_key LIKE 'GATE.QQ.%'`);
 
   await pg.end();
   await prisma.$disconnect();
