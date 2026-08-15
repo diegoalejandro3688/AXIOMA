@@ -62,6 +62,34 @@ async function createSession(uidSuffix: string): Promise<{ accountId: string; he
   };
 }
 
+/**
+ * Precondición de IDENTIDAD DE PROCESO -- ver el incidente del 2026-08-13
+ * (`experiments/tutor-pedagogy-v5-eval/INCIDENT-v4-leak-during-v5-prep.md`).
+ * Confirma que el `AiProvider` REALMENTE resuelto por la DI del backend
+ * objetivo es `FakeAiProvider` antes de emitir una sola generación, y aborta
+ * ruidosamente si no puede confirmarlo. Misma implementación exacta que en
+ * `verify-ai-safety-gate.ts`.
+ */
+async function assertBackendIsFake(): Promise<void> {
+  if (!opsKey) {
+    throw new Error(`0z. IDENTIDAD NO CONFIRMABLE: falta INTERNAL_OPS_KEY, sin ella no se puede interrogar a ${base}. Abortando ANTES de generar.`);
+  }
+  const probe = await req('GET', '/ai/_internal/effective-provider', { 'x-internal-ops-key': opsKey });
+  if (probe.status !== 200) {
+    throw new Error(
+      `0z. IDENTIDAD NO CONFIRMABLE: GET /ai/_internal/effective-provider en ${base} devolvió ${probe.status}. ` +
+        `Un puerto abierto NO prueba qué proceso escucha. Abortando ANTES de emitir ninguna generación.`,
+    );
+  }
+  if (probe.body?.provider !== 'fake') {
+    throw new Error(
+      `0z. BACKEND EQUIVOCADO: ${base} corre provider="${probe.body?.provider}" (impl=${probe.body?.impl}, AI_PROVIDER_IMPL=${probe.body?.configured}). ` +
+        `Este gate SOLO puede correr contra FakeAiProvider -- seguir habría emitido llamadas PAGADAS. Abortando.`,
+    );
+  }
+  console.log(`  OK  0z. identidad del backend CONFIRMADA en ${base}: provider=fake (impl=${probe.body?.impl}, AI_PROVIDER_IMPL=${probe.body?.configured})`);
+}
+
 async function lastModeFor(content: string): Promise<unknown> {
   const r = await req('GET', `/ai/_internal/fake-provider-last-mode?content=${encodeURIComponent(content)}`, { 'x-internal-ops-key': opsKey });
   return r.body?.mode;
@@ -115,6 +143,14 @@ async function main() {
   // ------------------------------------------------------------------
   // 1. Disclaimer presente en la superficie de conversación (create/list/get), AUSENTE en sendMessage.
   // ------------------------------------------------------------------
+  // PRECONDICIÓN 0z -- identidad del proceso backend, ANTES de la primera
+  // generación. Ver `experiments/tutor-pedagogy-v5-eval/INCIDENT-v4-leak-during-v5-prep.md`:
+  // el 2026-08-13 este gate golpeó un backend REAL (AI_PROVIDER_IMPL=anthropic,
+  // key real) preexistente en el puerto esperado, porque "el puerto responde"
+  // se tomó como prueba de identidad del proceso. Un puerto abierto NUNCA es
+  // evidencia de identidad.
+  await assertBackendIsFake();
+
   console.log('--- 1. Disclaimer presente en create/list/get, AUSENTE en la respuesta de sendMessage (decisión N) ---');
   const student1 = await createSession('s1');
   const conv1 = await req('POST', '/ai/me/conversations', student1.headers, {});

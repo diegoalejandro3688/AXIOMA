@@ -154,6 +154,118 @@ async function seedLevelLadder() {
   }
 }
 
+/**
+ * Fixtures académicos MÍNIMOS de las tres materias PAES que hasta ahora no
+ * tenían ninguno -- Ciencias, Lenguaje e Historia. Creados por decisión del
+ * Product Owner sobre la evaluación pedagógica de `AXIOMA_TUTOR_V3`
+ * (`experiments/tutor-pedagogy-v3-eval/README.md`, "Decisión pendiente del
+ * Product Owner"): esa evaluación solo pudo cubrir Matemática porque era la
+ * única materia con contenido canónico real, y la reevaluación de
+ * `AXIOMA_TUTOR_V4` necesita contexto académico real en las cuatro materias.
+ *
+ * Alcance deliberadamente MÍNIMO, no una réplica de la profundidad de
+ * Matemática: por materia, UNA unidad curricular real del temario PAES y UNA
+ * pregunta publicada de alternativa única, con enunciado autocontenido
+ * (suficiente para ejercitar HINT_FIRST / CONCEPTUAL_EXPLANATION /
+ * GUIDED_STEPS / WORKED_SOLUTION y el caso de pregunta no respondida) y
+ * explicación validada. Sin subtemas, sin recursos de aprendizaje: nada de
+ * eso lo exige la reevaluación, y fabricarlo sería inventar catálogo.
+ *
+ * Idempotente igual que el resto del seed (upsert por clave única + reuso de
+ * la versión publicada existente, ver `seedQuestion`).
+ */
+async function seedCienciasFixture() {
+  const subject = await prisma.subject.upsert({
+    where: { subjectKey: 'ciencias' },
+    update: {},
+    create: { subjectKey: 'ciencias', name: 'Ciencias', shortName: 'Cien', displayOrder: 2 },
+  });
+
+  const unidad = await upsertTopic({
+    code: 'C1.BIOLOGIA.CELULA',
+    name: 'Organización, estructura y actividad celular',
+    order: 1,
+    subjectId: subject.id,
+  });
+
+  await seedQuestion({
+    questionKey: 'C1.BIOLOGIA.CELULA.Q1',
+    subjectId: subject.id,
+    topicId: unidad.id,
+    stem: 'Una célula vegetal se sumerge en una solución cuya concentración de solutos es mayor que la de su citoplasma. ¿Qué le ocurre a la célula?',
+    options: [
+      { text: 'Gana agua por ósmosis y aumenta su volumen', correct: false },
+      { text: 'Pierde agua por ósmosis y su membrana se separa de la pared celular', correct: true },
+      { text: 'No intercambia agua, porque la pared celular impide el paso del agua', correct: false },
+      { text: 'Pierde solutos hasta igualar la concentración con el medio externo', correct: false },
+    ],
+    explanation:
+      'La solución es hipertónica respecto del citoplasma. Por ósmosis, el agua se desplaza desde donde hay menos solutos hacia donde hay más, es decir, sale de la célula. La célula vegetal pierde agua y su membrana plasmática se retrae separándose de la pared celular: ese fenómeno se llama plasmólisis. La pared celular es permeable al agua, así que no impide el intercambio, y los solutos no atraviesan libremente la membrana.',
+  });
+}
+
+async function seedLenguajeFixture() {
+  const subject = await prisma.subject.upsert({
+    where: { subjectKey: 'lenguaje' },
+    update: {},
+    create: { subjectKey: 'lenguaje', name: 'Lenguaje', shortName: 'Leng', displayOrder: 3 },
+  });
+
+  const unidad = await upsertTopic({
+    code: 'L1.LECTURA.INFERENCIA',
+    name: 'Competencia lectora: inferencia e interpretación',
+    order: 1,
+    subjectId: subject.id,
+  });
+
+  await seedQuestion({
+    questionKey: 'L1.LECTURA.INFERENCIA.Q1',
+    subjectId: subject.id,
+    topicId: unidad.id,
+    stem:
+      'Lee el siguiente fragmento: "Cuando por fin llegó a la casa, Elena encontró la puerta entreabierta y las luces encendidas. Nadie sabía que volvería antes de tiempo. Dejó la maleta en el suelo sin hacer ruido y buscó el teléfono en su bolsillo, aunque recordaba que se había quedado sin batería esa misma tarde." ¿Qué se puede inferir sobre el estado de Elena al llegar a la casa?',
+    options: [
+      { text: 'Está tranquila, porque esperaba encontrar a alguien esperándola', correct: false },
+      { text: 'Está alerta y desconfiada frente a una situación que no esperaba', correct: true },
+      { text: 'Está molesta porque su familia no le avisó que estaría en la casa', correct: false },
+      { text: 'Está apurada porque debe volver a salir de inmediato', correct: false },
+    ],
+    explanation:
+      'El texto nunca dice que Elena esté alerta: hay que inferirlo a partir de sus acciones. Encontrar la puerta entreabierta y las luces encendidas cuando nadie sabía de su llegada, dejar la maleta "sin hacer ruido" y buscar el teléfono son indicios de que percibe algo inesperado y posiblemente riesgoso. Las demás alternativas atribuyen emociones (tranquilidad, molestia, apuro) que ningún elemento del fragmento sostiene.',
+  });
+}
+
+async function seedHistoriaFixture() {
+  const subject = await prisma.subject.upsert({
+    where: { subjectKey: 'historia' },
+    update: {},
+    create: { subjectKey: 'historia', name: 'Historia', shortName: 'Hist', displayOrder: 4 },
+  });
+
+  const unidad = await upsertTopic({
+    code: 'H1.CHILE.SIGLO20.ISI',
+    name: 'Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva',
+    order: 1,
+    subjectId: subject.id,
+  });
+
+  await seedQuestion({
+    questionKey: 'H1.CHILE.SIGLO20.ISI.Q1',
+    subjectId: subject.id,
+    topicId: unidad.id,
+    stem:
+      'La crisis económica mundial de 1929 golpeó con especial fuerza a Chile por su dependencia de la exportación de salitre. Como respuesta, desde la década de 1930 el Estado chileno impulsó el modelo de Industrialización por Sustitución de Importaciones (ISI). ¿Cuál era el objetivo principal de ese modelo?',
+    options: [
+      { text: 'Aumentar las exportaciones de salitre para recuperar los ingresos perdidos', correct: false },
+      { text: 'Producir dentro del país los bienes que antes se importaban, para depender menos del exterior', correct: true },
+      { text: 'Retirar al Estado de la economía y abrir el mercado interno al libre comercio', correct: false },
+      { text: 'Trasladar a la población rural hacia las oficinas salitreras del norte del país', correct: false },
+    ],
+    explanation:
+      'El modelo ISI buscaba que Chile fabricara internamente los bienes manufacturados que antes compraba en el extranjero, reduciendo así la dependencia de las importaciones y de un único producto de exportación. Fue un modelo con fuerte intervención estatal: CORFO se creó en 1939 justamente para impulsarlo, lo que es lo contrario de retirar al Estado de la economía. Volver a apostar por el salitre habría profundizado la dependencia que la crisis dejó en evidencia.',
+  });
+}
+
 async function main() {
   await seedLevelLadder();
 
@@ -223,6 +335,10 @@ async function main() {
     ],
     explanation: 'Aumento = 2.000 × 15 / 100 = 300. Nuevo precio = 2.000 + 300 = 2.300.',
   });
+
+  await seedCienciasFixture();
+  await seedLenguajeFixture();
+  await seedHistoriaFixture();
 
   const totalTopics = await prisma.curriculumTopic.count();
   const totalQuestions = await prisma.question.count();

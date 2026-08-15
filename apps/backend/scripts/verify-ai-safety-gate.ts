@@ -30,7 +30,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { ConfigService } from '@nestjs/config';
 import { AnthropicAiProvider } from '../src/ai/anthropic-ai-provider';
 import { AiProviderTechnicalError } from '../src/ai/ai-provider';
-import { AXIOMA_TUTOR_PROMPT_VERSION } from '../src/ai/ai-pedagogy';
+import { AXIOMA_TUTOR_PROMPT_VERSION, buildAssistanceInstructionBlock, buildSystemPrompt } from '../src/ai/ai-pedagogy';
 import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identity.provider';
 import { FAKE_AI_PROVIDER_FAILURE_TRIGGER, FAKE_AI_PROVIDER_SAFETY_REFUSAL_TRIGGER } from '../src/ai/fake-ai-provider';
 
@@ -75,6 +75,36 @@ async function createSession(uidSuffix: string): Promise<{ accountId: string; he
   };
 }
 
+/**
+ * Precondición de IDENTIDAD DE PROCESO -- ver el incidente del 2026-08-13
+ * (`experiments/tutor-pedagogy-v5-eval/INCIDENT-v4-leak-during-v5-prep.md`).
+ * Confirma, contra el backend objetivo, que el `AiProvider` REALMENTE resuelto
+ * por su DI es `FakeAiProvider` antes de emitir una sola generación. Aborta
+ * ruidosamente si no puede confirmarlo (endpoint ausente, guard rechazando,
+ * backend en modo anthropic, o cualquier otra respuesta inesperada): un gate
+ * determinista NUNCA debe seguir adelante "asumiendo" contra un backend que no
+ * pudo identificar, porque eso es exactamente lo que produjo llamadas pagadas.
+ */
+async function assertBackendIsFake(): Promise<void> {
+  if (!opsKey) {
+    throw new Error(`B0. IDENTIDAD NO CONFIRMABLE: falta INTERNAL_OPS_KEY, sin ella no se puede interrogar a ${base}. Abortando ANTES de generar.`);
+  }
+  const probe = await req('GET', '/ai/_internal/effective-provider', { 'x-internal-ops-key': opsKey });
+  if (probe.status !== 200) {
+    throw new Error(
+      `B0. IDENTIDAD NO CONFIRMABLE: GET /ai/_internal/effective-provider en ${base} devolvió ${probe.status}. ` +
+        `Un puerto abierto NO prueba qué proceso escucha. Abortando ANTES de emitir ninguna generación.`,
+    );
+  }
+  if (probe.body?.provider !== 'fake') {
+    throw new Error(
+      `B0. BACKEND EQUIVOCADO: ${base} corre provider="${probe.body?.provider}" (impl=${probe.body?.impl}, AI_PROVIDER_IMPL=${probe.body?.configured}). ` +
+        `Este gate SOLO puede correr contra FakeAiProvider -- seguir habría emitido llamadas PAGADAS. Abortando.`,
+    );
+  }
+  console.log(`  OK  B0. identidad del backend CONFIRMADA en ${base}: provider=fake (impl=${probe.body?.impl}, AI_PROVIDER_IMPL=${probe.body?.configured})`);
+}
+
 function fakeConfig(overrides: Record<string, string> = {}): ConfigService {
   const values: Record<string, string> = { ANTHROPIC_API_KEY: 'test-key-nunca-real-para-este-gate', ...overrides };
   return { get: (key: string, def?: string) => values[key] ?? def } as unknown as ConfigService;
@@ -111,7 +141,20 @@ async function main() {
   console.log('=== PARTE A: política de seguridad versionada + separación system/user (cliente Anthropic falso, sin red) ===');
 
   console.log('--- A1. Política de seguridad centralizada/versionada ---');
-  check('A1a. AXIOMA_TUTOR_PROMPT_VERSION == AXIOMA_TUTOR_V3 (bump material por reglas de seguridad de I6)', AXIOMA_TUTOR_PROMPT_VERSION === 'AXIOMA_TUTOR_V3');
+  // V5 -> V6: bump material obligatorio (decisión O) por la RECONCILIACIÓN CONTRACTUAL E/F
+  // (docs/adr/LEF-BLOCK-VI-DEFINITION.md §29, 2026-08-14). V6 RETIRA la equivalencia
+  // `pregunta no respondida == actividad protegida` que V4 introdujo y V5 elevó a política
+  // global, y restaura la autorización que la decisión E concede a WORKED_SOLUTION bajo
+  // selección explícita. Las reglas de seguridad de I6 verificadas en A2-A5/A5b/A5e/A5f
+  // siguen presentes SIN CAMBIOS -- eso es precisamente lo que este gate protege: retirar
+  // una regla pedagógica no contractual nunca puede arrastrarse una regla de seguridad.
+  // V6 -> V6.1: parche ACOTADO sobre el bloque de WORKED_SOLUTION (rechazo parcial + modo
+  // activo como dato del sistema), dirigido por la evaluación real de V6. El identificador
+  // se incrementa igualmente por decisión O/invariante 15, y la aserción exige además que
+  // NO coincida con `AXIOMA_TUTOR_V6`: dos generaciones con instrucciones distintas nunca
+  // pueden quedar indistinguibles en `ai_usage_ledger.promptVersion`.
+  check('A1a. AXIOMA_TUTOR_PROMPT_VERSION == AXIOMA_TUTOR_V6_1 (parche acotado sobre WORKED_SOLUTION dirigido por la evaluación real de V6)', AXIOMA_TUTOR_PROMPT_VERSION === 'AXIOMA_TUTOR_V6_1');
+  check('A1a-bis. AXIOMA_TUTOR_PROMPT_VERSION es INEQUÍVOCO respecto de V6 (identificador distinto, trazabilidad de la decisión O)', AXIOMA_TUTOR_PROMPT_VERSION !== 'AXIOMA_TUTOR_V6');
   check('A1b. proceso de este gate NUNCA tuvo ANTHROPIC_API_KEY real en el entorno (prueba que las rutas de safety se verifican sin llamadas pagadas)', !process.env.ANTHROPIC_API_KEY);
 
   console.log('--- A2-A5. Reglas de seguridad aprobadas presentes en el system prompt (límites de autoridad, menores, sin diagnóstico, sin garantías) ---');
@@ -125,7 +168,51 @@ async function main() {
     check('A4. regla explícita de no-diagnóstico médico/psicológico definitivo', system.includes('No eres profesional médico ni psicológico'));
     check('A5. regla explícita de lenguaje/contenido apropiado para menores', system.toLowerCase().includes('menores de edad'));
     check('A5b. reconocimiento de incertidumbre (decisión Q, ya vigente desde I5) sigue presente', system.includes('reconoce esa incertidumbre'));
-    check('A5c. nota de deferral de actividades protegidas presente (decisión F, no revocada, ver reconciliación §26)', system.includes('queda diferido'));
+    // V6 (§29): la regla ANTI-FABRICACIÓN es el ancla contractual real que sobrevive
+    // (decisión Q + G/P + §24) -- reemplaza a la antigua nota de deferral, que en V4/V5
+    // servía de puente hacia la equivalencia retirada.
+    check('A5c. V6: regla anti-fabricación de la pauta oficial presente (decisión Q + §24)', system.includes('nunca inventes esa pauta') && system.includes('todavía no la ha respondido en la plataforma'));
+    // V4/V5/V6 -- reglas verificables sin llamada real (categoría A: el TEXTO está presente;
+    // que el modelo las OBEDEZCA es categoría B y solo lo mide la evaluación pedagógica).
+    check('A5e. V4/V5/V6: regla de coherencia dentro de una misma respuesta presente (SIN CAMBIOS)', system.includes('COHERENCIA DENTRO DE UNA MISMA RESPUESTA'));
+    check('A5f. V4/V5/V6: regla de brevedad/formato de chat presente (mitigación de truncamiento, SIN CAMBIOS)', system.includes('BREVEDAD Y FORMATO DE CHAT'));
+    check('A5g. V6: bloque de CRITERIO PEDAGÓGICO presente y declarado como calidad, NO como regla de seguridad', system.includes('CRITERIO PEDAGÓGICO (calidad de la ayuda, no reglas de seguridad)'));
+    check('A5h. V6: el criterio declara el modelo progresivo de la decisión E', system.includes('pista -> orientación conceptual -> pasos guiados -> solución completa'));
+    check(
+      'A5i. V6: la decisión E queda RESTAURADA en el prompt -- la solución completa no es el defecto, pero se autoriza bajo selección explícita del estudiante',
+      system.includes('la solución completa no es la primera respuesta salvo que el estudiante haya seleccionado explícitamente ese modo') &&
+        system.includes('resolver es lo correcto y negarse es un mal servicio'),
+    );
+  }
+
+  console.log('--- A5j-A5k. V6 (§29.1.1): la equivalencia `pregunta no respondida == actividad protegida` está RETIRADA del prompt ---');
+  {
+    // Contexto REAL de pregunta SIN responder -- exactamente el caso donde V4/V5 emitían
+    // el vocabulario de la decisión F. Es la superficie donde una regresión reaparecería.
+    const unansweredContext = {
+      subjectName: 'Matemática',
+      topicName: 'Porcentajes',
+      question: { stemText: '¿Cuánto es el 20% de 150?', options: ['20', '30', '35', '150'] },
+    };
+    for (const mode of ['HINT_FIRST', 'CONCEPTUAL_EXPLANATION', 'GUIDED_STEPS', 'WORKED_SOLUTION'] as const) {
+      const withContext = buildSystemPrompt({ academicContext: unansweredContext, assistanceMode: mode });
+      check(
+        `A5j.${mode}. el system prompt NO contiene la POLÍTICA GLOBAL DE NO-DERIVACIÓN de V5 (retirada por §29.1.1)`,
+        !withContext.includes('POLÍTICA GLOBAL DE NO-DERIVACIÓN'),
+      );
+      check(
+        `A5k.${mode}. el system prompt NUNCA llama "protegida" a una pregunta que solo carece de StudentResponse (vocabulario de la decisión F, reservado hasta que exista dominio canónico real)`,
+        !/protegid/i.test(withContext),
+      );
+      const block = buildAssistanceInstructionBlock(mode);
+      check(`A5l.${mode}. el bloque del modo declara su propia semántica pedagógica (modo activo/solicitado explícito), sin delegar en una política de seguridad global`, /Modo (activo|solicitado)/.test(block) && !block.includes('POLÍTICA GLOBAL'));
+    }
+    // La restauración de E es específica de WORKED_SOLUTION y debe exigir razonamiento, no solo el resultado.
+    const worked = buildAssistanceInstructionBlock('WORKED_SOLUTION');
+    check('A5m. V6: WORKED_SOLUTION sigue siendo SIEMPRE resultado de una selección explícita del estudiante (garantía A intacta)', worked.includes('EXPLÍCITAMENTE') && worked.includes('nunca es el comportamiento por defecto'));
+    check('A5n. V6: WORKED_SOLUTION queda autorizado a resolver aunque la pregunta no esté respondida (decisión E restaurada, §29.1.2)', worked.includes('esté ya respondida o todavía no'));
+    check('A5o. V6: WORKED_SOLUTION exige EXPLICAR EL RAZONAMIENTO, nunca soltar la alternativa sin desarrollo', worked.includes('EXPLICANDO EL RAZONAMIENTO') && worked.includes('sin desarrollo'));
+    check('A5p. V6: WORKED_SOLUTION sin pauta validada debe presentar su desarrollo como propio, nunca como corrección oficial de Axioma (decisión Q)', worked.includes('no como la pauta oficial de Axioma'));
   }
 
   console.log('--- A6-A7. Separación estricta system/user -- el mensaje del estudiante NUNCA altera/se mezcla con las instrucciones privilegiadas ---');
@@ -191,6 +278,17 @@ async function main() {
   // ------------------------------------------------------------------
   console.log('=== PARTE B: backend real -- reportes de respuesta, degradación ante bloqueo, cuota, ledger, ausencia de mutación cross-dominio ===');
 
+  // PRECONDICIÓN B0 -- identidad del proceso backend. Ver
+  // `experiments/tutor-pedagogy-v5-eval/INCIDENT-v4-leak-during-v5-prep.md`:
+  // el 2026-08-13 este gate se ejecutó contra un backend REAL
+  // (AI_PROVIDER_IMPL=anthropic, key real) que ya ocupaba el puerto esperado,
+  // porque "el puerto responde" se tomó como prueba de identidad del proceso.
+  // Resultado: llamadas pagadas no planificadas. Un puerto abierto NUNCA es
+  // evidencia de identidad: se exige confirmación explícita del provider
+  // efectivamente resuelto por la DI del proceso, y si no puede confirmarse
+  // el gate ABORTA en vez de seguir asumiendo.
+  await assertBackendIsFake();
+
   console.log('--- B1. Reporte de respuesta (PRD AI-015) -- mecanismo mínimo, nunca modifica la respuesta ---');
   const alice = await createSession('alice');
   const convB1 = await req('POST', '/ai/me/conversations', alice.headers, {});
@@ -240,6 +338,18 @@ async function main() {
   const quotaBeforeSafety = (await req('GET', '/ai/me/conversations', erin.headers)).body?.conversations?.[0]?.dailyQuota;
   check('B3s fixture: cuota inicial en 0 consumido', quotaBeforeSafety?.consumed === 0);
   const opIdSafety = randomUUID();
+  // Aislamiento del contador de invocaciones para ESTA corrida (ver
+  // `FakeAiProvider.resetCallCount`). `FAKE_AI_PROVIDER_SAFETY_REFUSAL_TRIGGER`
+  // es una constante FIJA y `callCounts` está indexado por contenido, así que
+  // sin este reset el contador arrastraba el valor de corridas anteriores
+  // contra el MISMO proceso de backend y B3s-4 fallaba a partir de la 2ª
+  // corrida. La aserción de B3s-4 NO se relaja: sigue exigiendo EXACTAMENTE 1.
+  const resetSafetyCount = await req('POST', `/ai/_internal/reset-fake-provider-call-count?content=${encodeURIComponent(FAKE_AI_PROVIDER_SAFETY_REFUSAL_TRIGGER)}`, {
+    'x-internal-ops-key': opsKey,
+  });
+  check('B3s-0. contador de invocaciones del sentinel reiniciado para ESTA corrida (aislamiento corrida-a-corrida)', resetSafetyCount.status === 200 || resetSafetyCount.status === 201);
+  const baselineSafetyCount = (await req('GET', `/ai/_internal/fake-provider-call-count?content=${encodeURIComponent(FAKE_AI_PROVIDER_SAFETY_REFUSAL_TRIGGER)}`, { 'x-internal-ops-key': opsKey })).body?.count;
+  check('B3s-0b. la línea base del contador es EXACTAMENTE 0 antes de enviar (si no, B3s-4 no mediría esta corrida)', baselineSafetyCount === 0);
   const sendSafety = await req('POST', `/ai/me/conversations/${convSafety.body.conversationId}/messages`, erin.headers, {
     content: FAKE_AI_PROVIDER_SAFETY_REFUSAL_TRIGGER,
     operationId: opIdSafety,

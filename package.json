@@ -17,6 +17,7 @@
     "verify:block-iii-gate": "node scripts/verify-block-iii-gate.mjs",
     "verify:lef-block-iv-gate": "node scripts/verify-lef-block-iv-gate.mjs",
     "verify:lef-block-v-gate": "node scripts/verify-lef-block-v-gate.mjs",
+    "verify:lef-block-vi-gate": "node scripts/verify-lef-block-vi-gate.mjs",
     "verify:learning-experience-foundation-gate": "node scripts/verify-learning-experience-foundation-gate.mjs"
   },
   "devDependencies": {

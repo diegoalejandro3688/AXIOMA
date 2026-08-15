@@ -72,6 +72,30 @@ export class FakeAiProvider implements AiProvider {
     return this.callCounts.get(content) ?? 0;
   }
 
+  /**
+   * Pone a CERO el contador de invocaciones físicas de UN contenido exacto --
+   * solo para gates, nunca usado por AiConversationService.
+   *
+   * Causa raíz de la intermitencia de `B3s-4` (incidente 2026-08-13, ver
+   * `experiments/tutor-pedagogy-v5-eval/INCIDENT-v4-leak-during-v5-prep.md`):
+   * `callCounts` está indexado por el CONTENIDO del mensaje y el sentinel de
+   * rechazo de seguridad (`FAKE_AI_PROVIDER_SAFETY_REFUSAL_TRIGGER`) es una
+   * constante FIJA, así que el contador se acumulaba ENTRE corridas sucesivas
+   * del gate contra el MISMO proceso de backend (1ª corrida: 1 -> PASS;
+   * 2ª corrida: 2 -> FALLO), aunque la propiedad realmente bajo prueba ("un
+   * rechazo de seguridad NUNCA se reintenta dentro de UNA operación") sí se
+   * cumplía siempre. Esto aísla el contador POR CORRIDA sin relajar en
+   * absoluto la aserción del gate (que sigue exigiendo EXACTAMENTE 1).
+   *
+   * Deliberadamente NO toca `totalCalls` (contador monótono del proceso, ver
+   * Incremento 8: `verify-ai-status-gate.ts` lo usa como delta y un reset lo
+   * invalidaría) ni `failOnceAttempts` (los gates que lo usan ya generan un
+   * contenido único por corrida con `randomUUID()`, así que no acumula).
+   */
+  resetCallCount(content: string): void {
+    this.callCounts.delete(content);
+  }
+
   /** Solo para gates -- ver `totalCalls`. */
   getTotalCallCount(): number {
     return this.totalCalls;

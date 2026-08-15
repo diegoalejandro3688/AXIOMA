@@ -30,6 +30,35 @@ const RETRY_ELIGIBLE_CATEGORIES: ReadonlySet<AiProviderErrorCategory> = new Set(
  */
 const MIN_RETRY_BUDGET_MS = 1000;
 
+/**
+ * Presupuesto TOTAL wall-clock por operación lógica, en ms. Default 10000
+ * desde V5 (era 8000 desde el Incremento 2).
+ *
+ * DECISIÓN DEL PRODUCT OWNER basada en la evidencia REAL de la evaluación
+ * pedagógica de `AXIOMA_TUTOR_V4`
+ * (`experiments/tutor-pedagogy-v4-eval/evaluation.md`): con un system prompt
+ * de ~2.570 tokens de entrada por llamada, **7 de 38 turnos (18,4 %)**
+ * expiraron contra el presupuesto de 8000 ms -- todos con la firma
+ * `"durationMs":8002..8018,"result":"timeout"` -- y el máximo registrado en el
+ * ledger fue 7.990 ms, a 10 ms del deadline. No es una intuición: es una
+ * distribución de latencia medida contra un techo demasiado ajustado.
+ *
+ * Qué NO cambia con este valor (explícito, para que nadie lo infiera al revés):
+ * - Sigue siendo un deadline TOTAL de la operación, NUNCA "10 s por intento":
+ *   el intento inicial y el único reintento técnico elegible comparten el mismo
+ *   instante absoluto de expiración; el reloj jamás se reinicia.
+ * - NO cambia el número de intentos (máximo 2 físicos: inicial + 1 reintento).
+ * - NO cambia qué categorías son reintentables: `timeout` sigue FUERA de
+ *   `RETRY_ELIGIBLE_CATEGORIES`. Un timeout termina la operación; no consume
+ *   cuota, no persiste ASSISTANT, no escribe en el ledger y deja el mensaje
+ *   USER reintentable por el propio estudiante.
+ * - NO cambia la semántica de idempotencia (`operationId`) ni ninguna cuota.
+ * La otra mitad de la mitigación de latencia es la COMPRESIÓN SEMÁNTICA del
+ * system prompt en `AXIOMA_TUTOR_V5` (ver `ai-pedagogy.ts`): se ataca el
+ * tamaño de entrada, no se compran reintentos.
+ */
+const DEFAULT_TIMEOUT_MS = '10000';
+
 function toAnthropicRole(role: 'USER' | 'ASSISTANT'): 'user' | 'assistant' {
   return role === 'USER' ? 'user' : 'assistant';
 }
@@ -68,8 +97,9 @@ function classifyError(error: unknown): { category: AiProviderErrorCategory; saf
  * (siguen dependiendo solo de `AI_PROVIDER`/`AiProvider`).
  *
  * Semántica de timeout/reintento (decisión EXACTA del Product Owner, ver
- * reporte de cierre del Incremento 2): presupuesto TOTAL wall-clock de
- * `timeoutMs` (default 8000) para la operación lógica completa. Máximo 2
+ * reporte de cierre del Incremento 2 y, para el valor vigente, el docstring de
+ * `DEFAULT_TIMEOUT_MS`): presupuesto TOTAL wall-clock de
+ * `timeoutMs` (default 10000 desde V5; era 8000) para la operación lógica completa. Máximo 2
  * intentos físicos (inicial + 1 reintento técnico), ambos comparten el mismo
  * deadline absoluto -- nunca se reinicia el reloj. El reintento recibe
  * únicamente el tiempo restante hasta el deadline; si no queda presupuesto
@@ -78,7 +108,8 @@ function classifyError(error: unknown): { category: AiProviderErrorCategory; saf
  * autenticación/configuración, solicitud inválida y error no clasificado
  * NUNCA se reintentan automáticamente.
  *
- * `maxOutputTokens` (default 512) -- AUDITADO explícitamente en el
+ * `maxOutputTokens` (default 768 desde la corrección V4; era 512 hasta la
+ * evaluación pedagógica de `AXIOMA_TUTOR_V3`) -- AUDITADO explícitamente en el
  * Incremento 3 (no se cambia por intuición, ver reporte de cierre):
  * - Coste: acota el gasto máximo por llamada de forma predecible,
  *   proporcional a la cuota diaria (3/50 consultas) -- un techo generoso por
@@ -95,11 +126,30 @@ function classifyError(error: unknown): { category: AiProviderErrorCategory; saf
  *   modelo; el riesgo aceptado es que una derivación paso a paso
  *   excepcionalmente larga corte en `stop_reason: "max_tokens"` -- tradeoff
  *   consciente para V1, no un error.
- * Conclusión: se MANTIENE 512 como política V1 explícita y revisable (no
+ * Conclusión de I3: se MANTUVO 512 como política V1 explícita y revisable (no
  * partida por tier -- ninguna decisión de producto exige que Premium
  * reciba respuestas más largas todavía), no como un valor heredado sin
  * revisar. El propio ledger de este incremento (`ai_usage_ledger.outputTokens`)
  * es la fuente de evidencia real para reabrir esta decisión más adelante.
+ *
+ * REAPERTURA EJECUTADA (512 -> 768), decisión del Product Owner sobre la
+ * evaluación pedagógica real de `AXIOMA_TUTOR_V3`
+ * (`experiments/tutor-pedagogy-v3-eval/evaluation.md`). La evidencia
+ * cuantitativa que este mismo docstring pedía ya existe y proviene del ledger,
+ * no de una intuición: 9 de 21 turnos reales (43 %) terminaron EXACTAMENTE en
+ * 512 tokens de salida, es decir cortados por este techo y no por fin de
+ * turno; en 8 de ellos el corte solo se llevó el cierre, pero en el caso P19
+ * (`WORKED_SOLUTION` sobre un ejercicio del propio estudiante) se llevó la
+ * solución entera y la respuesta quedó inutilizable -- ese caso se contabilizó
+ * como FAIL de la evaluación. 768 es el mínimo aumento que cubre con holgura
+ * el turno más largo observado (512 truncado + cierre) sin convertir el techo
+ * en un permiso para el muro de texto: la segunda mitad de la mitigación es
+ * la regla de BREVEDAD Y FORMATO DE CHAT del prompt `AXIOMA_TUTOR_V4` (ver
+ * `ai-pedagogy.ts`), que ataca la causa (encabezados/tablas/LaTeX) en vez de
+ * comprarle más espacio. El techo sigue siendo único, sin partición por tier,
+ * y el coste máximo por llamada sigue acotado y predecible (+50 % del
+ * componente de salida en el peor caso, sobre un gasto medido en centavos de
+ * dólar por corrida completa de evaluación).
  *
  * Incremento 3 (ver reporte de cierre): `generateReply` ahora puebla
  * `AiProviderReply.usage` (attempts/inputTokens/outputTokens/latencyMs) a
@@ -131,9 +181,9 @@ export class AnthropicAiProvider implements AiProvider {
       throw new Error('ANTHROPIC_API_KEY no está configurada -- requerida cuando AI_PROVIDER_IMPL=anthropic.');
     }
     this.model = config.get<string>('ANTHROPIC_MODEL', 'claude-sonnet-5');
-    this.timeoutMs = Number(config.get<string>('ANTHROPIC_TIMEOUT_MS', '8000'));
+    this.timeoutMs = Number(config.get<string>('ANTHROPIC_TIMEOUT_MS', DEFAULT_TIMEOUT_MS));
     // PROVISIONAL -- ver docstring de la clase. No inferir de este valor ningún límite adicional Free/Premium.
-    this.maxOutputTokens = Number(config.get<string>('ANTHROPIC_MAX_OUTPUT_TOKENS', '512'));
+    this.maxOutputTokens = Number(config.get<string>('ANTHROPIC_MAX_OUTPUT_TOKENS', '768'));
 
     // maxRetries: 0 -- el reintento propio (deadline-aware) reemplaza por completo el reintento incorporado del SDK,
     // que no conoce nuestro presupuesto total ni nuestra política de categorías elegibles.

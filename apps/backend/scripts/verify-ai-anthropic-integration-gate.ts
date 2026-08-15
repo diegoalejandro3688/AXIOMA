@@ -23,7 +23,7 @@
 //
 // Uso:
 //   ANTHROPIC_API_KEY=... npx tsx scripts/verify-ai-anthropic-integration-gate.ts <baseUrlNormal> [<baseUrlShortTimeout>] [<logFilePath>]
-//   - <baseUrlNormal>: backend con AI_PROVIDER_IMPL=anthropic, ANTHROPIC_TIMEOUT_MS por defecto (8000).
+//   - <baseUrlNormal>: backend con AI_PROVIDER_IMPL=anthropic, ANTHROPIC_TIMEOUT_MS por defecto (10000 desde V5; era 8000).
 //   - <baseUrlShortTimeout> (opcional): backend con AI_PROVIDER_IMPL=anthropic, ANTHROPIC_TIMEOUT_MS muy corto (ej. 1) -- para la propiedad 6 (timeout). Si se omite, esa comprobación se salta explícitamente (SKIP, no FALLO).
 //   - <logFilePath> (opcional): archivo donde el backend <baseUrlNormal> escribió su stdout -- para la propiedad 5 (API key nunca en logs). Si se omite, esa comprobación se salta explícitamente (SKIP, no FALLO).
 import 'dotenv/config';
@@ -211,7 +211,7 @@ async function runDeterministicAdapterTests() {
       if (error instanceof AiProviderTechnicalError) category = error.category;
     }
     check('categoría == timeout', category === 'timeout');
-    check('EXACTAMENTE 1 llamada física -- timeout nunca se reintenta', callCount() === 1);
+    check('EXACTAMENTE 1 llamada física -- timeout nunca se reintenta (política V5 sin cambios: `timeout` sigue FUERA de RETRY_ELIGIBLE_CATEGORIES)', callCount() === 1);
   }
 
   console.log('--- A9. Error transitorio pero SIN presupuesto restante razonable -> NO se reintenta aunque la categoría sea elegible ---');
@@ -237,7 +237,7 @@ async function runDeterministicAdapterTests() {
     check('categoría == provider_unavailable (el error original, no se reclasifica como timeout)', category === 'provider_unavailable');
     check('EXACTAMENTE 1 llamada física -- sin presupuesto razonable para un 2º intento, no se inicia', callCount() === 1);
     check(
-      'NUNCA se acumulan 8s + 8s (ni ningún múltiplo del presupuesto): la operación completa terminó en menos de 1500ms + margen, nunca cerca de 2x el presupuesto',
+      'NUNCA se acumula el presupuesto (ni 8s+8s ni 10s+10s ni ningún múltiplo): la operación completa terminó en menos de 1500ms + margen, nunca cerca de 2x el presupuesto',
       elapsedMs < 1500 + 200,
     );
   }
@@ -256,7 +256,7 @@ async function runDeterministicAdapterTests() {
     check('EXACTAMENTE 1 llamada física (una respuesta vacía no es un error de proveedor reintentable)', callCount() === 1);
   }
 
-  console.log('--- A11. Deadline COMPARTIDO, nunca reiniciado: el reintento recibe timeout == presupuesto RESTANTE, no 8000ms de nuevo ---');
+  console.log('--- A11. Deadline COMPARTIDO, nunca reiniciado: el reintento recibe timeout == presupuesto RESTANTE, no 10000ms de nuevo ---');
   {
     const observedTimeouts: number[] = [];
     const headers = new Headers();
@@ -274,13 +274,64 @@ async function runDeterministicAdapterTests() {
         },
       },
     } as unknown as Anthropic;
-    const provider = new AnthropicAiProvider(fakeConfig({ ANTHROPIC_TIMEOUT_MS: '8000' }), client);
+    const provider = new AnthropicAiProvider(fakeConfig({ ANTHROPIC_TIMEOUT_MS: '10000' }), client);
     await provider.generateReply([], 'hola');
-    check('el timeout pasado al 1er intento es (aprox.) el presupuesto total (8000ms)', observedTimeouts[0] > 7000 && observedTimeouts[0] <= 8000);
+    check('el timeout pasado al 1er intento es (aprox.) el presupuesto total (10000ms)', observedTimeouts[0] > 9000 && observedTimeouts[0] <= 10000);
     check(
-      'el timeout pasado al 2º intento es MENOR al presupuesto total -- nunca se reinicia a 8000ms de nuevo',
+      'el timeout pasado al 2º intento es MENOR al presupuesto total -- nunca se reinicia a 10000ms de nuevo',
       observedTimeouts[1] > 0 && observedTimeouts[1] < observedTimeouts[0],
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // A15 (V5). El nuevo valor por defecto (10000ms) sigue siendo un deadline
+  // TOTAL de la operación, NUNCA "10s por intento". Prueba la propiedad exacta
+  // que el Product Owner pidió volver a demostrar con el valor nuevo:
+  // "10s + 10s" (deadline duplicado por acumulación de reintentos) es
+  // imposible por construcción, porque el segundo intento recibe exactamente
+  // el tiempo que resta hasta el MISMO instante absoluto de expiración.
+  // -------------------------------------------------------------------------
+  console.log('--- A15 (V5). Presupuesto por DEFECTO == 10000ms TOTAL: intento inicial + 1 reintento elegible caben en el MISMO deadline, nunca 10s+10s ---');
+  {
+    const headers = new Headers();
+    const observed: { timeout: number; elapsedAtStart: number }[] = [];
+    let calls = 0;
+    const operationStartedAt = { value: 0 };
+    const client = {
+      messages: {
+        create: async (_params: unknown, opts: { timeout?: number }) => {
+          calls += 1;
+          if (calls === 1) operationStartedAt.value = Date.now();
+          observed.push({ timeout: opts?.timeout ?? -1, elapsedAtStart: Date.now() - operationStartedAt.value });
+          if (calls === 1) {
+            await new Promise((resolve) => setTimeout(resolve, 1200));
+            throw new Anthropic.InternalServerError(500, {}, 'boom transitorio', headers);
+          }
+          return textMessage('ok en el 2º intento, dentro del mismo deadline');
+        },
+      },
+    } as unknown as Anthropic;
+    // fakeConfig() SIN override -> se ejercita el DEFAULT productivo real del provider.
+    const provider = new AnthropicAiProvider(fakeConfig(), client);
+    const startedAt = Date.now();
+    await provider.generateReply([], 'hola');
+    const elapsedMs = Date.now() - startedAt;
+
+    check('A15a. el presupuesto por DEFECTO del provider es 10000ms (valor productivo V5, sin override)', observed[0].timeout > 9800 && observed[0].timeout <= 10000);
+    check('A15b. hubo exactamente 2 intentos físicos (inicial + 1 reintento elegible)', calls === 2);
+    check(
+      'A15c. el 2º intento NO recibe 10000ms otra vez: recibe el RESTO (~10000 - lo ya consumido)',
+      observed[1].timeout > 0 && observed[1].timeout <= 10000 - 1000,
+    );
+    check(
+      'A15d. DEADLINE ABSOLUTO COMPARTIDO: (tiempo ya transcurrido al iniciar el 2º intento) + (presupuesto del 2º intento) == 10000ms, no 20000ms',
+      Math.abs(observed[1].elapsedAtStart + observed[1].timeout - 10000) <= 50,
+    );
+    check(
+      'A15e. la suma de los presupuestos concedidos NUNCA equivale a 2x10000: el techo agregado de la operación sigue siendo 10000ms',
+      observed[0].elapsedAtStart + observed[0].timeout <= 10_050 && observed[1].elapsedAtStart + observed[1].timeout <= 10_050,
+    );
+    check('A15f. la operación completa terminó holgadamente dentro de un solo presupuesto de 10000ms', elapsedMs < 10_000);
   }
 
   console.log('--- A12. maxRetries del cliente SDK == 0 -- el reintento propio reemplaza por completo al del SDK ---');
@@ -326,7 +377,76 @@ async function runDeterministicAdapterTests() {
       question: { stemText: '¿Cuánto es 10% de 200?', options: ['20', '10', '200'] },
     });
     const systemUnanswered = String(capturedSystemUnanswered);
-    check('A14a. pregunta SIN responder -> el prompt instruye explícitamente NO revelar la alternativa correcta', systemUnanswered.includes('NUNCA reveles'));
+
+    // -----------------------------------------------------------------------
+    // A14a -- REEMPLAZO del check retirado por la reconciliación §29.
+    // Ver docs/adr/LEF-BLOCK-VI-DEFINITION.md §29 y §30 (DG-2).
+    //
+    // QUÉ VERIFICABA ANTES: `systemUnanswered.includes('NUNCA reveles')`, es
+    // decir la frase literal 'El estudiante NO ha respondido esta pregunta
+    // todavía -- NUNCA reveles ni insinúes cuál alternativa es correcta.'.
+    // Esa frase fue retirada DELIBERADAMENTE del prompt por la reconciliación
+    // §29, que retiró la equivalencia "pregunta no respondida == actividad
+    // evaluativa protegida". El check nunca se actualizó cuando se retiró el
+    // texto y quedó verificando una política que ya no existe. La frase NO se
+    // restaura y la equivalencia NO se reintroduce -- §29 permanece vigente,
+    // ni en el prompt (intacto) ni en la redacción de este check.
+    //
+    // QUÉ VERIFICA AHORA: la política REALMENTE vigente en V6_1, que no es
+    // "no reveles" sino "sin `StudentResponse` el contexto NO trae la pauta
+    // oficial, y el modelo no debe inventarla ni presentar su propio
+    // razonamiento como la corrección validada de Axioma". Se verifica como
+    // PROPIEDAD ESTRUCTURAL del bloque de contexto académico -- rama
+    // excluyente y forma del bloque -- en lugar de depender de una única
+    // frase literal frágil (exactamente el modo de fallo que produjo este
+    // arreglo):
+    //   (1) FORMA: el prompt trae EXACTAMENTE UN bloque de contexto académico
+    //       bien delimitado (apertura + cierre).
+    //   (2) RAMA: el bloque está en la rama "sin respuesta del estudiante" --
+    //       el marcador de la rama respondida está AUSENTE y el de la rama no
+    //       respondida PRESENTE. Son mutuamente excluyentes por construcción
+    //       en `buildAcademicContextBlock` (if/else sobre
+    //       `context.question.studentAnswer`), así que esta es una invariante
+    //       estructural, no una coincidencia de texto.
+    //   (3) CONCESIÓN: la autorización explícita que solo la rama respondida
+    //       otorga ("puedes identificar la alternativa correcta...") está
+    //       ausente.
+    //   (4) INSTRUCCIÓN VIGENTE: sobrevive una instrucción explícita
+    //       anti-fabricación / anti-atribución ("nunca las inventes" +
+    //       "corrección validada de Axioma"), que es el equivalente vigente,
+    //       con el vocabulario que SÍ sobrevivió a §29, de la garantía que la
+    //       frase retirada expresaba con el vocabulario antiguo. Es el único
+    //       anclaje textual que queda, y es deliberadamente corto y
+    //       semántico: verifica que la guía no fue borrada por completo.
+    //
+    // POR QUÉ NO ES REDUNDANTE CON A14b: A14b solo mira la presencia del
+    // TEXTO de la pauta ('Explicación validada'). (3) cubre un vector que
+    // A14b no ve -- un refactor podría emitir la CONCESIÓN de permiso de la
+    // rama respondida en la rama sin responder, sin filtrar la pauta misma, y
+    // A14b seguiría en PASS. (1) y (2) cubren un segundo vector invisible
+    // para A14b: dos bloques de contexto concatenados, o el bloque emitido en
+    // la rama equivocada. A14b se deja INTACTO: es la garantía complementaria.
+    //
+    // La garantía DETERMINISTA PRINCIPAL de que el answerKey/pauta nunca
+    // llega al prompt sin `StudentResponse` real (contra Postgres real, sin
+    // heurísticas de texto) sigue siendo
+    // scripts/verify-ai-answerkey-isolation-gate.ts. Este check es la
+    // verificación de superficie del prompt renderizado, no la garantía.
+    // -----------------------------------------------------------------------
+    const academicBlocks = systemUnanswered.match(/--- Contexto académico de esta conversación[\s\S]*?--- Fin del contexto académico ---/g) ?? [];
+    const academicBlock = academicBlocks[0] ?? '';
+    const answeredBranchMarker = 'El estudiante YA respondió esta pregunta';
+    const unansweredBranchMarker = 'El estudiante NO ha respondido esta pregunta todavía';
+    const answeredBranchGrant = 'puedes identificar la alternativa correcta';
+    check(
+      'A14a. pregunta SIN responder -> el bloque de contexto académico está en la rama SIN pauta (estructura: 1 bloque delimitado, marcador de rama respondida ausente, concesión de la rama respondida ausente) y conserva la instrucción vigente de no inventar la pauta ni atribuir el propio razonamiento a Axioma',
+      academicBlocks.length === 1 &&
+        academicBlock.includes(unansweredBranchMarker) &&
+        !academicBlock.includes(answeredBranchMarker) &&
+        !academicBlock.includes(answeredBranchGrant) &&
+        academicBlock.includes('nunca las inventes') &&
+        academicBlock.includes('corrección validada de Axioma'),
+    );
     check('A14b. pregunta SIN responder -> el prompt NUNCA incluye una "explicación validada"', !systemUnanswered.includes('Explicación validada'));
 
     let capturedSystemAnswered: unknown;
@@ -456,13 +576,28 @@ async function runRealIntegrationTests(baseUrlNormal: string, baseUrlShortTimeou
 
 async function main() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    console.log('SKIP  gate de integración real de Anthropic: ANTHROPIC_API_KEY no está configurada en el entorno de este script.');
-    console.log('      Este gate es OPT-IN por diseño (ver docs/adr/LEF-BLOCK-VI-DEFINITION.md §22) -- nunca se ejecuta accidentalmente como parte de la regresión ordinaria.');
-    process.exit(0);
-  }
 
+  // PARTE A es DETERMINISTA y SIN RED (cliente Anthropic falso inyectado): se ejecuta SIEMPRE,
+  // exista o no una API key. Corrección de V5: antes quedaba detrás del mismo SKIP que la PARTE B,
+  // de modo que la propiedad de deadline TOTAL (la que el Product Owner exige volver a demostrar
+  // con el valor nuevo de 10000 ms) solo era verificable en un entorno con credenciales reales
+  // -- justo el entorno donde NO se quiere ejecutar una regresión rutinaria. PARTE B sigue siendo
+  // OPT-IN estricto (ver docs/adr/LEF-BLOCK-VI-DEFINITION.md §22): requiere API key Y base URL.
   await runDeterministicAdapterTests();
+
+  if (!apiKey) {
+    console.log('');
+    console.log('SKIP  PARTE B (integración real contra la API de Anthropic): ANTHROPIC_API_KEY no está configurada en el entorno de este script.');
+    console.log('      Es OPT-IN por diseño -- nunca se ejecuta accidentalmente como parte de la regresión ordinaria. PARTE A (arriba) sí se ejecutó: es determinista y no hace ninguna llamada real.');
+    skips++;
+    console.log('');
+    if (failures > 0) {
+      console.error(`${failures} verificación(es) fallaron. ${skips} comprobación(es) omitida(s) (SKIP, no cuentan como fallo).`);
+      process.exit(1);
+    }
+    console.log(`Todas las verificaciones DETERMINISTAS (PARTE A) pasaron. ${skips} comprobación(es) omitida(s) explícitamente (SKIP).`);
+    return;
+  }
 
   const baseUrlNormal = process.argv[2];
   if (!baseUrlNormal) {
