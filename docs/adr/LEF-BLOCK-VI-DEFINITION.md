@@ -4,7 +4,7 @@
 **Fase**: Fase 2 — Learning Experience Foundation
 **Bloque**: VI de VIII (Roadmap Learning Experience Foundation)
 **Documentos relacionados**: `docs/adr/0022-proveedor-ia-tutor.md` (proveedor/modelo, congelado), `docs/adr/0005-privacy-foundation.md`, `docs/adr/0006-analytics-foundation.md`, `docs/adr/0007-logging-error-handling.md`, `docs/adr/0010-almacenamiento-de-contenido.md`, `docs/adr/0004-identity-authentication-foundation.md`, `docs/adr/LEF-BLOCK-V-DEFINITION.md`/`LEF-BLOCK-V-CLOSURE-REPORT.md` (bloque anterior, sin dependencias funcionales directas), PRD §7.5.9/§8.8/§12.14/§23.13, Master Context §4.11/§5.14 (CUJ-10)/§P-09, Data Model Bloque 15 (§15.1-15.46)
-**Estado**: **EN DEFINICIÓN — pendiente de autorización del Product Owner para iniciar implementación.** Sin código todavía. Las decisiones de alcance/producto (§5) ya están cerradas por el Product Owner (2026-08-11); lo pendiente es la autorización explícita para comenzar el Incremento 1.
+**Estado**: **CERRADO — ver `docs/adr/LEF-BLOCK-VI-CLOSURE-REPORT.md`** (aprobado por el Product Owner, 2026-08-14). Los ocho incrementos (§9 y siguientes de este documento) fueron implementados, gateados individualmente y verificados en conjunto por el gate consolidado `verify:lef-block-vi-gate` (`scripts/verify-lef-block-vi-gate.mjs`) en PASS limpio de extremo a extremo — encadena la regresión completa de LEF I-V más los gates propios de este bloque. Checkpoints commiteados: Incremento 1 (`3792231`), Incremento 2 (`015711d`), Incremento 3 (`3a8f217`), Incremento 4 (`dfdd5c4`), Incremento 5 (`2b1ac3d`), Incremento 6 (`55683d6`), Incremento 7 (`98d0ba2`), Incremento 8 (`4cb05f3`), corrección de concurrencia (`29088e7`). `verify:learning-experience-foundation-gate` actualizado para apuntar a este bloque como el más reciente cerrado de la fase, mismo criterio que el cierre de Bloque V. Ver el closure report para la reconciliación contractual (§29-§30), la evolución pedagógica V3→V6_1, incidencias, deferrals y evidencia completa — no se duplican aquí.
 
 **Nota de nomenclatura**: a diferencia de los Bloques II-V de esta fase, **no existe colisión** con el roadmap anterior (Fase 1 — Vertical Slice M1) — ese roadmap solo llegó hasta "Bloque V de V" (`docs/adr/BLOCK-V-CLOSURE-REPORT.md`), nunca definió un "Bloque VI". Este documento usa el prefijo `LEF-` de todos modos, por consistencia con `LEF-BLOCK-II-DEFINITION.md`...`LEF-BLOCK-V-DEFINITION.md` — mismo criterio de nomenclatura hacia adelante, no porque exista una colisión real esta vez.
 
@@ -448,3 +448,108 @@ Mismo patrón que Bloques II-V: el bloque se considera cerrado cuando exista `LE
 **Gates**: `apps/backend` → `verify:ai-status-gate` (backend real + Postgres real + FakeAiProvider); `apps/mobile` → `verify:ai-mobile-gate`, secciones 26/26b (cero fallback hardcodeado de cuota/disclaimer).
 
 **Limitación conocida, NO corregida aquí** (hallazgo de origen en el Incremento 3): `dailyQuota.remaining` no descuenta un `AiGenerationClaim` activo. El valor expuesto puede ser temporalmente optimista durante una generación concurrente; la admisión real del backend sigue contando reservas y protege el límite; no permite sobreconsumo. Una mejora futura podría exponer `availableIncludingReservations` o ajustar `remaining`, pero no es necesaria para cerrar el Incremento 8.
+
+## 29. Addendum — Reconciliación contractual de las decisiones E y F (2026-08-14, Product Owner)
+
+**Naturaleza**: reconciliación registrada en el documento contractual, siguiendo el precedente exacto de §26 (deferral de la decisión F) y §28.1. Los párrafos de §5 (tabla A-Q), §6 (invariante 9), §12, §24, §25 y §26 permanecen **SIN MODIFICAR** (byte-idénticos, registro histórico). Este addendum no reescribe ninguno: declara cuál es su lectura vigente.
+
+**Origen**: `docs/adr/LEF-BLOCK-VI-PEDAGOGY-CRITERION-DECISION-GATE.md` (2026-08-14) auditó los documentos originales y estableció que los prompts `AXIOMA_TUTOR_V4` (2026-08-13) y `AXIOMA_TUTOR_V5` introdujeron, sin registro contractual, la equivalencia **`pregunta no respondida == actividad evaluativa protegida`** — importando el vocabulario ("PROTEGIDA") y la severidad de la decisión **F** a un dominio donde F está explícitamente **diferida** (§26), y desactivando de paso la autorización que la decisión **E** concede a `WORKED_SOLUTION` bajo solicitud explícita del estudiante. §8 de ese documento planteó la decisión al Product Owner con dos ramas mutuamente excluyentes.
+
+### 29.1 Decisión
+
+El Product Owner **RETIRA la equivalencia** (rama 2 de §8 del Decision Gate). No se ratifica ninguna decisión E'. En consecuencia:
+
+1. **La equivalencia `pregunta no respondida == actividad evaluativa protegida` queda RETIRADA.** No es, y nunca fue, una decisión contractual. Se retira del prompt del Tutor y no puede reintroducirse por vía de redacción de prompt ni de rúbrica.
+
+2. **La decisión E vuelve a regir tal como fue definida originalmente** (§5, línea 66; §3, línea 30; §25, línea 356): fuera de una actividad evaluativa protegida real, una solución completa **puede entregarse** cuando corresponde, siguiendo el modelo progresivo, *"nunca inmediatas por defecto **salvo solicitud explícita del estudiante**"*. Por tanto `WORKED_SOLUTION`, seleccionado **explícitamente** por el estudiante sobre una pregunta normal **todavía no respondida**, **SÍ puede llegar a la solución completa** — explicando el razonamiento, nunca soltando la alternativa sin desarrollo. La única condición que E impone es *"fuera de actividad protegida"*, y hoy —por §26— todo el producto está fuera de actividad protegida.
+
+3. **La decisión F vuelve a regir tal como fue definida originalmente** (§5, línea 67; §6 invariante 9; §12) y **permanece DIFERIDA**: solo aplica cuando existe una **actividad evaluativa protegida ACTIVA** identificada por una **fuente canónica real** (cuenta participante + actividad/sesión + ítem activo + estado activo/cerrado + política de revelación). La auditoría de I6 (§26) verificó que ese dominio **no existe todavía**. F **NO se revoca**: sigue vigente como requisito con enforcement determinista obligatorio para cuando ese dominio exista, y **prevalecerá sobre todos los modos de asistencia**, incluido `WORKED_SOLUTION`.
+
+4. **`StudentResponse == null` NO simula la decisión F.** Que una pregunta no tenga `StudentResponse` **no la convierte en actividad protegida**. El gating de `StudentResponse` es y sigue siendo una frontera de **minimización de datos** (decisión G/P + §24 + invariante de I4): determina **qué se envía al proveedor**, no **qué puede razonar el modelo**. La frase de `ai-academic-context-builder.service.ts` que la describía como *"la precondición determinista sobre la que el Incremento 6 construye el bloqueo de actividades protegidas"* debe leerse en su sentido **débil** (F, cuando exista, se apoyará en esa frontera), nunca en el fuerte (esa frontera *es* F).
+
+5. **Este addendum NO reabre ni modifica la reconciliación de I6 (§26).** El deferral de F, su no-revocación, el rechazo explícito de infraestructura sintética y el cierre de Incremento 6 sin enforcement de ítems protegidos quedan **exactamente como están**. Tampoco se reabre DG-1, ADR-0022, ni ninguna otra decisión A-Q.
+
+### 29.2 Qué garantía SÍ sigue siendo de seguridad (y no cambia)
+
+Sobre una pregunta sin `StudentResponse` real, la única garantía contractual de seguridad/privacidad vigente es la de **minimización (G/P + §24 + invariante de I4)**: la alternativa correcta (`AnswerOption.isCorrect`), el `answerKey` y la explicación validada **nunca se envían al proveedor** — ni en el system prompt construido, ni en el `academicContext`, ni en ningún mensaje sintetizado por el backend. Es una garantía **estructural** de categoría (A), no una instrucción de comportamiento del modelo, y desde este addendum queda protegida contra regresiones por un gate determinista propio: `apps/backend/scripts/verify-ai-answerkey-isolation-gate.ts` (`verify:ai-answerkey-isolation-gate`).
+
+Se mantienen sin cambio alguno: seguridad general (I6: inyección, lenguaje apropiado para menores, no diagnóstico médico/psicológico, no garantías de resultado, límites de autoridad), honestidad/incertidumbre (decisión Q: no inventar fuentes, datos ni pautas oficiales), y brevedad/no-truncamiento con `ANTHROPIC_MAX_OUTPUT_TOKENS=768`.
+
+### 29.3 Consecuencia sobre la naturaleza del incumplimiento
+
+Una ayuda que revela demasiado sobre una pregunta de práctica no respondida —una pista de `HINT_FIRST` que prácticamente regala la alternativa, un `GUIDED_STEPS` que resuelve todo de corrido— es un **fallo de fidelidad al modo pedagógico / progresión** (calidad, decisión E), **nunca** un fallo crítico de integridad evaluativa ni una fuga de contexto privilegiado. Un fallo crítico de fuga exige **evidencia real** de que apareció contenido del `answerKey`/pauta validada que el contexto no debía tener disponible; no se infiere de que "la respuesta se puede deducir del razonamiento público".
+
+### 29.4 Alcance temporal y artefactos afectados
+
+Esta reconciliación aplica **exclusivamente hacia el futuro**. `AXIOMA_TUTOR_V3`, `V4` y `V5`, sus rúbricas, sus datasets y sus resultados quedan **congelados e intactos** en `experiments/tutor-pedagogy-v3-eval/`, `v4-eval/` y `v5-eval/`: siguen siendo **FAIL bajo sus propias rúbricas, tal como se aplicaron** (V3 17/19 con 1 crítico; V4 28/35 con 1 crítico; V5 33/38 = 86,8 % con 3 críticos). Nada se recalcula, se reetiqueta ni se convierte en PASS retroactivamente. Los `promptVersion` ya persistidos en `ai_usage_ledger` nunca se reescriben.
+
+Artefactos nuevos que implementan esta decisión: `AXIOMA_TUTOR_V6` (`apps/backend/src/ai/ai-pedagogy.ts`) y `experiments/tutor-pedagogy-v6-eval/` (rúbrica, dataset y plan de coste nuevos, en carpeta nueva).
+
+## 30. Addendum — Resolución de los dos Decision Gates de cierre (2026-08-14, Product Owner)
+
+**Naturaleza**: addendum de cierre, mismo patrón editorial y misma jerarquía que §26, §28.1 y §29. Ningún párrafo de las secciones §1-§29 se modifica: permanecen **byte-idénticos** como registro histórico. Este addendum no reescribe ninguno — declara la resolución de los dos Decision Gates que la auditoría de cierre consolidado dejó abiertos y que el Product Owner ya decidió.
+
+**Origen**: la auditoría de cierre consolidado de Bloque VI (2026-08-14) verificó los ocho incrementos, la regresión LEF I-V y la evidencia pedagógica de `AXIOMA_TUTOR_V6_1`, y se detuvo en dos puntos que no podía resolver por sí sola:
+
+- **DG-1 de cierre**: el criterio de reevaluación reducida pre-registrado en `experiments/tutor-pedagogy-v6-eval/W01-CAUSAL-ANALYSIS.md` §12 no se cumplió literalmente.
+- **DG-2 de cierre**: el check `A14a` de `apps/backend/scripts/verify-ai-anthropic-integration-gate.ts` verificaba una frase que §29 retiró deliberadamente del prompt.
+
+**Ninguna llamada real a Anthropic se ejecutó para producir este addendum.** No se reabren §26, §29, ADR-0022, DG-1/Gate C5 ni ninguna decisión A-Q.
+
+### 30.1 Resolución de DG-1 — desviación ACEPTADA del protocolo pre-registrado de reevaluación reducida
+
+El Product Owner **acepta formalmente** la desviación y **mantiene válida** la reevaluación reducida de `AXIOMA_TUTOR_V6_1`. La aceptación queda registrada en estos diez puntos, tal como el Product Owner los redactó:
+
+1. `W01-CAUSAL-ANALYSIS.md` pre-registró una condición estricta: si el bloque base cambiaba aunque fuera un carácter, correspondía reejecutar los 43 turnos.
+2. Esa condición no se cumplió literalmente.
+3. El hallazgo fue detectado posteriormente durante el cierre consolidado.
+4. La auditoría byte a byte demuestra que el único delta fuera de `WORKED_SOLUTION` entre V6 y V6_1 son los 2 caracteres de la etiqueta de identidad/versionado V6→V6_1, no una instrucción pedagógica ni una regla de comportamiento.
+5. No cambiaron las instrucciones de `HINT_FIRST`, `GUIDED_STEPS` ni `CONCEPTUAL_EXPLANATION`.
+6. El Product Owner acepta explícitamente ese delta como materialmente irrelevante y mantiene válida la reevaluación reducida.
+7. Esta aceptación es una desviación documentada del protocolo pre-registrado, NO una afirmación retroactiva de que el protocolo se cumplió literalmente.
+8. NO se afirma que V6_1 fue reevaluado transversalmente en todos los modos: el subset real debe describirse exactamente como ocurrió (5 casos, todos `WORKED_SOLUTION`: W01×5 + M07 + C05 + L05 + H05 + R01, más el control de coherencia intra-modo).
+9. H01/R02 permanecen como deuda conocida de fidelidad de `HINT_FIRST` y NO fueron incluidos en la reevaluación de V6_1.
+10. No se realizaron nuevas llamadas a Anthropic por esta decisión.
+
+**Evidencia byte a byte que sostiene los puntos 4 y 5** — verificación independiente reproducida durante el cierre, comparando `experiments/tutor-pedagogy-v6-eval/checkpoint/prompt-v6-rendered.txt` contra `experiments/tutor-pedagogy-v6_1-eval/checkpoint/prompt-v6_1-rendered.txt`, y ambos contra el render regenerado del árbol de trabajo vigente (`checkpoint/render-prompt.ts`, función pura, sin SDK ni red):
+
+| Bloque | V6 | V6_1 | ¿Idéntico? |
+|---|---|---|---|
+| `BLOQUE BASE` | 3283 car. | 3285 car. | **No** — delta de 2 caracteres |
+| `MODO HINT_FIRST` | 657 car., sha256 `9300f5e6d805a89d…` | 657 car., sha256 `9300f5e6d805a89d…` | **Sí, byte-idéntico** |
+| `MODO CONCEPTUAL_EXPLANATION` | 495 car., sha256 `37eceedad2b2d470…` | 495 car., sha256 `37eceedad2b2d470…` | **Sí, byte-idéntico** |
+| `MODO GUIDED_STEPS` | 474 car., sha256 `84a2120e1d74bf74…` | 474 car., sha256 `84a2120e1d74bf74…` | **Sí, byte-idéntico** |
+| `MODO WORKED_SOLUTION` | 1049 car. | 1552 car. | **No** — único bloque con cambio de contenido real |
+
+Localización exacta del delta del bloque base, por prefijo/sufijo común: **prefijo común de 62 caracteres + sufijo común de 3221 caracteres** (62 + 3221 = 3283, el bloque base completo de V6); el segmento divergente es la cadena vacía en V6 y `.1` en V6_1, dentro de la frase `…de Axioma (identidad interna: AXIOMA_TUTOR_V6[.1]), una plataforma educativa…`. Es la etiqueta de auto-identidad del prompt, no una instrucción de conducta.
+
+**Nota de forma sobre la etiqueta**: el checkpoint congelado de V6_1 renderiza `AXIOMA_TUTOR_V6.1` y el código vigente renderiza `AXIOMA_TUTOR_V6_1` (decisión O / invariante 15 — ver el docstring de `AXIOMA_TUTOR_PROMPT_VERSION` en `ai-pedagogy.ts`, que documenta la elección de la forma con guion bajo). Ambas formas tienen la misma longitud, de modo que el delta contra V6 sigue siendo de exactamente 2 caracteres en las dos, y ninguna de las dos altera una instrucción de conducta. Los cuatro bloques de modo son byte-idénticos entre el checkpoint de V6_1 y el árbol de trabajo vigente.
+
+**Lo que esta aceptación NO hace**:
+
+- **No modifica `W01-CAUSAL-ANALYSIS.md`.** El criterio pre-registrado de §12 queda **exactamente como está escrito, tal como se incumplió**. No se reescribe, no se suaviza y no se le añade una excepción retroactiva. Lo que se añade es la aceptación posterior, aquí.
+- **No convierte la reevaluación reducida en una reevaluación transversal.** El alcance real de la evidencia de V6_1 es el del punto 8, y así debe citarse siempre.
+- **No toca ningún artefacto histórico de V3/V4/V5/V6**, que siguen congelados e intactos conforme a §29.4.
+
+### 30.2 Resolución de DG-2 — actualización de `A14a` a la política vigente de V6_1
+
+**Hallazgo**: el check `A14a` de `apps/backend/scripts/verify-ai-anthropic-integration-gate.ts` (PARTE A, determinista, sin red) verificaba `systemUnanswered.includes('NUNCA reveles')` — fragmento de la frase `El estudiante NO ha respondido esta pregunta todavía -- NUNCA reveles ni insinúes cuál alternativa es correcta.`, que la reconciliación §29 **retiró deliberadamente** del prompt. El check nunca se actualizó cuando el texto se retiró: pasaba contra `HEAD` (V6 anterior a la reconciliación) y fallaba en el árbol de trabajo (V6_1). Era un check obsoleto, no una regresión del producto.
+
+**Decisión del Product Owner**: actualizar `A14a` a la política vigente. **No** se restaura la frase histórica y **no** se reintroduce —ni en el prompt ni en la redacción del check— la equivalencia `pregunta no respondida == actividad evaluativa protegida`. **§29 permanece vigente y no se reabre.** El prompt de `ai-pedagogy.ts` **no se tocó** en esta resolución.
+
+**Qué verifica ahora `A14a`** — una **propiedad estructural** del bloque de contexto académico, en lugar de una frase literal frágil (que es exactamente el modo de fallo que originó este arreglo). Sobre una pregunta sin `StudentResponse`:
+
+1. **Forma**: el prompt renderizado contiene **exactamente un** bloque de contexto académico, bien delimitado (apertura y cierre).
+2. **Rama**: el bloque está en la rama "sin respuesta del estudiante" — el marcador de la rama respondida está **ausente** y el de la rama no respondida **presente**. Ambas ramas son mutuamente excluyentes por construcción en `buildAcademicContextBlock` (`if`/`else` sobre `context.question.studentAnswer`), de modo que esto es una invariante estructural, no una coincidencia de texto.
+3. **Concesión**: la autorización que **solo** la rama respondida otorga (*"puedes identificar la alternativa correcta…"*) está ausente.
+4. **Instrucción vigente**: sobrevive una instrucción explícita **anti-fabricación / anti-atribución** (*"nunca las inventes"* + *"corrección validada de Axioma"*), que es el equivalente vigente —con el vocabulario que sí sobrevivió a §29— de la garantía que la frase retirada expresaba con el vocabulario antiguo. Es el único anclaje textual restante, deliberadamente corto y semántico: verifica que la guía no fue borrada por completo, no que esté redactada de una forma concreta.
+
+La justificación de diseño (estructural vs. textual) y el registro de qué reemplazó al `A14a` anterior quedan también en un comentario extenso junto al propio check, para que sobreviva a la lectura del archivo sin este documento.
+
+**Por qué no es redundante con `A14b`** —que permanece **INTACTO**, no se modificó—: `A14b` solo observa la presencia del **texto** de la pauta (`'Explicación validada'`). El punto 3 cubre un vector que `A14b` no puede ver: un refactor podría emitir la **concesión de permiso** de la rama respondida dentro de la rama sin responder, sin filtrar la pauta misma, y `A14b` seguiría en PASS. Los puntos 1 y 2 cubren un segundo vector invisible para `A14b`: dos bloques de contexto concatenados, o el bloque emitido en la rama equivocada. La no-redundancia se verificó empíricamente con una prueba de mutación: sobre un prompt sin `'Explicación validada'` pero con la concesión inyectada, `A14b` pasa y `A14a` falla.
+
+**Qué NO cambia**: la garantía **determinista principal** de que el `answerKey`/pauta oficial nunca llega al prompt sin `StudentResponse` real —contra Postgres real y sin heurísticas de texto— sigue siendo `apps/backend/scripts/verify-ai-answerkey-isolation-gate.ts` (§29.2), que permanece **sin modificar** y en PASS. `A14a` es una verificación de superficie del prompt renderizado, nunca la garantía.
+
+### 30.3 Alcance de este addendum
+
+Aplica **exclusivamente hacia adelante**. No modifica prompts, rúbricas, datasets ni resultados de `AXIOMA_TUTOR_V3`/`V4`/`V5`/`V6`, que siguen congelados conforme a §29.4. No altera los `promptVersion` ya persistidos en `ai_usage_ledger`. El registro consolidado del cierre del bloque —resumen de los ocho incrementos, evolución pedagógica honesta V3→V6_1, incidentes, tabla completa de deudas y evidencia de gates— vive en `docs/adr/LEF-BLOCK-VI-CLOSURE-REPORT.md`.
