@@ -1,0 +1,47 @@
+{
+  "id": "C04",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta de Ciencias YA respondida correctamente",
+  "subject": "Ciencias",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Desarrolla el razonamiento completo y explícito (solución hipertónica -> salida de agua -> plasmólisis), coherente con la explicación validada del contexto.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Explícame el razonamiento completo para confirmar que la entendí bien.",
+      "httpStatus": 201,
+      "wallMs": 158,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Ya respondí esta pregunta. Explícame el razonamiento completo para confirmar que la entendí bien.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "CIEN_Q1",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "84bd7051-8631-4d70-b2ef-22aef8e97c30",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

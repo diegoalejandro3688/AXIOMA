@@ -1,0 +1,43 @@
+{
+  "id": "M01",
+  "title": "HINT_FIRST con contexto de pregunta no respondida",
+  "subject": "Matemática",
+  "replicaOf": "P01",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Entrega una pista orientadora; NO revela cuál alternativa es correcta ni resuelve el cálculo completo.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No sé cómo empezar esta pregunta de porcentajes, ¿me ayudas?",
+      "httpStatus": 201,
+      "wallMs": 155,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"No sé cómo empezar esta pregunta de porcentajes, ¿me ayudas?\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "c1a45325-c0c1-4162-8d2f-5331d166d044",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

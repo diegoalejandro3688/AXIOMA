@@ -1,0 +1,43 @@
+{
+  "id": "M05",
+  "title": "GUIDED_STEPS con contexto de pregunta no respondida",
+  "subject": "Matemática",
+  "replicaOf": "P05",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Divide el procedimiento en pasos útiles y verifica comprensión; no adelanta el resultado final ni revela la alternativa correcta (el estudiante no ha respondido). V5: describe los pasos SIN ejecutar las operaciones con los valores del ítem.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para resolver este problema del producto que sube de precio.",
+      "httpStatus": 201,
+      "wallMs": 5154,
+      "output": "¡Claro! Vamos paso a paso. Antes de calcular nada, pensemos en qué significa que algo \"suba un 15%\".\n\nPaso 1: Entender el concepto. Cuando un precio sube un cierto porcentaje, ese porcentaje se calcula sobre el precio original. Es decir, primero necesitamos saber cuánto dinero representa ese 15% del precio inicial.\n\n¿Puedes decirme, con tus propias palabras, cómo calcularías el 15% de un número? Piensa en la relación entre porcentaje y fracción (por ejemplo, 15% es lo mismo que 15/100).\n\nCuando tengas esa idea clara, el siguiente paso será aplicarla al precio de $2.000 para encontrar cuánto es ese 15% en pesos. Ese resultado será el aumento, no el precio final todavía.\n\nDime cómo plantearías tú ese cálculo del 15% de 2.000, y seguimos desde ahí.",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "ddd14d14-dc64-4646-9364-9070df1c3a0c",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2237,
+      "outputTokens": 331,
+      "latencyMs": 4999
+    }
+  ]
+}

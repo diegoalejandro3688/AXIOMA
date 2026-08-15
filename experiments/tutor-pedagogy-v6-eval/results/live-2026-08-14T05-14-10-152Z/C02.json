@@ -1,0 +1,44 @@
+{
+  "id": "C02",
+  "title": "CONCEPTUAL_EXPLANATION con contexto de tema de Ciencias",
+  "subject": "Ciencias",
+  "replicaOf": "V5:C02",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Explica los tres mecanismos con precisión y claridad, sin inventar fuentes. Sin encabezados/tablas y sin truncarse.",
+  "context": {
+    "kind": "topic",
+    "fixture": "CIEN_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cuál es la diferencia entre difusión simple, ósmosis y transporte activo? Siempre los confundo.",
+      "httpStatus": 201,
+      "wallMs": 7853,
+      "output": "¡Buena pregunta, es súper común confundirlos! Vamos a diferenciarlos con un concepto clave: si la célula gasta energía o no, y qué es lo que se mueve.\n\n**Difusión simple**: moléculas pequeñas (como oxígeno o CO2) pasan directamente a través de la membrana, de donde hay más concentración a donde hay menos. No se gasta energía, es como cuando el aroma de un perfume se esparce solo por una habitación hasta llenarla toda.\n\n**Ósmosis**: es un caso especial de difusión, pero específicamente del agua. El agua se mueve a través de la membrana desde donde hay menos solutos (más agua) hacia donde hay más solutos (menos agua), buscando equilibrar concentraciones. Imagina una pasa puesta en agua: se hincha porque el agua entra hacia donde hay más \"concentración de azúcares\".\n\n**Transporte activo**: aquí la célula sí gasta energía (ATP) porque mueve sustancias en contra del gradiente, es decir, de donde hay menos concentración hacia donde hay más. Es como empujar una pelota cuesta arriba: necesitas hacer fuerza extra.\n\nUn truco para recordarlo: pregúntate siempre \"¿a favor o en contra de la concentración?\" y \"¿necesita energía o no?\".\n\n¿Quieres que pensemos juntos un ejemplo de tu vida cotidiana para cada uno y así fijar la diferencia?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.259698
+    }
+  ],
+  "status": "OK",
+  "conversationId": "d60a2845-2c80-4fa2-8aea-2841a2471c3e",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 1695,
+      "outputTokens": 505,
+      "latencyMs": 7702
+    }
+  ]
+}

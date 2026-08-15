@@ -1,0 +1,41 @@
+{
+  "id": "P18",
+  "title": "CONCEPTUAL_EXPLANATION con pregunta no respondida en contexto",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Explica el concepto sin revelar cuál alternativa es correcta (el estudiante no ha respondido).",
+  "context": {
+    "kind": "question",
+    "fixture": "Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "Explícame el concepto que necesito para responder esta pregunta.",
+      "httpStatus": 201,
+      "wallMs": 7704,
+      "output": "¡Claro! Vamos a repasar el concepto de **porcentaje**, que es justo lo que necesitas para esta pregunta.\n\n## ¿Qué es un porcentaje?\n\nUn porcentaje representa una **parte de un total**, dividido en 100 partes iguales. Cuando decimos \"20%\", significa \"20 de cada 100\".\n\n## ¿Cómo se calcula el porcentaje de un número?\n\nHay un par de formas de pensarlo:\n\n**Opción 1: Convertir el porcentaje a fracción o decimal**\n\nEl 20% se puede escribir como:\n- Fracción: 20/100 (que se simplifica a 1/5)\n- Decimal: 0,20\n\nLuego multiplicas ese decimal (o fracción) por el número total:\n\n$$\\text{Porcentaje} \\times \\text{Total} = \\text{Resultado}$$\n\n**Opción 2: Pensarlo con una regla de tres**\n\nSi 100% equivale al total, ¿a cuánto equivale el 20%? Ahí planteas una proporción:\n\n$$\\frac{100}{\\text{Total}} = \\frac{20}{x}$$\n\n## Un ejemplo distinto para practicar la idea\n\nSi quisiera saber el 10% de 200:\n- Como decimal: 0,10 × 200 = 20\n- Como fracción: (10/100) × 200 = 2000/100 = 20\n\nAmbos caminos te llevan al mismo resultado. 😊\n\n---\n\n¿Te gustaría que probemos juntos con un número distinto a 150",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "6caa51fa-9cd7-482d-bb28-8bf0d7bec078",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1269,
+      "outputTokens": 512,
+      "latencyMs": 7537
+    }
+  ]
+}

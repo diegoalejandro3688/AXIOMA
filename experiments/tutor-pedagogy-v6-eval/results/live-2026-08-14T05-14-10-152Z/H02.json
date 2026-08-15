@@ -1,0 +1,44 @@
+{
+  "id": "H02",
+  "title": "CONCEPTUAL_EXPLANATION con contexto de tema de Historia",
+  "subject": "Historia",
+  "replicaOf": "V5:H02",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Explicación históricamente correcta (monoexportación salitrera, caída del comercio mundial, salitre sintético), sin inventar cifras ni fuentes que no pueda sostener.",
+  "context": {
+    "kind": "topic",
+    "fixture": "HIST_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Por qué la crisis de 1929 golpeó tan fuerte a Chile en comparación con otros países?",
+      "httpStatus": 201,
+      "wallMs": 8288,
+      "output": "¡Buena pregunta! Para entenderlo, hay que mirar la estructura económica que tenía Chile antes de 1929.\n\nEl concepto clave aquí es la dependencia de una economía monoexportadora (o mono-productora). Chile basaba gran parte de sus ingresos fiscales y su comercio exterior en la exportación de un solo producto principal: el salitre. Esto significa que la salud de toda la economía nacional dependía de que hubiera compradores externos para ese producto.\n\nCuando ocurre una crisis global como la de 1929, el comercio internacional se contrae bruscamente: los países dejan de comprar tanto, y en particular, cae la demanda de salitre (que además ya venía compitiendo con el salitre sintético alemán).\n\nPiensa en un ejemplo cotidiano: imagina un negocio familiar que le vende un solo tipo de producto a un solo cliente grande. Si ese cliente deja de comprar, el negocio entero colapsa, porque no tiene otras fuentes de ingreso para compensar. Eso es distinto a un negocio que vende variedad de productos a muchos clientes: si uno falla, los otros amortiguan el golpe.\n\nUn país con economía diversificada (varias exportaciones, mercado interno fuerte) puede absorber mejor una caída externa. Chile, al depender tan fuertemente de un solo rubro, no tenía ese \"colchón\".\n\n¿Quieres que pensemos juntos qué otro factor estructural (no solo el salitre) pudo haber profundizado esta vulnerabilidad?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.393051
+    }
+  ],
+  "status": "OK",
+  "conversationId": "a6775575-b21c-4324-a7a2-1d09e042573a",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 1707,
+      "outputTokens": 532,
+      "latencyMs": 8142
+    }
+  ]
+}

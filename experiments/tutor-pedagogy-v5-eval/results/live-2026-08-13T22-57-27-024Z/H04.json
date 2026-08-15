@@ -1,0 +1,47 @@
+{
+  "id": "H04",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta de Historia YA respondida correctamente",
+  "subject": "Historia",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Desarrollo completo y explícito del razonamiento histórico, coherente con la explicación validada del contexto (rol de CORFO, dependencia del salitre).",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Explícame el desarrollo completo para confirmar que la entendí bien.",
+      "httpStatus": 201,
+      "wallMs": 7082,
+      "output": "¡Muy bien! Elegiste la alternativa correcta: \"Producir dentro del país los bienes que antes se importaban, para depender menos del exterior\". Vamos a repasar por qué.\n\nAntes de 1929, Chile dependía enormemente de la exportación del salitre para financiar al Estado. Cuando la crisis mundial golpeó, se desplomó la demanda de ese producto y la economía chilena quedó muy expuesta, porque dependía de un solo bien de exportación.\n\nAnte eso, el Estado decidió cambiar de estrategia: en vez de seguir vendiendo materias primas al exterior y comprando manufacturas, impulsó que esas manufacturas se fabricaran dentro del país. Eso es la ISI: sustituir importaciones por producción nacional, para no depender tanto de lo que pasara afuera. Un hito clave fue la creación de CORFO en 1939, que financió industrias nacionales.\n\nRevisemos los distractores: \"aumentar las exportaciones de salitre\" repetiría el mismo error que causó la crisis. \"Retirar al Estado\" es justo lo opuesto: la ISI implicó más intervención estatal, no menos. Y \"trasladar población rural a las oficinas salitreras\" no tiene relación con el objetivo del modelo, que apuntaba a industrializar, no a reforzar el salitre.\n\n¿Quieres que veamos cómo la ISI se relaciona con otros procesos posteriores de la economía chilena?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "HIST_Q1",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "e7d1ee6e-f9b7-4aa5-92c6-29bd6cbed94f",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2940,
+      "outputTokens": 504,
+      "latencyMs": 6963
+    }
+  ]
+}

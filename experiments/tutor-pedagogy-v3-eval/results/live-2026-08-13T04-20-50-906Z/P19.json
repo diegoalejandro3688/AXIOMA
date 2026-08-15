@@ -1,0 +1,37 @@
+{
+  "id": "P19",
+  "title": "WORKED_SOLUTION sin contexto académico (ejercicio del propio estudiante)",
+  "coverage": [
+    "4-worked_solution",
+    "6-sin_contexto"
+  ],
+  "expectation": "Resuelve completo con explicación paso a paso (respuesta correcta: 10 días), no solo el resultado final.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Resuélveme completo este ejercicio de mi cuaderno: si 8 trabajadores tardan 15 días en una obra, ¿cuántos días tardarían 12 trabajadores al mismo ritmo?",
+      "httpStatus": 201,
+      "wallMs": 7502,
+      "output": "¡Claro! Vamos a resolver este ejercicio paso a paso. Es un problema de **proporcionalidad inversa**, porque mientras más trabajadores hay, menos días se necesitan (y viceversa).\n\n## Planteamiento\n\n**Idea clave:** El trabajo total a realizar es siempre el mismo. Ese trabajo se puede medir en \"trabajador-días\", es decir, cuántos trabajadores multiplicados por cuántos días se necesitan.\n\n$$\\text{Trabajo total} = \\text{N° trabajadores} \\times \\text{N° días}$$\n\n## Datos del problema\n\n- Situación 1: 8 trabajadores → 15 días\n- Situación 2: 12 trab",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "3695f8e7-942f-429a-9d23-14aa0eac1a5d",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1277,
+      "outputTokens": 512,
+      "latencyMs": 7396
+    }
+  ]
+}

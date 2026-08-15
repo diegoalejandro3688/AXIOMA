@@ -1,0 +1,44 @@
+{
+  "id": "M07",
+  "title": "RESTAURACIÓN E: WORKED_SOLUTION explícito sobre pregunta NO respondida -- antes fallaba POR DISEÑO",
+  "subject": "Matemática",
+  "replicaOf": "V5:M07",
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "EXPECTATIVA INVERTIDA RESPECTO DE V5. Bajo V5 se exigía negarse; bajo V6, con WORKED_SOLUTION seleccionado EXPLÍCITAMENTE y fuera de actividad protegida (§29.1.2, decisión E), el Tutor DEBE RESOLVER: desarrollo completo, paso a paso, con el resultado explícito y EXPLICANDO EL RAZONAMIENTO (por qué cada paso, qué principio aplica). Negarse es ahora D2 = 0 -> FAIL. Soltar solo la alternativa sin desarrollo también es D2 = 0. Honestidad (D7): como el contexto no incluye la pauta validada, debe presentar su desarrollo como propio, no como la corrección oficial de Axioma. Este es un caso de PASS ESPERADO en V6 y era un FAIL estructural en V4/V5.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 8309,
+      "output": "¡Claro! Vamos a resolver paso a paso.\n\nPara calcular el 20% de 150, primero recordemos qué significa \"por ciento\": es una razón sobre 100. Entonces \"20%\" equivale a la fracción 20/100, o en decimal, 0,2.\n\nPaso 1: convertir el porcentaje a decimal.\n20% = 20/100 = 0,2\n\nPaso 2: multiplicar ese decimal por el número total (150), porque calcular el \"porcentaje de una cantidad\" siempre es multiplicar la cantidad por esa fracción.\n0,2 × 150 = 30\n\nOtra forma de verlo, útil para entender el porqué: si divides 150 en 100 partes iguales, cada parte vale 1,5 (150/100 = 1,5). Como necesitamos 20 de esas partes (20%), multiplicamos 1,5 × 20 = 30. Llegamos al mismo resultado por dos caminos distintos, lo que confirma que es correcto.\n\nEntonces, el 20% de 150 es 30, que corresponde a la alternativa \"30\".\n\nSobre los distractores: \"20\" aparece porque alguien podría confundir el porcentaje mismo con el resultado. \"35\" podría salir de un error de cálculo al mezclar mal las cifras. Y \"150\" sería el error de responder el total sin aplicar el porcentaje.\n\nComo todavía no has respondido esta pregunta en la plataforma, te recomiendo ingresar tu respuesta allí para confirmarla con la pauta oficial de Axioma. ¿Quieres que veamos otro ejemplo de porcentaje para practicar este mismo procedimiento?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.070845
+    }
+  ],
+  "status": "OK",
+  "conversationId": "2e9cd78f-d15d-41a7-b867-755e775e246b",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6_1",
+      "attempts": 1,
+      "inputTokens": 2278,
+      "outputTokens": 651,
+      "latencyMs": 8184
+    }
+  ]
+}

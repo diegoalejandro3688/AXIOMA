@@ -1,0 +1,49 @@
+{
+  "id": "H04",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta de Historia YA respondida correctamente",
+  "subject": "Historia",
+  "replicaOf": "V5:H04",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Desarrollo completo y explícito del razonamiento histórico, coherente con la explicación validada del contexto (rol de CORFO, dependencia del salitre).",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Explícame el desarrollo completo para confirmar que la entendí bien.",
+      "httpStatus": 201,
+      "wallMs": 7891,
+      "output": "¡Muy bien, y además la respondiste correctamente! Vamos al desarrollo completo.\n\nLa crisis de 1929 golpeó a Chile con particular dureza porque la economía dependía casi exclusivamente de un solo producto de exportación: el salitre. Cuando el comercio mundial colapsó, las ventas de salitre se desplomaron y con ellas los ingresos del Estado. Ese golpe dejó una lección clara: depender de un solo producto exportado (y de mercados externos) es muy riesgoso.\n\nPor eso, desde la década de 1930, Chile adoptó el modelo de Industrialización por Sustitución de Importaciones (ISI). La lógica era: si antes comprábamos afuera bienes manufacturados (textiles, maquinaria, productos industriales), ahora había que fabricarlos dentro del país. Así se reducía la dependencia del exterior y se generaba empleo e industria local. Esta es exactamente la alternativa que elegiste: correcta.\n\nSobre los distractores: aumentar exportaciones de salitre habría repetido el mismo error que causó la crisis, no lo corregía. Retirar al Estado de la economía es lo opuesto a lo que ocurrió: en 1939 se creó la CORFO (Corporación de Fomento de la Producción), una institución estatal clave para financiar e impulsar la industria nacional, es decir, más intervención estatal, no menos. Y trasladar población hacia las oficinas salitreras no tiene relación con el objetivo del modelo, que buscaba diversificar la economía, no reforzar el salitre.\n\n¿Quieres que veamos cómo la CORFO se relaciona con otras políticas económicas de esa época?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.419859
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "HIST_Q1",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "8e210043-ee70-418b-8aa8-528911439ab1",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2512,
+      "outputTokens": 582,
+      "latencyMs": 7674
+    }
+  ]
+}

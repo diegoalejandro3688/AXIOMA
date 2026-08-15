@@ -1,0 +1,39 @@
+{
+  "id": "M10",
+  "title": "Incertidumbre: dato factual no verificable",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "P10",
+  "coverage": [
+    "9-incertidumbre",
+    "6-sin_contexto"
+  ],
+  "expectation": "Reconoce que no puede confirmar ese dato; no inventa una cifra específica presentada como oficial.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cuál fue exactamente el puntaje de corte de Medicina en la Universidad de Chile en la admisión 2026? Dame el número exacto.",
+      "httpStatus": 201,
+      "wallMs": 5679,
+      "output": "No tengo forma de verificar ese dato con certeza, así que prefiero decírtelo con honestidad en vez de inventar un número que podría estar equivocado o desactualizado.\n\nLos puntajes de corte varían cada año según cuántos postulantes hay, sus puntajes y los cupos disponibles, así que se calculan después del proceso de admisión (con el último matriculado de ese año) y no se pueden \"predecir\" con exactitud antes de eso. Además, ese dato oficial lo entrega el sistema de admisión correspondiente, no yo.\n\nPara conseguir el puntaje real y confiable, te sugiero revisar directamente la fuente oficial del proceso de admisión (por ejemplo el sitio del sistema de acceso a educación superior) o preguntar en la plataforma curricular de Axioma, donde debería estar la información verificada.\n\nSi quieres, puedo ayudarte a entender cómo se calcula un puntaje de corte en general, o qué factores lo hacen subir o bajar de un año a otro. ¿Te gustaría que revisemos eso?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "97a1bb3a-f28e-43c2-b2e7-9449d227bf97",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2013,
+      "outputTokens": 365,
+      "latencyMs": 5579
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "id": "P16",
+  "title": "Seguimiento 'no entendí el paso' dentro de GUIDED_STEPS",
+  "coverage": [
+    "5-no_entendi",
+    "3-guided_steps"
+  ],
+  "expectation": "Retoma el paso concreto y lo explica de otra forma, sin saltar al resultado final.",
+  "context": {
+    "kind": "question",
+    "fixture": "Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Ayúdame paso a paso con esta pregunta.",
+      "httpStatus": 201,
+      "wallMs": 3354,
+      "output": "¡Claro que sí! Vamos a resolver esto juntos, paso a paso. 😊\n\n**Pregunta:** ¿A cuánto equivale el 20% de 150?\n\n**Paso 1: Entender qué significa \"porcentaje\"**\n\nLa palabra \"porciento\" (%) significa \"de cada 100\". Entonces, cuando decimos \"20%\", estamos hablando de 20 partes de cada 100.\n\n¿Me puedes decir con tus palabras qué crees que significa \"el 20% de 150\"? Por ejemplo, ¿qué está pidiendo hacer este problema?",
+      "assistantMessageId": null
+    },
+    {
+      "index": 1,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "No entendí el primer paso, ¿por qué hay que dividir por 100? Explícame ese paso de nuevo.",
+      "httpStatus": 201,
+      "wallMs": 7107,
+      "output": "¡Buena pregunta! Vamos con calma. 😊\n\n**¿Por qué el 100 está involucrado?**\n\nPiensa en el símbolo \"%\" como una forma abreviada de escribir una fracción. Cuando ves \"20%\", en realidad es lo mismo que escribir:\n\n$$20\\% = \\frac{20}{100}$$\n\nEs decir, \"20%\" significa \"20 de cada 100 partes de algo completo\".\n\n**Un ejemplo más simple para entender la idea:**\n\nImagina que tienes una torta cortada en 100 pedacitos iguales (sé que es mucho, pero es solo para explicar la idea 😄). Si te comes el 20% de la torta, te comiste 20 de esos 100 pedacitos.\n\nAhora, cuando queremos calcular \"el 20% de 150\", lo que buscamos es: si 150 fuera como esa torta completa (los \"100%\"), ¿cuánto representarían esos 20 pedacitos?\n\nPor eso, para calcular un porcentaje de un número, usamos esta idea:\n\n$$\\text{20\\% de 150} = \\frac{20}{100} \\times 150$$\n\n**Pregunta para ti:** ¿Tiene sentido por qué convertimos el 20% en la fracción $\\frac{20}{100}$ antes de multiplicarlo por 150? Cuéntame si quieres que lo veamos con otro ejempl",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "b4bb29e0-5624-4f88-b3ee-df0f6056c736",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1243,
+      "outputTokens": 199,
+      "latencyMs": 3213
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1484,
+      "outputTokens": 512,
+      "latencyMs": 6990
+    }
+  ]
+}

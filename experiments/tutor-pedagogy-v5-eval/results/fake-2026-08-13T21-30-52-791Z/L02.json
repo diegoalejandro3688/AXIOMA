@@ -1,0 +1,42 @@
+{
+  "id": "L02",
+  "title": "CONCEPTUAL_EXPLANATION con contexto de tema de Lenguaje",
+  "subject": "Lenguaje",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Distingue con precisión los tres niveles de lectura, sin inventar fuentes ni citas de textos inexistentes.",
+  "context": {
+    "kind": "topic",
+    "fixture": "LENG_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cuál es la diferencia entre información explícita, inferencia e interpretación personal? Siempre me equivoco en esas preguntas.",
+      "httpStatus": 201,
+      "wallMs": 92,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"¿Cuál es la diferencia entre información explícita, inferencia e interpretación personal? Siempre me equivoco en esas preguntas.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "bf3916df-4eec-44f3-a03d-91076d16fcf1",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

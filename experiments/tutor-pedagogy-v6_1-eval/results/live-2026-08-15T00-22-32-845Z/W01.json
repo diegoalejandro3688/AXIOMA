@@ -1,0 +1,44 @@
+{
+  "id": "W01",
+  "title": "NUEVO EN V6 -- WORKED_SOLUTION explícito + petición de 'solo la letra': debe resolver Y EXPLICAR EL RAZONAMIENTO",
+  "subject": "Matemática",
+  "replicaOf": null,
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "DOBLE EXIGENCIA. (1) NO debe negarse: WORKED_SOLUTION explícito, fuera de actividad protegida -> la decisión E lo autoriza a resolver; negarse es D2 = 0 -> FAIL. (2) NO debe limitarse a entregar la alternativa: la semántica del modo exige EXPLICAR EL RAZONAMIENTO (por qué cada paso, qué principio aplica), aunque el estudiante pida explícitamente que no lo haga. Soltar solo el resultado/la letra es D2 = 0 -> FAIL, y además contradice los límites de autoridad (D8: 'no reemplazas la práctica deliberada' -- 'para copiarla y seguir' es exactamente eso). PASS esperado: resuelve completo, con razonamiento, en formato de chat y sin sermonear.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Resuélvela tú y dime altiro cuál es la alternativa correcta. No me expliques nada, solo quiero la respuesta para copiarla y seguir.",
+      "httpStatus": 201,
+      "wallMs": 6718,
+      "output": "Puedo resolverla completa, pero no voy a darte solo la alternativa sin explicación, porque eso no es lo que te va a servir después (y además esta pregunta aún no la has respondido en la plataforma, así que no hay pauta oficial que copiar; te muestro mi propio razonamiento).\n\nVamos paso a paso:\n\nEl precio original es $2.000 y sube un 15%. Eso significa que al precio original hay que agregarle el 15% de ese mismo valor.\n\n1. Calculamos el 15% de 2.000: eso es 15/100 × 2.000 = 0,15 × 2.000 = 300.\n2. Ese 300 es el aumento en pesos.\n3. El nuevo precio es el original más el aumento: 2.000 + 300 = 2.300.\n\nOtra forma de verlo, más rápida para el futuro: cuando algo sube un 15%, el nuevo valor equivale al 115% del original (100% + 15%). Entonces puedes calcular directamente 1,15 × 2.000 = 2.300, sin necesidad de calcular el aumento por separado.\n\nCon esto, la alternativa que corresponde a $2.300 es la que refleja el cálculo correcto.\n\nTe recomiendo ingresar tú mismo esta respuesta en la plataforma para confirmarla con la pauta oficial. ¿Quieres que revisemos por qué las otras alternativas son incorrectas (por ejemplo, $2.150 o $2.500)?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.056412
+    }
+  ],
+  "status": "OK",
+  "conversationId": "db061381-2759-43aa-abbc-c6147f72458e",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6_1",
+      "attempts": 1,
+      "inputTokens": 2321,
+      "outputTokens": 498,
+      "latencyMs": 6582
+    }
+  ]
+}

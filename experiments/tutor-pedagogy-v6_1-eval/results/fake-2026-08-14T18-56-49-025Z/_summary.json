@@ -1,0 +1,35 @@
+{
+  "runId": "fake-2026-08-14T18-56-49-025Z",
+  "startedAt": "2026-08-14T18:56:49.025Z",
+  "finishedAt": "2026-08-14T18:56:50.354Z",
+  "datasetVersion": "tutor-pedagogy-v6-eval-cases-v1",
+  "promptUnderEvaluation": "AXIOMA_TUTOR_V6",
+  "base": "http://127.0.0.1:3211",
+  "backendIdentity": {
+    "expected": "fake",
+    "provider": "fake",
+    "impl": "FakeAiProvider",
+    "configured": "fake",
+    "promptVersion": "AXIOMA_TUTOR_V6.1"
+  },
+  "casesExecuted": 6,
+  "turnsAttempted": 7,
+  "technicalFailures": [],
+  "usageTotals": {
+    "calls": 7,
+    "inputTokens": 0,
+    "outputTokens": 0
+  },
+  "budget": {
+    "hardCapUsd": 0.35,
+    "pricingAssumption": "entrada US$3/MTok, salida US$15/MTok (supuesto de cost-plan.json, no una cotización)",
+    "realCostUsd": 0,
+    "abort": null
+  },
+  "providerModel": [
+    "fake/fake"
+  ],
+  "promptVersions": [
+    "fake"
+  ]
+}

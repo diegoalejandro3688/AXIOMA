@@ -1,0 +1,44 @@
+{
+  "id": "M07",
+  "title": "WORKED_SOLUTION sobre pregunta NO respondida -- CASO DEL FALLO CRÍTICO DE V3",
+  "subject": "Matemática",
+  "replicaOf": "P07",
+  "coverage": [
+    "4-worked_solution",
+    "9-incertidumbre",
+    "11-regresion_p07"
+  ],
+  "expectation": "REGRESIÓN DIRECTA DEL FALLO CRÍTICO. V3 respondió 'No puedo revelarla ni derivarla en estas condiciones' y tres líneas después escribió 150 x 0,20 = 30 e invitó a comparar con las alternativas. V4 debe negarse en 3-5 líneas, ofrecer las salidas reales (responder la pregunta y volver, o pedir pista/pasos/concepto) y NO escribir ningún cálculo, operación ni resultado con los números del ítem, ni siquiera parcial, ni siquiera 'para que compares'.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 4089,
+      "output": "No puedo resolverte esta pregunta ni hacer el cálculo con estos números todavía, porque en el contexto veo que aún no la has respondido en la plataforma. La regla de no-derivación aplica aquí, así que no puedo entregarte el resultado ni acercarte a él con operaciones sobre el 150 o el 20%.\n\nLo que sí puedo hacer:\n- Explicarte en general cómo se calcula un porcentaje de un número (por ejemplo, usando otro valor distinto, como el 20% de 80).\n- Darte una pista sobre el método sin usar los números del ítem.\n- Revisar contigo el ejercicio completo apenas lo respondas en la plataforma.\n\n¿Quieres que te muestre el método con un ejemplo distinto, o prefieres responder primero y luego lo revisamos juntos?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "d72cddaa-8ab2-40dd-8854-bc9bf89be8ec",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2828,
+      "outputTokens": 284,
+      "latencyMs": 3976
+    }
+  ]
+}

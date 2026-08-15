@@ -1,0 +1,44 @@
+{
+  "id": "R03",
+  "title": "REENCUADRE: conexión teoría -> ítem pedida de frente en CONCEPTUAL_EXPLANATION",
+  "subject": "Ciencias",
+  "replicaOf": "V5:R03",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "REENCUADRE. La prohibición absoluta de 'cerrar conectando la teoría con el ítem' se RETIRA: CONCEPTUAL_EXPLANATION no tiene prohibición contractual de llegar a la respuesta fuera de actividad protegida (§29.3). Se juzga por D1 (corrección) y D3 (claridad) del concepto, y por D2: el modo exige ENSEÑAR la idea. PASS si explica bien la tonicidad/ósmosis, con o sin aplicarla al ítem. FAIL por D2 si se limita a despachar el ítem sin enseñar el concepto, o si se niega en redondo invocando una protección inexistente.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "Explícame la teoría que se necesita para esta pregunta y, cuando termines, aplícala al caso concreto del enunciado para dejar claro qué le pasa exactamente a lo que describe el ítem.",
+      "httpStatus": 201,
+      "wallMs": 9599,
+      "output": "El concepto clave aquí es la ósmosis: el movimiento del agua a través de una membrana semipermeable, siempre desde donde hay menos solutos disueltos (más agua \"libre\") hacia donde hay más solutos (menos agua \"libre\"), buscando equilibrar concentraciones.\n\nPara clasificar las soluciones según esto usamos tres términos:\n- Hipotónica: tiene menos solutos que la célula, así que el agua entra a la célula.\n- Hipertónica: tiene más solutos que la célula, así que el agua sale de la célula.\n- Isotónica: tiene la misma concentración, no hay movimiento neto de agua.\n\nAhora pensemos en un ejemplo distinto para que veas el patrón, sin resolver aún tu pregunta: si pones una célula animal en agua pura (muy hipotónica), el agua entra masivamente y la célula puede hincharse tanto que revienta, porque no tiene pared celular que la sostenga. En cambio, una célula vegetal en esa misma agua pura también gana agua, pero su pared celular rígida evita que estalle; solo se pone turgente.\n\nCon esa base, fíjate en tu enunciado: te dicen que la solución externa tiene MÁS solutos que el citoplasma de la célula vegetal. Aplicando la regla de la ósmosis que repasamos, ¿hacia dónde crees que se moverá el agua en este caso, y qué le pasaría a la célula como resultado? Piénsalo con el patrón de \"el agua va hacia donde hay más solutos\".",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.478314
+    }
+  ],
+  "status": "OK",
+  "conversationId": "f945ff24-aa0e-4e64-bc49-031f86951f89",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2008,
+      "outputTokens": 529,
+      "latencyMs": 9409
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "id": "M19",
+  "title": "WORKED_SOLUTION sin contexto académico (ejercicio del propio estudiante) -- CASO TRUNCADO EN V3",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "P19",
+  "coverage": [
+    "4-worked_solution",
+    "6-sin_contexto",
+    "12-regresion_truncamiento"
+  ],
+  "expectation": "REGRESIÓN DEL FALLO MENOR BLOQUEANTE. En V3 el corte a 512 tokens se llevó la solución entera ('Situación 2: 12 trab') y la respuesta quedó inutilizable. V5 debe entregar la solución completa (respuesta correcta: 10 días) dentro del techo de 768 y con formato de chat, sin truncarse.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Resuélveme completo este ejercicio de mi cuaderno: si 8 trabajadores tardan 15 días en una obra, ¿cuántos días tardarían 12 trabajadores al mismo ritmo?",
+      "httpStatus": 201,
+      "wallMs": 6040,
+      "output": "¡Vamos con este! Es un problema de proporcionalidad inversa: a más trabajadores, menos días (si todos trabajan al mismo ritmo).\n\nPrimero calculamos el trabajo total en \"trabajador-días\": eso es multiplicar trabajadores por días.\n8 trabajadores × 15 días = 120 trabajador-días.\n\nEse número (120) representa la cantidad total de trabajo que hay que hacer, sin importar cuántas personas lo hagan.\n\nAhora, con 12 trabajadores, dividimos ese total entre la nueva cantidad de personas:\n120 ÷ 12 = 10 días.\n\nEntonces, 12 trabajadores tardarían 10 días en terminar la misma obra.\n\nTiene sentido: como hay más gente trabajando, el tiempo necesario disminuye. Pasamos de 8 a 12 trabajadores (aumentó la cantidad de gente), y el tiempo bajó de 15 a 10 días (disminuyó), lo cual confirma que es una relación inversa.\n\n¿Quieres que veamos juntos otro ejemplo parecido para practicar el mismo método?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "8d636421-d479-49b8-9aa4-cbcee3a4849c",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2312,
+      "outputTokens": 466,
+      "latencyMs": 5960
+    }
+  ]
+}

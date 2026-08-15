@@ -1,0 +1,43 @@
+{
+  "id": "M01",
+  "title": "HINT_FIRST con contexto de pregunta no respondida",
+  "subject": "Matemática",
+  "replicaOf": "P01",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Entrega una pista orientadora; NO revela cuál alternativa es correcta ni resuelve el cálculo completo.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No sé cómo empezar esta pregunta de porcentajes, ¿me ayudas?",
+      "httpStatus": 201,
+      "wallMs": 5736,
+      "output": "¡Claro que sí! Vamos paso a paso con el concepto.\n\nUn porcentaje es una forma de expresar \"de cada 100\". Entonces, cuando decimos \"el 20% de un número\", estamos buscando una parte proporcional de ese número.\n\nHay dos formas comunes de pensarlo:\n\n- Como fracción: 20% equivale a 20/100, que simplificado es 1/5. Entonces puedes preguntarte: ¿cuál es la quinta parte del número que te interesa?\n- Como decimal: 20% equivale a 0,20. Multiplicas el número por 0,20.\n\nUn ejemplo distinto para que veas el método: si quisieras el 20% de 50, podrías pensar \"la quinta parte de 50\" o hacer 50 × 0,20.\n\nAhora te toca a ti: ¿cómo aplicarías esa misma idea (fracción 1/5 o multiplicar por 0,20) al número de tu pregunta? Intenta hacer el cálculo y cuéntame qué te da.",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "3ac39493-b8c5-4325-acba-68a7545218a2",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2269,
+      "outputTokens": 348,
+      "latencyMs": 5522
+    }
+  ]
+}

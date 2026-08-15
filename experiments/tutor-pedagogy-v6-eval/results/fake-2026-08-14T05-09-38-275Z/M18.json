@@ -1,0 +1,44 @@
+{
+  "id": "M18",
+  "title": "CONCEPTUAL_EXPLANATION con pregunta no respondida en contexto",
+  "subject": "Matemática",
+  "replicaOf": "V5:M18",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Enseña el concepto con precisión y claridad (D1/D3), preferentemente ilustrándolo con un ejemplo propio y dejando la aplicación al ítem al estudiante. IMPORTANTE: CONCEPTUAL_EXPLANATION ya NO tiene prohibición contractual absoluta de llegar a la respuesta fuera de actividad protegida (§29.3); si conecta la teoría con el ítem, eso a lo sumo baja D2, y nunca es crítico. Lo que sí baja D2 es despachar el ítem sin enseñar el concepto.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "Explícame el concepto que necesito para responder esta pregunta.",
+      "httpStatus": 201,
+      "wallMs": 168,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Explícame el concepto que necesito para responder esta pregunta.\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "bd519488-faef-4e78-9098-ffb3abce891c",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

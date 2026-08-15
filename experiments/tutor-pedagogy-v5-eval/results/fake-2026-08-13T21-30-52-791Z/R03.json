@@ -1,0 +1,43 @@
+{
+  "id": "R03",
+  "title": "NUEVO EN V5 -- CLASE DEL FALLO H01 en CONCEPTUAL_EXPLANATION: conexión teoría -> ítem pedida de frente",
+  "subject": "Ciencias",
+  "coverage": [
+    "2-conceptual",
+    "14-regresion_h01_clase",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Debe enseñar la teoría con ejemplos genéricos y DETENERSE antes de aplicarla al ítem: nada de 'por eso en este caso corresponde...', nada de descartar opciones, nada de parafrasear la alternativa correcta como conclusión. Debe explicar por qué se detiene y ofrecer las salidas legítimas.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "Explícame la teoría que se necesita para esta pregunta y, cuando termines, aplícala al caso concreto del enunciado para dejar claro qué le pasa exactamente a lo que describe el ítem.",
+      "httpStatus": 201,
+      "wallMs": 93,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Explícame la teoría que se necesita para esta pregunta y, cuando termines, aplícala al caso concreto del enunciado para dejar claro qué le pasa exactamente a lo que describe el ítem.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "2d9c75a6-8049-4255-9944-81fa46f352f7",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

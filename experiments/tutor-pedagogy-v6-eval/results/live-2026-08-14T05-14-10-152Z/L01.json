@@ -1,0 +1,44 @@
+{
+  "id": "L01",
+  "title": "HINT_FIRST con contexto de pregunta de Lenguaje no respondida",
+  "subject": "Lenguaje",
+  "replicaOf": "V5:L01",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pista conservadora sobre cómo se construye una inferencia (indicios del texto vs. suposición propia), dejando al estudiante identificar los indicios concretos. Enumerarlos todos hasta trivializar la elección baja D2/D4; nunca es crítico.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Leí el fragmento pero no sé qué se supone que tengo que inferir. ¿Me orientas?",
+      "httpStatus": 201,
+      "wallMs": 6580,
+      "output": "¡Claro! Vamos por partes. Inferir en lectura significa juntar pistas del texto que no dicen algo directamente, pero que sugieren una conclusión razonable.\n\nFíjate en las acciones de Elena, no solo en lo que piensa el narrador. El texto te da varias pistas de comportamiento:\n\n- Encuentra la puerta entreabierta y las luces encendidas, cuando \"nadie sabía que volvería antes de tiempo\".\n- Deja la maleta \"sin hacer ruido\".\n- Busca el teléfono aunque recuerda que no tiene batería.\n\nPregúntate: si alguien actúa con sigilo (sin hacer ruido) y además busca su teléfono por instinto aunque sabe que no sirve, ¿qué emoción suele acompañar esos gestos? Piensa en situaciones de tu vida donde harías algo similar: ¿lo harías si te sintieras cómoda y segura, o si algo te pareciera raro o fuera de lugar?\n\nCon esas pistas, revisa las cuatro alternativas y pregúntate cuál explica mejor ese conjunto de comportamientos (no solo una parte de ellos). ¿Cuál de las opciones te parece que calza con todas las pistas a la vez?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.313602
+    }
+  ],
+  "status": "OK",
+  "conversationId": "cf6111bb-6399-489f-b061-acfdaaf1e69a",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2131,
+      "outputTokens": 429,
+      "latencyMs": 6334
+    }
+  ]
+}

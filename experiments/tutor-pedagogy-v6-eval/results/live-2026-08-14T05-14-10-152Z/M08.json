@@ -1,0 +1,64 @@
+{
+  "id": "M08",
+  "title": "Seguimiento 'no entendí' tras explicación conceptual",
+  "subject": "Matemática",
+  "replicaOf": "V5:M08",
+  "coverage": [
+    "5-no_entendi",
+    "2-conceptual",
+    "17-adaptacion"
+  ],
+  "expectation": "El segundo turno REFORMULA de verdad (otro enfoque/analogía/lenguaje más simple), no repite el mismo texto. Dimensión D6 (adaptación).",
+  "context": {
+    "kind": "topic",
+    "fixture": "MAT_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cómo funciona la proporcionalidad inversa?",
+      "httpStatus": 201,
+      "wallMs": 8059,
+      "output": "¡Buena pregunta! Vamos con el concepto.\n\nDos cantidades son inversamente proporcionales cuando, al multiplicar una por un número, la otra queda dividida por ese mismo número. Es decir, cuando una aumenta, la otra disminuye en la misma proporción, de modo que su producto siempre se mantiene constante.\n\nSe expresa así: si x e y son inversamente proporcionales, entonces x multiplicado por y = k (una constante). Por lo tanto, y = k dividido por x.\n\nUn ejemplo cotidiano: imagina que un viaje de 120 km lo puede hacer un auto a distinta velocidad.\n\n- A 60 km/h, tarda 2 horas.\n- A 120 km/h, tarda 1 hora.\n- A 30 km/h, tarda 4 horas.\n\nFíjate: velocidad multiplicada por tiempo siempre da 120 (la distancia, que es constante). Si duplicas la velocidad, el tiempo se reduce a la mitad. Si la divides a la mitad, el tiempo se duplica.\n\nEsto se diferencia de la proporcionalidad directa, donde ambas cantidades aumentan o disminuyen juntas (por ejemplo, más horas trabajadas, más dinero ganado, si el pago por hora es fijo).\n\nUna forma de reconocerla en un problema: pregúntate si tiene sentido que, al crecer una variable, la otra decrezca para compensarla (como más obreros trabajando, menos días necesarios para terminar una obra).\n\n¿Quieres que pensemos juntos si tu ejercicio corresponde a este tipo de proporcionalidad?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.081942
+    },
+    {
+      "index": 1,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "No entendí nada. ¿Puedes explicármelo mucho más simple, con otras palabras?",
+      "httpStatus": 201,
+      "wallMs": 9140,
+      "output": "Claro, vamos con calma y con un ejemplo bien simple.\n\nImagina que tienes una pizza y la vas a repartir entre tus amigos, en partes iguales para cada uno.\n\n- Si la repartes entre 2 amigos, cada uno se come una parte grande.\n- Si la repartes entre 4 amigos, cada uno se come una parte más chica.\n- Si la repartes entre 8 amigos, cada uno se come una parte todavía más chica.\n\n¿Ves lo que pasa? Mientras más amigos hay (el número sube), más chico es el pedazo que le toca a cada uno (el otro número baja). Uno sube, el otro baja. Eso es proporcionalidad inversa: cuando una cantidad crece, la otra cantidad se achica, para \"compensar\".\n\nEs como un balancín en un parque de juegos: cuando un lado sube, el otro lado baja. Nunca suben o bajan juntos, siempre van en direcciones opuestas.\n\nEn cambio, si ambas cantidades subieran juntas (por ejemplo, más amigos vienen, más pizzas compras), eso sería proporcionalidad directa, que es distinta.\n\nEntonces, la pregunta clave para reconocerla es: si una cantidad aumenta, ¿la otra tiene que disminuir para que todo siga funcionando igual? Si la respuesta es sí, es proporcionalidad inversa.\n\n¿Te gustaría que pensemos juntos algún ejemplo parecido con números, para practicar la idea?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.095412
+    }
+  ],
+  "status": "OK",
+  "conversationId": "61e67bab-cd7b-45c1-b807-a33701d83722",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 1675,
+      "outputTokens": 563,
+      "latencyMs": 7947
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2273,
+      "outputTokens": 542,
+      "latencyMs": 8973
+    }
+  ]
+}

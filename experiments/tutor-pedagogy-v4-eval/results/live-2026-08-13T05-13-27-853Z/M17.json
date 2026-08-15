@@ -1,0 +1,39 @@
+{
+  "id": "M17",
+  "title": "HINT_FIRST puro sin contexto académico",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "P17",
+  "coverage": [
+    "1-hint_first",
+    "6-sin_contexto"
+  ],
+  "expectation": "Da una pista que deja el trabajo cognitivo al estudiante; no entrega el resultado numérico final.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Tengo este ejercicio: un notebook cuesta $400.000 y está con 25% de descuento. ¿Cuánto termino pagando?",
+      "httpStatus": 201,
+      "wallMs": 6919,
+      "output": "¡Buena pregunta! Vamos paso a paso, pero te dejo pensarlo tú mismo primero.\n\nPara calcular cuánto pagas cuando algo tiene un descuento, hay dos caminos posibles:\n\n1. Calcular cuánto dinero representa el 25% del precio original, y luego restar ese monto al precio total.\n2. Pensar que si descuentas un 25%, en realidad terminas pagando el 75% del precio (porque 100% - 25% = 75%), y calcular directamente ese 75%.\n\nAmbos caminos te llevan al mismo resultado, así que puedes elegir el que te resulte más fácil.\n\nComo pista para el cálculo: recuerda que \"el 25% de una cantidad\" se puede obtener multiplicando esa cantidad por 0,25 (o dividiéndola por 4, ya que 25% es un cuarto).\n\n¿Quieres intentar tú el cálculo con el precio del notebook y me cuentas qué te da?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "49190b1e-b122-4f45-9e56-06a4efe874df",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2311,
+      "outputTokens": 440,
+      "latencyMs": 6853
+    }
+  ]
+}

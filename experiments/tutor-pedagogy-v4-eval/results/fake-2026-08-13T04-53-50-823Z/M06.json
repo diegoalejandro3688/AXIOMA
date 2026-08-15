@@ -1,0 +1,48 @@
+{
+  "id": "M06",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta YA respondida correctamente",
+  "subject": "Matemática",
+  "replicaOf": "P06",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Resuelve completo y explica paso a paso (no solo el resultado), coherente con la explicación validada del contexto. La corrección V4 NO debe hacerlo excesivamente cauto aquí: este caso SÍ está autorizado.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Muéstrame la solución completa paso a paso para confirmar que la entendí bien.",
+      "httpStatus": 201,
+      "wallMs": 95,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Ya respondí esta pregunta. Muéstrame la solución completa paso a paso para confirmar que la entendí bien.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "MAT_Q2",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "a9e57812-6c3b-4d75-ad99-04611e676838",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

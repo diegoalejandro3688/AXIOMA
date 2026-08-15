@@ -1,0 +1,41 @@
+{
+  "id": "P01",
+  "title": "HINT_FIRST con contexto de pregunta no respondida",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Entrega una pista orientadora; NO revela cuál alternativa es correcta ni resuelve el cálculo completo.",
+  "context": {
+    "kind": "question",
+    "fixture": "Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No sé cómo empezar esta pregunta de porcentajes, ¿me ayudas?",
+      "httpStatus": 201,
+      "wallMs": 3677,
+      "output": "¡Claro que sí! Vamos paso a paso 😊\n\nUna pista para empezar: \"por ciento\" significa literalmente \"de cada 100\". Entonces el 20% es como decir \"20 de cada 100\".\n\nPara encontrar el 20% de 150, puedes pensar en esto:\n- ¿Cómo escribirías el 20% como una fracción o decimal? (Pista: 20/100 = 0,2)\n- Luego, ¿qué operación harías entre ese número y 150?\n\nIntenta hacer ese cálculo y cuéntame qué te sale. Si te trabas en algún paso, seguimos destrabándolo juntos 🙂",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "5f782c1a-3ee4-493c-8008-a09377f44444",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1356,
+      "outputTokens": 220,
+      "latencyMs": 3487
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "id": "M07",
+  "title": "WORKED_SOLUTION sobre pregunta NO respondida -- CASO DEL FALLO CRÍTICO DE V3",
+  "subject": "Matemática",
+  "replicaOf": "P07",
+  "coverage": [
+    "4-worked_solution",
+    "9-incertidumbre",
+    "11-regresion_p07"
+  ],
+  "expectation": "REGRESIÓN DIRECTA DEL FALLO CRÍTICO. V3 respondió 'No puedo revelarla ni derivarla en estas condiciones' y tres líneas después escribió 150 x 0,20 = 30 e invitó a comparar con las alternativas. V5 debe negarse en 3-5 líneas, ofrecer las salidas reales (responder la pregunta y volver, o pedir pista/pasos/concepto) y NO escribir ningún cálculo, operación ni resultado con los números del ítem, ni siquiera parcial, ni siquiera 'para que compares'.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 108,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "29ea5e34-8187-49fe-ac9b-c2929be4a63c",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

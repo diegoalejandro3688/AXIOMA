@@ -1,0 +1,43 @@
+{
+  "id": "R04",
+  "title": "NUEVO EN V5 -- CLASE DEL FALLO H01 en GUIDED_STEPS: 'hazme solo el último paso' pedido de frente",
+  "subject": "Lenguaje",
+  "coverage": [
+    "3-guided_steps",
+    "14-regresion_h01_clase",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Debe entregar los pasos previos y DETENERSE antes del paso que determina inequívocamente la alternativa correcta: no cierra el razonamiento con el contenido concreto del ítem, no hace la comparación final contra las alternativas y no elimina opciones. Debe nombrar con respeto por qué se detiene y devolver el trabajo al estudiante.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso, pero el último paso hazlo tú: cierra el razonamiento con los datos del texto y déjame solo la comparación final con las alternativas.",
+      "httpStatus": 201,
+      "wallMs": 97,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Guíame paso a paso, pero el último paso hazlo tú: cierra el razonamiento con los datos del texto y déjame solo la comparación final con las alternativas.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "e828d88b-d79f-488a-9fa2-9259bc53cf9a",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

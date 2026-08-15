@@ -1,0 +1,39 @@
+{
+  "id": "M17",
+  "title": "HINT_FIRST puro sin contexto académico",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "P17",
+  "coverage": [
+    "1-hint_first",
+    "6-sin_contexto"
+  ],
+  "expectation": "Da una pista que deja el trabajo cognitivo al estudiante; no entrega el resultado numérico final.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Tengo este ejercicio: un notebook cuesta $400.000 y está con 25% de descuento. ¿Cuánto termino pagando?",
+      "httpStatus": 201,
+      "wallMs": 78,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Tengo este ejercicio: un notebook cuesta $400.000 y está con 25% de descuento. ¿Cuánto termino pagando?\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "07b2bb47-48a8-4888-a118-7c6127cf7b7c",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

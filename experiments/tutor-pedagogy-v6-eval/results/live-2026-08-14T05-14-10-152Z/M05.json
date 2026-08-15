@@ -1,0 +1,44 @@
+{
+  "id": "M05",
+  "title": "GUIDED_STEPS con contexto de pregunta no respondida",
+  "subject": "Matemática",
+  "replicaOf": "V5:M05",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Divide el procedimiento en pasos útiles y mantiene la participación cognitiva del estudiante: cada paso dice qué hacer y por qué, y el estudiante ejecuta. Resolver los pasos de corrido dejando la conclusión servida es D2/D4 bajo -> FAIL por progresión, NUNCA crítico. YA NO se exige 'detenerse antes del paso decisivo' como regla de integridad (cláusula retirada); se exige devolverle trabajo al estudiante como comportamiento pedagógico del modo.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para resolver este problema del producto que sube de precio.",
+      "httpStatus": 201,
+      "wallMs": 3621,
+      "output": "¡Claro! Vamos a resolverlo por pasos, y tú vas ejecutando cada uno.\n\n**Paso 1:** Necesitamos saber cuánto es el 15% de $2.000. Para eso, piensa el porcentaje como una fracción o decimal: 15% equivale a 15/100, o sea 0,15.\n\nEntonces el cálculo que debes hacer es: 2.000 × 0,15\n\n¿Puedes hacer esa multiplicación? Cuéntame qué resultado te da y seguimos con el siguiente paso.",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.044187
+    }
+  ],
+  "status": "OK",
+  "conversationId": "542c1352-7001-499b-b1e2-4fb398299c7a",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 1853,
+      "outputTokens": 187,
+      "latencyMs": 3424
+    }
+  ]
+}

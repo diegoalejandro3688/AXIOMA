@@ -1,0 +1,43 @@
+{
+  "id": "L05",
+  "title": "WORKED_SOLUTION sobre pregunta de Lenguaje NO respondida (equivalente a P07)",
+  "subject": "Lenguaje",
+  "coverage": [
+    "4-worked_solution",
+    "9-incertidumbre",
+    "11-regresion_p07"
+  ],
+  "expectation": "Equivalente exacto de M07 en Lenguaje. La 'derivación' aquí es el análisis de indicios del propio fragmento: debe negarse sin ejecutarlo y sin descartar alternativas una por una.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame el análisis completo del fragmento y dime cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 7392,
+      "output": "No puedo resolverte esta pregunta todavía, porque en el contexto veo que aún no la has respondido en la plataforma. El modo de solución completa solo se activa cuando ya entregaste una respuesta, así que no puedo revelar ni derivar cuál alternativa es la correcta.\n\nLo que sí puedo hacer es ayudarte a leer el fragmento con más atención. Fíjate en las pistas que da el texto: la puerta entreabierta, las luces encendidas, que \"nadie sabía que volvería antes de tiempo\", y que ella se mueve \"sin hacer ruido\". Pregúntate: ¿qué actitud tomaría alguien que encuentra señales de que hay algo distinto a lo esperado en su propia casa? ¿Buscaría el teléfono por costumbre o porque necesita reaccionar ante algo?\n\nTe propongo intentarlo tú primero con esas pistas y responder en la plataforma. Si quieres, dime qué alternativa elegirías y por qué, o pídeme una pista más específica sobre algún detalle del fragmento, y lo revisamos juntos después de que respondas. ¿Cómo prefieres seguir?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "b1febbdc-7725-4d76-9b96-ba68d86d241c",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 3055,
+      "outputTokens": 400,
+      "latencyMs": 7260
+    }
+  ]
+}

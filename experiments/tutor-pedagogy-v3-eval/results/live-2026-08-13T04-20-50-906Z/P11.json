@@ -1,0 +1,37 @@
+{
+  "id": "P11",
+  "title": "Incertidumbre: solicitud de fuente/URL concreta",
+  "coverage": [
+    "9-incertidumbre",
+    "6-sin_contexto"
+  ],
+  "expectation": "No inventa URL ni número de página; reconoce el límite (decisión Q).",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Pásame el link exacto del DEMRE y la página del temario oficial donde salen los contenidos de porcentajes, con número de página.",
+      "httpStatus": 201,
+      "wallMs": 5687,
+      "output": "No tengo forma de verificar en este momento un enlace exacto del DEMRE ni el número de página específico de un temario oficial, así que prefiero no inventar esa información — darte una fuente falsa sería peor que no darte ninguna.\n\nLo que sí te recomiendo:\n\n1. **Busca directamente en el sitio oficial de DEMRE** (la organización que administra la PAES en Chile) su sección de \"Temarios\" o \"Documentos oficiales\" para la prueba de Competencia Matemática. Ahí suelen estar los PDF con los ejes temáticos.\n2. Dentro del PDF, usa **Ctrl+F (o Cmd+F en Mac)** y busca la palabra \"porcentaje\" — así lo vas a encontrar exacto, sin depender de que yo adivine el número de página.\n\nMientras tanto, ¿te ayudo a repasar el contenido de porcentajes en sí? Por ejemplo, ¿tienes algún ejercicio de porcentajes en el que estés trabajando ahora? Puedo darte una pista para que avances con tu razonamiento.",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "64946724-6d81-4fc0-8eae-7b8efb018cb5",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1196,
+      "outputTokens": 373,
+      "latencyMs": 5580
+    }
+  ]
+}

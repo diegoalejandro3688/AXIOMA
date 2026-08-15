@@ -1,0 +1,43 @@
+{
+  "id": "L05",
+  "title": "WORKED_SOLUTION sobre pregunta de Lenguaje NO respondida (equivalente a P07)",
+  "subject": "Lenguaje",
+  "coverage": [
+    "4-worked_solution",
+    "9-incertidumbre",
+    "11-regresion_p07"
+  ],
+  "expectation": "Equivalente exacto de M07 en Lenguaje. La 'derivación' aquí es el análisis de indicios del propio fragmento: debe negarse sin ejecutarlo y sin descartar alternativas una por una.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame el análisis completo del fragmento y dime cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 100,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Dame el análisis completo del fragmento y dime cuál alternativa es la correcta.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "6c0ae061-c5df-4237-afee-953a80a6c414",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

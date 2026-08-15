@@ -1,0 +1,42 @@
+{
+  "id": "H02",
+  "title": "CONCEPTUAL_EXPLANATION con contexto de tema de Historia",
+  "subject": "Historia",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Explicación históricamente correcta (monoexportación salitrera, caída del comercio mundial, salitre sintético), sin inventar cifras ni fuentes que no pueda sostener.",
+  "context": {
+    "kind": "topic",
+    "fixture": "HIST_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Por qué la crisis de 1929 golpeó tan fuerte a Chile en comparación con otros países?",
+      "httpStatus": 201,
+      "wallMs": 9003,
+      "output": "La crisis de 1929 golpeó especialmente fuerte a Chile por su alta dependencia de un solo producto de exportación: el salitre. Chile no tenía una economía diversificada, sino que gran parte de sus ingresos fiscales y del empleo dependían de las ventas al exterior de este mineral.\n\nCuando estalló la Gran Depresión, el comercio internacional se contrajo drásticamente y la demanda de salitre cayó, además de que ya venía compitiendo con el salitre sintético alemán. Esto provocó cierre de oficinas salitreras, desempleo masivo y una fuerte caída en los ingresos del Estado, que dependía de los impuestos a esa exportación.\n\nPara entender el concepto en general: un país \"monoexportador\" (que depende de un solo producto) es mucho más vulnerable a shocks externos que uno con economía diversificada, porque no tiene otras fuentes de ingreso que compensen la caída de ese producto. Por ejemplo, si un país depende casi solo de exportar café y el precio mundial se desploma, toda su economía se resiente al mismo tiempo, a diferencia de un país que también vende manufacturas, minerales variados o servicios.\n\n¿Te gustaría que revisemos juntos qué otros factores estructurales de la economía chilena de esa época se mencionan en tu material de estudio?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "d7956cb9-6732-4ffd-a7ff-fda1f960de0d",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2087,
+      "outputTokens": 686,
+      "latencyMs": 8916
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "id": "H01",
+  "title": "HINT_FIRST con contexto de pregunta de Historia no respondida",
+  "subject": "Historia",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pista que active el conocimiento previo (qué significa 'sustituir importaciones'); NO indica cuál alternativa es correcta ni la parafrasea.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No me acuerdo bien qué era el modelo ISI. ¿Me das una pista para esta pregunta?",
+      "httpStatus": 201,
+      "wallMs": 6822,
+      "output": "Claro, te doy una pista para pensar en esto.\n\nLa sigla ISI significa Industrialización por Sustitución de Importaciones. La palabra clave ahí es \"sustitución\": la crisis de 1929 hizo que Chile no pudiera seguir dependiendo tanto del salitre ni comprar tantos productos desde el extranjero (porque el comercio mundial se contrajo fuertemente).\n\nPiensa en esta pregunta: si un país de repente no puede importar tantos bienes desde afuera, ¿qué podría hacer para seguir teniendo esos productos disponibles para su población?\n\nTambién te sirve pensar en el rol del Estado en este periodo: en esta etapa, el Estado chileno (por ejemplo, a través de instituciones como la CORFO, creada en 1939) tomó un papel activo en fomentar ciertas actividades productivas dentro del país, en lugar de dejar todo librado solo al comercio internacional.\n\nCon esas dos ideas, \"sustitución\" y \"rol activo del Estado dentro del país\", revisa las cuatro alternativas y fíjate cuál calza mejor con la idea de producir internamente en vez de depender del exterior. ¿Cuál de las opciones refleja eso?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "5ed6470c-185f-4479-9f34-51b4524d587d",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2494,
+      "outputTokens": 418,
+      "latencyMs": 6716
+    }
+  ]
+}

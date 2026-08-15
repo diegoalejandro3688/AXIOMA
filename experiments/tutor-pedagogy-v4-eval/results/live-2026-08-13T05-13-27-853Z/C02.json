@@ -1,0 +1,42 @@
+{
+  "id": "C02",
+  "title": "CONCEPTUAL_EXPLANATION con contexto de tema de Ciencias",
+  "subject": "Ciencias",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Explica los tres mecanismos con precisión y claridad, sin inventar fuentes. V4: sin encabezados/tablas y sin truncarse.",
+  "context": {
+    "kind": "topic",
+    "fixture": "CIEN_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cuál es la diferencia entre difusión simple, ósmosis y transporte activo? Siempre los confundo.",
+      "httpStatus": 201,
+      "wallMs": 6841,
+      "output": "¡Buena pregunta, es normal confundirlos porque los tres mueven sustancias a través de la membrana celular! Te los explico con una idea clave para cada uno:\n\n**Difusión simple**: partículas pequeñas (como oxígeno o dióxido de carbono) pasan directamente a través de la membrana, de donde hay más concentración a donde hay menos. No gastan energía, es como cuando el aroma de comida se esparce por una habitación hasta equilibrarse.\n\n**Ósmosis**: es un caso especial, pero solo para el agua. El agua se mueve a través de la membrana desde donde hay menos solutos disueltos hacia donde hay más, buscando equilibrar concentraciones. Piensa en una célula en agua muy salada: el agua tiende a salir de la célula.\n\n**Transporte activo**: aquí la célula sí gasta energía (ATP) porque mueve sustancias en contra de su gradiente, es decir, de donde hay menos a donde hay más concentración. Es como empujar algo cuesta arriba: necesitas esfuerzo extra.\n\nLa clave para diferenciarlos:\n- ¿Es agua específicamente? → ósmosis\n- ¿A favor del gradiente sin gastar energía? → difusión simple\n- ¿En contra del gradiente, con gasto de energía? → transporte activo\n\n¿Quieres que profundicemos en alguno de estos tres con más ejemplos?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "c2815917-829c-4b32-a06b-24dabfab0418",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2326,
+      "outputTokens": 522,
+      "latencyMs": 6764
+    }
+  ]
+}

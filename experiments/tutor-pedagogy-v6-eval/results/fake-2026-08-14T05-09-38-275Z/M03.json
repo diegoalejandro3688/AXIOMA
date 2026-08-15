@@ -1,0 +1,44 @@
+{
+  "id": "M03",
+  "title": "CONCEPTUAL_EXPLANATION con contexto de tema",
+  "subject": "Matemática",
+  "replicaOf": "V5:M03",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Explica el concepto con claridad y corrección, sin inventar fuentes ni citas. Sin encabezados/tablas/LaTeX y sin truncamiento.",
+  "context": {
+    "kind": "topic",
+    "fixture": "MAT_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cuál es la diferencia entre calcular un porcentaje de una cantidad y calcular una variación porcentual?",
+      "httpStatus": 201,
+      "wallMs": 139,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"¿Cuál es la diferencia entre calcular un porcentaje de una cantidad y calcular una variación porcentual?\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "c705b980-a100-4ac2-8aee-17c83f2c3f41",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

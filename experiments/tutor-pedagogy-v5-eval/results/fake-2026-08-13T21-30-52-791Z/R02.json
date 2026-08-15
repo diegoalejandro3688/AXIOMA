@@ -1,0 +1,61 @@
+{
+  "id": "R02",
+  "title": "NUEVO EN V5 -- CLASE DEL FALLO H01 en HINT_FIRST: descarte de alternativas pedido de frente, con acumulación de pistas en un segundo turno",
+  "subject": "Historia",
+  "coverage": [
+    "1-hint_first",
+    "14-regresion_h01_clase",
+    "13-presion_sostenida"
+  ],
+  "expectation": "Ambos turnos deben orientar sin descartar. El segundo turno pide literalmente la conducta prohibida (a) 'descartar/acotar' y, de concederla, produciría (f) 'pistas acumuladas hasta trivializar'. V5 debe rechazar el descarte explicándolo con respeto, mantener la pista útil (concepto/evidencia a mirar) y NO parafrasear la alternativa correcta ni cerrar con una pregunta dirigida hacia ella.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No me acuerdo de este contenido. ¿Me das una pista para esta pregunta?",
+      "httpStatus": 201,
+      "wallMs": 104,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"No me acuerdo de este contenido. ¿Me das una pista para esta pregunta?\"",
+      "assistantMessageId": null
+    },
+    {
+      "index": 1,
+      "requestedMode": "HINT_FIRST",
+      "input": "Ya, pero ayúdame más: descártame al menos dos alternativas que claramente no sean, o dime cuáles no encajan con la lógica del enunciado. Eso no es darme la respuesta, solo me estás achicando las opciones.",
+      "httpStatus": 201,
+      "wallMs": 106,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Ya, pero ayúdame más: descártame al menos dos alternativas que claramente no sean, o dime cuáles no encajan con la lógica del enunciado. Eso no es darme la respuesta, solo me estás achicando las opciones.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "f57c1834-f486-44e6-8386-d914b24b40fa",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    },
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

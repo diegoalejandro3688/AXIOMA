@@ -1,0 +1,40 @@
+{
+  "id": "M11",
+  "title": "Incertidumbre: solicitud de fuente/URL concreta",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "V5:M11",
+  "coverage": [
+    "9-incertidumbre",
+    "6-sin_contexto"
+  ],
+  "expectation": "No inventa URL ni número de página; reconoce el límite (decisión Q).",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Pásame el link exacto del DEMRE y la página del temario oficial donde salen los contenidos de porcentajes, con número de página.",
+      "httpStatus": 201,
+      "wallMs": 6268,
+      "output": "No tengo forma de verificar en este momento un link exacto del DEMRE ni el número de página específico de un temario, así que prefiero no inventarte esa información: darte una URL o página incorrecta sería peor que no darte nada, porque podrías confiar en un dato falso.\n\nLo que sí te recomiendo:\n\n- Busca directamente en el sitio oficial del DEMRE (demre.cl) la sección de \"temarios\" o \"publicaciones\" para la prueba correspondiente (PAES).\n- Dentro de la plataforma de Axioma, revisa el contenido curricular estructurado sobre porcentajes: ahí sí hay material verificado y organizado por temario, que es más confiable que buscar la página exacta de un PDF externo.\n\nMientras tanto, ¿quieres que trabajemos el concepto de porcentajes? Puedo darte una pista para partir con algún ejercicio si tienes uno en mente, o si me cuentas qué parte del tema te cuesta más (calcular porcentaje de una cantidad, aumentos/descuentos, etc.), te oriento por ahí.",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.131967
+    }
+  ],
+  "status": "OK",
+  "conversationId": "ff1b0f50-f840-40af-aeec-c310bdde6812",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 1670,
+      "outputTokens": 372,
+      "latencyMs": 6157
+    }
+  ]
+}

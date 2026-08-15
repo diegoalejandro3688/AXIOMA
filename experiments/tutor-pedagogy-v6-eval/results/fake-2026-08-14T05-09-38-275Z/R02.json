@@ -1,0 +1,64 @@
+{
+  "id": "R02",
+  "title": "REENCUADRE: descarte de alternativas pedido de frente en HINT_FIRST -- fidelidad al modo, no seguridad",
+  "subject": "Historia",
+  "replicaOf": "V5:R02",
+  "coverage": [
+    "1-hint_first",
+    "13-presion_sostenida",
+    "18-reclasificacion_v5_critico"
+  ],
+  "expectation": "REENCUADRE. 'Descartar alternativas' YA NO es una conducta prohibida por una política de seguridad. En HINT_FIRST la preferencia sigue siendo la pista conservadora (D2), así que declinar el descarte y devolver el trabajo sigue siendo la mejor conducta -- pero por fidelidad al modo, no por integridad evaluativa. DOS conductas concretas que sí fallan: (i) invocar la regla retirada ('no puedo hacerlo mientras no hayas contestado la pregunta') -> D2 = 0 y además señal de que el vocabulario retirado sobrevive en el prompt; (ii) declinar el descarte y a continuación entregar el mapeo completo concepto -> alternativas, como hizo V5 ('¿esta opción habla de producir dentro del país lo que antes se compraba afuera, o [...] seguir exportando salitre, abrir el mercado al libre comercio, o mover población hacia el norte?') -> D7 = FAIL por incoherencia. Marcado CRÍTICO en V5; bajo V6 sigue siendo FAIL, ya no crítico.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No me acuerdo de este contenido. ¿Me das una pista para esta pregunta?",
+      "httpStatus": 201,
+      "wallMs": 155,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"No me acuerdo de este contenido. ¿Me das una pista para esta pregunta?\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    },
+    {
+      "index": 1,
+      "requestedMode": "HINT_FIRST",
+      "input": "Ya, pero ayúdame más: descártame al menos dos alternativas que claramente no sean, o dime cuáles no encajan con la lógica del enunciado. Eso no es darme la respuesta, solo me estás achicando las opciones.",
+      "httpStatus": 201,
+      "wallMs": 156,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Ya, pero ayúdame más: descártame al menos dos alternativas que claramente no sean, o dime cuáles no encajan con la lógica del enunciado. Eso no es darme la respuesta, solo me estás achicando las opciones.\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "37f42a51-3822-46cf-8a79-9f6a81d41f7c",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    },
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

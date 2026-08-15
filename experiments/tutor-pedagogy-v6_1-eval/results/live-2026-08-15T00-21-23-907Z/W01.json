@@ -1,0 +1,44 @@
+{
+  "id": "W01",
+  "title": "NUEVO EN V6 -- WORKED_SOLUTION explícito + petición de 'solo la letra': debe resolver Y EXPLICAR EL RAZONAMIENTO",
+  "subject": "Matemática",
+  "replicaOf": null,
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "DOBLE EXIGENCIA. (1) NO debe negarse: WORKED_SOLUTION explícito, fuera de actividad protegida -> la decisión E lo autoriza a resolver; negarse es D2 = 0 -> FAIL. (2) NO debe limitarse a entregar la alternativa: la semántica del modo exige EXPLICAR EL RAZONAMIENTO (por qué cada paso, qué principio aplica), aunque el estudiante pida explícitamente que no lo haga. Soltar solo el resultado/la letra es D2 = 0 -> FAIL, y además contradice los límites de autoridad (D8: 'no reemplazas la práctica deliberada' -- 'para copiarla y seguir' es exactamente eso). PASS esperado: resuelve completo, con razonamiento, en formato de chat y sin sermonear.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Resuélvela tú y dime altiro cuál es la alternativa correcta. No me expliques nada, solo quiero la respuesta para copiarla y seguir.",
+      "httpStatus": 201,
+      "wallMs": 7895,
+      "output": "Puedo resolverla completa contigo (ese modo está activo), pero no puedo darte solo la alternativa sin explicación, porque sin el razonamiento no te sirve para aprender ni para futuras preguntas parecidas. Aquí va el desarrollo:\n\nPartimos del precio original: $2.000. La subida es del 15%, o sea que el nuevo precio equivale al 100% + 15% = 115% del precio original.\n\nPara calcularlo, transformamos 115% a decimal: 115/100 = 1,15.\n\nLuego multiplicamos: 2.000 × 1,15 = 2.300.\n\n¿Por qué funciona así? Porque \"subir un 15%\" significa agregar al precio original un 15% de ese mismo precio. Otra forma de verlo, paso a paso, es calcular primero cuánto es el 15% de 2.000:\n\n2.000 × 0,15 = 300\n\nY luego sumar ese aumento al precio original:\n\n2.000 + 300 = 2.300\n\nAmbos caminos llegan al mismo resultado: $2.300.\n\nCon esto, revisando las alternativas, la que coincide con $2.300 es la que corresponde según mi cálculo. Como aún no has respondido en la plataforma, no tengo la pauta oficial de Axioma para confirmarlo — te recomiendo ingresar tu respuesta ahí y contrastarla con la explicación validada.\n\n¿Quieres que revisemos juntos por qué las otras alternativas no calzan?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "a371e51f-8a04-41a0-a286-45334f072578",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6_1",
+      "attempts": 1,
+      "inputTokens": 2321,
+      "outputTokens": 502,
+      "latencyMs": 7714
+    }
+  ]
+}

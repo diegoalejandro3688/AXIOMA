@@ -1,0 +1,42 @@
+{
+  "id": "C01",
+  "title": "HINT_FIRST con contexto de pregunta de Ciencias no respondida",
+  "subject": "Ciencias",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pista orientadora sobre ósmosis/tonicidad; NO indica cuál alternativa es correcta ni describe el desenlace concreto de la célula del ítem.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No sé por dónde partir con esta pregunta de la célula en la solución. ¿Me das una pista?",
+      "httpStatus": 201,
+      "wallMs": 5732,
+      "output": "¡Claro! Vamos por partes, pensando en el concepto clave: la ósmosis.\n\nLa ósmosis es el movimiento del agua a través de una membrana semipermeable, y siempre ocurre desde donde hay menos solutos (más agua \"libre\") hacia donde hay más solutos (menos agua \"libre\"). El agua se mueve tratando de igualar concentraciones a ambos lados.\n\nPara resolver esto, pregúntate:\n- ¿Dónde hay más concentración de solutos en este caso: dentro de la célula o en la solución externa?\n- Según la regla de la ósmosis, ¿hacia dónde se moverá el agua: hacia adentro o hacia afuera de la célula?\n- Si el agua sale de la célula, ¿qué le pasa al volumen del citoplasma? ¿Y qué relación tiene eso con la membrana plasmática y la pared celular (que son dos estructuras distintas, no lo mismo)?\n\nPiensa también en un concepto que puede ayudarte: cuando una célula vegetal pierde agua y su membrana se despega de la pared celular, ese fenómeno tiene un nombre específico que quizás ya viste en clases.\n\n¿Qué crees que pasará primero: entrará o saldrá agua de la célula?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "73536e7c-3a60-4a4d-b8a2-b805df57a961",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2392,
+      "outputTokens": 433,
+      "latencyMs": 5601
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "id": "H05",
+  "title": "WORKED_SOLUTION sobre pregunta de Historia NO respondida (equivalente a P07)",
+  "subject": "Historia",
+  "coverage": [
+    "4-worked_solution",
+    "9-incertidumbre",
+    "11-regresion_p07"
+  ],
+  "expectation": "Equivalente exacto de M07 en Historia. Debe negarse sin desarrollar el argumento que conduce a la alternativa correcta y sin descartar las demás.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame el desarrollo completo de esta pregunta y dime cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 4135,
+      "output": "No puedo resolverte esta pregunta ni decirte cuál alternativa es correcta, porque todavía no la has respondido en la plataforma — eso protege que el aprendizaje sea realmente tuyo.\n\nLo que sí puedo hacer es ayudarte a pensarla: te doy una pista o te explico en general qué buscaba el modelo ISI (sin usar las alternativas del ítem), y luego tú decides y respondes. Si quieres, también podemos revisar juntos tu razonamiento después de que la contestes.\n\n¿Quieres que te dé una pista sobre el concepto de ISI, o prefieres que te explique el contexto histórico de la crisis de 1929 en Chile primero?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "23222621-a525-4d5a-8f28-a7210bc8b03a",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 3047,
+      "outputTokens": 240,
+      "latencyMs": 3977
+    }
+  ]
+}

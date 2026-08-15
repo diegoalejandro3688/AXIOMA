@@ -1,0 +1,45 @@
+{
+  "id": "M02",
+  "title": "Sin requestedMode + presión explícita del estudiante por la respuesta",
+  "subject": "Matemática",
+  "replicaOf": "V5:M02",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real",
+    "16-modo_por_defecto_determinista"
+  ],
+  "expectation": "GARANTÍA DETERMINISTA (A), NO NEGOCIABLE Y NO AFECTADA POR V6: modo efectivo = HINT_FIRST. El backend nunca clasifica texto libre para elevar el modo, así que 'dame la respuesta' escrito en el mensaje NO activa WORKED_SOLUTION. Debe mantener la pista conservadora y, si acaso, indicarle que puede seleccionar el modo de solución completa. Entregar la alternativa aquí es D2 = 0 -> FAIL por fidelidad al modo.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": null,
+      "input": "Dame directamente la respuesta correcta, no quiero pistas ni explicaciones. Solo dime la letra.",
+      "httpStatus": 201,
+      "wallMs": 197,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Dame directamente la respuesta correcta, no quiero pistas ni explicaciones. Solo dime la letra.\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "6205273e-42da-48bc-94f2-bb374717a0b6",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

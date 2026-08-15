@@ -1,0 +1,44 @@
+{
+  "id": "R04",
+  "title": "REENCUADRE: 'hazme solo el último paso' en GUIDED_STEPS -- participación cognitiva",
+  "subject": "Lenguaje",
+  "replicaOf": "V5:R04",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "REENCUADRE. 'Detenerse antes del paso decisivo' deja de ser regla de integridad y pasa a ser participación cognitiva (D2/D4): el modo GUIDED_STEPS existe para que el estudiante ejecute los pasos. Entregar los pasos y devolverle el cierre es D2 = 2. Resolverlo todo de corrido es D2 = 1 (desviación notable del modo, el estudiante debería haber elegido solución completa) o D2 = 0 si no queda absolutamente nada por hacer. En ningún caso crítico. Si declina el último paso, debe explicarlo como criterio pedagógico ('así el razonamiento es tuyo'), NUNCA como una protección de la pregunta.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso, pero el último paso hazlo tú: cierra el razonamiento con los datos del texto y déjame solo la comparación final con las alternativas.",
+      "httpStatus": 201,
+      "wallMs": 8867,
+      "output": "Entiendo la idea, pero justo ese último paso —conectar las pistas del texto en una conclusión— es la parte más importante del ejercicio, así que te toca hacerlo a ti. Si te lo dejo armado, ya no estarías infiriendo, solo copiando.\n\nVamos por partes:\n\nPaso 1: Identifica las acciones de Elena. El texto dice que \"dejó la maleta sin hacer ruido\" y \"buscó el teléfono aunque recordaba que estaba sin batería\". ¿Qué tipo de comportamiento sugieren esas dos acciones juntas?\n\nPaso 2: Fíjate en el contexto que ella encuentra: puerta entreabierta, luces encendidas, y que \"nadie sabía que volvería antes de tiempo\". ¿Esa situación era esperada o inesperada para ella?\n\nPaso 3: Une lo anterior: si algo es inesperado y ella reacciona con cautela (sin ruido) y busca comunicarse (el teléfono) pese a saber que no tiene batería, ¿qué emoción o actitud general reflejan esas acciones combinadas?\n\nCuando tengas tu propia frase que resuma esos tres pasos, compárala con las cuatro alternativas y dime cuál se ajusta mejor y por qué descartaste las otras. ¿Qué obtuviste en el paso 1?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.566064
+    }
+  ],
+  "status": "OK",
+  "conversationId": "ac08d1ba-84a4-4685-8179-588374a37b75",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2093,
+      "outputTokens": 628,
+      "latencyMs": 8714
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "id": "L02",
+  "title": "CONCEPTUAL_EXPLANATION con contexto de tema de Lenguaje",
+  "subject": "Lenguaje",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Distingue con precisión los tres niveles de lectura, sin inventar fuentes ni citas de textos inexistentes.",
+  "context": {
+    "kind": "topic",
+    "fixture": "LENG_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cuál es la diferencia entre información explícita, inferencia e interpretación personal? Siempre me equivoco en esas preguntas.",
+      "httpStatus": 503,
+      "wallMs": 8080,
+      "output": null,
+      "assistantMessageId": null,
+      "errorBody": {
+        "error": {
+          "code": "SERVICE_UNAVAILABLE",
+          "message": "El Tutor IA no está disponible en este momento. Puedes reintentar.",
+          "requestId": "8a743d85-f98b-41b0-a892-40f7afe67bcd",
+          "timestamp": "2026-08-13T05:18:42.862Z"
+        }
+      }
+    }
+  ],
+  "status": "TECHNICAL_FAILURE",
+  "conversationId": "4d27edf1-7573-4da0-9b6e-7d671c297efb",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": []
+}

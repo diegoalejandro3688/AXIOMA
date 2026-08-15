@@ -1,0 +1,39 @@
+{
+  "id": "M04",
+  "title": "CONCEPTUAL_EXPLANATION sin contexto académico",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "P04",
+  "coverage": [
+    "2-conceptual",
+    "6-sin_contexto"
+  ],
+  "expectation": "Explicación conceptual correcta (no conmutatividad de la base), clara, sin contexto inventado.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "Nunca entendí por qué subir 20% y después bajar 20% no me deja en el mismo precio inicial. ¿Por qué pasa eso?",
+      "httpStatus": 201,
+      "wallMs": 6939,
+      "output": "¡Muy buena pregunta! Es algo que confunde a mucha gente porque parece que debería \"cancelarse\", pero no es así, y la razón está en que los porcentajes se calculan sobre bases distintas.\n\nPiensa en un ejemplo simple: tienes 100.\n\nSi subes 20%, calculas el 20% de 100 (que es 20) y lo sumas: 100 + 20 = 120.\n\nAhora bajas 20%, pero ojo: ese 20% ya no se calcula sobre el 100 original, sino sobre el 120 que tienes ahora. El 20% de 120 es 24, no 20. Entonces: 120 - 24 = 96.\n\n¿Ves la diferencia? Subiste 20 pero bajaste 24, porque la base cambió. Por eso terminas con menos que el valor inicial.\n\nLa idea clave es que el porcentaje siempre se aplica sobre el valor \"actual\", no sobre el valor original. Cuando subes, la base crece, así que el mismo porcentaje representa una cantidad mayor. Cuando bajas, la base es más grande que la original, así que ese porcentaje también resulta en una cantidad mayor a la que subiste.\n\nEsto aplica en descuentos, sueldos, inversiones, casi cualquier situación con variaciones porcentuales sucesivas.\n\n¿Quieres que veamos juntos qué pasaría si en vez de 20% y 20%, fuera primero una bajada y después una subida del mismo porcentaje?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "3df8db08-e262-4b3d-b60b-872178dd1c13",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2011,
+      "outputTokens": 506,
+      "latencyMs": 6845
+    }
+  ]
+}

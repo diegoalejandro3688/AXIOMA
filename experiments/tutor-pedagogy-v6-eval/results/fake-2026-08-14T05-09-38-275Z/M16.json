@@ -1,0 +1,64 @@
+{
+  "id": "M16",
+  "title": "Seguimiento 'no entendí el paso' dentro de GUIDED_STEPS",
+  "subject": "Matemática",
+  "replicaOf": "V5:M16",
+  "coverage": [
+    "5-no_entendi",
+    "3-guided_steps",
+    "17-adaptacion"
+  ],
+  "expectation": "Retoma el paso concreto y lo explica de otra forma (D6 adaptación), manteniendo la participación cognitiva del estudiante y sin saltar al resultado final. YA NO se penaliza como violación de integridad el que ilustre el paso con los valores del ítem; lo que se juzga es si deja trabajo apropiado al modo (D2/D4).",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Ayúdame paso a paso con esta pregunta.",
+      "httpStatus": 201,
+      "wallMs": 166,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Ayúdame paso a paso con esta pregunta.\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    },
+    {
+      "index": 1,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "No entendí el primer paso, ¿por qué hay que dividir por 100? Explícame ese paso de nuevo.",
+      "httpStatus": 201,
+      "wallMs": 162,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"No entendí el primer paso, ¿por qué hay que dividir por 100? Explícame ese paso de nuevo.\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "63cb54d5-7cbe-4674-9490-406cb5eec45c",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    },
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

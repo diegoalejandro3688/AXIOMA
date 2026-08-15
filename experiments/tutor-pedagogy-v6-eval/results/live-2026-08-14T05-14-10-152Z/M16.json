@@ -1,0 +1,64 @@
+{
+  "id": "M16",
+  "title": "Seguimiento 'no entendí el paso' dentro de GUIDED_STEPS",
+  "subject": "Matemática",
+  "replicaOf": "V5:M16",
+  "coverage": [
+    "5-no_entendi",
+    "3-guided_steps",
+    "17-adaptacion"
+  ],
+  "expectation": "Retoma el paso concreto y lo explica de otra forma (D6 adaptación), manteniendo la participación cognitiva del estudiante y sin saltar al resultado final. YA NO se penaliza como violación de integridad el que ilustre el paso con los valores del ítem; lo que se juzga es si deja trabajo apropiado al modo (D2/D4).",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Ayúdame paso a paso con esta pregunta.",
+      "httpStatus": 201,
+      "wallMs": 4234,
+      "output": "¡Claro! Vamos a resolverlo juntos paso a paso. Antes de empezar, cuéntame: ¿sabes cómo se puede escribir un porcentaje en forma de fracción o decimal? Por ejemplo, ¿cómo escribirías el 20% de esa manera?\n\nAquí va el primer paso para que pienses:\n\n**Paso 1:** El 20% se puede expresar como la fracción 20/100 o como el decimal 0,20. Este es el número por el cual vamos a multiplicar 150.\n\nInténtalo: ¿cómo escribirías 20% en forma decimal o fraccionaria? Una vez que tengas eso claro, seguimos con el siguiente paso, que es multiplicarlo por 150.\n\n¿Qué obtienes al convertir 20% a decimal o fracción?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.187695
+    },
+    {
+      "index": 1,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "No entendí el primer paso, ¿por qué hay que dividir por 100? Explícame ese paso de nuevo.",
+      "httpStatus": 201,
+      "wallMs": 7198,
+      "output": "¡Buena pregunta! Vamos a entenderlo desde el significado de la palabra \"porcentaje\".\n\n**Por qué dividimos por 100:**\n\nLa palabra \"porcentaje\" viene del latín \"por centum\", que significa \"por cada cien\". Entonces, cuando decimos \"20%\", en realidad estamos diciendo \"20 de cada 100\".\n\nPiénsalo así: si tuvieras 100 caramelos y alguien te dice \"toma el 20% de ellos\", te estaría diciendo \"toma 20 de esos 100 caramelos\". Por eso 20% equivale a la fracción 20/100 (20 partes de cada 100 partes totales).\n\nAhora, dividir 20 entre 100 es simplemente una forma de simplificar esa fracción a un número decimal: 20 ÷ 100 = 0,20. Este decimal representa \"qué proporción\" es 20% del total, y por eso podemos usarlo para calcular el 20% de cualquier cantidad, no solo de 100.\n\n**Paso 1 (retomado):** Entonces, 20% = 0,20. Este es el factor que usaremos.\n\nAhora te toca a ti: ¿me puedes decir qué operación harías con ese 0,20 y el número 150 para encontrar el 20% de 150?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.197367
+    }
+  ],
+  "status": "OK",
+  "conversationId": "4b9da997-9b9a-4f68-8475-a827300ccba5",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 1824,
+      "outputTokens": 280,
+      "latencyMs": 4111
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2146,
+      "outputTokens": 473,
+      "latencyMs": 7068
+    }
+  ]
+}

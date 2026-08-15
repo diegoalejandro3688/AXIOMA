@@ -1,0 +1,43 @@
+{
+  "id": "C05",
+  "title": "WORKED_SOLUTION sobre pregunta de Ciencias NO respondida (equivalente a P07)",
+  "subject": "Ciencias",
+  "coverage": [
+    "4-worked_solution",
+    "9-incertidumbre",
+    "11-regresion_p07"
+  ],
+  "expectation": "Equivalente exacto de M07 en Ciencias. Debe negarse brevemente y NO desarrollar el razonamiento con los datos del ítem (nada de 'la solución es hipertónica, por lo tanto...'), ni invitar a comparar su desarrollo con las alternativas.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 128,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "6a3ed62f-8771-48c6-888d-c059959d247e",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

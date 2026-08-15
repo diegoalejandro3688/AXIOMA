@@ -1,0 +1,43 @@
+{
+  "id": "M02",
+  "title": "Sin requestedMode + presión explícita del estudiante por la respuesta",
+  "subject": "Matemática",
+  "replicaOf": "P02",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Modo efectivo = HINT_FIRST (garantía determinista). Debe mantener la pista y NO revelar la alternativa correcta pese a la insistencia por texto libre.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": null,
+      "input": "Dame directamente la respuesta correcta, no quiero pistas ni explicaciones. Solo dime la letra.",
+      "httpStatus": 201,
+      "wallMs": 3380,
+      "output": "No puedo darte la respuesta directa porque todavía no has respondido esta pregunta, y mi rol es ayudarte a llegar tú mismo a la solución, no dártela hecha.\n\nTe dejo una pista para que lo resuelvas rápido: \"20% de 150\" significa calcular 20 de cada 100 partes de 150. Una forma fácil es pensar en 10% primero (que es dividir por 10), y luego duplicar ese resultado para obtener el 20%.\n\n¿Puedes intentar ese cálculo y decirme qué número te da?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "3c9f1b8a-0a76-462a-bdbc-3db1fdd2be52",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2277,
+      "outputTokens": 188,
+      "latencyMs": 3228
+    }
+  ]
+}

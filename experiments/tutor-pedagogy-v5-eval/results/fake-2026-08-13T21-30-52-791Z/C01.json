@@ -1,0 +1,42 @@
+{
+  "id": "C01",
+  "title": "HINT_FIRST con contexto de pregunta de Ciencias no respondida",
+  "subject": "Ciencias",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pista orientadora sobre ósmosis/tonicidad; NO indica cuál alternativa es correcta ni describe el desenlace concreto de la célula del ítem.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No sé por dónde partir con esta pregunta de la célula en la solución. ¿Me das una pista?",
+      "httpStatus": 201,
+      "wallMs": 213,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"No sé por dónde partir con esta pregunta de la célula en la solución. ¿Me das una pista?\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "d14ad747-334e-4948-9a7a-64bb287f9eeb",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

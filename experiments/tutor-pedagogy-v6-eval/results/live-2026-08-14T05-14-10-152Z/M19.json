@@ -1,0 +1,41 @@
+{
+  "id": "M19",
+  "title": "WORKED_SOLUTION sin contexto académico (ejercicio del propio estudiante) -- REGRESIÓN DE TRUNCAMIENTO",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "V5:M19",
+  "coverage": [
+    "4-worked_solution",
+    "6-sin_contexto",
+    "12-regresion_truncamiento"
+  ],
+  "expectation": "Entrega la solución completa (respuesta correcta: 10 días) dentro del techo de 768 tokens, con formato de chat y sin truncarse. Verifica que la brevedad/no-truncamiento lograda por V4/V5 NO se degradó al retirar la política global (D9).",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Resuélveme completo este ejercicio de mi cuaderno: si 8 trabajadores tardan 15 días en una obra, ¿cuántos días tardarían 12 trabajadores al mismo ritmo?",
+      "httpStatus": 201,
+      "wallMs": 7227,
+      "output": "Vamos a resolverlo paso a paso.\n\nEste es un problema de proporcionalidad inversa: si aumentan los trabajadores, el tiempo necesario disminuye (asumiendo que todos trabajan al mismo ritmo y se reparten la misma cantidad total de trabajo).\n\nPrimero, calculemos el trabajo total en \"trabajador-días\", una forma de medir cuánto esfuerzo total requiere la obra:\n\n8 trabajadores × 15 días = 120 trabajador-días\n\nEsto significa que la obra completa equivale a 120 unidades de trabajo (por ejemplo, si un trabajador la hiciera solo, tardaría 120 días).\n\nAhora, con 12 trabajadores, queremos saber cuántos días (x) se necesitan para completar esas mismas 120 unidades de trabajo:\n\n12 × x = 120\n\nDespejamos x dividiendo ambos lados entre 12:\n\nx = 120 ÷ 12\nx = 10\n\nEntonces, 12 trabajadores tardarían 10 días en terminar la obra.\n\nTiene sentido: al aumentar los trabajadores de 8 a 12 (un aumento de 1.5 veces), el tiempo disminuye en la misma proporción: 15 ÷ 1.5 = 10. Esa es la lógica clave de la proporcionalidad inversa: cuando una cantidad crece, la otra decrece en la misma proporción, y su producto se mantiene constante.\n\n¿Quieres que revisemos otro ejercicio similar para que practiques identificar cuándo una relación es inversa y no directa?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.2322
+    }
+  ],
+  "status": "OK",
+  "conversationId": "1efc882d-8b87-4876-881e-0bac735645db",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 1883,
+      "outputTokens": 612,
+      "latencyMs": 7097
+    }
+  ]
+}

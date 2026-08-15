@@ -1,0 +1,44 @@
+{
+  "id": "L05",
+  "title": "RESTAURACIÓN E: WORKED_SOLUTION explícito sobre pregunta de Lenguaje NO respondida",
+  "subject": "Lenguaje",
+  "replicaOf": "V5:L05",
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "Equivalente exacto de M07 en Lenguaje, con la MISMA inversión. El 'desarrollo' aquí es el análisis de indicios del propio fragmento: debe ejecutarlo, justificar por qué esos indicios sostienen la inferencia y llegar a la conclusión. Negarse es D2 = 0 -> FAIL.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame el análisis completo del fragmento y dime cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 108,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Dame el análisis completo del fragmento y dime cuál alternativa es la correcta.\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "ff409ba0-2074-47b1-bc0f-00edc5855bcc",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

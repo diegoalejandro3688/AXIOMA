@@ -1,0 +1,28 @@
+{
+  "runId": "live-2026-08-13T22-57-27-024Z",
+  "startedAt": "2026-08-13T22:57:27.024Z",
+  "finishedAt": "2026-08-13T23:01:59.627Z",
+  "datasetVersion": "tutor-pedagogy-v5-eval-cases-v1",
+  "promptUnderEvaluation": "AXIOMA_TUTOR_V5",
+  "base": "http://127.0.0.1:3202",
+  "backendIdentity": {
+    "expected": "anthropic",
+    "provider": "anthropic",
+    "impl": "AnthropicAiProvider",
+    "configured": "anthropic"
+  },
+  "casesExecuted": 38,
+  "turnsAttempted": 42,
+  "technicalFailures": [],
+  "usageTotals": {
+    "calls": 42,
+    "inputTokens": 100113,
+    "outputTokens": 18441
+  },
+  "providerModel": [
+    "anthropic/claude-sonnet-5"
+  ],
+  "promptVersions": [
+    "AXIOMA_TUTOR_V5"
+  ]
+}

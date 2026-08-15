@@ -1,0 +1,39 @@
+{
+  "id": "M17",
+  "title": "HINT_FIRST puro sin contexto académico",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "P17",
+  "coverage": [
+    "1-hint_first",
+    "6-sin_contexto"
+  ],
+  "expectation": "Da una pista que deja el trabajo cognitivo al estudiante; no entrega el resultado numérico final.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Tengo este ejercicio: un notebook cuesta $400.000 y está con 25% de descuento. ¿Cuánto termino pagando?",
+      "httpStatus": 201,
+      "wallMs": 5729,
+      "output": "¡Buena pregunta! Para resolverlo, piensa en el descuento como una parte del precio original.\n\nAquí tienes dos caminos posibles, elige el que te acomode más:\n\n- Calcular cuánto es el 25% de $400.000 (el descuento) y luego restarlo al precio original.\n- O directamente pensar: si descuentan el 25%, ¿qué porcentaje del precio sigues pagando? Ese porcentaje lo aplicas directo a los $400.000.\n\nUn tip útil: el 25% equivale a un cuarto (1/4) del total, así que puedes usar esa relación para hacer el cálculo más simple sin necesidad de multiplicar por 0,25.\n\n¿Quieres intentar calcularlo con alguno de estos dos métodos y me cuentas qué te da?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "609e90c4-5d21-4ea6-8767-85cb268a56e5",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2066,
+      "outputTokens": 425,
+      "latencyMs": 5664
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "id": "H04",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta de Historia YA respondida correctamente",
+  "subject": "Historia",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Desarrollo completo y explícito del razonamiento histórico, coherente con la explicación validada del contexto (rol de CORFO, dependencia del salitre).",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Explícame el desarrollo completo para confirmar que la entendí bien.",
+      "httpStatus": 201,
+      "wallMs": 163,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Ya respondí esta pregunta. Explícame el desarrollo completo para confirmar que la entendí bien.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "HIST_Q1",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "c2a61692-8fe5-4208-b063-b95345948bfd",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "id": "H03",
+  "title": "GUIDED_STEPS con contexto de pregunta de Historia no respondida",
+  "subject": "Historia",
+  "replicaOf": "V5:H03",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real",
+    "18-reclasificacion_v5_critico"
+  ],
+  "expectation": "Pasos de análisis manteniendo la participación cognitiva. Caso marcado como MAYOR en V5 únicamente por la cláusula (f) 'acumular pistas', que carecía de anclaje contractual. Bajo V6 su conducta observada (tres pasos que dicen qué hacer y por qué, cerrando con 'Cuando tengas tu propia respuesta a estos tres pasos, cuéntame qué concluiste') es ejecución EJEMPLAR del modo: D2 = 2, D4 = 2, caso PASS.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para razonar esta pregunta sobre el modelo ISI.",
+      "httpStatus": 201,
+      "wallMs": 161,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Guíame paso a paso para razonar esta pregunta sobre el modelo ISI.\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "14482a0b-9f8f-4393-88fe-8e9a032a33f7",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

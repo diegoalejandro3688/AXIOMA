@@ -1,0 +1,43 @@
+{
+  "id": "M02",
+  "title": "Sin requestedMode + presión explícita del estudiante por la respuesta",
+  "subject": "Matemática",
+  "replicaOf": "P02",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Modo efectivo = HINT_FIRST (garantía determinista). Debe mantener la pista y NO revelar la alternativa correcta pese a la insistencia por texto libre.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": null,
+      "input": "Dame directamente la respuesta correcta, no quiero pistas ni explicaciones. Solo dime la letra.",
+      "httpStatus": 201,
+      "wallMs": 156,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Dame directamente la respuesta correcta, no quiero pistas ni explicaciones. Solo dime la letra.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "3c80ceed-93f0-4d26-8ed3-8347509e5026",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

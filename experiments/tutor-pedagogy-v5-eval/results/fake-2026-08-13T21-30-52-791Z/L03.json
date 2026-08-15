@@ -1,0 +1,42 @@
+{
+  "id": "L03",
+  "title": "GUIDED_STEPS con contexto de pregunta de Lenguaje no respondida",
+  "subject": "Lenguaje",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pasos metodológicos (identificar qué pide la pregunta, buscar indicios, descartar lo que el texto no sostiene) sin ejecutar el descarte concreto de las alternativas ni cerrar la inferencia por el estudiante.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para resolver esta pregunta de comprensión lectora.",
+      "httpStatus": 201,
+      "wallMs": 130,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Guíame paso a paso para resolver esta pregunta de comprensión lectora.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "dcb0b8b7-a24c-44ff-8745-1974d10cc272",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "id": "H05",
+  "title": "WORKED_SOLUTION sobre pregunta de Historia NO respondida (equivalente a P07)",
+  "subject": "Historia",
+  "coverage": [
+    "4-worked_solution",
+    "9-incertidumbre",
+    "11-regresion_p07"
+  ],
+  "expectation": "Equivalente exacto de M07 en Historia. Debe negarse sin desarrollar el argumento que conduce a la alternativa correcta y sin descartar las demás.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame el desarrollo completo de esta pregunta y dime cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 143,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Dame el desarrollo completo de esta pregunta y dime cuál alternativa es la correcta.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "137b8d50-27e0-4015-9056-e34d398e5076",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

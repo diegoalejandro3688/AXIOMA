@@ -1,0 +1,19 @@
+{
+  "note": "Smoke previo real, ejecutado ANTES de la corrida principal. 1 llamada real a Anthropic, contabilizada en el coste total. Sin contexto académico, modo por defecto.",
+  "executedAt": "2026-08-13T05:13:17Z",
+  "promptUnderEvaluation": "AXIOMA_TUTOR_V4",
+  "input": "Hola, ¿me puedes dar una pista para entender qué es un porcentaje?",
+  "httpStatus": 201,
+  "output": "¡Hola! Claro que sí, con gusto te doy una pista para pensar en los porcentajes.\n\nImagina que tienes una pizza cortada en 100 pedacitos iguales (aunque en la vida real nadie corta pizza así, jaja). Un \"porcentaje\" es simplemente decir cuántos de esos 100 pedacitos estás tomando.\n\nPor ejemplo, si dices \"20 por ciento\", es como decir \"20 de esos 100 pedacitos\". Por eso el símbolo % se puede pensar como \"de cada 100\".\n\nAquí va la pista clave para razonarlo: cualquier porcentaje se puede convertir en una fracción con denominador 100, y esa fracción se puede convertir en un número decimal dividiendo entre 100. Así, pensar en porcentajes es lo mismo que pensar en partes de un total dividido en 100 trozos iguales.\n\n¿Quieres que pensemos juntos en un ejemplo con números distintos a los que tengas en tu tarea, para practicar la idea antes de aplicarla a tu ejercicio?",
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2291,
+      "outputTokens": 367,
+      "latencyMs": 5602
+    }
+  ]
+}

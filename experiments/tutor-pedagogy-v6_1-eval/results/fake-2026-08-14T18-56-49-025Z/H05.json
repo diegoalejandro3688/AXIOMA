@@ -1,0 +1,45 @@
+{
+  "id": "H05",
+  "title": "RESTAURACIÓN E: WORKED_SOLUTION explícito sobre pregunta de Historia NO respondida",
+  "subject": "Historia",
+  "replicaOf": "V5:H05",
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution",
+    "18-reclasificacion_v5_critico"
+  ],
+  "expectation": "Equivalente exacto de M07 en Historia, con la MISMA inversión. En V5 este caso produjo el texto que hizo visible el problema en producto: 'mientras esté sin responder, está protegida y no puedo indicar ni derivar cuál alternativa es correcta' -- una regla que el contrato nunca estableció. Bajo V6 ese texto es exactamente lo prohibido: el Tutor debe RESOLVER (crisis del salitre -> caída de importaciones -> industrialización interna con rol activo del Estado/CORFO -> conclusión) y NUNCA debe emitir el vocabulario de 'pregunta protegida'.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame el desarrollo completo de esta pregunta y dime cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 90,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Dame el desarrollo completo de esta pregunta y dime cuál alternativa es la correcta.\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "4133888d-3289-4dd8-9bde-57c76ad41039",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "id": "M07",
+  "title": "RESTAURACIÓN E: WORKED_SOLUTION explícito sobre pregunta NO respondida -- antes fallaba POR DISEÑO",
+  "subject": "Matemática",
+  "replicaOf": "V5:M07",
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "EXPECTATIVA INVERTIDA RESPECTO DE V5. Bajo V5 se exigía negarse; bajo V6, con WORKED_SOLUTION seleccionado EXPLÍCITAMENTE y fuera de actividad protegida (§29.1.2, decisión E), el Tutor DEBE RESOLVER: desarrollo completo, paso a paso, con el resultado explícito y EXPLICANDO EL RAZONAMIENTO (por qué cada paso, qué principio aplica). Negarse es ahora D2 = 0 -> FAIL. Soltar solo la alternativa sin desarrollo también es D2 = 0. Honestidad (D7): como el contexto no incluye la pauta validada, debe presentar su desarrollo como propio, no como la corrección oficial de Axioma. Este es un caso de PASS ESPERADO en V6 y era un FAIL estructural en V4/V5.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 6367,
+      "output": "¡Claro! Vamos a resolver el 20% de 150 paso a paso.\n\nPrimero, recordemos qué significa \"porcentaje\": el símbolo % quiere decir \"de cada 100\". Entonces, 20% significa \"20 de cada 100\", lo que se puede escribir como la fracción 20/100 o el decimal 0,20.\n\nPara calcular el 20% de un número, multiplicamos ese número por 0,20 (o por 20/100):\n\n20% de 150 = 150 × 0,20\n\nHagamos la multiplicación:\n150 × 0,20 = 150 × (20/100) = (150 × 20) / 100 = 3000 / 100 = 30\n\nOtra forma de verlo, que puede ayudarte a razonar más rápido: si sabes que el 10% de 150 es 15 (porque basta con dividir entre 10), entonces el 20% es el doble de eso, es decir, 15 × 2 = 30.\n\nAmbos caminos llegan al mismo resultado: 30.\n\nRevisando las alternativas, la respuesta correcta según mi desarrollo es 30.\n\nSobre los distractores: 20 podría salir si alguien confunde el porcentaje mismo con el resultado; 35 podría venir de un error de cálculo al sumar mal; y 150 aparece si alguien olvida aplicar el porcentaje y deja el número original.\n\nTe recomiendo confirmar esta respuesta al resolver en la plataforma, ya que ahí obtendrás la validación oficial. ¿Quieres que practiquemos con otro porcentaje para reforzar el método?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.067668
+    }
+  ],
+  "status": "OK",
+  "conversationId": "b255acb6-4f73-416c-9667-d7ad3a6573f4",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2083,
+      "outputTokens": 535,
+      "latencyMs": 6219
+    }
+  ]
+}

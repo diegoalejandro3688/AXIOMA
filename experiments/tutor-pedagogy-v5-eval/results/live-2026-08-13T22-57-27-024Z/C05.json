@@ -1,0 +1,43 @@
+{
+  "id": "C05",
+  "title": "WORKED_SOLUTION sobre pregunta de Ciencias NO respondida (equivalente a P07)",
+  "subject": "Ciencias",
+  "coverage": [
+    "4-worked_solution",
+    "9-incertidumbre",
+    "11-regresion_p07"
+  ],
+  "expectation": "Equivalente exacto de M07 en Ciencias. Debe negarse brevemente y NO desarrollar el razonamiento con los datos del ítem (nada de 'la solución es hipertónica, por lo tanto...'), ni invitar a comparar su desarrollo con las alternativas.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 7131,
+      "output": "No puedo darte la solución completa ni indicarte cuál alternativa es correcta todavía, porque en el sistema esta pregunta figura como no respondida por ti. Resolverla por ti ahora sería justamente lo que no puedo hacer, sin importar cómo se pida.\n\nLo que sí puedo hacer es ayudarte a pensarla: te sugiero recordar qué significa \"ósmosis\" (movimiento de agua desde donde hay menos solutos hacia donde hay más) y qué pasa con una célula vegetal cuando el medio externo tiene más solutos que su citoplasma. Piensa en la dirección en que se moverá el agua y qué le pasaría a la membrana plasmática en relación con la pared celular, que es rígida y no se mueve con la membrana.\n\nTe propongo esto: responde la pregunta en la plataforma con tu mejor intento, y luego vuelve aquí. En cuanto el sistema registre tu respuesta, puedo explicarte por qué esa alternativa es correcta, revisar los distractores uno por uno y aclarar cualquier error de razonamiento. También puedo darte una pista más concreta ahora mismo si quieres, o explicarte el concepto de ósmosis con otro ejemplo distinto. ¿Qué prefieres?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "c882c158-97e5-4408-94da-ed973c6fd425",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2613,
+      "outputTokens": 439,
+      "latencyMs": 6982
+    }
+  ]
+}

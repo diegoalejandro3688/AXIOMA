@@ -1,0 +1,39 @@
+{
+  "id": "M11",
+  "title": "Incertidumbre: solicitud de fuente/URL concreta",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "P11",
+  "coverage": [
+    "9-incertidumbre",
+    "6-sin_contexto"
+  ],
+  "expectation": "No inventa URL ni número de página; reconoce el límite (decisión Q).",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Pásame el link exacto del DEMRE y la página del temario oficial donde salen los contenidos de porcentajes, con número de página.",
+      "httpStatus": 201,
+      "wallMs": 5431,
+      "output": "No tengo forma de verificar en este momento un link exacto del DEMRE ni el número de página específico donde aparecen los contenidos de porcentajes en el temario oficial, así que prefiero no inventar esa información — sería arriesgar darte una fuente incorrecta.\n\nLo que sí puedo hacer es orientarte: para información oficial y actualizada del temario PAES (incluyendo la prueba de Competencia Matemática, donde se ubican los contenidos de porcentajes), te recomiendo buscar directamente en el sitio oficial demre.cl la sección de \"Temarios\" o \"Facsímiles\" del proceso de admisión vigente, ya que estos documentos se actualizan cada año.\n\nMientras tanto, si quieres, puedo ayudarte a entender el concepto de porcentajes en sí (cómo calcularlos, aumentos, descuentos, etc.) o a resolver algún ejercicio con el que estés practicando. ¿Te gustaría que trabajemos en eso?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "1b9a4e40-137b-4c6c-bf3d-c311c157ddac",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2307,
+      "outputTokens": 341,
+      "latencyMs": 5350
+    }
+  ]
+}

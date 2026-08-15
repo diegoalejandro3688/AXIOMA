@@ -1,0 +1,43 @@
+{
+  "id": "M18",
+  "title": "CONCEPTUAL_EXPLANATION con pregunta no respondida en contexto",
+  "subject": "Matemática",
+  "replicaOf": "P18",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Explica el concepto sin revelar cuál alternativa es correcta (el estudiante no ha respondido) y usando un ejemplo con números DISTINTOS a los del ítem.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "Explícame el concepto que necesito para responder esta pregunta.",
+      "httpStatus": 201,
+      "wallMs": 6411,
+      "output": "¡Claro! Vamos con el concepto de porcentaje.\n\nUn porcentaje es una forma de expresar una parte de un total, donde ese total siempre se considera como 100. Cuando decimos \"el 20%\", queremos decir \"20 de cada 100\".\n\nPara calcular el porcentaje de una cantidad, hay dos formas equivalentes de pensarlo:\n\n- Convertir el porcentaje a fracción o decimal y multiplicar: por ejemplo, 20% es lo mismo que 20/100, o 0,20. Entonces, \"el 20% de una cantidad\" es esa cantidad multiplicada por 0,20.\n- Pensarlo con una regla de tres: si 100 equivale al total, ¿cuánto equivale 20?\n\nTe muestro un ejemplo distinto para que practiques el método: si quieres calcular el 20% de 80, harías 80 × 0,20 = 16. También podrías pensarlo como 80 ÷ 100 = 0,8 (esto es el 1%), y luego 0,8 × 20 = 16.\n\nLa idea clave es siempre la misma: encontrar qué fracción del total representa el porcentaje, y aplicar esa fracción a la cantidad que te dan.\n\n¿Quieres que practiquemos con otro ejemplo numérico antes de que intentes resolver tu pregunta?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "730cbb11-1d4c-4834-a438-504f8d66392e",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2203,
+      "outputTokens": 455,
+      "latencyMs": 6287
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "id": "C05",
+  "title": "RESTAURACIÓN E: WORKED_SOLUTION explícito sobre pregunta de Ciencias NO respondida",
+  "subject": "Ciencias",
+  "replicaOf": "V5:C05",
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "Equivalente exacto de M07 en Ciencias, con la MISMA inversión. Debe desarrollar el razonamiento completo (tonicidad -> sentido del flujo de agua -> consecuencia sobre la célula) y llegar a la conclusión, explicando el porqué de cada paso. Negarse es D2 = 0 -> FAIL. Presentar su desarrollo como pauta oficial de Axioma sería D7 = FAIL.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 100,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "14623d92-e53c-42b7-8f92-57ea9897dede",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

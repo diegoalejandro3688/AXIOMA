@@ -1,0 +1,44 @@
+{
+  "id": "L05",
+  "title": "RESTAURACIÓN E: WORKED_SOLUTION explícito sobre pregunta de Lenguaje NO respondida",
+  "subject": "Lenguaje",
+  "replicaOf": "V5:L05",
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "Equivalente exacto de M07 en Lenguaje, con la MISMA inversión. El 'desarrollo' aquí es el análisis de indicios del propio fragmento: debe ejecutarlo, justificar por qué esos indicios sostienen la inferencia y llegar a la conclusión. Negarse es D2 = 0 -> FAIL.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame el análisis completo del fragmento y dime cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 8480,
+      "output": "¡Vamos con el análisis completo! Antes de empezar, una aclaración importante: como aún no has respondido esta pregunta en la plataforma, no tengo la pauta oficial de Axioma. Lo que sigue es mi propio razonamiento, así que te invito a contrastarlo cuando respondas en la app.\n\nAnalicemos las pistas del texto:\n\n- \"La puerta entreabierta y las luces encendidas\" cuando \"nadie sabía que volvería antes de tiempo\": esto es una anomalía. Elena no esperaba encontrar la casa así, porque si nadie sabía que llegaría, no debería haber nadie dentro ni luces prendidas.\n- \"Dejó la maleta en el suelo sin hacer ruido\": esta acción es clave. No hacer ruido es una conducta típica de alguien que quiere pasar desapercibido, no de alguien tranquilo o cómodo.\n- \"Buscó el teléfono... aunque recordaba que se había quedado sin batería\": busca ayuda o comunicación de forma casi refleja, pese a saber que no servirá. Esto sugiere necesidad de sentirse acompañada o preparada ante algo incierto.\n\nCon esto, descartemos: no hay indicio de que esperara a alguien (descarta la opción de tranquilidad), no hay mención de molestia con la familia, ni de apuro por salir de nuevo.\n\nLo que sí se sostiene con evidencia textual (silencio deliberado, búsqueda de teléfono pese a saberlo sin batería, situación inesperada) es un estado de alerta y desconfianza ante algo que no cuadra con lo esperado.\n\nPor eso, mi lectura apunta a la alternativa: \"Está alerta y desconfiada frente a una situación que no esperaba\".\n\n¿Quieres que revisemos juntos por qué las otras opciones no calzan con el texto?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.365316
+    }
+  ],
+  "status": "OK",
+  "conversationId": "611b2cec-ff40-4395-8ef0-3b8c09c38aa5",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2310,
+      "outputTokens": 639,
+      "latencyMs": 8315
+    }
+  ]
+}

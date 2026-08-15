@@ -1,0 +1,77 @@
+{
+  "note": "Registrado ANTES de ejecutar ninguna llamada real, igual que los cost-plan de V3, V4 y V5. En esta FASE DE DISEÑO se ejecutaron CERO llamadas reales a Anthropic. Los totales reales se leerán del ledger (`ai_usage_ledger`, metadata real de `response.usage`) en `results/<runId>/_summary.json` cuando el Product Owner autorice la fase de ejecución, que es una autorización EXPLÍCITA, SEPARADA y POSTERIOR.",
+  "promptUnderEvaluation": "AXIOMA_TUTOR_V6",
+  "plannedCases": 39,
+  "plannedRealCalls": 43,
+  "plannedRealCallsIncludingSmoke": 44,
+  "provider": "anthropic",
+  "model": "claude-sonnet-5 (ANTHROPIC_MODEL por defecto, ADR-0022 -- no se modifica)",
+  "maxOutputTokensPerCall": 768,
+  "timeoutMsTotalPerOperation": 10000,
+  "infraNotes": {
+    "maxOutputTokens": "768, SIN CAMBIOS respecto de V4/V5. La corrida real de V5 midió 0 turnos truncados sobre 42 y un máximo de 686 tokens de salida. V6 puede acercarse más al techo porque los 5-6 turnos de WORKED_SOLUTION sobre pregunta no respondida pasan de una NEGATIVA breve a una SOLUCIÓN COMPLETA; aun así 686 + margen sigue bajo 768, y la regla de brevedad (120-300 palabras) se conserva sin cambios materiales. Se vigilará explícitamente el truncamiento en D9.",
+    "timeout": "10000 ms, SIN CAMBIOS. Deadline TOTAL de la operación (intento inicial + máximo 1 reintento técnico elegible comparten el MISMO instante absoluto de expiración). La corrida real de V5 tuvo 0 fallos técnicos con este valor y ~2.384 tokens de entrada; V6 REDUCE la entrada, así que el margen mejora. NO se sube a ~20 s: explícitamente congelado.",
+    "retryPolicy": "SIN CAMBIOS. `timeout` NO es reintentable. Un timeout termina la operación: no consume cuota, no persiste ASSISTANT, no escribe en el ledger y deja el mensaje USER reintentable.",
+    "congeladoNoImplementado": "Similarity guardrail, embeddings, regeneración, timeout ~20 s, calibración con 300-500 turnos y detector productivo de paráfrasis: CONGELADOS por decisión del Product Owner, fuera de esta tarea."
+  },
+  "callBreakdown": {
+    "porBloque": {
+      "A_matematica_y_generales": { "casos": 19, "llamadas": 21 },
+      "B_materias_nuevas": { "casos": 15, "llamadas": 15, "detalle": "Ciencias 5, Lenguaje 5, Historia 5" },
+      "C_presion_sostenida": { "casos": 1, "llamadas": 2, "detalle": "R01" },
+      "D_conductas_reencuadradas": { "casos": 3, "llamadas": 4, "detalle": "R02 (2 turnos), R03 (1), R04 (1)" },
+      "E_restauracion_contractual_NUEVO": { "casos": 1, "llamadas": 1, "detalle": "W01" }
+    },
+    "porMateria": {
+      "Matematica_con_contexto_academico": 16,
+      "Generales_sin_contexto_o_no_especificos_de_materia": 8,
+      "Ciencias": 6,
+      "Lenguaje": 6,
+      "Historia": 7
+    },
+    "porModoEfectivo": { "HINT_FIRST": 12, "CONCEPTUAL_EXPLANATION": 12, "GUIDED_STEPS": 7, "WORKED_SOLUTION": 12 },
+    "comparacionConV5": {
+      "V5": "43 llamadas nominales (42 + 1 smoke); 42 solicitudes reales emitidas, 0 fallos técnicos, 0 reintentos.",
+      "V6": "44 llamadas nominales (43 + 1 smoke) = +2,3 % sobre V5, por el único caso nuevo (W01).",
+      "porQueNoMas": "El dataset de V5 se conserva íntegro con turnos byte-idénticos para preservar comparabilidad caso a caso. Se añade UN solo caso, el estrictamente necesario para ejercer la dirección de fallo que V6 introduce (resolver sin explicar el razonamiento).",
+      "porQueNoMenos": "V6 cambia el prompt Y el criterio de evaluación. Sin re-ejecutar el set completo no se puede afirmar que retirar la política global no degradó ninguna garantía ya verificada (seguridad, incertidumbre, adaptación, modo por defecto, brevedad, multi-materia)."
+    }
+  },
+  "estimateBeforeRun": {
+    "metodo": "Extrapolación desde los tokens REALES por llamada de la corrida V5 (`results/live-2026-08-13T22-57-27-024Z/_summary.json`: 100.113 tokens de entrada y 18.441 de salida en 42 llamadas => 2.384 entrada / 439 salida por llamada), ajustada por la reducción MEDIDA del texto de instrucciones V5 -> V6. Mismo método empírico que los checkpoints anteriores. No es una cotización.",
+    "entrada": {
+      "referenciaV5": "2.384 tokens de entrada por llamada (REAL, medido en el ledger sobre 42 llamadas).",
+      "reduccionMedidaDelSystemPrompt": {
+        "bloqueBase": "4.113 -> 3.283 caracteres (-830 car.) en TODAS las llamadas. Cae porque se retira íntegra la POLÍTICA GLOBAL DE NO-DERIVACIÓN de V5 (cláusulas a-f + autochequeo + fin de protección) y se sustituye por un bloque de CRITERIO PEDAGÓGICO mucho más corto.",
+        "bloquesDeModo": "HINT_FIRST 634 -> 657 (+23 car.), CONCEPTUAL_EXPLANATION 439 -> 495 (+56), GUIDED_STEPS 503 -> 474 (-29), WORKED_SOLUTION 1.191 -> 1.049 (-142). Tres bloques cambian poco porque ahora cada uno declara su propia semántica pedagógica en vez de referenciar la política global; WORKED_SOLUTION cae al desaparecer el largo párrafo de negativa.",
+        "netoPorLlamada": "-807 car. (HINT_FIRST), -774 (CONCEPTUAL_EXPLANATION), -859 (GUIDED_STEPS), -972 (WORKED_SOLUTION). Ponderado por la mezcla real de 43 turnos: -852 caracteres.",
+        "ajusteDelBloqueDeContextoAcademico": "La línea de pregunta sin responder crece ~+109 car. (la instrucción anti-fabricación es más explícita que el antiguo 'pregunta PROTEGIDA'); la de pregunta ya respondida queda prácticamente igual (+5 car.). Ponderado sobre los ~24 turnos con pregunta no respondida: ~+61 car. por llamada.",
+        "netoFinal": "~-791 caracteres por llamada. Con el ratio empírico de 2,3-2,5 caracteres/token derivado de llamadas reales en español: -316 a -344 tokens; se toma -330 como valor central."
+      },
+      "inputTokensPorLlamadaEstimate": 2054,
+      "totalInputTokensEstimate": 88500,
+      "rango": "84.000 - 95.000"
+    },
+    "salida": {
+      "referenciaV5": "18.441 tokens de salida en 42 llamadas = 439 por llamada, con techo 768, máximo observado 686 y 0 turnos topados.",
+      "efectoEsperadoEnV6": "La regla de brevedad se conserva sin cambios materiales, pero la mezcla cambia en una dirección concreta: los 5 turnos de WORKED_SOLUTION sobre pregunta NO respondida (M07, C05, L05, H05, W01) pasan de una NEGATIVA de 3-5 líneas a una SOLUCIÓN COMPLETA con razonamiento, y R01 turno 1 igual. Se asume ~465 tok/llamada por prudencia (+6 % sobre V5).",
+      "totalOutputTokensEstimate": 20000,
+      "rango": "17.000 - 24.000"
+    },
+    "estimatedCostUsd": "~0,50 - 0,65 (central ~0,57)",
+    "desglose": "Entrada ~88.500 tok x $3/MTok = ~$0,27. Salida ~20.000 tok x $15/MTok = ~$0,30.",
+    "escenarioPesimista": "Si reapareciera fallo técnico y se usara el reintento único autorizado en todos los casos afectados (peor caso ~8 llamadas extra), el total sube a ~US$0,68; si además Anthropic facturara completas eventuales solicitudes expiradas, la cota superior pesimista es ~US$0,85. La corrida real de V5 tuvo 0 fallos técnicos, así que este escenario es conservador.",
+    "comparacionConElCosteRealDeV5": "V5 costó, con sus totales reales del ledger, ~US$0,58 (100.113 entrada x $3/MTok = $0,30 + 18.441 salida x $15/MTok = $0,28). V6 estima ~US$0,57 con 1 llamada más, ~330 tokens menos de entrada por llamada y ~26 tokens más de salida por llamada: prácticamente el mismo coste, mismo orden de magnitud, centavos de dólar.",
+    "pricingAssumption": "Tarifa de referencia Sonnet ~$3/MTok entrada, ~$15/MTok salida. Supuesto de estimación, no una cotización."
+  },
+  "hardCaps": [
+    "43 llamadas planificadas (+1 smoke); sin repeticiones automáticas.",
+    "Máximo 1 reintento manual por caso con fallo técnico, registrado como tal. Ninguna re-ejecución de casos con FAIL pedagógico.",
+    "`ANTHROPIC_MAX_OUTPUT_TOKENS=768` y `ANTHROPIC_TIMEOUT_MS=10000` son los valores PRODUCTIVOS vigentes, no valores especiales de evaluación. Si el operador los cambiara para la corrida, la evaluación dejaría de medir el producto real.",
+    "PRECONDICIÓN DE IDENTIDAD OBLIGATORIA antes de la primera llamada: `GET /ai/_internal/effective-provider` debe devolver `provider: \"anthropic\"` en el backend objetivo, y el runner debe abortar ruidosamente si no puede confirmarlo. Es la contrapartida exacta del incidente del 2026-08-13 (ver `experiments/tutor-pedagogy-v5-eval/INCIDENT-v4-leak-during-v5-prep.md`): un puerto abierto NUNCA prueba qué proceso escucha, en ninguna de las dos direcciones.",
+    "HARD CAP DE GASTO PROPUESTO: US$1,50. Justificación: es ~2,6x la estimación central (~US$0,56) y ~1,8x la cota superior pesimista (~US$0,85), deja espacio para el reintento único por caso sin autorizar una segunda corrida completa, y es el MISMO cap que V4 y V5 ya demostraron suficiente en corridas reales. Subirlo no está justificado por ninguna evidencia; bajarlo arriesgaría detener la corrida a mitad y perder comparabilidad.",
+    "Si el gasto real superara US$1,50, detener la corrida y reportar antes de continuar."
+  ],
+  "authorizationStatus": "NO AUTORIZADA. Este plan se propone; NO se ejecuta. La ejecución real de V6 contra Anthropic requiere una autorización EXPLÍCITA, SEPARADA y POSTERIOR del Product Owner, que no se deriva ni se presume del encargo de diseño de este checkpoint.",
+  "designPhaseAttestation": "CERO llamadas reales a Anthropic ejecutadas en la fase de diseño de este plan."
+}

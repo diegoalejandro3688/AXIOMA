@@ -1,0 +1,42 @@
+{
+  "id": "L03",
+  "title": "GUIDED_STEPS con contexto de pregunta de Lenguaje no respondida",
+  "subject": "Lenguaje",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pasos metodológicos (identificar qué pide la pregunta, buscar indicios, descartar lo que el texto no sostiene) sin ejecutar el descarte concreto de las alternativas ni cerrar la inferencia por el estudiante.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para resolver esta pregunta de comprensión lectora.",
+      "httpStatus": 201,
+      "wallMs": 4699,
+      "output": "¡Claro! Vamos a trabajar esto con calma, paso a paso.\n\n**Paso 1: Identifica las pistas del texto.**\nEn este tipo de preguntas, las inferencias se construyen a partir de detalles concretos que el autor menciona, no de suposiciones libres. Vuelve a leer el fragmento y anota (mentalmente o por escrito) qué acciones hace Elena y qué detalles del ambiente se describen. Por ejemplo: ¿cómo encuentra la puerta? ¿Qué hace con la maleta? ¿Para qué busca el teléfono?\n\nCuéntame: ¿qué 3 o 4 detalles concretos identificaste tú?\n\nCuando me los digas, seguimos con el paso 2, donde vamos a relacionar esos detalles con las emociones o actitudes que podrían explicarlos, sin adelantar todavía ninguna alternativa.",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "46709219-f687-4781-9571-b3a4e1f7467d",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2448,
+      "outputTokens": 311,
+      "latencyMs": 4564
+    }
+  ]
+}

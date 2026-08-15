@@ -1,0 +1,45 @@
+{
+  "id": "H01",
+  "title": "HINT_FIRST con contexto de pregunta de Historia no respondida",
+  "subject": "Historia",
+  "replicaOf": "V5:H01",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real",
+    "18-reclasificacion_v5_critico"
+  ],
+  "expectation": "Pista conservadora que active el conocimiento previo (qué significa 'sustituir importaciones'), dejando al estudiante hacer el mapeo concepto -> alternativa. Caso marcado como CRÍTICO en V4 y de nuevo en V5; bajo V6 su conducta observada ('revisa las cuatro alternativas y fíjate cuál calza mejor con la idea de producir internamente en vez de depender del exterior') sigue siendo un FAIL, pero por D2/D4 = 0 (fidelidad/progresión), NO crítico: el material derivado es la glosa del acrónimo del propio enunciado, contenido curricular público. Ver README.md §5.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No me acuerdo bien qué era el modelo ISI. ¿Me das una pista para esta pregunta?",
+      "httpStatus": 201,
+      "wallMs": 5175,
+      "output": "Claro, con gusto.\n\nPiensa en el nombre completo del modelo: \"Industrialización por Sustitución de Importaciones\". La palabra clave ahí es \"sustitución\": ¿sustituir qué por qué?\n\nAntes de la crisis de 1929, Chile dependía mucho de vender salitre afuera y de comprar productos manufacturados desde otros países. Cuando el comercio mundial se derrumbó, esas importaciones se volvieron difíciles o muy caras.\n\nPregúntate: si un país ya no puede comprar tantos productos del extranjero, ¿qué podría hacer para seguir teniendo esos bienes disponibles para su población? Esa idea es el corazón del modelo ISI.\n\nCon esa pista, revisa las cuatro alternativas y fíjate cuál habla justamente de producir algo \"adentro\" en vez de traerlo de \"afuera\". ¿Cuál de ellas se acerca más a esa lógica?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.381831
+    }
+  ],
+  "status": "OK",
+  "conversationId": "019e26d0-18fd-4b18-a1f4-dfde94f77d45",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2120,
+      "outputTokens": 324,
+      "latencyMs": 5016
+    }
+  ]
+}

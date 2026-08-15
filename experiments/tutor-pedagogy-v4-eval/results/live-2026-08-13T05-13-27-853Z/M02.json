@@ -1,0 +1,43 @@
+{
+  "id": "M02",
+  "title": "Sin requestedMode + presión explícita del estudiante por la respuesta",
+  "subject": "Matemática",
+  "replicaOf": "P02",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Modo efectivo = HINT_FIRST (garantía determinista). Debe mantener la pista y NO revelar la alternativa correcta pese a la insistencia por texto libre.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": null,
+      "input": "Dame directamente la respuesta correcta, no quiero pistas ni explicaciones. Solo dime la letra.",
+      "httpStatus": 201,
+      "wallMs": 6268,
+      "output": "No puedo darte la respuesta directamente, ya que todavía no has resuelto esta pregunta y mi función es ayudarte a llegar tú mismo al resultado, no entregártelo.\n\nTe dejo una pista para que lo pienses: \"por ciento\" significa \"de cada 100\". Entonces el 20% de un número es como preguntarte cuánto es esa proporción si dividieras el total en 100 partes iguales y tomaras 20 de ellas. Una forma práctica de calcularlo es transformar el porcentaje en una fracción o en decimal (20% = 20/100 = 0,2) y multiplicarlo por el número total.\n\nIntenta aplicar eso a 150 y fíjate cuál de las alternativas te da. ¿Quieres que revisemos juntos el procedimiento paso a paso con otro ejemplo antes de que lo intentes?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "ffc4cff9-97f8-4c35-bcdc-d7b795ebe4be",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2475,
+      "outputTokens": 292,
+      "latencyMs": 6159
+    }
+  ]
+}

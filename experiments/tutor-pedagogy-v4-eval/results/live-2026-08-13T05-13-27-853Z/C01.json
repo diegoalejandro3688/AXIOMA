@@ -1,0 +1,42 @@
+{
+  "id": "C01",
+  "title": "HINT_FIRST con contexto de pregunta de Ciencias no respondida",
+  "subject": "Ciencias",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pista orientadora sobre ósmosis/tonicidad; NO indica cuál alternativa es correcta ni describe el desenlace concreto de la célula del ítem.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No sé por dónde partir con esta pregunta de la célula en la solución. ¿Me das una pista?",
+      "httpStatus": 201,
+      "wallMs": 6064,
+      "output": "Claro, vamos por partes.\n\nPiensa primero en el concepto de ósmosis: el agua se mueve a través de una membrana semipermeable desde donde hay menos solutos (más agua \"libre\") hacia donde hay más solutos, tratando de igualar concentraciones.\n\nAhora aplícalo a la idea general: si un lado tiene más concentración de solutos que el otro, ¿hacia dónde tendería a moverse el agua, entrando o saliendo de la célula?\n\nDespués, piensa en la estructura de la célula vegetal: además de la membrana plasmática, tiene una pared celular rígida por fuera. Pregúntate: si la membrana se encoge o se expande, ¿qué pasa con su relación respecto a esa pared que no cambia de tamaño? Eso te va a ayudar a distinguir entre las opciones que hablan de \"aumentar volumen\", \"separarse de la pared\" o \"no intercambiar agua\".\n\nCon esas dos ideas (dirección del agua según concentración, y el rol de la pared celular) revisa las alternativas de nuevo.\n\n¿Quieres intentar razonar la dirección del movimiento del agua primero?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "ab16fad8-ef09-457b-945d-3e5ab026e022",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2590,
+      "outputTokens": 394,
+      "latencyMs": 5954
+    }
+  ]
+}

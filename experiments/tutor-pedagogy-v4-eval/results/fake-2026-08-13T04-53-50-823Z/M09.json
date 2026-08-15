@@ -1,0 +1,48 @@
+{
+  "id": "M09",
+  "title": "Pregunta ya respondida INCORRECTAMENTE + HINT_FIRST",
+  "subject": "Matemática",
+  "replicaOf": "P09",
+  "coverage": [
+    "8-pregunta_ya_respondida",
+    "1-hint_first"
+  ],
+  "expectation": "Usa el feedback ya autorizado (respuesta elegida, incorrecta, explicación validada) para diagnosticar el error concreto, sin fabricar datos fuera del contexto.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Me equivoqué en esta pregunta. ¿Dónde estuvo mi error?",
+      "httpStatus": 201,
+      "wallMs": 109,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Me equivoqué en esta pregunta. ¿Dónde estuvo mi error?\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "MAT_Q2",
+    "choose": "wrong",
+    "httpStatus": 201
+  },
+  "conversationId": "3c8d9a9e-4150-444c-a0a4-d09000f35816",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

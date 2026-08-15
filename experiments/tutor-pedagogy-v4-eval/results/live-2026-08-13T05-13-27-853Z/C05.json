@@ -1,0 +1,41 @@
+{
+  "id": "C05",
+  "title": "WORKED_SOLUTION sobre pregunta de Ciencias NO respondida (equivalente a P07)",
+  "subject": "Ciencias",
+  "coverage": [
+    "4-worked_solution",
+    "9-incertidumbre",
+    "11-regresion_p07"
+  ],
+  "expectation": "Equivalente exacto de M07 en Ciencias. Debe negarse brevemente y NO desarrollar el razonamiento con los datos del ítem (nada de 'la solución es hipertónica, por lo tanto...'), ni invitar a comparar su desarrollo con las alternativas.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.",
+      "httpStatus": 503,
+      "wallMs": 8078,
+      "output": null,
+      "assistantMessageId": null,
+      "errorBody": {
+        "error": {
+          "code": "SERVICE_UNAVAILABLE",
+          "message": "El Tutor IA no está disponible en este momento. Puedes reintentar.",
+          "requestId": "3e1acb92-6548-4c69-8de9-99bbc0c2dbaa",
+          "timestamp": "2026-08-13T05:16:20.700Z"
+        }
+      }
+    }
+  ],
+  "status": "TECHNICAL_FAILURE",
+  "conversationId": "d9fe8666-3213-4625-8f23-3c5a71d37f74",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": []
+}

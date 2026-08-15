@@ -1,0 +1,34 @@
+{
+  "runId": "live-2026-08-14T05-13-53-279Z",
+  "startedAt": "2026-08-14T05:13:53.279Z",
+  "finishedAt": "2026-08-14T05:14:01.190Z",
+  "datasetVersion": "tutor-pedagogy-v6-eval-cases-v1",
+  "promptUnderEvaluation": "AXIOMA_TUTOR_V6",
+  "base": "http://127.0.0.1:3210",
+  "backendIdentity": {
+    "expected": "anthropic",
+    "provider": "anthropic",
+    "impl": "AnthropicAiProvider",
+    "configured": "anthropic"
+  },
+  "casesExecuted": 1,
+  "turnsAttempted": 1,
+  "technicalFailures": [],
+  "usageTotals": {
+    "calls": 1,
+    "inputTokens": 1895,
+    "outputTokens": 312
+  },
+  "budget": {
+    "hardCapUsd": 1.5,
+    "pricingAssumption": "entrada US$3/MTok, salida US$15/MTok (supuesto de cost-plan.json, no una cotización)",
+    "realCostUsd": 0.0104,
+    "abort": null
+  },
+  "providerModel": [
+    "anthropic/claude-sonnet-5"
+  ],
+  "promptVersions": [
+    "AXIOMA_TUTOR_V6"
+  ]
+}

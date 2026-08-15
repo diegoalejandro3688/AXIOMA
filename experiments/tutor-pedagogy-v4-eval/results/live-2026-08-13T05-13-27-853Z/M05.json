@@ -1,0 +1,43 @@
+{
+  "id": "M05",
+  "title": "GUIDED_STEPS con contexto de pregunta no respondida",
+  "subject": "Matemática",
+  "replicaOf": "P05",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Divide el procedimiento en pasos útiles y verifica comprensión; no adelanta el resultado final ni revela la alternativa correcta (el estudiante no ha respondido). V4: describe los pasos SIN ejecutar las operaciones con los valores del ítem.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para resolver este problema del producto que sube de precio.",
+      "httpStatus": 201,
+      "wallMs": 6541,
+      "output": "¡Vamos por partes! Este tipo de problema se trata de calcular un aumento porcentual, y hay dos formas comunes de hacerlo. Te explico el procedimiento en general, y tú lo aplicas con los números de tu ejercicio.\n\nPaso 1: Identifica el precio original y el porcentaje de aumento. Estos son los datos que ya tienes en el enunciado.\n\nPaso 2: Calcula cuánto representa ese porcentaje en dinero. Para esto, conviertes el porcentaje a decimal (por ejemplo, 15% se escribe como 0,15) y lo multiplicas por el precio original. Eso te da el monto del aumento.\n\nPaso 3: Suma ese aumento al precio original. El resultado es el nuevo precio del producto.\n\nUn atajo alternativo (que da el mismo resultado): en vez de calcular el aumento por separado, puedes multiplicar el precio original directamente por 1 más el porcentaje en decimal (en este caso sería 1,15). Esto te ahorra un paso.\n\nInténtalo con los valores de tu problema: primero calcula el 15% de 2.000, y cuéntame qué número te da. Así seguimos al siguiente paso juntos.",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "bdba06bb-aac4-4062-b745-1ef570d40e08",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2430,
+      "outputTokens": 417,
+      "latencyMs": 6413
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "id": "C05",
+  "title": "RESTAURACIÓN E: WORKED_SOLUTION explícito sobre pregunta de Ciencias NO respondida",
+  "subject": "Ciencias",
+  "replicaOf": "V5:C05",
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "Equivalente exacto de M07 en Ciencias, con la MISMA inversión. Debe desarrollar el razonamiento completo (tonicidad -> sentido del flujo de agua -> consecuencia sobre la célula) y llegar a la conclusión, explicando el porqué de cada paso. Negarse es D2 = 0 -> FAIL. Presentar su desarrollo como pauta oficial de Axioma sería D7 = FAIL.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 7759,
+      "output": "Vamos a resolverlo paso a paso, con el razonamiento completo (aclarando que esto es mi desarrollo, ya que aún no la has respondido en la plataforma y no tengo la pauta oficial de Axioma para contrastarla).\n\nPrimero, el concepto clave: la ósmosis es el movimiento de agua a través de una membrana semipermeable, desde donde hay menos solutos (más agua \"libre\") hacia donde hay más solutos (menos agua libre). El agua siempre se mueve buscando equilibrar concentraciones.\n\nEn este caso, la solución externa tiene MÁS solutos que el citoplasma de la célula. Eso significa que el citoplasma es la zona con menos solutos en comparación, es decir, la célula está en un medio hipertónico respecto a ella.\n\nComo el agua se mueve hacia donde hay más solutos, el agua saldrá de la célula hacia el medio externo. La célula pierde agua.\n\nAhora, ¿qué pasa físicamente? La célula vegetal tiene pared celular (rígida) y membrana plasmática (flexible, pegada a la pared). Cuando pierde agua, el citoplasma se contrae, pero la pared celular no se encoge porque es rígida. Entonces la membrana se despega de la pared celular: esto se llama plasmólisis.\n\nCon este razonamiento, la alternativa correcta es: \"Pierde agua por ósmosis y su membrana se separa de la pared celular\".\n\nLas otras fallan porque: ganar agua ocurriría si el medio fuera hipotónico (menos solutos que la célula); decir que \"no intercambia agua\" ignora que la pared celular no bloquea el paso de agua, solo da soporte estructural; y perder solutos no es el mecanismo de ósmosis (que mueve agua, no solutos).\n\n¿Quieres que revisemos juntos el concepto de tonicidad con otro ejemplo?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.087444
+    }
+  ],
+  "status": "OK",
+  "conversationId": "30603752-75b1-4342-88a8-42f3697e2efd",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6_1",
+      "attempts": 1,
+      "inputTokens": 2397,
+      "outputTokens": 653,
+      "latencyMs": 7626
+    }
+  ]
+}

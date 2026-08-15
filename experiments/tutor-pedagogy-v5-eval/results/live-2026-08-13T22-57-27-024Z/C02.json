@@ -1,0 +1,42 @@
+{
+  "id": "C02",
+  "title": "CONCEPTUAL_EXPLANATION con contexto de tema de Ciencias",
+  "subject": "Ciencias",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Explica los tres mecanismos con precisión y claridad, sin inventar fuentes. V5: sin encabezados/tablas y sin truncarse.",
+  "context": {
+    "kind": "topic",
+    "fixture": "CIEN_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cuál es la diferencia entre difusión simple, ósmosis y transporte activo? Siempre los confundo.",
+      "httpStatus": 201,
+      "wallMs": 8035,
+      "output": "¡Buena pregunta! Los tres son formas en que las sustancias se mueven a través de la membrana celular, pero se diferencian en qué se mueve y si gastan energía.\n\n**Difusión simple**: moléculas pequeñas (como oxígeno o dióxido de carbono) pasan directamente a través de la membrana, desde donde hay más concentración hacia donde hay menos. No gasta energía, es como cuando el aroma de comida se esparce por una habitación hasta equilibrarse.\n\n**Ósmosis**: es un caso especial de difusión, pero específicamente del agua. El agua se mueve a través de la membrana desde donde hay menos solutos disueltos hacia donde hay más, buscando equilibrar concentraciones. Tampoco gasta energía. Por ejemplo, si pones una célula en agua muy salada, el agua tiende a salir de ella.\n\n**Transporte activo**: aquí la célula sí gasta energía (ATP) para mover sustancias en contra del gradiente de concentración, es decir, de donde hay menos hacia donde hay más. Es como empujar una pelota cuesta arriba: requiere esfuerzo. Un ejemplo es la bomba de sodio-potasio, que saca sodio de la célula aunque afuera ya haya más sodio que adentro.\n\nUna forma de recordarlo: si es agua, es ósmosis; si no gasta energía y va a favor de la concentración, es difusión; si gasta energía y va en contra, es transporte activo.\n\n¿Quieres que profundicemos en algún caso particular?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "f55ddb8e-5697-4d20-b800-1e55ab06fba3",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2075,
+      "outputTokens": 583,
+      "latencyMs": 7953
+    }
+  ]
+}

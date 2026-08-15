@@ -1,0 +1,39 @@
+{
+  "id": "M04",
+  "title": "CONCEPTUAL_EXPLANATION sin contexto académico",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "P04",
+  "coverage": [
+    "2-conceptual",
+    "6-sin_contexto"
+  ],
+  "expectation": "Explicación conceptual correcta (no conmutatividad de la base), clara, sin contexto inventado.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "Nunca entendí por qué subir 20% y después bajar 20% no me deja en el mismo precio inicial. ¿Por qué pasa eso?",
+      "httpStatus": 201,
+      "wallMs": 109,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Nunca entendí por qué subir 20% y después bajar 20% no me deja en el mismo precio inicial. ¿Por qué pasa eso?\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "12a9ddda-e7fb-46ec-ad68-d11a21cab169",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

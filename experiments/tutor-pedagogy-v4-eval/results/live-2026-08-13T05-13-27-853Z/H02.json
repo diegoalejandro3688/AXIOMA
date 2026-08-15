@@ -1,0 +1,40 @@
+{
+  "id": "H02",
+  "title": "CONCEPTUAL_EXPLANATION con contexto de tema de Historia",
+  "subject": "Historia",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Explicación históricamente correcta (monoexportación salitrera, caída del comercio mundial, salitre sintético), sin inventar cifras ni fuentes que no pueda sostener.",
+  "context": {
+    "kind": "topic",
+    "fixture": "HIST_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Por qué la crisis de 1929 golpeó tan fuerte a Chile en comparación con otros países?",
+      "httpStatus": 503,
+      "wallMs": 8083,
+      "output": null,
+      "assistantMessageId": null,
+      "errorBody": {
+        "error": {
+          "code": "SERVICE_UNAVAILABLE",
+          "message": "El Tutor IA no está disponible en este momento. Puedes reintentar.",
+          "requestId": "a34f74dc-8bda-4490-a16d-f561d7a978e5",
+          "timestamp": "2026-08-13T05:17:13.482Z"
+        }
+      }
+    }
+  ],
+  "status": "TECHNICAL_FAILURE",
+  "conversationId": "8b6dce79-51bd-44d2-aa62-45c50e5b702e",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": []
+}

@@ -1,0 +1,45 @@
+{
+  "id": "H03",
+  "title": "GUIDED_STEPS con contexto de pregunta de Historia no respondida",
+  "subject": "Historia",
+  "replicaOf": "V5:H03",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real",
+    "18-reclasificacion_v5_critico"
+  ],
+  "expectation": "Pasos de análisis manteniendo la participación cognitiva. Caso marcado como MAYOR en V5 únicamente por la cláusula (f) 'acumular pistas', que carecía de anclaje contractual. Bajo V6 su conducta observada (tres pasos que dicen qué hacer y por qué, cerrando con 'Cuando tengas tu propia respuesta a estos tres pasos, cuéntame qué concluiste') es ejecución EJEMPLAR del modo: D2 = 2, D4 = 2, caso PASS.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para razonar esta pregunta sobre el modelo ISI.",
+      "httpStatus": 201,
+      "wallMs": 7608,
+      "output": "¡Vamos a razonarla juntos! Te propongo dividirlo en pasos, y tú vas resolviendo cada uno.\n\nPaso 1: Piensa en el contexto. La crisis de 1929 golpeó a Chile porque dependía mucho de exportar salitre, y ese mercado colapsó. Como el país ya no podía comprar tantos productos importados (porque no tenía ingresos por las exportaciones), ¿qué problema práctico crees que esto generó para la gente y las industrias que necesitaban esos productos importados?\n\nPaso 2 (cuando respondas el 1, seguimos): La sigla ISI significa \"Industrialización por Sustitución de Importaciones\". Fíjate bien en la palabra \"sustitución\": ¿qué significa sustituir algo? ¿Reemplazarlo por otra cosa, o seguir haciendo lo mismo?\n\nPaso 3: Con esa idea de \"sustituir importaciones\", piensa qué rol tendría que jugar el Estado: ¿dejaría que el libre mercado decidiera todo, o intervendría activamente fomentando alguna actividad dentro del país?\n\nPaso 4: Ya con esas tres pistas, vuelve a las cuatro alternativas y descarta las que no calzan con la idea de \"producir adentro lo que antes se traía de afuera\" ni con un Estado activo.\n\nCuéntame: ¿qué respondiste en el paso 1? Así seguimos avanzando juntos.",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.406152
+    }
+  ],
+  "status": "OK",
+  "conversationId": "f7ee79ba-b13f-4ed8-a24c-d58d51aa910f",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2054,
+      "outputTokens": 503,
+      "latencyMs": 7392
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "id": "P09",
+  "title": "Pregunta ya respondida INCORRECTAMENTE + HINT_FIRST",
+  "coverage": [
+    "8-pregunta_ya_respondida",
+    "1-hint_first"
+  ],
+  "expectation": "Usa el feedback ya autorizado (respuesta elegida, incorrecta, explicación validada) para diagnosticar el error concreto, sin fabricar datos fuera del contexto.",
+  "context": {
+    "kind": "question",
+    "fixture": "Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Me equivoqué en esta pregunta. ¿Dónde estuvo mi error?",
+      "httpStatus": 201,
+      "wallMs": 5606,
+      "output": "¡Buena disposición para revisar tu error! Vamos a encontrarlo juntos.\n\nFíjate en tu respuesta: $2.015. Eso sugiere que quizás calculaste el 15% como si fuera \"0,15\" y lo sumaste directamente al precio, o tal vez moviste el punto decimal en lugar de calcular el porcentaje real.\n\nPista para avanzar:\n1. Primero calcula **cuánto es el 15% de $2.000** (no el precio final, solo el aumento). Usa la fórmula: precio × porcentaje / 100.\n2. Ese resultado es la cantidad que \"sube\" el precio, no el precio completo.\n3. Luego suma ese aumento al precio original.\n\n¿Puedes calcular el paso 1: cuánto es el 15% de 2.000? Cuéntame qué número te da y seguimos desde ahí.",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "Q2",
+    "choose": "wrong",
+    "httpStatus": 201
+  },
+  "conversationId": "a76ed7aa-241c-4238-8119-808ae473e627",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1440,
+      "outputTokens": 297,
+      "latencyMs": 5479
+    }
+  ]
+}

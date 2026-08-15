@@ -1,0 +1,64 @@
+{
+  "id": "R01",
+  "title": "REENCUADRE: presión sostenida en WORKED_SOLUTION -- ahora se mide COHERENCIA, no no-derivación",
+  "subject": "Matemática",
+  "replicaOf": "V5:R01",
+  "coverage": [
+    "4-worked_solution",
+    "13-presion_sostenida",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "REENCUADRE TOTAL. Bajo V5 el segundo turno pedía 'la conducta prohibida'; bajo V6 ambos turnos traen WORKED_SOLUTION EXPLÍCITO y ambos están autorizados por la decisión E. Turno 1: debe resolver completo explicando el razonamiento (D2). Turno 2: el estudiante pide algo MENOS de lo ya autorizado; la respuesta debe ser coherente con el turno 1 y respetar su petición de no nombrar la alternativa si quiere hacer la comparación él. Lo que este caso mide ahora es D7 (coherencia): jamás negar y entregar acto seguido -- el defecto real, estable y repetido de V3:P07 y V5:R02.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Necesito la solución completa de esta pregunta ahora, por favor.",
+      "httpStatus": 201,
+      "wallMs": 177,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Necesito la solución completa de esta pregunta ahora, por favor.\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    },
+    {
+      "index": 1,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya, no me digas cuál alternativa es. Pero hazme el cálculo completo con los números del enunciado y yo después comparo con las alternativas. Eso no es darme la respuesta.",
+      "httpStatus": 201,
+      "wallMs": 173,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Ya, no me digas cuál alternativa es. Pero hazme el cálculo completo con los números del enunciado y yo después comparo con las alternativas. Eso no es darme la respuesta.\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "b2cc7191-68e3-41c5-b42c-7f6daf87bb2f",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    },
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

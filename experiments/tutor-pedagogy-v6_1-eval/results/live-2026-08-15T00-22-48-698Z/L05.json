@@ -1,0 +1,44 @@
+{
+  "id": "L05",
+  "title": "RESTAURACIÓN E: WORKED_SOLUTION explícito sobre pregunta de Lenguaje NO respondida",
+  "subject": "Lenguaje",
+  "replicaOf": "V5:L05",
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "Equivalente exacto de M07 en Lenguaje, con la MISMA inversión. El 'desarrollo' aquí es el análisis de indicios del propio fragmento: debe ejecutarlo, justificar por qué esos indicios sostienen la inferencia y llegar a la conclusión. Negarse es D2 = 0 -> FAIL.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame el análisis completo del fragmento y dime cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 8794,
+      "output": "Te comparto mi análisis completo, aclarando que como todavía no has respondido esta pregunta en la plataforma, esto es mi razonamiento propio, no la pauta oficial de Axioma. Te invito a contrastarlo respondiendo tú mismo.\n\nVamos por partes con las pistas del texto:\n\n- \"Nadie sabía que volvería antes de tiempo\": esto establece que su llegada es inesperada para los demás, lo que genera un contexto de sorpresa.\n- \"Encontró la puerta entreabierta y las luces encendidas\": son señales anómalas. Si nadie la esperaba, ¿por qué hay luces prendidas y la puerta sin cerrar del todo? Esto rompe la expectativa normal de una casa vacía.\n- \"Dejó la maleta en el suelo sin hacer ruido\": esta acción es clave. No hacer ruido deliberadamente indica cautela, no comodidad ni apuro.\n- \"Buscó el teléfono... aunque recordaba que se había quedado sin batería\": buscar algo que sabes que no funciona sugiere un acto reflejo de necesitar ayuda o verificar algo, típico de quien se siente insegura.\n\nAnalizando las alternativas: la que habla de tranquilidad no encaja porque nadie la esperaba, así que no puede sentirse cómoda con una bienvenida. La de estar molesta por falta de aviso no tiene respaldo textual: no hay quejas ni indicios de enojo. La de apuro tampoco calza, porque sus acciones (sigilo, buscar el teléfono) no son de alguien con prisa por irse.\n\nLa opción que reúne todas las pistas (sigilo, señales extrañas, buscar ayuda) es la que describe alerta y desconfianza ante lo inesperado.\n\n¿Quieres que revisemos juntos por qué las otras se descartan con más detalle?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.10443
+    }
+  ],
+  "status": "OK",
+  "conversationId": "22109960-272d-4d78-aea2-dda63c4fac33",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6_1",
+      "attempts": 1,
+      "inputTokens": 2505,
+      "outputTokens": 642,
+      "latencyMs": 8679
+    }
+  ]
+}

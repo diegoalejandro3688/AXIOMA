@@ -1,0 +1,47 @@
+{
+  "id": "C04",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta de Ciencias YA respondida correctamente",
+  "subject": "Ciencias",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Desarrolla el razonamiento completo y explícito (solución hipertónica -> salida de agua -> plasmólisis), coherente con la explicación validada del contexto.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Explícame el razonamiento completo para confirmar que la entendí bien.",
+      "httpStatus": 201,
+      "wallMs": 6223,
+      "output": "¡Muy bien, la respondiste correctamente! Vamos al razonamiento completo.\n\nLa clave está en comparar concentraciones: la solución externa tiene más solutos que el citoplasma, es decir, es hipertónica respecto de la célula. En ósmosis, el agua se mueve desde donde hay menor concentración de solutos hacia donde hay mayor concentración, buscando equilibrar el sistema. Como afuera hay más solutos, el agua sale de la célula hacia el exterior.\n\nAl perder agua, el citoplasma se reduce y la membrana plasmática se separa de la pared celular, que es rígida y no se contrae con ella. Ese fenómeno se llama plasmólisis, y es justo lo que describe la alternativa correcta.\n\nSobre las otras opciones: \"gana agua y aumenta su volumen\" sería lo que pasaría si el medio fuera hipotónico (lo contrario a este caso). \"No intercambia agua por la pared celular\" es incorrecto porque la pared es permeable al agua, solo le da soporte estructural, no bloquea el paso. Y \"pierde solutos hasta igualar concentración\" confunde ósmosis (movimiento de agua) con difusión de solutos, que no es el mecanismo principal aquí.\n\n¿Quieres que veamos qué pasaría si la célula estuviera en una solución hipotónica, para comparar ambos casos?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "CIEN_Q1",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "0267ddf6-4be5-4981-acd1-f1d4e2692a48",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2825,
+      "outputTokens": 477,
+      "latencyMs": 6018
+    }
+  ]
+}

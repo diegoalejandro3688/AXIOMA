@@ -1,0 +1,49 @@
+{
+  "id": "L04",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta de Lenguaje YA respondida correctamente",
+  "subject": "Lenguaje",
+  "replicaOf": "V5:L04",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Análisis completo y explícito, apoyado en los indicios del texto y coherente con la explicación validada del contexto.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Muéstrame el análisis completo del fragmento para confirmar que lo entendí bien.",
+      "httpStatus": 201,
+      "wallMs": 7588,
+      "output": "¡Excelente! Respondiste correctamente: \"Está alerta y desconfiada frente a una situación que no esperaba\". Vamos a repasar por qué.\n\nLo clave aquí es que el texto NO dice explícitamente cómo se siente Elena. Tienes que inferirlo a partir de sus acciones, que funcionan como pistas:\n\n- La puerta entreabierta y las luces encendidas, cuando \"nadie sabía que volvería antes de tiempo\", indican que algo no cuadra con lo esperado.\n- Deja la maleta \"sin hacer ruido\": este detalle es central, porque moverse con sigilo es una conducta típica de alguien que percibe un posible riesgo, no de alguien tranquilo.\n- Busca el teléfono aunque recuerda que no tiene batería: es un gesto casi reflejo de alguien que quiere estar preparada o pedir ayuda si algo anda mal.\n\nAhora, por qué las otras opciones no se sostienen:\n- \"Tranquila, esperaba encontrar a alguien\": el texto dice justo lo contrario, nadie sabía que llegaría.\n- \"Molesta porque no le avisaron\": invierte la situación; era ella quien no avisó que volvería.\n- \"Apurada por volver a salir\": no hay ninguna pista textual sobre planes de salir de nuevo.\n\nLa habilidad que se puso a prueba es distinguir entre lo que el texto dice literalmente y lo que se puede deducir de las acciones del personaje. ¿Te gustaría que revisemos otro fragmento similar para practicar este tipo de inferencia?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.349533
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "LENG_Q1",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "915bc1ae-8e1a-4017-adde-959e1cd7cd3d",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2526,
+      "outputTokens": 547,
+      "latencyMs": 7427
+    }
+  ]
+}

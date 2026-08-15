@@ -1,0 +1,21 @@
+{
+  "note": "Registrado ANTES de ejecutar ninguna llamada real. Los totales reales se leen del ledger (`ai_usage_ledger`, metadata real de `response.usage` de Anthropic) en `results/<runId>/_summary.json`.",
+  "plannedCases": 19,
+  "plannedRealCalls": 21,
+  "provider": "anthropic",
+  "model": "claude-sonnet-5 (ANTHROPIC_MODEL por defecto, ADR-0022 -- no se modifica)",
+  "maxOutputTokensPerCall": 512,
+  "estimateBeforeRun": {
+    "inputTokensPerCall": "~500-900 (system prompt V3 ~600 tokens + bloque de modo + contexto académico + historial corto)",
+    "outputTokensPerCall": "<= 512 por techo del provider (`ANTHROPIC_MAX_OUTPUT_TOKENS`)",
+    "totalInputTokensEstimate": 16000,
+    "totalOutputTokensEstimate": 8000,
+    "estimatedCostUsd": "~0.15-0.25 (orden de magnitud: centavos de dólar, no dólares)",
+    "pricingAssumption": "Tarifa de referencia Sonnet ~$3/MTok entrada, ~$15/MTok salida. Es un supuesto de estimación, no una cotización."
+  },
+  "hardCaps": [
+    "21 llamadas planificadas; sin repeticiones automáticas.",
+    "Máximo 1 reintento manual por caso con fallo técnico, registrado como tal.",
+    "`ANTHROPIC_MAX_OUTPUT_TOKENS=512` (valor productivo vigente, no se altera para la evaluación)."
+  ]
+}

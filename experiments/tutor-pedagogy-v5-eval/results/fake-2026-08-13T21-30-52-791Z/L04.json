@@ -1,0 +1,47 @@
+{
+  "id": "L04",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta de Lenguaje YA respondida correctamente",
+  "subject": "Lenguaje",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Análisis completo y explícito, apoyado en los indicios del texto y coherente con la explicación validada del contexto.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Muéstrame el análisis completo del fragmento para confirmar que lo entendí bien.",
+      "httpStatus": 201,
+      "wallMs": 97,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Ya respondí esta pregunta. Muéstrame el análisis completo del fragmento para confirmar que lo entendí bien.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "LENG_Q1",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "b089ccc0-0c2a-4d49-aa16-79c35a0f17c0",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

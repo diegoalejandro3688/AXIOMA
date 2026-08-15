@@ -1,0 +1,47 @@
+{
+  "id": "C04",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta de Ciencias YA respondida correctamente",
+  "subject": "Ciencias",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Desarrolla el razonamiento completo y explícito (solución hipertónica -> salida de agua -> plasmólisis), coherente con la explicación validada del contexto.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Explícame el razonamiento completo para confirmar que la entendí bien.",
+      "httpStatus": 201,
+      "wallMs": 7174,
+      "output": "¡Bien hecho! Aquí está el razonamiento completo:\n\nCuando la célula vegetal se sumerge en una solución con más concentración de solutos que su citoplasma (una solución hipertónica), entra en juego la ósmosis: el agua se mueve espontáneamente desde donde hay menos solutos (más agua \"libre\") hacia donde hay más solutos, buscando equilibrar concentraciones.\n\nEn este caso, el citoplasma tiene menos solutos que el medio externo, así que el agua sale de la célula hacia la solución.\n\nAl perder agua, el citoplasma se reduce en volumen y la membrana plasmática se retrae, separándose de la pared celular (que es rígida y no se encoge con ella). Este fenómeno se llama plasmólisis, y es justamente lo que describe la alternativa correcta.\n\nLas otras opciones fallan porque: la célula no gana agua (va al revés), la pared celular sí permite el paso del agua (no es una barrera para eso, solo le da rigidez), y los solutos no se pierden libremente para igualar concentraciones, ya que la membrana es selectiva y el fenómeno principal aquí es el movimiento del agua, no de los solutos.\n\n¿Quieres que veamos qué pasaría si la célula estuviera en una solución hipotónica, para comparar?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "CIEN_Q1",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "183201de-2185-4265-9e24-15738cbaeed4",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 3147,
+      "outputTokens": 451,
+      "latencyMs": 7072
+    }
+  ]
+}

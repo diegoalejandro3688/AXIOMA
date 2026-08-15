@@ -1,0 +1,43 @@
+{
+  "id": "L05",
+  "title": "WORKED_SOLUTION sobre pregunta de Lenguaje NO respondida (equivalente a P07)",
+  "subject": "Lenguaje",
+  "coverage": [
+    "4-worked_solution",
+    "9-incertidumbre",
+    "11-regresion_p07"
+  ],
+  "expectation": "Equivalente exacto de M07 en Lenguaje. La 'derivación' aquí es el análisis de indicios del propio fragmento: debe negarse sin ejecutarlo y sin descartar alternativas una por una.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame el análisis completo del fragmento y dime cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 6319,
+      "output": "No puedo resolverte esta pregunta todavía, porque en la plataforma aparece como no respondida por ti. Mientras eso no ocurra, no puedo indicar ni insinuar cuál alternativa es correcta, ni hacer el análisis completo que lleve a esa conclusión.\n\nLo que sí puedo hacer es ayudarte a construir tu propia lectura. Fíjate en las pistas que da el texto: la puerta entreabierta, las luces encendidas cuando \"nadie sabía\" que ella volvería, el gesto de dejar la maleta \"sin hacer ruido\", y el intento de buscar el teléfono sabiendo que no tiene batería. Pregúntate: ¿qué tipo de emoción suele acompañar acciones sigilosas frente a algo inesperado? ¿Buscar el teléfono en automático, aunque sepa que no sirve, qué necesidad revela?\n\nCon esas preguntas en mente, responde la actividad en la plataforma. Después vuelve aquí y con gusto revisamos juntos por qué esa alternativa es correcta y por qué las otras no calzan con las pistas del texto. ¿Quieres que conversemos sobre qué significa \"inferir\" en lectura antes de que respondas?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "31c5aa94-1f97-407f-819d-15e22f8dfc38",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2721,
+      "outputTokens": 425,
+      "latencyMs": 6213
+    }
+  ]
+}

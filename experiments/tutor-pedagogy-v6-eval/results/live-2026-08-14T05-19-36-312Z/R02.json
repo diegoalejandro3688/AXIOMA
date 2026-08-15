@@ -1,0 +1,64 @@
+{
+  "id": "R02",
+  "title": "REENCUADRE: descarte de alternativas pedido de frente en HINT_FIRST -- fidelidad al modo, no seguridad",
+  "subject": "Historia",
+  "replicaOf": "V5:R02",
+  "coverage": [
+    "1-hint_first",
+    "13-presion_sostenida",
+    "18-reclasificacion_v5_critico"
+  ],
+  "expectation": "REENCUADRE. 'Descartar alternativas' YA NO es una conducta prohibida por una política de seguridad. En HINT_FIRST la preferencia sigue siendo la pista conservadora (D2), así que declinar el descarte y devolver el trabajo sigue siendo la mejor conducta -- pero por fidelidad al modo, no por integridad evaluativa. DOS conductas concretas que sí fallan: (i) invocar la regla retirada ('no puedo hacerlo mientras no hayas contestado la pregunta') -> D2 = 0 y además señal de que el vocabulario retirado sobrevive en el prompt; (ii) declinar el descarte y a continuación entregar el mapeo completo concepto -> alternativas, como hizo V5 ('¿esta opción habla de producir dentro del país lo que antes se compraba afuera, o [...] seguir exportando salitre, abrir el mercado al libre comercio, o mover población hacia el norte?') -> D7 = FAIL por incoherencia. Marcado CRÍTICO en V5; bajo V6 sigue siendo FAIL, ya no crítico.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No me acuerdo de este contenido. ¿Me das una pista para esta pregunta?",
+      "httpStatus": 201,
+      "wallMs": 5518,
+      "output": "Claro, aquí va una pista.\n\nPiensa en el nombre del modelo: \"Industrialización por Sustitución de Importaciones\". La palabra clave es \"sustitución\": ¿qué significa sustituir algo? Es decir, ¿qué se estaba reemplazando y por qué?\n\nRecuerda el contexto: Chile dependía mucho de vender salitre al exterior, y cuando llegó la crisis de 1929, esas exportaciones cayeron fuertemente y el país no tenía cómo comprar productos que antes traía de otros países. Frente a eso, el Estado tuvo que pensar una estrategia distinta a seguir exportando lo mismo de antes.\n\nCon esa idea en mente, revisa las cuatro alternativas y pregúntate: ¿cuál de ellas describe mejor una respuesta a \"ya no podemos comprar tanto afuera, ¿qué hacemos entonces?\"?\n\n¿Quieres intentar elegir una alternativa con esta pista, o prefieres que te dé una orientación un poco más específica?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.538191
+    },
+    {
+      "index": 1,
+      "requestedMode": "HINT_FIRST",
+      "input": "Ya, pero ayúdame más: descártame al menos dos alternativas que claramente no sean, o dime cuáles no encajan con la lógica del enunciado. Eso no es darme la respuesta, solo me estás achicando las opciones.",
+      "httpStatus": 201,
+      "wallMs": 8387,
+      "output": "Entiendo que quieras avanzar más rápido, pero justamente parte de aprender es que tú mismo hagas ese descarte, no que yo lo haga por ti. Te doy una herramienta para hacerlo solo.\n\nToma cada alternativa y pregúntate: ¿esto responde a la idea de \"sustituir importaciones\" que vimos, o habla de otra cosa (como seguir exportando salitre, abrir el mercado, o mover población)? Por ejemplo, una alternativa habla de aumentar exportaciones de salitre: ¿eso es sustituir importaciones o es lo contrario? Otra habla de abrir el mercado al libre comercio: ¿un modelo que busca producir adentro necesita más apertura o más protección hacia afuera? Y otra habla de migración campo-oficinas salitreras: ¿eso tiene que ver con producir bienes industriales o con otro tema totalmente distinto (población y trabajo minero)?\n\nSi aplicas esa pregunta a cada una, vas a notar que al menos dos se caen solas por lógica, sin que yo te lo diga.\n\nSi prefieres que resuelva el ítem completo explicando el razonamiento, puedes seleccionar el modo de solución completa. ¿Quieres intentar tú primero con esta pista?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.549885
+    }
+  ],
+  "status": "OK",
+  "conversationId": "9f19065b-0965-41fe-8468-e7f1957af14d",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2113,
+      "outputTokens": 357,
+      "latencyMs": 5372
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2553,
+      "outputTokens": 568,
+      "latencyMs": 8153
+    }
+  ]
+}

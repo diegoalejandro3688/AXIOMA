@@ -1,0 +1,41 @@
+{
+  "id": "P05",
+  "title": "GUIDED_STEPS con contexto de pregunta no respondida",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Divide el procedimiento en pasos útiles y verifica comprensión; no adelanta el resultado final ni revela la alternativa correcta (el estudiante no ha respondido).",
+  "context": {
+    "kind": "question",
+    "fixture": "Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para resolver este problema del producto que sube de precio.",
+      "httpStatus": 201,
+      "wallMs": 4032,
+      "output": "¡Claro! Vamos a resolverlo juntos paso a paso. Antes de darte el resultado, quiero que vayamos construyendo la solución entre los dos.\n\n**Paso 1: Entender qué nos pide el problema**\n\nTenemos un producto que cuesta **$2.000** y su precio **sube un 15%**.\n\nPregunta para ti: ¿qué significa para ti que algo \"sube un 15%\"? ¿Sabes qué representa ese porcentaje respecto al precio original?\n\nCuéntame con tus palabras qué entiendes, así seguimos desde ahí. No te preocupes si no estás seguro/a, para eso vamos paso a paso 😊",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "0e0f3112-3c4f-4978-a8eb-28c0618c19b5",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1272,
+      "outputTokens": 232,
+      "latencyMs": 3870
+    }
+  ]
+}

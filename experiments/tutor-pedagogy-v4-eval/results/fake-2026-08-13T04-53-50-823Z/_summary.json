@@ -1,0 +1,22 @@
+{
+  "runId": "fake-2026-08-13T04-53-50-823Z",
+  "startedAt": "2026-08-13T04:53:50.823Z",
+  "finishedAt": "2026-08-13T04:57:35.222Z",
+  "datasetVersion": "tutor-pedagogy-v4-eval-cases-v1",
+  "promptUnderEvaluation": "AXIOMA_TUTOR_V4",
+  "base": "http://127.0.0.1:3101",
+  "casesExecuted": 35,
+  "turnsAttempted": 38,
+  "technicalFailures": [],
+  "usageTotals": {
+    "calls": 38,
+    "inputTokens": 0,
+    "outputTokens": 0
+  },
+  "providerModel": [
+    "fake/fake"
+  ],
+  "promptVersions": [
+    "fake"
+  ]
+}

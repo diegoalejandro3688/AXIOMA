@@ -1,0 +1,60 @@
+{
+  "id": "M08",
+  "title": "Seguimiento 'no entendí' tras explicación conceptual",
+  "subject": "Matemática",
+  "replicaOf": "P08",
+  "coverage": [
+    "5-no_entendi",
+    "2-conceptual"
+  ],
+  "expectation": "El segundo turno REFORMULA de verdad (otro enfoque/analogía/lenguaje más simple), no repite el mismo texto.",
+  "context": {
+    "kind": "topic",
+    "fixture": "MAT_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cómo funciona la proporcionalidad inversa?",
+      "httpStatus": 201,
+      "wallMs": 6957,
+      "output": "La proporcionalidad inversa ocurre cuando dos cantidades cambian de forma \"opuesta\": si una aumenta, la otra disminuye en la misma proporción, de modo que su producto siempre se mantiene constante.\n\nLa forma de reconocerla es esta: si x·y = k (una constante), entonces x e y son inversamente proporcionales. Por ejemplo, si tienes una cantidad fija de trabajo que debe repartirse entre trabajadores: mientras más trabajadores participen, menos tiempo tardará cada uno... pero si reduces el número de trabajadores a la mitad, el tiempo necesario se duplica.\n\nOtro ejemplo clásico: la velocidad y el tiempo para recorrer una distancia fija. Si un auto va al doble de velocidad, tarda la mitad de tiempo en llegar. Si va a un tercio de la velocidad, tarda el triple de tiempo.\n\nEsto se diferencia de la proporcionalidad directa, donde ambas cantidades aumentan o disminuyen juntas (por ejemplo, más horas trabajadas, más dinero ganado, si el pago por hora es fijo).\n\n¿Quieres que revisemos juntos cómo identificar si una situación específica es de proporcionalidad directa o inversa?",
+      "assistantMessageId": null
+    },
+    {
+      "index": 1,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "No entendí nada. ¿Puedes explicármelo mucho más simple, con otras palabras?",
+      "httpStatus": 503,
+      "wallMs": 8071,
+      "output": null,
+      "assistantMessageId": null,
+      "errorBody": {
+        "error": {
+          "code": "SERVICE_UNAVAILABLE",
+          "message": "El Tutor IA no está disponible en este momento. Puedes reintentar.",
+          "requestId": "4be837d1-a4a0-41fb-9119-644be72745fd",
+          "timestamp": "2026-08-13T05:14:27.761Z"
+        }
+      }
+    }
+  ],
+  "status": "TECHNICAL_FAILURE",
+  "conversationId": "e6e39790-0bc2-453e-a17b-2397e9d13473",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2306,
+      "outputTokens": 436,
+      "latencyMs": 6873
+    }
+  ]
+}

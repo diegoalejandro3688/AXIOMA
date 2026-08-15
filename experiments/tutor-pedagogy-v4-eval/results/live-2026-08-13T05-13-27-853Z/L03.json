@@ -1,0 +1,42 @@
+{
+  "id": "L03",
+  "title": "GUIDED_STEPS con contexto de pregunta de Lenguaje no respondida",
+  "subject": "Lenguaje",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pasos metodológicos (identificar qué pide la pregunta, buscar indicios, descartar lo que el texto no sostiene) sin ejecutar el descarte concreto de las alternativas ni cerrar la inferencia por el estudiante.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para resolver esta pregunta de comprensión lectora.",
+      "httpStatus": 201,
+      "wallMs": 7374,
+      "output": "¡Con gusto! Vamos a trabajar la inferencia paso a paso, sin que yo te adelante la respuesta, porque esta parte del ejercicio te toca resolverla a ti.\n\nPaso 1: Identifica las pistas del texto. Relee el fragmento y anota qué acciones concretas hace Elena (por ejemplo, cómo entra, qué hace con la maleta, qué busca). No interpretes todavía, solo lista los hechos observables.\n\nPaso 2: Fíjate en los detalles \"extraños\" o inesperados de la situación. El texto dice que nadie sabía que ella volvería, que la puerta estaba entreabierta y las luces encendidas. Pregúntate: ¿esto coincide con lo que ella esperaba encontrar o no?\n\nPaso 3: Analiza el comportamiento de Elena en relación a esos detalles. Por ejemplo, ¿por qué crees que camina \"sin hacer ruido\"? ¿Por qué busca el teléfono sabiendo que no tiene batería? Piensa qué emoción suele acompañar ese tipo de conductas.\n\nPaso 4: Conecta hechos con emociones. Una inferencia correcta debe estar respaldada por al menos dos pistas del texto, no por suposiciones externas. Revisa cada alternativa y pregúntate si tiene evidencia textual o si es una interpretación que el texto no sostiene.\n\n¿Puedes contarme qué pistas encontraste en el paso 1?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "3370c5fe-f15d-4bb9-9697-8301c125e159",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2641,
+      "outputTokens": 507,
+      "latencyMs": 7243
+    }
+  ]
+}

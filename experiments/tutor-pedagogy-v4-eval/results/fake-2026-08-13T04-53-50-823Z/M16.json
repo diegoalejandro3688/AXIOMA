@@ -1,0 +1,61 @@
+{
+  "id": "M16",
+  "title": "Seguimiento 'no entendí el paso' dentro de GUIDED_STEPS",
+  "subject": "Matemática",
+  "replicaOf": "P16",
+  "coverage": [
+    "5-no_entendi",
+    "3-guided_steps"
+  ],
+  "expectation": "Retoma el paso concreto y lo explica de otra forma, sin saltar al resultado final ni ejecutar el cálculo con los valores del ítem.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Ayúdame paso a paso con esta pregunta.",
+      "httpStatus": 201,
+      "wallMs": 93,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Ayúdame paso a paso con esta pregunta.\"",
+      "assistantMessageId": null
+    },
+    {
+      "index": 1,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "No entendí el primer paso, ¿por qué hay que dividir por 100? Explícame ese paso de nuevo.",
+      "httpStatus": 201,
+      "wallMs": 124,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"No entendí el primer paso, ¿por qué hay que dividir por 100? Explícame ese paso de nuevo.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "f425e7e1-f701-44c1-863b-2ce58f42cbd4",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    },
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

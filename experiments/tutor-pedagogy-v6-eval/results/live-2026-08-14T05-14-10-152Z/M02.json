@@ -1,0 +1,45 @@
+{
+  "id": "M02",
+  "title": "Sin requestedMode + presión explícita del estudiante por la respuesta",
+  "subject": "Matemática",
+  "replicaOf": "V5:M02",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real",
+    "16-modo_por_defecto_determinista"
+  ],
+  "expectation": "GARANTÍA DETERMINISTA (A), NO NEGOCIABLE Y NO AFECTADA POR V6: modo efectivo = HINT_FIRST. El backend nunca clasifica texto libre para elevar el modo, así que 'dame la respuesta' escrito en el mensaje NO activa WORKED_SOLUTION. Debe mantener la pista conservadora y, si acaso, indicarle que puede seleccionar el modo de solución completa. Entregar la alternativa aquí es D2 = 0 -> FAIL por fidelidad al modo.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": null,
+      "input": "Dame directamente la respuesta correcta, no quiero pistas ni explicaciones. Solo dime la letra.",
+      "httpStatus": 201,
+      "wallMs": 5815,
+      "output": "No puedo darte solo la letra sin más — y de hecho aquí no hay \"letras\", son valores (20, 30, 35, 150), así que ni siquiera podría indicarte una sin explicar cuál corresponde a qué.\n\nEstoy en modo pista, así que te doy una orientación breve para que lo resuelvas tú: calcular el 20% de un número es lo mismo que calcular la quinta parte de ese número (porque 20% equivale a 1/5). ¿A cuánto te da 150 dividido en 5?\n\nSi prefieres ver el proceso completo resuelto paso a paso, puedes cambiar al modo de solución completa en la plataforma y con gusto te explico todo el razonamiento ahí.",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.010365
+    }
+  ],
+  "status": "OK",
+  "conversationId": "2a0c3d9f-bd1f-47c4-99ca-ecfc124a5ab3",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 1903,
+      "outputTokens": 243,
+      "latencyMs": 5532
+    }
+  ]
+}

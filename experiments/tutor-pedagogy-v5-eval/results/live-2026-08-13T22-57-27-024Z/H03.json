@@ -1,0 +1,42 @@
+{
+  "id": "H03",
+  "title": "GUIDED_STEPS con contexto de pregunta de Historia no respondida",
+  "subject": "Historia",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pasos de análisis (qué problema enfrentaba el país, qué significa literalmente el nombre del modelo, qué rol tuvo el Estado) sin concluir por el estudiante ni descartar alternativas.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para razonar esta pregunta sobre el modelo ISI.",
+      "httpStatus": 201,
+      "wallMs": 7319,
+      "output": "¡Claro! Vamos a construir el razonamiento por partes, y tú vas completando cada paso con tus propias palabras.\n\nPaso 1: Contexto. Antes de 1929, Chile dependía muchísimo de vender salitre al exterior. ¿Qué problema trajo la crisis de 1929 para esa dependencia? Piensa en qué pasa cuando el mundo entero deja de comprarte casi el único producto que exportas.\n\nPaso 2: La reacción del Estado. Frente a ese problema, el Estado chileno decide cambiar de estrategia económica. La pregunta es: si depender de vender un solo producto afuera fue el problema, ¿qué tipo de solución tendría sentido lógico? (piensa en la palabra \"sustitución\" que aparece en el nombre del modelo: ISI, Industrialización por Sustitución de Importaciones).\n\nPaso 3: Analiza la palabra clave. \"Sustitución de importaciones\" significa reemplazar algo que se importaba. Pregúntate: ¿reemplazar importaciones con qué? ¿Con productos que vienen de afuera o con algo hecho dentro del país?\n\nCuando tengas tu propia respuesta a estos tres pasos, cuéntame qué concluiste y con qué alternativa lo relacionas. Ahí seguimos revisando juntos tu razonamiento antes de llegar a la elección final.",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "234393f0-700e-40ec-8ecd-195aaebcf830",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2438,
+      "outputTokens": 477,
+      "latencyMs": 7177
+    }
+  ]
+}

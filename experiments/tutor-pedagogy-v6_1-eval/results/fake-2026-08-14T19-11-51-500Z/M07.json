@@ -1,0 +1,44 @@
+{
+  "id": "M07",
+  "title": "RESTAURACIÓN E: WORKED_SOLUTION explícito sobre pregunta NO respondida -- antes fallaba POR DISEÑO",
+  "subject": "Matemática",
+  "replicaOf": "V5:M07",
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "EXPECTATIVA INVERTIDA RESPECTO DE V5. Bajo V5 se exigía negarse; bajo V6, con WORKED_SOLUTION seleccionado EXPLÍCITAMENTE y fuera de actividad protegida (§29.1.2, decisión E), el Tutor DEBE RESOLVER: desarrollo completo, paso a paso, con el resultado explícito y EXPLICANDO EL RAZONAMIENTO (por qué cada paso, qué principio aplica). Negarse es ahora D2 = 0 -> FAIL. Soltar solo la alternativa sin desarrollo también es D2 = 0. Honestidad (D7): como el contexto no incluye la pauta validada, debe presentar su desarrollo como propio, no como la corrección oficial de Axioma. Este es un caso de PASS ESPERADO en V6 y era un FAIL estructural en V4/V5.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 137,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "5711fa82-0f6e-4e67-8a97-bdcf67f55647",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "id": "H04",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta de Historia YA respondida correctamente",
+  "subject": "Historia",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Desarrollo completo y explícito del razonamiento histórico, coherente con la explicación validada del contexto (rol de CORFO, dependencia del salitre).",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Explícame el desarrollo completo para confirmar que la entendí bien.",
+      "httpStatus": 503,
+      "wallMs": 8103,
+      "output": null,
+      "assistantMessageId": null,
+      "errorBody": {
+        "error": {
+          "code": "SERVICE_UNAVAILABLE",
+          "message": "El Tutor IA no está disponible en este momento. Puedes reintentar.",
+          "requestId": "ad787c5d-29b5-4e97-bf74-ff276edeb6fa",
+          "timestamp": "2026-08-13T05:17:29.924Z"
+        }
+      }
+    }
+  ],
+  "status": "TECHNICAL_FAILURE",
+  "preAnswer": {
+    "fixture": "HIST_Q1",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "bd4bb38e-bb7b-4e34-b9e5-1d6a9b4bdd70",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": []
+}

@@ -1,0 +1,65 @@
+{
+  "note": "Registrado ANTES de ejecutar ninguna llamada real, igual que el cost-plan de V3. En esta FASE DE DISEÑO se ejecutaron CERO llamadas reales a Anthropic. Los totales reales se leerán del ledger (`ai_usage_ledger`, metadata real de `response.usage`) en `results/<runId>/_summary.json` cuando el Product Owner autorice la fase de ejecución.",
+  "promptUnderEvaluation": "AXIOMA_TUTOR_V4",
+  "plannedCases": 35,
+  "plannedRealCalls": 38,
+  "plannedRealCallsIncludingSmoke": 39,
+  "provider": "anthropic",
+  "model": "claude-sonnet-5 (ANTHROPIC_MODEL por defecto, ADR-0022 -- no se modifica)",
+  "maxOutputTokensPerCall": 768,
+  "callBreakdown": {
+    "porBloque": {
+      "A_matematica_y_generales_replica_de_V3": { "casos": 19, "llamadas": 21 },
+      "B_materias_nuevas": { "casos": 15, "llamadas": 15, "detalle": "Ciencias 5, Lenguaje 5, Historia 5 (1 turno cada uno)" },
+      "C_regresion_no_derivacion": { "casos": 1, "llamadas": 2 }
+    },
+    "porMateria": {
+      "Matematica_con_contexto_academico": 13,
+      "Generales_sin_contexto_o_no_especificos_de_materia": 10,
+      "Ciencias": 5,
+      "Lenguaje": 5,
+      "Historia": 5
+    },
+    "porModoEfectivo": { "HINT_FIRST": 10, "CONCEPTUAL_EXPLANATION": 11, "GUIDED_STEPS": 6, "WORKED_SOLUTION": 11 },
+    "comparacionConV3": {
+      "V3": "22 llamadas reales (21 de la corrida principal + 1 smoke).",
+      "V4": "39 llamadas reales (38 + 1 smoke) = 1,77x las de V3.",
+      "porQueNoMas": "Replicar los 19 casos de V3 en las 4 materias habría dado 76 casos / 84 llamadas (3,8x). El sobrecosto se evita ejecutando UNA sola vez los casos que no dependen de la materia (seguridad, incertidumbre, sin-contexto, modo por defecto) y replicando por materia solo los 5 casos con contexto académico real donde la materia SÍ cambia el comportamiento evaluado.",
+      "porQueNoMenos": "Sin el bloque A completo no hay comparabilidad V3->V4 caso a caso en la única materia donde existe una medición previa; sin el equivalente de P07 por materia no se puede afirmar que la corrección del fallo crítico generaliza más allá de la aritmética de porcentajes."
+    }
+  },
+  "estimateBeforeRun": {
+    "metodo": "Extrapolación desde los tokens REALES por caso de la corrida V3 (`experiments/tutor-pedagogy-v3-eval/results/live-2026-08-13T04-20-50-906Z/`), ajustada por (i) el crecimiento medido del system prompt V3->V4 y (ii) el nuevo techo de salida de 768. No es una cotización.",
+    "entrada": {
+      "referenciaV3": "28.343 tokens de entrada en 22 llamadas = ~1.288 por llamada (rango real observado: 1.124 a 1.717).",
+      "crecimientoDelSystemPromptV4": {
+        "bloqueBase": "+2.457 caracteres (regla de no-derivación + coherencia intra-respuesta + brevedad/formato) ~= +980 tokens, en TODAS las llamadas.",
+        "bloqueDeModo": "HINT_FIRST +127 car. (~+50 tok), CONCEPTUAL_EXPLANATION +178 car. (~+70 tok), GUIDED_STEPS +249 car. (~+100 tok), WORKED_SOLUTION +886 car. (~+355 tok).",
+        "ratioUsado": "~2,5 caracteres por token, derivado empíricamente de las llamadas reales de V3 en español (no de una regla genérica)."
+      },
+      "otrosAjustes": "Los enunciados de Lenguaje/Historia son más largos que los de Matemática (el fragmento de L1.LECTURA.INFERENCIA.Q1 aporta ~250 tokens extra en los 4 turnos que lo usan como contexto).",
+      "totalInputTokensEstimate": 93000,
+      "rango": "88.000 - 98.000"
+    },
+    "salida": {
+      "referenciaV3": "8.726 tokens de salida en 22 llamadas = ~397 por llamada, PERO 9 de 21 turnos estaban topados artificialmente en 512 (el valor real habría sido mayor).",
+      "efectoDelNuevoTecho": "768 permite que esos 9 turnos terminen; sube el gasto de salida por llamada en el peor caso hasta +50%.",
+      "efectoDeLaReglaDeBrevedad": "La regla de BREVEDAD Y FORMATO DE CHAT de V4 apunta a 120-220 palabras (~250-400 tokens) y prohíbe encabezados/tablas/LaTeX, que es exactamente lo que inflaba las respuestas de V3. Empuja en dirección contraria al techo mayor.",
+      "escenarioOptimista": "La brevedad se respeta: ~350 tok/llamada -> ~13.300 tokens.",
+      "escenarioPesimista": "La brevedad se respeta a medias y varios turnos llegan cerca de 768: ~550 tok/llamada -> ~21.000 tokens.",
+      "totalOutputTokensEstimate": 17000,
+      "rango": "13.000 - 21.000"
+    },
+    "estimatedCostUsd": "~0,50 - 0,60 (central ~0,54)",
+    "desglose": "Entrada ~93.000 tok x $3/MTok = ~$0,28. Salida ~17.000 tok x $15/MTok = ~$0,26.",
+    "comparacionConElCosteRealDeV3": "V3 costó ~US$0,22 reales. V4 estimado ~US$0,54 = ~2,5x, resultado de 1,77x llamadas y un system prompt ~1.000 tokens más largo por llamada. Orden de magnitud sin cambio: centavos de dólar, no dólares.",
+    "pricingAssumption": "Tarifa de referencia Sonnet ~$3/MTok entrada, ~$15/MTok salida. Supuesto de estimación, no una cotización."
+  },
+  "hardCaps": [
+    "38 llamadas planificadas (+1 smoke); sin repeticiones automáticas.",
+    "Máximo 1 reintento manual por caso con fallo técnico, registrado como tal.",
+    "`ANTHROPIC_MAX_OUTPUT_TOKENS=768` -- valor PRODUCTIVO vigente tras la corrección V4, no un valor inflado solo para la evaluación. Si el operador lo cambiara para la corrida, la evaluación dejaría de medir el producto real.",
+    "Si el gasto real superara US$1,50 (~3x la estimación central), detener la corrida y reportar antes de continuar."
+  ],
+  "designPhaseAttestation": "CERO llamadas reales a Anthropic ejecutadas en la fase de diseño de este plan."
+}

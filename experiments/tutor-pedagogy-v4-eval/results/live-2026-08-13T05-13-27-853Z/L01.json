@@ -1,0 +1,42 @@
+{
+  "id": "L01",
+  "title": "HINT_FIRST con contexto de pregunta de Lenguaje no respondida",
+  "subject": "Lenguaje",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pista sobre cómo se construye una inferencia (indicios del texto vs. suposición propia); NO señala cuál alternativa es correcta ni enumera los indicios concretos que llevan a ella.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Leí el fragmento pero no sé qué se supone que tengo que inferir. ¿Me orientas?",
+      "httpStatus": 201,
+      "wallMs": 6848,
+      "output": "¡Claro que sí! Vamos por partes.\n\nInferir en lectura significa unir pistas que el texto te da (aunque no lo diga explícitamente) con lo que tú ya sabes del comportamiento humano, para deducir algo razonable.\n\nPara este fragmento, te sugiero que releas y te fijes en las acciones concretas de Elena, no en lo que dice sentir (porque el texto nunca lo dice directamente). Hazte estas preguntas:\n\n- ¿Por qué hace las cosas \"sin hacer ruido\"? ¿Qué tipo de persona actúa así, y en qué situaciones?\n- El texto dice que \"nadie sabía que volvería antes de tiempo\" y que la puerta estaba entreabierta con las luces encendidas. ¿Eso coincide con lo que ella esperaba encontrar o es una sorpresa para ella?\n- Busca el teléfono aunque sabe que no tiene batería. ¿Qué tipo de reacción automática es esa, cuando alguien se siente insegura o nerviosa?\n\nCon esas tres pistas juntas, piensa qué actitud general (no un dato suelto) describen mejor: ¿calma, sorpresa con precaución, enojo, o urgencia por irse?\n\nCuando tengas una idea, cuéntame cuál alternativa elegirías y por qué viste esas pistas ahí.",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "6e3ef7c4-50be-4f46-abb2-6410f8e89424",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2703,
+      "outputTokens": 468,
+      "latencyMs": 6720
+    }
+  ]
+}

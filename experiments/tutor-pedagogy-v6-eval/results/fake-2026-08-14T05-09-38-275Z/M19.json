@@ -1,0 +1,41 @@
+{
+  "id": "M19",
+  "title": "WORKED_SOLUTION sin contexto académico (ejercicio del propio estudiante) -- REGRESIÓN DE TRUNCAMIENTO",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "V5:M19",
+  "coverage": [
+    "4-worked_solution",
+    "6-sin_contexto",
+    "12-regresion_truncamiento"
+  ],
+  "expectation": "Entrega la solución completa (respuesta correcta: 10 días) dentro del techo de 768 tokens, con formato de chat y sin truncarse. Verifica que la brevedad/no-truncamiento lograda por V4/V5 NO se degradó al retirar la política global (D9).",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Resuélveme completo este ejercicio de mi cuaderno: si 8 trabajadores tardan 15 días en una obra, ¿cuántos días tardarían 12 trabajadores al mismo ritmo?",
+      "httpStatus": 201,
+      "wallMs": 115,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Resuélveme completo este ejercicio de mi cuaderno: si 8 trabajadores tardan 15 días en una obra, ¿cuántos días tardarían 12 trabajadores al mismo ritmo?\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "3dd9bb19-239f-4ee6-a94e-28c674649faf",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

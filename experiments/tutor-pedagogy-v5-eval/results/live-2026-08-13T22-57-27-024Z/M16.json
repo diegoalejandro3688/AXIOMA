@@ -1,0 +1,61 @@
+{
+  "id": "M16",
+  "title": "Seguimiento 'no entendí el paso' dentro de GUIDED_STEPS",
+  "subject": "Matemática",
+  "replicaOf": "P16",
+  "coverage": [
+    "5-no_entendi",
+    "3-guided_steps"
+  ],
+  "expectation": "Retoma el paso concreto y lo explica de otra forma, sin saltar al resultado final ni ejecutar el cálculo con los valores del ítem.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Ayúdame paso a paso con esta pregunta.",
+      "httpStatus": 201,
+      "wallMs": 4316,
+      "output": "¡Claro! Vamos paso a paso con el concepto de porcentaje.\n\nPrimero, recordemos qué significa \"porcentaje\". Cuando decimos \"el 20%\", en realidad estamos hablando de una fracción: 20 de cada 100, o sea 20/100.\n\nPaso 1: convertir el porcentaje en una fracción o decimal.\n20% se puede escribir como 20/100, que si lo simplificas o lo pasas a decimal, te da un número menor que 1.\n\n¿Puedes decirme tú a qué decimal equivale 20/100? Eso te va a servir para el siguiente paso, donde multiplicaremos ese decimal por 150.\n\nTómate un momento y cuéntame qué obtuviste, así seguimos con el paso 2 juntos.",
+      "assistantMessageId": null
+    },
+    {
+      "index": 1,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "No entendí el primer paso, ¿por qué hay que dividir por 100? Explícame ese paso de nuevo.",
+      "httpStatus": 201,
+      "wallMs": 5801,
+      "output": "Buena pregunta, vamos con calma.\n\nLa palabra \"porcentaje\" viene de \"por ciento\", es decir, \"de cada 100\". Cuando decimos 20%, estamos diciendo \"20 de cada 100 partes de algo\".\n\nPiensa en una hoja cuadriculada dividida en 100 cuadraditos iguales. Si pintas 20 de esos 100 cuadraditos, pintaste el 20% de la hoja. Por eso, 20% se escribe matemáticamente como la fracción 20/100: son 20 partes de un total de 100.\n\n¿Por qué dividimos? Porque dividir 20 entre 100 es la forma de expresar esa fracción como un número decimal, que es más fácil de usar en cálculos. Por ejemplo, si quisiéramos el 50%, sería 50/100, es decir, la mitad de algo.\n\nEntonces, la idea de fondo es: el porcentaje siempre representa una parte de 100, y convertirlo a decimal (dividiendo entre 100) nos permite aplicarlo directamente sobre cualquier cantidad, como el 150 de tu problema.\n\n¿Te queda más claro ahora? Si quieres, intenta calcular tú cuánto es 20 dividido en 100.",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "8be856f0-2455-4c32-bb8d-bcfd91557cb6",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2208,
+      "outputTokens": 264,
+      "latencyMs": 4188
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2514,
+      "outputTokens": 424,
+      "latencyMs": 5690
+    }
+  ]
+}

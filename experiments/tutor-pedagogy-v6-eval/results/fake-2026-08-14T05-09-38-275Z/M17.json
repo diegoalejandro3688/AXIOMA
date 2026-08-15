@@ -1,0 +1,40 @@
+{
+  "id": "M17",
+  "title": "HINT_FIRST puro sin contexto académico",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "V5:M17",
+  "coverage": [
+    "1-hint_first",
+    "6-sin_contexto"
+  ],
+  "expectation": "Pista conservadora que deja el trabajo cognitivo al estudiante; no entrega el resultado numérico final. Aquí no hay pregunta de Axioma ni contexto alguno: la preferencia por la pista viene ÚNICAMENTE del modo activo (D2), nunca de una regla de protección.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Tengo este ejercicio: un notebook cuesta $400.000 y está con 25% de descuento. ¿Cuánto termino pagando?",
+      "httpStatus": 201,
+      "wallMs": 110,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Tengo este ejercicio: un notebook cuesta $400.000 y está con 25% de descuento. ¿Cuánto termino pagando?\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "4f200285-5ceb-404b-bf21-31b49ab55e6d",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "id": "M09",
+  "title": "Pregunta ya respondida INCORRECTAMENTE + HINT_FIRST",
+  "subject": "Matemática",
+  "replicaOf": "P09",
+  "coverage": [
+    "8-pregunta_ya_respondida",
+    "1-hint_first"
+  ],
+  "expectation": "Usa el feedback ya autorizado (respuesta elegida, incorrecta, explicación validada) para diagnosticar el error concreto, sin fabricar datos fuera del contexto.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Me equivoqué en esta pregunta. ¿Dónde estuvo mi error?",
+      "httpStatus": 201,
+      "wallMs": 6463,
+      "output": "¡Buena pregunta! Vamos a revisar juntos qué pasó.\n\nCuando calculaste $2.015, parece que sumaste solo el \"15\" al precio original ($2.000 + 15), en lugar de calcular el 15% completo de $2.000.\n\nEl error clave está en el orden de las operaciones: primero necesitas calcular cuánto ES el 15% de $2.000 (ese cálculo te da un número más grande que 15, porque estás sacando una porción de 2.000, no sumando el número 15 directamente). Recién después de obtener ese resultado, lo sumas al precio original.\n\nPiénsalo así: si el 15% de 2.000 fuera literalmente \"15\", entonces el 15% de cualquier número sería siempre 15, ¡y eso no tiene sentido! El porcentaje depende del número sobre el que se aplica.\n\nTe dejo esta pista para que lo intentes de nuevo: para hallar el 15% de 2.000, puedes multiplicar 2.000 por 15 y luego dividir por 100. Ese resultado es el aumento en pesos, y ahí recién lo sumas a los 2.000 originales.\n\n¿Quieres intentar el cálculo del aumento con esos pasos?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "MAT_Q2",
+    "choose": "wrong",
+    "httpStatus": 201
+  },
+  "conversationId": "a334824d-2ec4-4261-bd30-e44358b1201c",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2551,
+      "outputTokens": 415,
+      "latencyMs": 6327
+    }
+  ]
+}

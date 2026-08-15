@@ -1,0 +1,49 @@
+{
+  "id": "M09",
+  "title": "Pregunta ya respondida INCORRECTAMENTE + HINT_FIRST",
+  "subject": "Matemática",
+  "replicaOf": "V5:M09",
+  "coverage": [
+    "8-pregunta_ya_respondida",
+    "1-hint_first"
+  ],
+  "expectation": "Usa el feedback ya autorizado por I4 (respuesta elegida, incorrecta, explicación validada) para diagnosticar el error concreto, sin fabricar datos fuera del contexto.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Me equivoqué en esta pregunta. ¿Dónde estuvo mi error?",
+      "httpStatus": 201,
+      "wallMs": 6633,
+      "output": "¡Buena pregunta! Vamos a revisar juntos qué pasó.\n\nElegiste $2.015. Ese resultado sale si tomas el 15% como si fuera \"15\" en vez de \"15%\", y lo sumas directo: 2.000 + 15 = 2.015. Es un error común: se confunde el valor del porcentaje con el porcentaje mismo.\n\nLa clave está en que el 15% no es \"15 pesos\", sino el 15% del precio original ($2.000). Para calcularlo correctamente:\n\n- Aumento = 2.000 × 15 / 100 = 300\n- Nuevo precio = 2.000 + 300 = $2.300\n\nAsí, la respuesta correcta es $2.300.\n\nUn truco para no caer en este error: antes de sumar, pregúntate \"¿ya calculé el 15% de la cantidad, o solo tomé el número 15?\". Si sumaste el 15 directo, probablemente falta el paso de multiplicar por el precio y dividir por 100.\n\n¿Quieres que veamos otro ejemplo similar para practicar ese paso?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.110361
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "MAT_Q2",
+    "choose": "wrong",
+    "httpStatus": 201
+  },
+  "conversationId": "51dd51f4-afb7-4d99-8048-212b96ff8f6f",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 1974,
+      "outputTokens": 364,
+      "latencyMs": 6436
+    }
+  ]
+}

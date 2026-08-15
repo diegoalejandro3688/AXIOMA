@@ -1,0 +1,48 @@
+{
+  "id": "M06",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta YA respondida correctamente",
+  "subject": "Matemática",
+  "replicaOf": "P06",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Resuelve completo y explica paso a paso (no solo el resultado), coherente con la explicación validada del contexto. La corrección V4 NO debe hacerlo excesivamente cauto aquí: este caso SÍ está autorizado.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Muéstrame la solución completa paso a paso para confirmar que la entendí bien.",
+      "httpStatus": 201,
+      "wallMs": 5867,
+      "output": "¡Bien hecho, ya la respondiste correctamente! Vamos a repasarla paso a paso.\n\nPartimos del precio original: $2.000. Como el producto sube un 15%, primero calculamos cuánto es ese 15% del precio:\n\n2.000 × 15 / 100 = 300\n\nEse 300 es el aumento en pesos. Ahora sumamos ese aumento al precio original:\n\n2.000 + 300 = 2.300\n\nEntonces el nuevo precio es $2.300, que corresponde a la alternativa que elegiste. ¡Correcto!\n\nUn truco útil para este tipo de problemas: en vez de calcular el aumento y sumarlo por separado, puedes hacerlo en un solo paso multiplicando el precio original por 1,15 (que representa el 100% + 15%):\n\n2.000 × 1,15 = 2.300\n\nLlegas al mismo resultado, pero más rápido. Este método sirve para cualquier aumento porcentual: multiplicas por 1 más el porcentaje en decimal.\n\n¿Quieres que veamos ahora un caso de descuento (por ejemplo, cómo cambia la fórmula cuando el precio baja en vez de subir)?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "MAT_Q2",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "ed91841e-5e2c-4d1e-97c8-6510cfc80c65",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2919,
+      "outputTokens": 405,
+      "latencyMs": 5731
+    }
+  ]
+}

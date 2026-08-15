@@ -1,0 +1,42 @@
+{
+  "id": "L01",
+  "title": "HINT_FIRST con contexto de pregunta de Lenguaje no respondida",
+  "subject": "Lenguaje",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pista sobre cómo se construye una inferencia (indicios del texto vs. suposición propia); NO señala cuál alternativa es correcta ni enumera los indicios concretos que llevan a ella.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Leí el fragmento pero no sé qué se supone que tengo que inferir. ¿Me orientas?",
+      "httpStatus": 201,
+      "wallMs": 6507,
+      "output": "¡Claro! Vamos por partes.\n\nInferir en lectura significa \"leer entre líneas\": buscar información que el texto no dice de forma directa, pero que se puede deducir combinando los detalles que sí da el autor.\n\nPara este fragmento, te sugiero fijarte en las acciones y detalles concretos que hace el personaje, porque cada una es una pista sobre su estado de ánimo. Pregúntate:\n\n- ¿Por qué alguien dejaría la maleta en el suelo \"sin hacer ruido\" en vez de simplemente entrar como siempre?\n- ¿Qué significa que busque el teléfono aunque sabe que no tiene batería? ¿Qué necesidad automática revela ese gesto?\n- ¿Qué transmite el hecho de que \"nadie sabía que volvería antes de tiempo\" y que la puerta esté entreabierta con las luces encendidas?\n\nUna buena estrategia es imaginar la escena como si la vieras en una película: los gestos silenciosos y el intento de comunicarse pese a saber que no puede, suelen indicar una emoción específica frente a lo inesperado.\n\n¿Qué palabra usarías tú para describir cómo actuaría alguien en esa situación, antes de mirar las alternativas?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "690c79ab-384b-4952-81ef-9e2b202b9417",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2505,
+      "outputTokens": 427,
+      "latencyMs": 6399
+    }
+  ]
+}

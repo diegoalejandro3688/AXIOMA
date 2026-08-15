@@ -1,0 +1,37 @@
+{
+  "id": "P04",
+  "title": "CONCEPTUAL_EXPLANATION sin contexto académico",
+  "coverage": [
+    "2-conceptual",
+    "6-sin_contexto"
+  ],
+  "expectation": "Explicación conceptual correcta (no conmutatividad de la base), clara, sin contexto inventado.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "Nunca entendí por qué subir 20% y después bajar 20% no me deja en el mismo precio inicial. ¿Por qué pasa eso?",
+      "httpStatus": 201,
+      "wallMs": 7839,
+      "output": "¡Buena pregunta, y es súper común no verlo a primera vista! Vamos a entenderlo con lógica antes que con fórmulas.\n\n## La clave: el 20% no siempre es la misma cantidad\n\nCuando subes y bajas un porcentaje, el porcentaje es el mismo (20%), pero **la base sobre la que se calcula cambia**. Y ahí está el truco.\n\n## Veámoslo con un ejemplo concreto\n\nSupongamos que algo cuesta **$100**.\n\n**Paso 1: Sube 20%**\n- El 20% de $100 es $20\n- Nuevo precio: $100 + $20 = **$120**\n\n**Paso 2: Baja 20%**\n- Aquí está la trampa: ahora el 20% se calcula sobre $120, no sobre los $100 originales\n- El 20% de $120 es $24\n- Nuevo precio: $120 - $24 = **$96**\n\n¡No volviste a $100! Terminaste en $96.\n\n## ¿Por qué pasa esto?\n\nPorque cuando subes el 20%, ganas $20 (basado en el valor original, $100).\nPero cuando bajas el 20%, pierdes $24 (basado en el valor nuevo, más alto, $120).\n\n**Pierdes más de lo que ganaste**, porque el 20% de un número más grande es una cantidad mayor.\n\n## La idea general\n\nCuando aplicas un mismo porcentaje de aumento y luego de disminución (o viceversa), el resultado final **nunca es igual** al",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "ec92c548-8455-4ea5-a3ec-6e930948c9a5",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1124,
+      "outputTokens": 512,
+      "latencyMs": 7725
+    }
+  ]
+}

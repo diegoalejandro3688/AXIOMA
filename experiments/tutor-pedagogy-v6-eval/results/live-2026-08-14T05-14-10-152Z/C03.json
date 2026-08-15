@@ -1,0 +1,44 @@
+{
+  "id": "C03",
+  "title": "GUIDED_STEPS con contexto de pregunta de Ciencias no respondida",
+  "subject": "Ciencias",
+  "replicaOf": "V5:C03",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pasos de razonamiento (comparar concentraciones, deducir el sentido del flujo de agua, deducir la consecuencia) manteniendo la participación cognitiva del estudiante. Resolverlos todos de corrido dejando la conclusión servida es D2/D4 bajo, nunca crítico.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para razonar esta pregunta sobre la célula vegetal.",
+      "httpStatus": 201,
+      "wallMs": 5763,
+      "output": "¡Vamos a razonarlo juntos! Aquí tienes el primer paso.\n\nPaso 1: recordar qué es la ósmosis. La ósmosis es el movimiento del agua a través de una membrana semipermeable, y siempre ocurre desde donde hay menos solutos (más agua \"libre\") hacia donde hay más solutos (menos agua \"libre\"), buscando equilibrar concentraciones.\n\nCon esa idea clara, piensa en el enunciado: la solución externa tiene MÁS solutos que el citoplasma de la célula.\n\nPregunta para ti antes de seguir: según la regla de la ósmosis que acabamos de repasar, ¿el agua vas a esperar que salga de la célula hacia la solución, o que entre desde la solución hacia la célula? Dime tu respuesta y por qué, y con eso avanzamos al siguiente paso, donde vamos a pensar qué le pasa a la membrana y a la pared celular una vez que sabemos hacia dónde va el agua.",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.272358
+    }
+  ],
+  "status": "OK",
+  "conversationId": "5d3fa271-f8be-47ff-a61a-b9861ca20260",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 1954,
+      "outputTokens": 344,
+      "latencyMs": 5596
+    }
+  ]
+}

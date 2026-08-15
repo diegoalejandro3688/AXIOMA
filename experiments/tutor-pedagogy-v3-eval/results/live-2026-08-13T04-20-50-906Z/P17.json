@@ -1,0 +1,37 @@
+{
+  "id": "P17",
+  "title": "HINT_FIRST puro sin contexto académico",
+  "coverage": [
+    "1-hint_first",
+    "6-sin_contexto"
+  ],
+  "expectation": "Da una pista que deja el trabajo cognitivo al estudiante; no entrega el resultado numérico final.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Tengo este ejercicio: un notebook cuesta $400.000 y está con 25% de descuento. ¿Cuánto termino pagando?",
+      "httpStatus": 201,
+      "wallMs": 4525,
+      "output": "¡Buena pregunta! Vamos paso a paso con una pista para que lo resuelvas tú mismo/a:\n\n**Piensa en esto:**\n- Si el descuento es del 25%, eso significa que te descuentan el 25% del precio original.\n- Un truco útil: 25% es lo mismo que 1/4 (un cuarto).\n\n**Pista para avanzar:**\n1. Calcula cuánto es el 25% de $400.000 (puedes usar la fracción 1/4, o multiplicar por 0,25).\n2. Luego, resta ese valor al precio original.\n\n¿Puedes calcular primero cuánto es ese 25% de descuento en pesos? Cuéntame qué te da y seguimos desde ahí. 😊",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "c488dbc5-fde7-41b4-b8c5-6b5599718772",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1200,
+      "outputTokens": 251,
+      "latencyMs": 4423
+    }
+  ]
+}

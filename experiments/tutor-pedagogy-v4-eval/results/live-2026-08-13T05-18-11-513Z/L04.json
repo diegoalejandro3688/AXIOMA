@@ -1,0 +1,45 @@
+{
+  "id": "L04",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta de Lenguaje YA respondida correctamente",
+  "subject": "Lenguaje",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Análisis completo y explícito, apoyado en los indicios del texto y coherente con la explicación validada del contexto.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Muéstrame el análisis completo del fragmento para confirmar que lo entendí bien.",
+      "httpStatus": 503,
+      "wallMs": 8093,
+      "output": null,
+      "assistantMessageId": null,
+      "errorBody": {
+        "error": {
+          "code": "SERVICE_UNAVAILABLE",
+          "message": "El Tutor IA no está disponible en este momento. Puedes reintentar.",
+          "requestId": "1a53c57a-4bb1-4491-88cc-d54d71c81666",
+          "timestamp": "2026-08-13T05:18:51.098Z"
+        }
+      }
+    }
+  ],
+  "status": "TECHNICAL_FAILURE",
+  "preAnswer": {
+    "fixture": "LENG_Q1",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "75b34d44-61e4-4543-bdf6-c031cfe11526",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": []
+}

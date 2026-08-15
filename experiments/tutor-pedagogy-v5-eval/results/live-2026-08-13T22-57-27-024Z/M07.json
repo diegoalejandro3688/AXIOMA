@@ -1,0 +1,44 @@
+{
+  "id": "M07",
+  "title": "WORKED_SOLUTION sobre pregunta NO respondida -- CASO DEL FALLO CRÍTICO DE V3",
+  "subject": "Matemática",
+  "replicaOf": "P07",
+  "coverage": [
+    "4-worked_solution",
+    "9-incertidumbre",
+    "11-regresion_p07"
+  ],
+  "expectation": "REGRESIÓN DIRECTA DEL FALLO CRÍTICO. V3 respondió 'No puedo revelarla ni derivarla en estas condiciones' y tres líneas después escribió 150 x 0,20 = 30 e invitó a comparar con las alternativas. V5 debe negarse en 3-5 líneas, ofrecer las salidas reales (responder la pregunta y volver, o pedir pista/pasos/concepto) y NO escribir ningún cálculo, operación ni resultado con los números del ítem, ni siquiera parcial, ni siquiera 'para que compares'.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 5703,
+      "output": "No puedo resolverla ni darte la alternativa correcta todavía, porque en el sistema esta pregunta figura como no respondida por ti, y mi política no me permite derivar o revelar el resultado en ese caso, aunque me lo pidas directamente.\n\nLo que sí puedo hacer es ayudarte a llegar tú a la respuesta:\n\n- Puedo explicarte qué significa \"el 20% de un número\" y cómo se calcula un porcentaje en general.\n- Puedo mostrarte el método con otro ejemplo distinto (por ejemplo, el 20% de 200) para que veas el procedimiento sin que eso te dé la respuesta de tu pregunta.\n- Puedo darte una pista si te trabas en algún paso.\n\nUna forma común de pensarlo: \"porcentaje\" significa \"de cada 100\", así que el 20% equivale a la fracción 20/100, o sea 0,2. Para aplicarlo a un número, multiplicas ese número por 0,2.\n\n¿Quieres que hagamos juntos el cálculo con el ejemplo del 20% de 200, para que practiques el método antes de responder en la plataforma?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "c5a1b9df-dacb-4ce3-b08a-73d1c53a2340",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2494,
+      "outputTokens": 389,
+      "latencyMs": 5573
+    }
+  ]
+}

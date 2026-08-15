@@ -1,0 +1,44 @@
+{
+  "id": "L03",
+  "title": "GUIDED_STEPS con contexto de pregunta de Lenguaje no respondida",
+  "subject": "Lenguaje",
+  "replicaOf": "V5:L03",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pasos metodológicos (identificar qué pide la pregunta, buscar indicios, contrastar con lo que el texto sostiene) manteniendo la participación cognitiva. Cerrar la inferencia por el estudiante baja D2/D4; nunca es crítico.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para resolver esta pregunta de comprensión lectora.",
+      "httpStatus": 201,
+      "wallMs": 4376,
+      "output": "¡Claro! Vamos a analizar este fragmento por partes para inferir el estado de Elena.\n\n**Paso 1: Identifica las señales del entorno**\nEn el texto hay varios detalles físicos que Elena percibe al llegar: la puerta entreabierta y las luces encendidas. Piensa: ¿qué esperaría encontrar alguien que llega a su propia casa en una situación normal? ¿Coincide eso con lo que Elena encuentra?\n\nAntes de seguir, dime: según tú, ¿esos detalles (puerta entreabierta, luces encendidas) suenan a algo esperado o a algo que rompe lo previsto? Cuéntame qué piensas y seguimos con el siguiente paso, donde revisaremos sus acciones (dejar la maleta sin ruido, buscar el teléfono).",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.339096
+    }
+  ],
+  "status": "OK",
+  "conversationId": "4d278e88-5eb0-49e7-aa1e-6691fbf657f4",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2064,
+      "outputTokens": 283,
+      "latencyMs": 4202
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "id": "M06",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta YA respondida correctamente",
+  "subject": "Matemática",
+  "replicaOf": "V5:M06",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Resuelve completo y explica paso a paso (no solo el resultado), coherente con la explicación validada del contexto. El feedback autorizado por I4 se usa exactamente igual que en V3/V4/V5.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Muéstrame la solución completa paso a paso para confirmar que la entendí bien.",
+      "httpStatus": 201,
+      "wallMs": 7413,
+      "output": "¡Muy bien, y felicitaciones porque tu respuesta ($2.300) fue correcta! Vamos a repasar el paso a paso para que quede firme el concepto.\n\nPaso 1: Identificar qué representa el \"15%\". Un porcentaje es una forma de expresar una parte de 100. Entonces \"15%\" significa 15 de cada 100.\n\nPaso 2: Calcular cuánto es el 15% de $2.000. La fórmula es: (precio original × porcentaje) / 100. Aquí: (2.000 × 15) / 100 = 30.000 / 100 = 300. Ese $300 es lo que va a aumentar el precio.\n\nPaso 3: Sumar ese aumento al precio original, porque el producto \"sube\" (aumenta), no baja. Entonces: 2.000 + 300 = 2.300.\n\nAsí confirmamos que el nuevo precio es $2.300.\n\nSobre los distractores, para que veas por qué son incorrectos:\n- $2.015: aparece si por error se suma solo 15 (confundiendo el porcentaje con una cifra fija) en vez de calcular el 15% del total.\n- $2.150: correspondería a un aumento del 7,5%, no del 15%. Es un error de cálculo del porcentaje.\n- $2.500: sería el resultado de sumar un 25% aproximadamente, un exceso en el cálculo.\n\nLa clave del ejercicio es siempre separar dos pasos: primero calcular el valor del porcentaje sobre el total, y luego sumarlo (si sube) o restarlo (si baja) al precio original. ¿Quieres que practiquemos con un caso donde el precio baja, para afianzar la diferencia?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.052551
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "MAT_Q2",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "4715b6e6-36a4-4088-b744-996035eca13d",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2169,
+      "outputTokens": 574,
+      "latencyMs": 7253
+    }
+  ]
+}

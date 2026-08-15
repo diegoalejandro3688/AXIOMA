@@ -1,0 +1,40 @@
+{
+  "id": "M19",
+  "title": "WORKED_SOLUTION sin contexto académico (ejercicio del propio estudiante) -- CASO TRUNCADO EN V3",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "P19",
+  "coverage": [
+    "4-worked_solution",
+    "6-sin_contexto",
+    "12-regresion_truncamiento"
+  ],
+  "expectation": "REGRESIÓN DEL FALLO MENOR BLOQUEANTE. En V3 el corte a 512 tokens se llevó la solución entera ('Situación 2: 12 trab') y la respuesta quedó inutilizable. V4 debe entregar la solución completa (respuesta correcta: 10 días) dentro del techo de 768 y con formato de chat, sin truncarse.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Resuélveme completo este ejercicio de mi cuaderno: si 8 trabajadores tardan 15 días en una obra, ¿cuántos días tardarían 12 trabajadores al mismo ritmo?",
+      "httpStatus": 201,
+      "wallMs": 6962,
+      "output": "Aquí tienes la solución completa.\n\nEste es un caso de proporcionalidad inversa: mientras más trabajadores hay, menos días se necesitan (siempre que todos trabajen al mismo ritmo).\n\nLa idea clave es que el trabajo total no cambia, solo se reparte entre más o menos personas. Podemos calcular ese trabajo total en \"trabajador-días\", que es multiplicar trabajadores por días:\n\n8 trabajadores × 15 días = 120 trabajador-días\n\nEso significa que la obra completa equivale a 120 \"unidades\" de trabajo (como si una sola persona necesitara 120 días para hacerla sola).\n\nAhora, con 12 trabajadores, repartimos esas 120 unidades entre más gente:\n\n120 ÷ 12 = 10 días\n\nEntonces, 12 trabajadores tardarían 10 días en terminar la misma obra.\n\nTiene sentido: aumentamos los trabajadores (de 8 a 12), por lo que el tiempo debía disminuir (de 15 a 10 días). Si quieres, puedo mostrarte cómo se plantea esto mismo usando una regla de tres inversa con la fórmula cruzada, que es otra forma común de resolverlo en el cuaderno. ¿Te gustaría verla?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "eb73fd1d-b2b0-440a-b040-6b32bab6a1cc",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2693,
+      "outputTokens": 570,
+      "latencyMs": 6885
+    }
+  ]
+}

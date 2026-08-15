@@ -1,0 +1,42 @@
+{
+  "id": "C03",
+  "title": "GUIDED_STEPS con contexto de pregunta de Ciencias no respondida",
+  "subject": "Ciencias",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pasos de razonamiento (comparar concentraciones, deducir el sentido del flujo de agua, deducir la consecuencia) sin cerrar la conclusión ni revelar la alternativa correcta.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para razonar esta pregunta sobre la célula vegetal.",
+      "httpStatus": 201,
+      "wallMs": 8229,
+      "output": "¡Claro! Vamos a razonarlo por pasos, y tú vas completando cada uno con tus propios datos.\n\n**Paso 1: Recuerda qué es la ósmosis.**\nEs el movimiento del agua a través de una membrana semipermeable, desde donde hay menos solutos (más agua \"libre\") hacia donde hay más solutos. El agua siempre se mueve buscando equilibrar concentraciones.\n\n¿Puedes decirme, con tus palabras, hacia dónde se mueve el agua cuando comparamos dos soluciones con distinta concentración de solutos?\n\n**Paso 2: Identifica las dos \"zonas\" en este problema.**\nTienes el citoplasma de la célula (con su concentración de solutos) y la solución externa (con una concentración de solutos mayor, según el enunciado). Compara ambas: ¿cuál tiene más solutos y cuál tiene relativamente más agua?\n\n**Paso 3: Aplica la regla de la ósmosis a este caso concreto.**\nCon la comparación que hiciste en el paso 2, decide: ¿el agua entrará a la célula o saldrá de ella? Piensa en la dirección del movimiento del agua, no en cuál alternativa \"suena bien\".\n\n**Paso 4: Piensa en la estructura de la célula vegetal.**\nRecuerda que tiene pared celular (rígida) y membrana plasmática (flexible, pegada a la pared en condiciones normales). Si el agua se mueve en la dirección que definiste, ¿qué le pasaría al volumen del citoplasma y a la posición de la membrana respecto a la pared?\n\nCuéntame qué concluiste en el paso 3, así seguimos desde ahí.",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "3de4699a-3853-470b-9df1-a5f11c794360",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2338,
+      "outputTokens": 585,
+      "latencyMs": 8138
+    }
+  ]
+}

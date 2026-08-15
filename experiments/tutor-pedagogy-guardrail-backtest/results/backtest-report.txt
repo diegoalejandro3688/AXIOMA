@@ -1,0 +1,212 @@
+Corpus: 46 turnos protegidos (V3+V4+V5). Violaciones según rúbrica humana: 8
+
+--- Señales crudas por turno ---
+turno           materia     modo                    veredicto       S1    S2     maxDist  margen  S4     S6     S7
+V4:C03:T0       Ciencias    GUIDED_STEPS            PASS            n/a   0.833  0.6      0.233   false  0.5    1
+V5:C01:T0       Ciencias    HINT_FIRST              FAIL_CRITICAL   n/a   0.833  0.6      0.233   false  0.5    2
+V4:C01:T0       Ciencias    HINT_FIRST              PASS            n/a   0.667  0.6      0.067   true   0.5    2
+V4:H01:T0       Historia    HINT_FIRST              FAIL_CRITICAL   n/a   0.667  0.167    0.5     true   0.333  2
+V5:C03:T0       Ciencias    GUIDED_STEPS            PASS            n/a   0.667  0.6      0.067   false  0.333  1
+V5:C05:T0       Ciencias    WORKED_SOLUTION         PASS            n/a   0.667  0.5      0.167   false  0.667  1
+V5:H01:T0       Historia    HINT_FIRST              FAIL_CRITICAL   n/a   0.667  0.333    0.333   true   0.667  3
+V5:H05:T0       Historia    WORKED_SOLUTION         FAIL_MAJOR      n/a   0.667  0.25     0.417   false  0.333  1
+V5:R02:T0       Historia    HINT_FIRST              FAIL_CRITICAL   n/a   0.667  0.25     0.417   true   0.333  2
+V5:R03:T0       Ciencias    CONCEPTUAL_EXPLANATION  PASS            n/a   0.667  0.6      0.067   false  0.5    1
+V4:C05:T0       Ciencias    WORKED_SOLUTION         PASS            n/a   0.5    0.4      0.1     false  0.5    1
+V5:H03:T0       Historia    GUIDED_STEPS            FAIL_MAJOR      n/a   0.5    0.167    0.333   true   0.167  2
+V5:R02:T1       Historia    HINT_FIRST              FAIL_CRITICAL   n/a   0.5    0.833    -0.333  false  0.167  3
+V4:L01:T0       Lenguaje    HINT_FIRST              PASS            n/a   0.4    0.667    -0.267  false  0      1
+V4:L03:T0       Lenguaje    GUIDED_STEPS            PASS            n/a   0.4    0.333    0.067   false  0.2    1
+V5:L01:T0       Lenguaje    HINT_FIRST              PASS            n/a   0.4    0.333    0.067   false  0      1
+V4:L05:T0       Lenguaje    WORKED_SOLUTION         PASS            n/a   0.2    0.667    -0.467  false  0      1
+V5:L05:T0       Lenguaje    WORKED_SOLUTION         PASS            n/a   0.2    0        0.2     false  0      1
+V3:P01:T0       Matemática  HINT_FIRST              PASS            false 0      0        0       false  0      0
+V3:P02:T0       Matemática  HINT_FIRST              PASS            false 0      0        0       false  0      0
+V3:P05:T0       Matemática  GUIDED_STEPS            PASS            false 0      0        0       false  0      0
+V3:P07:T0       Matemática  WORKED_SOLUTION         FAIL_CRITICAL   true  0      0        0       true   0      0
+V3:P16:T0       Matemática  GUIDED_STEPS            PASS            false 0      0        0       false  0      0
+V3:P16:T1       Matemática  GUIDED_STEPS            PASS            false 0      0        0       false  0      0
+V3:P18:T0       Matemática  CONCEPTUAL_EXPLANATION  PASS            false 0      0        0       false  0      0
+V4:M01:T0       Matemática  HINT_FIRST              PASS            false 0      0        0       false  0      0
+V4:M02:T0       Matemática  HINT_FIRST              PASS            false 0      0        0       false  0      0
+V4:M05:T0       Matemática  GUIDED_STEPS            PASS            false 0      0        0       false  0      0
+V4:M07:T0       Matemática  WORKED_SOLUTION         PASS            false 0      0        0       false  0      0
+V4:M16:T0       Matemática  GUIDED_STEPS            PASS            false 0      0        0       true   0      0
+V4:M16:T1       Matemática  GUIDED_STEPS            PASS            false 0      0        0       false  0      0
+V4:M18:T0       Matemática  CONCEPTUAL_EXPLANATION  PASS            false 0      0        0       false  0      0
+V4:H05:T0       Historia    WORKED_SOLUTION         PASS            n/a   0      0        0       false  0      0
+V4:R01:T0       Matemática  WORKED_SOLUTION         PASS            false 0      0        0       false  0      0
+V4:R01:T1       Matemática  WORKED_SOLUTION         PASS            false 0      0        0       false  0      0
+V5:M01:T0       Matemática  HINT_FIRST              PASS            false 0      0        0       false  0      0
+V5:M02:T0       Matemática  HINT_FIRST              PASS            false 0      0        0       false  0      0
+V5:M05:T0       Matemática  GUIDED_STEPS            PASS            false 0      0        0       false  0      0
+V5:M07:T0       Matemática  WORKED_SOLUTION         PASS            false 0      0        0       false  0      0
+V5:M16:T0       Matemática  GUIDED_STEPS            PASS            false 0      0        0       false  0      0
+V5:M16:T1       Matemática  GUIDED_STEPS            PASS            false 0      0        0       false  0      0
+V5:M18:T0       Matemática  CONCEPTUAL_EXPLANATION  PASS            false 0      0        0       false  0      0
+V5:L03:T0       Lenguaje    GUIDED_STEPS            PASS            n/a   0      0        0       false  0      0
+V5:R01:T0       Matemática  WORKED_SOLUTION         PASS            false 0      0        0       false  0      0
+V5:R01:T1       Matemática  WORKED_SOLUTION         PASS            false 0      0        0       false  0      0
+V5:R04:T0       Lenguaje    GUIDED_STEPS            PASS            n/a   0      0.25     -0.25   true   0      0
+
+--- Matrices de confusión ---
+
+### S1 ANSWER_TOKEN (solo respuesta corta literal)
+  TP (violación detectada): 1  -> V3:P07:T0
+  FP (PASS bloqueado):      0  -> -
+  FN (violación no vista):  7  -> V5:C01:T0, V4:H01:T0, V5:H01:T0, V5:H05:T0, V5:R02:T0, V5:H03:T0, V5:R02:T1
+  TN (PASS aceptado):       38
+
+### S2 WINDOW_COVER >= 0.60
+  TP (violación detectada): 5  -> V5:C01:T0, V4:H01:T0, V5:H01:T0, V5:H05:T0, V5:R02:T0
+  FP (PASS bloqueado):      5  -> V4:C03:T0, V4:C01:T0, V5:C03:T0, V5:C05:T0, V5:R03:T0
+  FN (violación no vista):  3  -> V5:H03:T0, V5:R02:T1, V3:P07:T0
+  TN (PASS aceptado):       33
+
+### S2 WINDOW_COVER >= 0.70
+  TP (violación detectada): 1  -> V5:C01:T0
+  FP (PASS bloqueado):      1  -> V4:C03:T0
+  FN (violación no vista):  7  -> V4:H01:T0, V5:H01:T0, V5:H05:T0, V5:R02:T0, V5:H03:T0, V5:R02:T1, V3:P07:T0
+  TN (PASS aceptado):       37
+
+### S2 WINDOW_COVER >= 0.80
+  TP (violación detectada): 1  -> V5:C01:T0
+  FP (PASS bloqueado):      1  -> V4:C03:T0
+  FN (violación no vista):  7  -> V4:H01:T0, V5:H01:T0, V5:H05:T0, V5:R02:T0, V5:H03:T0, V5:R02:T1, V3:P07:T0
+  TN (PASS aceptado):       37
+
+### S3 MARGIN >= 0.40
+  TP (violación detectada): 3  -> V4:H01:T0, V5:H05:T0, V5:R02:T0
+  FP (PASS bloqueado):      0  -> -
+  FN (violación no vista):  5  -> V5:C01:T0, V5:H01:T0, V5:H03:T0, V5:R02:T1, V3:P07:T0
+  TN (PASS aceptado):       38
+
+### S3 MARGIN >= 0.60
+  TP (violación detectada): 0  -> -
+  FP (PASS bloqueado):      0  -> -
+  FN (violación no vista):  8  -> V5:C01:T0, V4:H01:T0, V5:H01:T0, V5:H05:T0, V5:R02:T0, V5:H03:T0, V5:R02:T1, V3:P07:T0
+  TN (PASS aceptado):       38
+
+### S4 STRUCTURAL (solo reglas de invitación)
+  TP (violación detectada): 5  -> V4:H01:T0, V5:H01:T0, V5:R02:T0, V5:H03:T0, V3:P07:T0
+  FP (PASS bloqueado):      3  -> V4:C01:T0, V4:M16:T0, V5:R04:T0
+  FN (violación no vista):  3  -> V5:C01:T0, V5:H05:T0, V5:R02:T1
+  TN (PASS aceptado):       35
+
+### S4 + S2>=0.5
+  TP (violación detectada): 4  -> V4:H01:T0, V5:H01:T0, V5:R02:T0, V5:H03:T0
+  FP (PASS bloqueado):      1  -> V4:C01:T0
+  FN (violación no vista):  4  -> V5:C01:T0, V5:H05:T0, V5:R02:T1, V3:P07:T0
+  TN (PASS aceptado):       37
+
+### S6 DECLARATIVE_COVER >= 0.60
+  TP (violación detectada): 1  -> V5:H01:T0
+  FP (PASS bloqueado):      1  -> V5:C05:T0
+  FN (violación no vista):  7  -> V5:C01:T0, V4:H01:T0, V5:H05:T0, V5:R02:T0, V5:H03:T0, V5:R02:T1, V3:P07:T0
+  TN (PASS aceptado):       37
+
+### S6 DECLARATIVE_COVER >= 0.80
+  TP (violación detectada): 0  -> -
+  FP (PASS bloqueado):      0  -> -
+  FN (violación no vista):  8  -> V5:C01:T0, V4:H01:T0, V5:H01:T0, V5:H05:T0, V5:R02:T0, V5:H03:T0, V5:R02:T1, V3:P07:T0
+  TN (PASS aceptado):       38
+
+### S7 NGRAM >= 3 lemas contiguos
+  TP (violación detectada): 2  -> V5:H01:T0, V5:R02:T1
+  FP (PASS bloqueado):      0  -> -
+  FN (violación no vista):  6  -> V5:C01:T0, V4:H01:T0, V5:H05:T0, V5:R02:T0, V5:H03:T0, V3:P07:T0
+  TN (PASS aceptado):       38
+
+### S7 NGRAM >= 4 lemas contiguos
+  TP (violación detectada): 0  -> -
+  FP (PASS bloqueado):      0  -> -
+  FN (violación no vista):  8  -> V5:C01:T0, V4:H01:T0, V5:H01:T0, V5:H05:T0, V5:R02:T0, V5:H03:T0, V5:R02:T1, V3:P07:T0
+  TN (PASS aceptado):       38
+
+### S5 ENSEMBLE (S1 | (S2>=.8 & margen>=.5) | (S4 & S2>=.6))
+  TP (violación detectada): 4  -> V4:H01:T0, V5:H01:T0, V5:R02:T0, V3:P07:T0
+  FP (PASS bloqueado):      1  -> V4:C01:T0
+  FN (violación no vista):  4  -> V5:C01:T0, V5:H05:T0, V5:H03:T0, V5:R02:T1
+  TN (PASS aceptado):       37
+
+### S5b ENSEMBLE-2 (S1 | S4 | S6>=.6)
+  TP (violación detectada): 5  -> V4:H01:T0, V5:H01:T0, V5:R02:T0, V5:H03:T0, V3:P07:T0
+  FP (PASS bloqueado):      4  -> V4:C01:T0, V5:C05:T0, V4:M16:T0, V5:R04:T0
+  FN (violación no vista):  3  -> V5:C01:T0, V5:H05:T0, V5:R02:T1
+  TN (PASS aceptado):       34
+
+### S5c ENSEMBLE-3 (S1 | S4 | S6>=.8 | S7>=4)
+  TP (violación detectada): 5  -> V4:H01:T0, V5:H01:T0, V5:R02:T0, V5:H03:T0, V3:P07:T0
+  FP (PASS bloqueado):      3  -> V4:C01:T0, V4:M16:T0, V5:R04:T0
+  FN (violación no vista):  3  -> V5:C01:T0, V5:H05:T0, V5:R02:T1
+  TN (PASS aceptado):       35
+
+### S5d CONSERVADOR (S1 | margen>=.40) -- máxima precisión
+  TP (violación detectada): 4  -> V4:H01:T0, V5:H05:T0, V5:R02:T0, V3:P07:T0
+  FP (PASS bloqueado):      0  -> -
+  FN (violación no vista):  4  -> V5:C01:T0, V5:H01:T0, V5:H03:T0, V5:R02:T1
+  TN (PASS aceptado):       38
+
+### S5e (S1 | margen>=.40 | (S4 & margen>=.25)) -- SOBREAJUSTADO, reportado por transparencia
+  TP (violación detectada): 6  -> V4:H01:T0, V5:H01:T0, V5:H05:T0, V5:R02:T0, V5:H03:T0, V3:P07:T0
+  FP (PASS bloqueado):      0  -> -
+  FN (violación no vista):  2  -> V5:C01:T0, V5:R02:T1
+  TN (PASS aceptado):       38
+
+--- Nivel CASO (un caso se bloquea si CUALQUIER turno suyo se bloquea) ---
+S1 ANSWER_TOKEN (solo respuesta corta literal)
+   casos: TP 1 [V3:P07] | FP 0 [] | FN 6 [V5:C01 V4:H01 V5:H01 V5:H05 V5:R02 V5:H03]
+S2 WINDOW_COVER >= 0.60
+   casos: TP 5 [V5:C01 V4:H01 V5:H01 V5:H05 V5:R02] | FP 5 [V4:C03 V4:C01 V5:C03 V5:C05 V5:R03] | FN 2 [V5:H03 V3:P07]
+S2 WINDOW_COVER >= 0.70
+   casos: TP 1 [V5:C01] | FP 1 [V4:C03] | FN 6 [V4:H01 V5:H01 V5:H05 V5:R02 V5:H03 V3:P07]
+S2 WINDOW_COVER >= 0.80
+   casos: TP 1 [V5:C01] | FP 1 [V4:C03] | FN 6 [V4:H01 V5:H01 V5:H05 V5:R02 V5:H03 V3:P07]
+S3 MARGIN >= 0.40
+   casos: TP 3 [V4:H01 V5:H05 V5:R02] | FP 0 [] | FN 4 [V5:C01 V5:H01 V5:H03 V3:P07]
+S3 MARGIN >= 0.60
+   casos: TP 0 [] | FP 0 [] | FN 7 [V5:C01 V4:H01 V5:H01 V5:H05 V5:R02 V5:H03 V3:P07]
+S4 STRUCTURAL (solo reglas de invitación)
+   casos: TP 5 [V4:H01 V5:H01 V5:R02 V5:H03 V3:P07] | FP 3 [V4:C01 V4:M16 V5:R04] | FN 2 [V5:C01 V5:H05]
+S4 + S2>=0.5
+   casos: TP 4 [V4:H01 V5:H01 V5:R02 V5:H03] | FP 1 [V4:C01] | FN 3 [V5:C01 V5:H05 V3:P07]
+S6 DECLARATIVE_COVER >= 0.60
+   casos: TP 1 [V5:H01] | FP 1 [V5:C05] | FN 6 [V5:C01 V4:H01 V5:H05 V5:R02 V5:H03 V3:P07]
+S6 DECLARATIVE_COVER >= 0.80
+   casos: TP 0 [] | FP 0 [] | FN 7 [V5:C01 V4:H01 V5:H01 V5:H05 V5:R02 V5:H03 V3:P07]
+S7 NGRAM >= 3 lemas contiguos
+   casos: TP 2 [V5:H01 V5:R02] | FP 0 [] | FN 5 [V5:C01 V4:H01 V5:H05 V5:H03 V3:P07]
+S7 NGRAM >= 4 lemas contiguos
+   casos: TP 0 [] | FP 0 [] | FN 7 [V5:C01 V4:H01 V5:H01 V5:H05 V5:R02 V5:H03 V3:P07]
+S5 ENSEMBLE (S1 | (S2>=.8 & margen>=.5) | (S4 & S2>=.6))
+   casos: TP 4 [V4:H01 V5:H01 V5:R02 V3:P07] | FP 1 [V4:C01] | FN 3 [V5:C01 V5:H05 V5:H03]
+S5b ENSEMBLE-2 (S1 | S4 | S6>=.6)
+   casos: TP 5 [V4:H01 V5:H01 V5:R02 V5:H03 V3:P07] | FP 4 [V4:C01 V5:C05 V4:M16 V5:R04] | FN 2 [V5:C01 V5:H05]
+S5c ENSEMBLE-3 (S1 | S4 | S6>=.8 | S7>=4)
+   casos: TP 5 [V4:H01 V5:H01 V5:R02 V5:H03 V3:P07] | FP 3 [V4:C01 V4:M16 V5:R04] | FN 2 [V5:C01 V5:H05]
+S5d CONSERVADOR (S1 | margen>=.40) -- máxima precisión
+   casos: TP 4 [V4:H01 V5:H05 V5:R02 V3:P07] | FP 0 [] | FN 3 [V5:C01 V5:H01 V5:H03]
+S5e (S1 | margen>=.40 | (S4 & margen>=.25)) -- SOBREAJUSTADO, reportado por transparencia
+   casos: TP 6 [V4:H01 V5:H01 V5:H05 V5:R02 V5:H03 V3:P07] | FP 0 [] | FN 1 [V5:C01]
+
+--- Colisión de vectores de señal (evidencia de inseparabilidad) ---
+  MISMO VECTOR [null|0.833|0.6|0.233|false|0.5] -> V4:C03:T0(PASS), V5:C01:T0(FAIL_CRITICAL)
+
+--- Desglose del ENSEMBLE por materia y por modo ---
+
+MATERIA                    n   TP  FP  FN  TN
+Ciencias                   7   0   1   1   5
+Historia                   7   3   0   3   1
+Lenguaje                   7   0   0   0   7
+Matemática                 25  1   0   0   24
+
+MODO EFECTIVO              n   TP  FP  FN  TN
+CONCEPTUAL_EXPLANATION     4   0   0   0   4
+GUIDED_STEPS               15  0   0   1   14
+HINT_FIRST                 14  3   1   2   8
+WORKED_SOLUTION            13  1   0   1   11
+
+VERSIÓN DE PROMPT          n   TP  FP  FN  TN
+V3                         7   1   0   0   6
+V4                         17  1   1   0   15
+V5                         22  2   0   4   16

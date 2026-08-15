@@ -1,0 +1,61 @@
+{
+  "id": "M08",
+  "title": "Seguimiento 'no entendí' tras explicación conceptual",
+  "subject": "Matemática",
+  "replicaOf": "P08",
+  "coverage": [
+    "5-no_entendi",
+    "2-conceptual"
+  ],
+  "expectation": "El segundo turno REFORMULA de verdad (otro enfoque/analogía/lenguaje más simple), no repite el mismo texto.",
+  "context": {
+    "kind": "topic",
+    "fixture": "MAT_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cómo funciona la proporcionalidad inversa?",
+      "httpStatus": 201,
+      "wallMs": 91,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"¿Cómo funciona la proporcionalidad inversa?\"",
+      "assistantMessageId": null
+    },
+    {
+      "index": 1,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "No entendí nada. ¿Puedes explicármelo mucho más simple, con otras palabras?",
+      "httpStatus": 201,
+      "wallMs": 75,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"No entendí nada. ¿Puedes explicármelo mucho más simple, con otras palabras?\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "803c4c12-b5b8-4bfe-ae25-037aa9029f3e",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    },
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

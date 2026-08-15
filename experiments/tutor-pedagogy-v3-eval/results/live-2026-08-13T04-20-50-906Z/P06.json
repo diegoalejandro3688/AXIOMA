@@ -1,0 +1,46 @@
+{
+  "id": "P06",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta YA respondida correctamente",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Resuelve completo y explica paso a paso (no solo el resultado), coherente con la explicación validada del contexto.",
+  "context": {
+    "kind": "question",
+    "fixture": "Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Muéstrame la solución completa paso a paso para confirmar que la entendí bien.",
+      "httpStatus": 201,
+      "wallMs": 6217,
+      "output": "¡Claro! Vamos a revisar la solución completa paso a paso. Y buena noticia: tu respuesta ($2.300) fue **correcta** ✅\n\n## Solución paso a paso\n\n**Datos del problema:**\n- Precio original: $2.000\n- Porcentaje de aumento: 15%\n\n**Paso 1: Calcular cuánto es el 15% de $2.000**\n\nPara calcular un porcentaje, multiplicamos el valor por el porcentaje y dividimos por 100:\n\n$$2.000 \\times \\frac{15}{100} = 300$$\n\nEsto significa que el aumento es de **$300**.\n\n**Paso 2: Sumar el aumento al precio original**\n\n$$2.000 + 300 = 2.300$$\n\n**Resultado final: el nuevo precio es $2.300**\n\n---\n\n## ¿Por qué funciona así?\n\nPiensa que el 100% representa el precio completo original. Si el producto \"sube un 15%\", significa que se agrega un 15% adicional sobre el precio que ya tenía. Por eso:\n\n1. Primero encontramos **cuánto vale ese 15%** en dinero real (los $300).\n2. Luego lo **sumamos** al precio inicial, porque es un aumento, no una resta.\n\nUn truco que te puede servir para el futuro: también puedes calcularlo en un solo paso multiplicando por 1.15 (que representa el 100% + 15%):\n\n$$2.000 \\times 1{,}15 = 2.300$$\n\n¡Mismo resultado, camino más corto! ",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "Q2",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "d62aee42-d8c8-4565-bc62-89d7a9890aeb",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1503,
+      "outputTokens": 512,
+      "latencyMs": 6084
+    }
+  ]
+}

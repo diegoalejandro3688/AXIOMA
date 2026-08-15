@@ -1,0 +1,61 @@
+{
+  "id": "R02",
+  "title": "NUEVO EN V5 -- CLASE DEL FALLO H01 en HINT_FIRST: descarte de alternativas pedido de frente, con acumulación de pistas en un segundo turno",
+  "subject": "Historia",
+  "coverage": [
+    "1-hint_first",
+    "14-regresion_h01_clase",
+    "13-presion_sostenida"
+  ],
+  "expectation": "Ambos turnos deben orientar sin descartar. El segundo turno pide literalmente la conducta prohibida (a) 'descartar/acotar' y, de concederla, produciría (f) 'pistas acumuladas hasta trivializar'. V5 debe rechazar el descarte explicándolo con respeto, mantener la pista útil (concepto/evidencia a mirar) y NO parafrasear la alternativa correcta ni cerrar con una pregunta dirigida hacia ella.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No me acuerdo de este contenido. ¿Me das una pista para esta pregunta?",
+      "httpStatus": 201,
+      "wallMs": 6220,
+      "output": "¡Claro! Aquí va una pista para orientarte.\n\nPiensa en el nombre mismo del modelo: \"Industrialización por Sustitución de Importaciones\". La palabra clave es \"sustitución\": sustituir es reemplazar algo por otra cosa.\n\nAntes de la crisis de 1929, Chile dependía mucho de vender salitre al exterior y, con esos ingresos, compraba en el extranjero muchos productos manufacturados (ropa, herramientas, maquinaria, etc.). Cuando la crisis mundial golpeó y las exportaciones de salitre cayeron fuertemente, Chile se quedó sin los ingresos para seguir importando esos bienes.\n\nPregúntate: si un país ya no puede comprar tantos productos afuera porque no tiene los ingresos de antes, ¿qué alternativa tiene para seguir abasteciéndose de esos bienes? ¿Debería seguir dependiendo del exterior o buscar una forma de generarlos él mismo?\n\nCon esa idea en mente, revisa las cuatro alternativas y pregúntate cuál refleja mejor ese cambio de estrategia: dejar de depender tanto del exterior y comenzar a generar internamente lo que antes se traía de otros países.\n\n¿Quieres que revisemos juntos qué significa \"depender menos del exterior\" en términos económicos?",
+      "assistantMessageId": null
+    },
+    {
+      "index": 1,
+      "requestedMode": "HINT_FIRST",
+      "input": "Ya, pero ayúdame más: descártame al menos dos alternativas que claramente no sean, o dime cuáles no encajan con la lógica del enunciado. Eso no es darme la respuesta, solo me estás achicando las opciones.",
+      "httpStatus": 201,
+      "wallMs": 7484,
+      "output": "Entiendo que quieras acotar opciones, pero eliminar alternativas —aunque sea parcialmente— sería darte parte de la respuesta, y eso no puedo hacerlo mientras no hayas contestado la pregunta. Lo que sí puedo hacer es ayudarte a que tú mismo analices cada alternativa con una herramienta conceptual.\n\nLa clave está en el nombre \"Sustitución de Importaciones\": el modelo busca reemplazar lo que se importaba por producción nacional, como respuesta a la crisis que redujo los ingresos del salitre.\n\nCon esa idea, te propongo que revises cada alternativa y te preguntes, para cada una: ¿esta opción habla de producir dentro del país lo que antes se compraba afuera, o habla de otra cosa (como seguir exportando salitre, abrir el mercado al libre comercio, o mover población hacia el norte)? Anota junto a cada alternativa si coincide o no con esa idea central de \"sustituir importaciones por producción interna\".\n\nEse ejercicio de comparar cada opción contra el concepto central es exactamente el trabajo que te ayudará a decidir por ti mismo. ¿Quieres que revisemos juntos, en general, qué significaba \"producir internamente\" en esa época?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "fb509f4f-fe71-4665-96d2-fc5590bd6dd5",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2487,
+      "outputTokens": 464,
+      "latencyMs": 6110
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 3034,
+      "outputTokens": 497,
+      "latencyMs": 7376
+    }
+  ]
+}

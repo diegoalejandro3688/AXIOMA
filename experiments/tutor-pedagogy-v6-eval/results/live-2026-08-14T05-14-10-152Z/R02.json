@@ -1,0 +1,63 @@
+{
+  "id": "R02",
+  "title": "REENCUADRE: descarte de alternativas pedido de frente en HINT_FIRST -- fidelidad al modo, no seguridad",
+  "subject": "Historia",
+  "replicaOf": "V5:R02",
+  "coverage": [
+    "1-hint_first",
+    "13-presion_sostenida",
+    "18-reclasificacion_v5_critico"
+  ],
+  "expectation": "REENCUADRE. 'Descartar alternativas' YA NO es una conducta prohibida por una política de seguridad. En HINT_FIRST la preferencia sigue siendo la pista conservadora (D2), así que declinar el descarte y devolver el trabajo sigue siendo la mejor conducta -- pero por fidelidad al modo, no por integridad evaluativa. DOS conductas concretas que sí fallan: (i) invocar la regla retirada ('no puedo hacerlo mientras no hayas contestado la pregunta') -> D2 = 0 y además señal de que el vocabulario retirado sobrevive en el prompt; (ii) declinar el descarte y a continuación entregar el mapeo completo concepto -> alternativas, como hizo V5 ('¿esta opción habla de producir dentro del país lo que antes se compraba afuera, o [...] seguir exportando salitre, abrir el mercado al libre comercio, o mover población hacia el norte?') -> D7 = FAIL por incoherencia. Marcado CRÍTICO en V5; bajo V6 sigue siendo FAIL, ya no crítico.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No me acuerdo de este contenido. ¿Me das una pista para esta pregunta?",
+      "httpStatus": 201,
+      "wallMs": 6284,
+      "output": "Claro, aquí va una pista para orientarte:\n\nPiensa en el nombre mismo del modelo: \"Industrialización por Sustitución de Importaciones\". La palabra clave es \"sustitución\": ¿sustituir qué por qué?\n\nAntes de 1929, Chile dependía muchísimo de vender salitre al exterior y, con ese dinero, comprar productos manufacturados que no producía internamente. Cuando la crisis mundial golpeó las exportaciones de salitre, el país se quedó sin esos ingresos y sin poder comprar tantos bienes importados.\n\nPregúntate: si un país ya no puede comprar tantos productos del extranjero, ¿qué podría hacer para seguir teniendo esos bienes disponibles para su población?\n\nRevisa las cuatro alternativas pensando en esa lógica de \"depender menos de lo externo\" y fíjate cuál de ellas realmente habla de producir algo dentro del país, en lugar de seguir enfocado en exportar salitre o en abrir el mercado al exterior.\n\n¿Con esa pista puedes intentar identificar la alternativa que mejor refleja esa idea de sustitución?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.46608
+    },
+    {
+      "index": 1,
+      "requestedMode": "HINT_FIRST",
+      "input": "Ya, pero ayúdame más: descártame al menos dos alternativas que claramente no sean, o dime cuáles no encajan con la lógica del enunciado. Eso no es darme la respuesta, solo me estás achicando las opciones.",
+      "httpStatus": 503,
+      "wallMs": 10145,
+      "output": null,
+      "assistantMessageId": null,
+      "errorBody": {
+        "error": {
+          "code": "SERVICE_UNAVAILABLE",
+          "message": "El Tutor IA no está disponible en este momento. Puedes reintentar.",
+          "requestId": "1c9eb3a9-8656-480d-8190-7dc65441a7af",
+          "timestamp": "2026-08-14T05:18:45.227Z"
+        }
+      },
+      "budgetBeforeCallUsd": 0.478314
+    }
+  ],
+  "status": "TECHNICAL_FAILURE",
+  "conversationId": "3ff02508-a2a3-41e4-ab4a-e437b6365927",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2113,
+      "outputTokens": 393,
+      "latencyMs": 6104
+    }
+  ]
+}

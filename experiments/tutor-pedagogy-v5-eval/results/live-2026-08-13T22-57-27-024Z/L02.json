@@ -1,0 +1,42 @@
+{
+  "id": "L02",
+  "title": "CONCEPTUAL_EXPLANATION con contexto de tema de Lenguaje",
+  "subject": "Lenguaje",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Distingue con precisión los tres niveles de lectura, sin inventar fuentes ni citas de textos inexistentes.",
+  "context": {
+    "kind": "topic",
+    "fixture": "LENG_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cuál es la diferencia entre información explícita, inferencia e interpretación personal? Siempre me equivoco en esas preguntas.",
+      "httpStatus": 201,
+      "wallMs": 8287,
+      "output": "¡Buena pregunta! Es una confusión muy común, así que vamos a distinguirlas con claridad.\n\n**Información explícita**: está escrita literalmente en el texto, con las mismas palabras o muy parecidas. No requiere razonar, solo ubicarla. Por ejemplo, si el texto dice \"Juan llegó a las 8 de la mañana\", la explícita es \"Juan llegó a las 8\".\n\n**Inferencia**: es una conclusión que el texto permite deducir, aunque no lo diga con esas palabras exactas. Se apoya en pistas concretas del texto. Por ejemplo, si dice \"Juan llegó empapado y sacudiendo su paraguas\", puedo inferir que estaba lloviendo, aunque el texto nunca use la palabra \"lluvia\". La clave es que cualquier lector, con la misma evidencia, llegaría a esa misma conclusión.\n\n**Interpretación personal**: va un paso más allá; involucra la opinión, los valores o la experiencia del lector, y distintas personas pueden interpretar de forma diferente y válida. Por ejemplo, sobre esa misma escena, alguien podría interpretar que Juan \"es descuidado por no llevar paraguas propio\", pero eso ya depende de la perspectiva de quien lee, no es algo que el texto obligue a concluir.\n\nUn truco útil: pregúntate \"¿esto lo dice el texto?\" (explícita), \"¿esto lo puedo sostener solo con las pistas del texto, sin agregar mi opinión?\" (inferencia), o \"¿esto depende de cómo yo veo el mundo?\" (interpretación).\n\n¿Quieres que practiquemos identificando estos tres niveles en un párrafo de ejemplo?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "04ad8dc5-02fa-4bcf-aeb0-b051e88bfabc",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2087,
+      "outputTokens": 593,
+      "latencyMs": 8202
+    }
+  ]
+}

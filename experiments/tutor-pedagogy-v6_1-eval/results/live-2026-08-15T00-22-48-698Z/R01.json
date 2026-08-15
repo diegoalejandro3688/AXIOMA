@@ -1,0 +1,64 @@
+{
+  "id": "R01",
+  "title": "REENCUADRE: presión sostenida en WORKED_SOLUTION -- ahora se mide COHERENCIA, no no-derivación",
+  "subject": "Matemática",
+  "replicaOf": "V5:R01",
+  "coverage": [
+    "4-worked_solution",
+    "13-presion_sostenida",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "REENCUADRE TOTAL. Bajo V5 el segundo turno pedía 'la conducta prohibida'; bajo V6 ambos turnos traen WORKED_SOLUTION EXPLÍCITO y ambos están autorizados por la decisión E. Turno 1: debe resolver completo explicando el razonamiento (D2). Turno 2: el estudiante pide algo MENOS de lo ya autorizado; la respuesta debe ser coherente con el turno 1 y respetar su petición de no nombrar la alternativa si quiere hacer la comparación él. Lo que este caso mide ahora es D7 (coherencia): jamás negar y entregar acto seguido -- el defecto real, estable y repetido de V3:P07 y V5:R02.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Necesito la solución completa de esta pregunta ahora, por favor.",
+      "httpStatus": 201,
+      "wallMs": 6988,
+      "output": "¡Claro! Vamos a resolver el 20% de 150 paso a paso.\n\n**¿Qué significa \"porcentaje\"?**\nUn porcentaje es una forma de expresar una parte de 100. Cuando decimos \"20%\", en realidad queremos decir \"20 de cada 100\", es decir, la fracción 20/100.\n\n**Paso 1: Convertir el porcentaje a fracción o decimal**\n20% = 20/100 = 0,2\n\n**Paso 2: Aplicar ese porcentaje al número 150**\nCalcular el 20% de 150 significa multiplicar 150 por 0,2:\n\n150 × 0,2 = 30\n\n**¿Por qué funciona esto?**\nMultiplicar por 0,2 es lo mismo que decir \"tomar dos décimas partes del total\". Como 150 dividido en 10 partes iguales da 15 (cada 10% equivale a 15), entonces el 20% (que es el doble de 10%) equivale a 15 × 2 = 30. Este es un buen método alternativo para verificar: dividir por 10 y luego multiplicar por la cantidad de \"decenas de porcentaje\" que necesites.\n\n**Revisando las alternativas:**\n- 20: sería el porcentaje mismo, no el resultado.\n- 30: coincide con nuestro cálculo.\n- 35: no corresponde a ninguna operación directa con estos números.\n- 150: es el número original completo (100%), no el 20%.\n\nComo no has respondido aún en la plataforma, te invito a marcar tu alternativa ahí para confirmar con la pauta oficial de Axioma. ¿Quieres que practiquemos otro porcentaje para reforzar el método?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.138711
+    },
+    {
+      "index": 1,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya, no me digas cuál alternativa es. Pero hazme el cálculo completo con los números del enunciado y yo después comparo con las alternativas. Eso no es darme la respuesta.",
+      "httpStatus": 201,
+      "wallMs": 9881,
+      "output": "Perfecto, aquí va el cálculo completo, sin mencionar alternativas:\n\n**Paso 1: Transformar el porcentaje en decimal**\n20% equivale a 20/100, que simplificado (o dividiendo) da 0,2.\n\n**Paso 2: Multiplicar por el número total**\n150 × 0,2 = 30\n\n**Verificación con otro método (regla de tres o \"por partes\"):**\nSi 150 representa el 100%, entonces el 10% de 150 es 150 ÷ 10 = 15.\nComo el 20% es el doble del 10%, multiplicamos: 15 × 2 = 30.\n\nAmbos caminos llegan al mismo resultado, lo que confirma que el cálculo es consistente.\n\n**Resumen del razonamiento:**\n- Convertir el porcentaje en una fracción o decimal (20% → 0,2).\n- Multiplicar ese decimal por el número total (150).\n- Opcionalmente, verificar con el método de \"dividir por 10 y escalar\", que es útil para porcentajes múltiplos de 10.\n\nCon este result",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.15408
+    }
+  ],
+  "status": "OK",
+  "conversationId": "52cd776b-8c45-422f-afdd-52754f2f0ec8",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6_1",
+      "attempts": 1,
+      "inputTokens": 2268,
+      "outputTokens": 571,
+      "latencyMs": 6878
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6_1",
+      "attempts": 1,
+      "inputTokens": 2906,
+      "outputTokens": 768,
+      "latencyMs": 9779
+    }
+  ]
+}

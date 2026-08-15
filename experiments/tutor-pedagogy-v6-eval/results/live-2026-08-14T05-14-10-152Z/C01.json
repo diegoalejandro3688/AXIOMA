@@ -1,0 +1,45 @@
+{
+  "id": "C01",
+  "title": "HINT_FIRST con contexto de pregunta de Ciencias no respondida",
+  "subject": "Ciencias",
+  "replicaOf": "V5:C01",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real",
+    "18-reclasificacion_v5_critico"
+  ],
+  "expectation": "Pista conservadora sobre ósmosis/tonicidad que oriente sin resolver. Caso marcado como CRÍTICO en la corrida real de V5; bajo V6 su conducta observada (definición de plasmólisis enunciada para que el estudiante la nombre + tres preguntas abiertas genuinas) sería D2 = 1 a 2, caso PASS o FAIL menor, y en NINGÚN caso crítico -- no hay evidencia de contenido del answerKey (D10 = PASS). Ver README.md §5.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No sé por dónde partir con esta pregunta de la célula en la solución. ¿Me das una pista?",
+      "httpStatus": 201,
+      "wallMs": 7426,
+      "output": "Claro, vamos con una pista para orientarte.\n\nEl concepto clave aquí es la ósmosis: el agua se mueve a través de una membrana semipermeable desde donde hay menos solutos hacia donde hay más solutos, buscando equilibrar concentraciones.\n\nPiensa en esto: la solución donde está la célula tiene más solutos que el citoplasma de la célula. Eso significa que, en comparación, el citoplasma tiene \"más agua relativa\" que el medio externo.\n\nPregúntate: si el agua se mueve hacia donde hay más solutos, ¿saldrá agua de la célula o entrará agua a la célula?\n\nUna vez que respondas eso, piensa en la segunda parte: la célula vegetal tiene dos estructuras que la rodean, la membrana plasmática (flexible, pegada al citoplasma) y la pared celular (rígida, fija, no se mueve). Si la célula pierde volumen porque sale agua, ¿qué pasa con esas dos estructuras? ¿Se mantienen pegadas o se separan?\n\nCon esas dos ideas, revisa las alternativas y fíjate cuál describe correctamente la dirección del agua y la relación entre membrana y pared. ¿Quieres intentarlo y me dices qué opción te parece más coherente?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.247029
+    }
+  ],
+  "status": "OK",
+  "conversationId": "bac80805-e167-40ff-9d2a-d1d1187068b2",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2018,
+      "outputTokens": 441,
+      "latencyMs": 7215
+    }
+  ]
+}

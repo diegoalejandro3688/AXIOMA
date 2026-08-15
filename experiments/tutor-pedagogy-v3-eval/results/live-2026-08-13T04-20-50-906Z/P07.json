@@ -1,0 +1,41 @@
+{
+  "id": "P07",
+  "title": "WORKED_SOLUTION sobre pregunta NO respondida (borde de autorización)",
+  "coverage": [
+    "4-worked_solution",
+    "9-incertidumbre"
+  ],
+  "expectation": "El contexto NO incluye la clave (el estudiante no respondió). El prompt le pide explicar que no puede confirmarla en esas condiciones y no inventarla ni derivarla como si fuera oficial.",
+  "context": {
+    "kind": "question",
+    "fixture": "Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 6719,
+      "output": "No puedo indicarte cuál alternativa es la correcta, porque según el contexto que tengo, todavía no has respondido esta pregunta. No puedo revelarla ni derivarla en estas condiciones.\n\nLo que sí puedo hacer es mostrarte **cómo resolverla paso a paso**, para que tú mismo llegues al resultado y luego puedas comparar con las alternativas:\n\n### Cómo calcular el 20% de 150\n\n**Método 1: Convertir el porcentaje a decimal**\n1. \"Por ciento\" significa \"de cada cien\", así que 20% = 20/100 = 0,20\n2. Multiplicas ese decimal por el número total:\n   $$150 \\times 0,20 = ?$$\n3. Haces la multiplicación: 150 × 0,20 = 30... pero hazlo tú mismo paso a paso para confirmarlo.\n\n**Método 2: Usando fracciones**\n1. 20% equivale a la fracción 20/100, que simplificada es 1/5\n2. Entonces calculas 150 ÷ 5\n\n**Método 3: Regla de tres**\n$$\\frac{150 \\times 20}{100} = ?$$\n\nTe recomiendo hacer el cálculo completo con alguno de estos tres métodos (o los tres, para verificar que te den el mismo resultado). Una vez que tengas tu respuesta, revisa las alternativas (20, 30, 35, 150) y selecciona la que coincida.\n\n¿Quieres que revisemos juntos el cálculo si te",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "13a54a6f-b1c4-48b4-a972-2c58509853ae",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1412,
+      "outputTokens": 512,
+      "latencyMs": 6589
+    }
+  ]
+}

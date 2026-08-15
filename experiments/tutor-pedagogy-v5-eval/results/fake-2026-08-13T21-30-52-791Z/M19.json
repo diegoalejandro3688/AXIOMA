@@ -1,0 +1,40 @@
+{
+  "id": "M19",
+  "title": "WORKED_SOLUTION sin contexto académico (ejercicio del propio estudiante) -- CASO TRUNCADO EN V3",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "P19",
+  "coverage": [
+    "4-worked_solution",
+    "6-sin_contexto",
+    "12-regresion_truncamiento"
+  ],
+  "expectation": "REGRESIÓN DEL FALLO MENOR BLOQUEANTE. En V3 el corte a 512 tokens se llevó la solución entera ('Situación 2: 12 trab') y la respuesta quedó inutilizable. V5 debe entregar la solución completa (respuesta correcta: 10 días) dentro del techo de 768 y con formato de chat, sin truncarse.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Resuélveme completo este ejercicio de mi cuaderno: si 8 trabajadores tardan 15 días en una obra, ¿cuántos días tardarían 12 trabajadores al mismo ritmo?",
+      "httpStatus": 201,
+      "wallMs": 100,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Resuélveme completo este ejercicio de mi cuaderno: si 8 trabajadores tardan 15 días en una obra, ¿cuántos días tardarían 12 trabajadores al mismo ritmo?\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "c32d94ae-a430-4b9a-9c77-9692ca2f7b39",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

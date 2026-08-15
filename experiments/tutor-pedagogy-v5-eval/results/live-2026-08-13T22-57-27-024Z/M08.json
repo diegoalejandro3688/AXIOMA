@@ -1,0 +1,61 @@
+{
+  "id": "M08",
+  "title": "Seguimiento 'no entendí' tras explicación conceptual",
+  "subject": "Matemática",
+  "replicaOf": "P08",
+  "coverage": [
+    "5-no_entendi",
+    "2-conceptual"
+  ],
+  "expectation": "El segundo turno REFORMULA de verdad (otro enfoque/analogía/lenguaje más simple), no repite el mismo texto.",
+  "context": {
+    "kind": "topic",
+    "fixture": "MAT_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cómo funciona la proporcionalidad inversa?",
+      "httpStatus": 201,
+      "wallMs": 6999,
+      "output": "# Proporcionalidad inversa\n\nDos cantidades son inversamente proporcionales cuando, al aumentar una, la otra disminuye en la misma proporción, de modo que su producto siempre se mantiene constante.\n\nEs decir, si tienes dos variables x e y, están en proporcionalidad inversa si:\n\nx · y = k (donde k es una constante)\n\nEsto significa que si x se duplica, y se reduce a la mitad. Si x se triplica, y se reduce a un tercio, y así sucesivamente.\n\n**Ejemplo genérico:** imagina que un grupo de trabajadores debe pintar una casa. Si 2 pintores tardan 8 horas en terminar el trabajo, ¿cuánto tardarían 4 pintores? Como hay el doble de trabajadores, el tiempo se reduce a la mitad: tardarían 4 horas. Aquí el producto (número de pintores) × (horas) se mantiene constante: 2×8 = 4×4 = 16.\n\n**Diferencia clave con la proporcionalidad directa:** en la directa, ambas cantidades suben o bajan juntas (por ejemplo, más kilómetros recorridos, más litros de bencina gastados). En la inversa, una sube mientras la otra baja.\n\nUn buen indicio para reconocer proporcionalidad inversa en un problema es preguntarte: si una cantidad aumenta, ¿la otra tendría sentido que también aumente, o más bien que disminuya?\n\n¿Quieres que veamos juntos cómo identificar este tipo de relación en un problema con datos concretos?",
+      "assistantMessageId": null
+    },
+    {
+      "index": 1,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "No entendí nada. ¿Puedes explicármelo mucho más simple, con otras palabras?",
+      "httpStatus": 201,
+      "wallMs": 7243,
+      "output": "# Proporcionalidad inversa, súper simple\n\nPiensa en esto: hay cosas que cuando una crece, la otra se achica. Esa es la idea central.\n\n**Ejemplo del día a día:** imagina que tienes una torta y la vas a repartir entre tus amigos.\n\n- Si la repartes entre 2 personas, cada uno recibe un pedazo grande.\n- Si la repartes entre 4 personas, cada uno recibe un pedazo más chico.\n- Si la repartes entre 8 personas, cada pedazo es todavía más chiquito.\n\n¿Ves el patrón? Mientras MÁS personas hay, MENOS le toca a cada una. Una cantidad sube (personas) y la otra baja (tamaño del pedazo).\n\n**La regla de oro:** en la proporcionalidad inversa, si multiplicas cuánto creció una cantidad por cuánto se achicó la otra, siempre te da el mismo número. En el ejemplo de la torta, ese \"número fijo\" sería el tamaño total de la torta (siempre la misma torta, sin importar entre cuántos la repartas).\n\n**Para reconocerla, pregúntate:** si una cantidad aumenta, ¿tendría sentido que la otra también aumente (eso sería directa) o que disminuya (eso sería inversa)?\n\n¿Te gustaría que probemos con otro ejemplo distinto, como el de los pintores pero explicado paso a paso?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "18194392-2f3d-4730-9d51-294263805848",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2055,
+      "outputTokens": 539,
+      "latencyMs": 6897
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2629,
+      "outputTokens": 529,
+      "latencyMs": 7149
+    }
+  ]
+}

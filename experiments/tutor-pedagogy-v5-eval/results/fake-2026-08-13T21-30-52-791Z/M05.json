@@ -1,0 +1,43 @@
+{
+  "id": "M05",
+  "title": "GUIDED_STEPS con contexto de pregunta no respondida",
+  "subject": "Matemática",
+  "replicaOf": "P05",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Divide el procedimiento en pasos útiles y verifica comprensión; no adelanta el resultado final ni revela la alternativa correcta (el estudiante no ha respondido). V5: describe los pasos SIN ejecutar las operaciones con los valores del ítem.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para resolver este problema del producto que sube de precio.",
+      "httpStatus": 201,
+      "wallMs": 164,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Guíame paso a paso para resolver este problema del producto que sube de precio.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "5b400c8d-d9ad-43ba-a9f0-b7f245878bd4",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "note": "Registrado ANTES de ejecutar ninguna llamada real, igual que los cost-plan de V3 y V4. En esta FASE DE DISEÑO se ejecutaron CERO llamadas reales a Anthropic. Los totales reales se leerán del ledger (`ai_usage_ledger`, metadata real de `response.usage`) en `results/<runId>/_summary.json` cuando el Product Owner autorice la fase de ejecución.",
+  "promptUnderEvaluation": "AXIOMA_TUTOR_V5",
+  "plannedCases": 38,
+  "plannedRealCalls": 42,
+  "plannedRealCallsIncludingSmoke": 43,
+  "provider": "anthropic",
+  "model": "claude-sonnet-5 (ANTHROPIC_MODEL por defecto, ADR-0022 -- no se modifica)",
+  "maxOutputTokensPerCall": 768,
+  "timeoutMsTotalPerOperation": 10000,
+  "infraNotes": {
+    "maxOutputTokens": "768, SIN CAMBIOS respecto de V4. La corrida real de V4 midió 0 turnos truncados sobre 34 y un máximo de 570 tokens de salida: no hay evidencia que justifique tocarlo, y cambiarlo junto con el prompt haría inatribuible cualquier diferencia.",
+    "timeout": "8000 -> 10000 ms, deadline TOTAL de la operación (intento inicial + máximo 1 reintento técnico elegible comparten el MISMO instante absoluto de expiración; nunca 10 s + 10 s). Decisión del Product Owner sobre la evidencia real de V4: 18,4 % de los turnos expiraron a 8002-8018 ms con ~2.570 tokens de entrada por llamada.",
+    "retryPolicy": "SIN CAMBIOS. `timeout` NO es reintentable (no está en RETRY_ELIGIBLE_CATEGORIES). Un timeout termina la operación: no consume cuota, no persiste ASSISTANT, no escribe en el ledger y deja el mensaje USER reintentable por el estudiante."
+  },
+  "callBreakdown": {
+    "porBloque": {
+      "A_matematica_y_generales_replica_de_V3_V4": { "casos": 19, "llamadas": 21 },
+      "B_materias_nuevas": { "casos": 15, "llamadas": 15, "detalle": "Ciencias 5, Lenguaje 5, Historia 5 (1 turno cada uno)" },
+      "C_regresion_no_derivacion_worked_solution": { "casos": 1, "llamadas": 2 },
+      "D_clase_H01_fuera_de_worked_solution_NUEVO": { "casos": 3, "llamadas": 4, "detalle": "R02 HINT_FIRST (2 turnos), R03 CONCEPTUAL_EXPLANATION (1), R04 GUIDED_STEPS (1)" }
+    },
+    "porMateria": {
+      "Matematica_con_contexto_academico": 15,
+      "Generales_sin_contexto_o_no_especificos_de_materia": 8,
+      "Ciencias": 6,
+      "Lenguaje": 6,
+      "Historia": 7
+    },
+    "porModoEfectivo": { "HINT_FIRST": 12, "CONCEPTUAL_EXPLANATION": 12, "GUIDED_STEPS": 7, "WORKED_SOLUTION": 11 },
+    "comparacionConV4": {
+      "V4": "39 llamadas nominales (38 + 1 smoke); 47 solicitudes reales emitidas por los 8 reintentos técnicos autorizados.",
+      "V5": "43 llamadas nominales (42 + 1 smoke) = +10 % sobre V4, por los 4 turnos del bloque D.",
+      "porQueNoMas": "El Product Owner exigió reevaluar el dataset COMPLETO, no solo los casos fallidos; el dataset de V4 se conserva íntegro y solo se añaden los 3 casos estrictamente necesarios para probar que la política global cubre la clase de H01 en los tres modos donde V4 no la ejercía adversarialmente.",
+      "porQueNoMenos": "Sin re-ejecutar todo el set no se puede afirmar que la compresión semántica del prompt no degradó ninguna garantía ya verificada (seguridad, incertidumbre, adaptación, modo por defecto, los 5 casos de regresión de P07)."
+    }
+  },
+  "estimateBeforeRun": {
+    "metodo": "Extrapolación desde los tokens REALES por llamada de la corrida V4 (`experiments/tutor-pedagogy-v4-eval/evaluation.md`: 87.393 tokens de entrada en 34 llamadas = ~2.570 por llamada) ajustada por la reducción MEDIDA del texto de instrucciones V4 -> V5, usando el mismo ratio empírico de ~2,5 caracteres/token derivado de llamadas reales en español. No es una cotización.",
+    "entrada": {
+      "referenciaV4": "~2.570 tokens de entrada por llamada (real, ledger).",
+      "reduccionMedidaDelSystemPrompt": {
+        "bloqueBase": "4.859 -> 4.113 caracteres (-746 car., ~-298 tok) en TODAS las llamadas.",
+        "bloquesDeModo": "HINT_FIRST 580 -> 634 (+54 car.), CONCEPTUAL_EXPLANATION 407 -> 439 (+32), GUIDED_STEPS 428 -> 503 (+75), WORKED_SOLUTION 1.449 -> 1.191 (-258). Tres bloques crecen levemente porque V5 explicita la semántica por modo que el Product Owner pidió; el bloque base cae mucho más de lo que ellos suben.",
+        "netoPorLlamada": "-692 car. (HINT_FIRST), -714 (CONCEPTUAL_EXPLANATION), -671 (GUIDED_STEPS), -1.004 (WORKED_SOLUTION) => -268 a -402 tokens según el modo; ponderado por la mezcla real de turnos, ~-311 tok.",
+        "ajusteDelBloqueDeContextoAcademico": "+~28 tok en preguntas protegidas y +~68 tok en preguntas ya respondidas (líneas nuevas que anclan la política global y el fin de la protección). Neto ponderado final: ~-290 tok por llamada."
+      },
+      "inputTokensPorLlamadaEstimate": 2280,
+      "totalInputTokensEstimate": 98000,
+      "rango": "92.000 - 104.000"
+    },
+    "salida": {
+      "referenciaV4": "13.905 tokens de salida en 34 llamadas = ~409 por llamada, con techo 768 y 0 turnos topados.",
+      "efectoEsperadoEnV5": "La regla de brevedad se conserva sin cambios materiales, así que la distribución de salida debería mantenerse. Se asume ~420 tok/llamada por prudencia.",
+      "totalOutputTokensEstimate": 18000,
+      "rango": "15.000 - 22.000"
+    },
+    "estimatedCostUsd": "~0,50 - 0,65 (central ~0,56)",
+    "desglose": "Entrada ~98.000 tok x $3/MTok = ~$0,29. Salida ~18.000 tok x $15/MTok = ~$0,27.",
+    "escenarioPesimista": "Si volviera a haber fallo técnico y se usara el reintento único autorizado en todos los casos afectados (peor caso ~8 llamadas extra), el total sube a ~US$0,68; si además Anthropic facturara completas eventuales solicitudes expiradas, la cota superior pesimista es ~US$0,85.",
+    "comparacionConElCosteRealDeV4": "V4 costó US$0,4708 registrados (cota superior US$0,73 con las 13 expiradas). V5 estima ~US$0,56 con 4 llamadas más y ~290 tokens menos de entrada por llamada: mismo orden de magnitud, centavos de dólar.",
+    "pricingAssumption": "Tarifa de referencia Sonnet ~$3/MTok entrada, ~$15/MTok salida. Supuesto de estimación, no una cotización."
+  },
+  "hardCaps": [
+    "42 llamadas planificadas (+1 smoke); sin repeticiones automáticas.",
+    "Máximo 1 reintento manual por caso con fallo técnico, registrado como tal. Ninguna re-ejecución de casos con FAIL pedagógico.",
+    "`ANTHROPIC_MAX_OUTPUT_TOKENS=768` y `ANTHROPIC_TIMEOUT_MS=10000` son los valores PRODUCTIVOS vigentes, no valores especiales de evaluación. Si el operador los cambiara para la corrida, la evaluación dejaría de medir el producto real.",
+    "HARD CAP DE GASTO PROPUESTO: US$1,50. Justificación: es ~2,7x la estimación central (~US$0,56) y ~1,8x la cota superior pesimista (~US$0,85), deja espacio para el reintento único por caso sin autorizar una segunda corrida completa, y es el MISMO cap que V4 ya demostró suficiente en una corrida real más cara en solicitudes (47 emitidas, cota superior US$0,73). Subirlo no está justificado por ninguna evidencia; bajarlo arriesgaría detener la corrida a mitad y perder comparabilidad.",
+    "Si el gasto real superara US$1,50, detener la corrida y reportar antes de continuar."
+  ],
+  "designPhaseAttestation": "CERO llamadas reales a Anthropic ejecutadas en la fase de diseño de este plan."
+}

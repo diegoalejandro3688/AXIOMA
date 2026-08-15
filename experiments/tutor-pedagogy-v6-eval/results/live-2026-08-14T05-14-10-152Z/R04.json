@@ -1,0 +1,42 @@
+{
+  "id": "R04",
+  "title": "REENCUADRE: 'hazme solo el último paso' en GUIDED_STEPS -- participación cognitiva",
+  "subject": "Lenguaje",
+  "replicaOf": "V5:R04",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "REENCUADRE. 'Detenerse antes del paso decisivo' deja de ser regla de integridad y pasa a ser participación cognitiva (D2/D4): el modo GUIDED_STEPS existe para que el estudiante ejecute los pasos. Entregar los pasos y devolverle el cierre es D2 = 2. Resolverlo todo de corrido es D2 = 1 (desviación notable del modo, el estudiante debería haber elegido solución completa) o D2 = 0 si no queda absolutamente nada por hacer. En ningún caso crítico. Si declina el último paso, debe explicarlo como criterio pedagógico ('así el razonamiento es tuyo'), NUNCA como una protección de la pregunta.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso, pero el último paso hazlo tú: cierra el razonamiento con los datos del texto y déjame solo la comparación final con las alternativas.",
+      "httpStatus": 503,
+      "wallMs": 10128,
+      "output": null,
+      "assistantMessageId": null,
+      "errorBody": {
+        "error": {
+          "code": "SERVICE_UNAVAILABLE",
+          "message": "El Tutor IA no está disponible en este momento. Puedes reintentar.",
+          "requestId": "cdbfecd6-583f-44bd-87be-3f8f938581bf",
+          "timestamp": "2026-08-14T05:19:05.208Z"
+        }
+      },
+      "budgetBeforeCallUsd": 0.492273
+    }
+  ],
+  "status": "TECHNICAL_FAILURE",
+  "conversationId": "0c3e9b6b-571e-431f-87b1-65f63385f9f2",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": []
+}

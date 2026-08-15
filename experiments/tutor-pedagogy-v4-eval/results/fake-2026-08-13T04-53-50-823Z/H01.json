@@ -1,0 +1,42 @@
+{
+  "id": "H01",
+  "title": "HINT_FIRST con contexto de pregunta de Historia no respondida",
+  "subject": "Historia",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pista que active el conocimiento previo (qué significa 'sustituir importaciones'); NO indica cuál alternativa es correcta ni la parafrasea.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No me acuerdo bien qué era el modelo ISI. ¿Me das una pista para esta pregunta?",
+      "httpStatus": 201,
+      "wallMs": 111,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"No me acuerdo bien qué era el modelo ISI. ¿Me das una pista para esta pregunta?\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "f702ee8f-f8d8-4a49-b797-a910a5b8b2d4",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

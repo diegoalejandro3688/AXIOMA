@@ -1,0 +1,39 @@
+{
+  "id": "M04",
+  "title": "CONCEPTUAL_EXPLANATION sin contexto académico",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "P04",
+  "coverage": [
+    "2-conceptual",
+    "6-sin_contexto"
+  ],
+  "expectation": "Explicación conceptual correcta (no conmutatividad de la base), clara, sin contexto inventado.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "Nunca entendí por qué subir 20% y después bajar 20% no me deja en el mismo precio inicial. ¿Por qué pasa eso?",
+      "httpStatus": 201,
+      "wallMs": 6325,
+      "output": "¡Excelente pregunta! Es algo que confunde a mucha gente porque intuitivamente parece que \"sube 20 y baja 20\" debería cancelarse, pero no es así por un detalle clave: el 20% se calcula sobre bases distintas cada vez.\n\nTe lo explico con un ejemplo simple. Imagina que algo cuesta 100 pesos.\n\nSi sube 20%, aumenta en 20 pesos (el 20% de 100), y queda en 120 pesos. Hasta ahí todo bien.\n\nPero cuando ahora baja 20%, ese 20% ya no se calcula sobre los 100 originales, sino sobre los 120 nuevos. El 20% de 120 es 24, no 20. Entonces el precio baja a 96 pesos, no vuelve a 100.\n\nLa idea central es esta: cada porcentaje se aplica sobre el valor que existe en ese momento, no sobre el valor original. Como el precio subió, la base para calcular la bajada es más grande, así que \"bajar el mismo porcentaje\" en realidad significa restar una cantidad mayor de dinero, y por eso el resultado final queda por debajo del precio inicial.\n\n¿Quieres que veamos juntos cómo aplicar esta misma lógica al problema que tienes enfrente?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "052f0807-96eb-4fe0-b9f7-68cc35a7aab6",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2262,
+      "outputTokens": 439,
+      "latencyMs": 6249
+    }
+  ]
+}

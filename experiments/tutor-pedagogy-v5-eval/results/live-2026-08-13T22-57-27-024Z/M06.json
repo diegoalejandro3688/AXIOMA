@@ -1,0 +1,48 @@
+{
+  "id": "M06",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta YA respondida correctamente",
+  "subject": "Matemática",
+  "replicaOf": "P06",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Resuelve completo y explica paso a paso (no solo el resultado), coherente con la explicación validada del contexto. La corrección de no-derivación NO debe hacerlo excesivamente cauto aquí: este caso SÍ está autorizado.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Muéstrame la solución completa paso a paso para confirmar que la entendí bien.",
+      "httpStatus": 201,
+      "wallMs": 6086,
+      "output": "¡Muy bien! Tu respuesta, $2.300, es correcta. Vamos paso a paso:\n\nPrimero calculamos cuánto representa el 15% de $2.000:\n2.000 × 15 / 100 = 300\n\nEse 300 es el aumento en pesos que sufre el producto.\n\nLuego, sumamos ese aumento al precio original:\n2.000 + 300 = 2.300\n\nPor eso el nuevo precio es $2.300.\n\nRevisemos las otras alternativas para entender por qué no son correctas:\n\n- $2.015: aparece si alguien confunde el 15% con solo \"15\" y lo suma directo, sin calcular el porcentaje real.\n- $2.150: es un error común si se calcula mal el porcentaje, como si fuera 7,5% en vez de 15%, o si se divide el aumento a la mitad por error de cálculo.\n- $2.500: suele salir si se aproxima el 15% a \"un cuarto\" del precio (25%) en vez de calcular el 15% exacto.\n\nTu procedimiento fue el correcto: calculaste el porcentaje del precio original y lo sumaste. Esa lógica —(precio × porcentaje/100) + precio original— sirve para cualquier aumento porcentual.\n\n¿Quieres que veamos ahora un caso de descuento porcentual, para comparar ambas situaciones?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "MAT_Q2",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "52d165bb-be13-494e-a612-07037b56d10c",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2597,
+      "outputTokens": 458,
+      "latencyMs": 5945
+    }
+  ]
+}

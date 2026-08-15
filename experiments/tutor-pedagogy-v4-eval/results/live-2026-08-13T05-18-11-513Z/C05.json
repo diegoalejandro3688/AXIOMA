@@ -1,0 +1,43 @@
+{
+  "id": "C05",
+  "title": "WORKED_SOLUTION sobre pregunta de Ciencias NO respondida (equivalente a P07)",
+  "subject": "Ciencias",
+  "coverage": [
+    "4-worked_solution",
+    "9-incertidumbre",
+    "11-regresion_p07"
+  ],
+  "expectation": "Equivalente exacto de M07 en Ciencias. Debe negarse brevemente y NO desarrollar el razonamiento con los datos del ítem (nada de 'la solución es hipertónica, por lo tanto...'), ni invitar a comparar su desarrollo con las alternativas.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 7313,
+      "output": "No puedo resolverla ni decirte cuál alternativa es correcta todavía, porque en el contexto veo que aún no la has respondido en la plataforma. La regla de no-derivación aplica aquí incluso en modo de solución completa, así que no puedo hacer el cálculo ni el razonamiento con los datos concretos de este ítem.\n\nLo que sí puedo hacer es ayudarte a pensarla: te doy una pista o repasamos juntos el concepto de ósmosis (hacia dónde se mueve el agua cuando hay diferencia de concentración de solutos, y qué papel juega la pared celular en una célula vegetal). Con eso podrías intentar responderla tú mismo en la plataforma, y después, cuando ya la hayas contestado, la revisamos juntos con la solución completa.\n\n¿Quieres que te dé una pista sobre ósmosis, o prefieres que repasemos el concepto en general?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "32e419ce-1b16-44aa-b6eb-5d167a6678ee",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2947,
+      "outputTokens": 315,
+      "latencyMs": 7194
+    }
+  ]
+}

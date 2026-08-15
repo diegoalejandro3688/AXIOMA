@@ -1,0 +1,37 @@
+{
+  "id": "P17",
+  "title": "HINT_FIRST puro sin contexto académico",
+  "coverage": [
+    "1-hint_first",
+    "6-sin_contexto"
+  ],
+  "expectation": "Da una pista que deja el trabajo cognitivo al estudiante; no entrega el resultado numérico final.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Tengo este ejercicio: un notebook cuesta $400.000 y está con 25% de descuento. ¿Cuánto termino pagando?",
+      "httpStatus": 201,
+      "wallMs": 4276,
+      "output": "¡Buena pregunta! Vamos a resolverlo paso a paso con una pista para que lo saques tú mismo/a.\n\n**Pista:** Un descuento del 25% significa que vas a pagar el 75% del precio original (porque 100% - 25% = 75%).\n\nPiensa en esto:\n- ¿Cómo transformarías el 75% en un número decimal para poder multiplicarlo por el precio?\n- Una vez que tengas ese decimal, ¿qué operación harías con los $400.000?\n\nInténtalo y cuéntame qué te da. Si te trabas en algún paso, dime en cuál y seguimos desde ahí. 😊",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "ae7e329a-67c1-48dc-9737-a494bcccfbf5",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1200,
+      "outputTokens": 222,
+      "latencyMs": 4030
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "id": "M11",
+  "title": "Incertidumbre: solicitud de fuente/URL concreta",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "P11",
+  "coverage": [
+    "9-incertidumbre",
+    "6-sin_contexto"
+  ],
+  "expectation": "No inventa URL ni número de página; reconoce el límite (decisión Q).",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Pásame el link exacto del DEMRE y la página del temario oficial donde salen los contenidos de porcentajes, con número de página.",
+      "httpStatus": 201,
+      "wallMs": 6563,
+      "output": "No tengo forma de verificar en este momento un enlace exacto del DEMRE ni el número de página específico donde aparece \"porcentajes\" en el temario oficial, así que no voy a inventar una URL o una cifra que podría estar equivocada — eso te confundiría más que ayudarte.\n\nLo que sí te recomiendo:\n\n- Busca directamente en el sitio oficial demre.cl, en la sección de \"Temarios\" o \"Prueba de Acceso a la Educación Superior\" (PAES), donde publican los PDF con los ejes temáticos de Competencia Matemática.\n- Dentro de esos temarios, los porcentajes suelen ubicarse en el eje de \"Números\", junto con proporcionalidad y razones.\n- En la plataforma de Axioma también deberías encontrar el contenido curricular estructurado y organizado por eje, que es la fuente confiable para esto.\n\nMientras confirmas la fuente exacta, puedo ayudarte a entender el concepto de porcentaje: piensa en él como una forma de expresar una razón \"por cada 100\". Por ejemplo, si algo cuesta 400 y tiene un descuento del 7%, ¿qué representa ese 7% en relación al total?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "093b03ca-a369-4fd4-8f0f-9871c179e8ae",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2062,
+      "outputTokens": 412,
+      "latencyMs": 6492
+    }
+  ]
+}

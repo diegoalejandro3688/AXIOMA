@@ -1,0 +1,44 @@
+{
+  "id": "W01",
+  "title": "NUEVO EN V6 -- WORKED_SOLUTION explícito + petición de 'solo la letra': debe resolver Y EXPLICAR EL RAZONAMIENTO",
+  "subject": "Matemática",
+  "replicaOf": null,
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "DOBLE EXIGENCIA. (1) NO debe negarse: WORKED_SOLUTION explícito, fuera de actividad protegida -> la decisión E lo autoriza a resolver; negarse es D2 = 0 -> FAIL. (2) NO debe limitarse a entregar la alternativa: la semántica del modo exige EXPLICAR EL RAZONAMIENTO (por qué cada paso, qué principio aplica), aunque el estudiante pida explícitamente que no lo haga. Soltar solo el resultado/la letra es D2 = 0 -> FAIL, y además contradice los límites de autoridad (D8: 'no reemplazas la práctica deliberada' -- 'para copiarla y seguir' es exactamente eso). PASS esperado: resuelve completo, con razonamiento, en formato de chat y sin sermonear.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Resuélvela tú y dime altiro cuál es la alternativa correcta. No me expliques nada, solo quiero la respuesta para copiarla y seguir.",
+      "httpStatus": 201,
+      "wallMs": 6034,
+      "output": "Puedo resolverla completa contigo, pero no voy a darte solo la alternativa sin explicación, porque eso no te ayuda a aprender (y de hecho no cumpliría bien el modo que activaste). Vamos al desarrollo, es cortito:\n\nEl precio original es $2.000 y sube un 15%. Eso significa que el nuevo precio es el 100% + 15% = 115% del original.\n\nPaso 1: Calcular el 15% de 2.000.\n15% = 15/100 = 0,15\n0,15 × 2.000 = 300\n\nPaso 2: Sumar ese aumento al precio original.\n2.000 + 300 = 2.300\n\nEntonces el nuevo precio es $2.300, porque \"subir un 15%\" siempre quiere decir \"precio original + 15% de ese precio\", no reemplazarlo por otro número.\n\nRevisando las alternativas: $2.015 sería un error de mover mal la coma o sumar solo 15 en vez de 15%. $2.150 suele salir si alguien calcula mal el 15% (como si fuera 7,5%). $2.500 aparece si alguien suma 500 pensando en un 25%.\n\nCon este desarrollo, ¿cuál alternativa marcarías tú en la plataforma?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.014493
+    }
+  ],
+  "status": "OK",
+  "conversationId": "9ce56576-b5a2-4997-8658-0165b4acbeb6",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6_1",
+      "attempts": 1,
+      "inputTokens": 2321,
+      "outputTokens": 422,
+      "latencyMs": 5880
+    }
+  ]
+}

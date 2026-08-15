@@ -1,0 +1,44 @@
+{
+  "id": "C05",
+  "title": "RESTAURACIÓN E: WORKED_SOLUTION explícito sobre pregunta de Ciencias NO respondida",
+  "subject": "Ciencias",
+  "replicaOf": "V5:C05",
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "Equivalente exacto de M07 en Ciencias, con la MISMA inversión. Debe desarrollar el razonamiento completo (tonicidad -> sentido del flujo de agua -> consecuencia sobre la célula) y llegar a la conclusión, explicando el porqué de cada paso. Negarse es D2 = 0 -> FAIL. Presentar su desarrollo como pauta oficial de Axioma sería D7 = FAIL.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame la solución completa de esta pregunta, incluyendo cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 8151,
+      "output": "Vamos a resolverlo paso a paso, con el razonamiento completo. Aclaro que esta pregunta aún no la has respondido en la plataforma, así que esto es mi propio análisis, no la pauta oficial de Axioma: te invito a contrastarlo cuando respondas.\n\nEl punto clave es la ósmosis: el agua se mueve a través de una membrana semipermeable desde donde hay menos solutos (más agua) hacia donde hay más solutos (menos agua), buscando equilibrar concentraciones.\n\nAquí la solución externa tiene MÁS solutos que el citoplasma de la célula. Eso significa que, en términos relativos, el citoplasma tiene más agua que el medio externo. Por lo tanto, el agua saldrá de la célula hacia el medio externo (la célula está en un medio hipertónico).\n\nAl perder agua, el citoplasma se reduce en volumen y la membrana plasmática, que sí es flexible, se separa de la pared celular (que es rígida y no se encoge). Este fenómeno se llama plasmólisis, característico de células vegetales.\n\nRevisemos por qué las otras alternativas no encajan:\n- Ganar agua y aumentar volumen ocurriría si el medio fuera hipotónico, lo contrario a este caso.\n- La pared celular no impide el paso del agua; es porosa y permeable, lo que regula es la presión, no el intercambio de agua en sí.\n- La pérdida de solutos no es el mecanismo principal aquí; el fenómeno relevante es el movimiento de agua, no de solutos.\n\nPor eso la respuesta correcta es: pierde agua por ósmosis y su membrana se separa de la pared celular.\n\n¿Quieres que veamos un ejemplo visual de plasmólisis para reforzarlo?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.297801
+    }
+  ],
+  "status": "OK",
+  "conversationId": "b6c8152b-79ec-4c12-96b2-8ed311e916e3",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2202,
+      "outputTokens": 613,
+      "latencyMs": 7960
+    }
+  ]
+}

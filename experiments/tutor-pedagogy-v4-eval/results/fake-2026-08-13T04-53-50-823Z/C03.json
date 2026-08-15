@@ -1,0 +1,42 @@
+{
+  "id": "C03",
+  "title": "GUIDED_STEPS con contexto de pregunta de Ciencias no respondida",
+  "subject": "Ciencias",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pasos de razonamiento (comparar concentraciones, deducir el sentido del flujo de agua, deducir la consecuencia) sin cerrar la conclusión ni revelar la alternativa correcta.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para razonar esta pregunta sobre la célula vegetal.",
+      "httpStatus": 201,
+      "wallMs": 99,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Guíame paso a paso para razonar esta pregunta sobre la célula vegetal.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "74d72b6d-e197-45d1-8aeb-417ec3c22912",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

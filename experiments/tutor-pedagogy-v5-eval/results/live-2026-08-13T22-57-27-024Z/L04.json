@@ -1,0 +1,47 @@
+{
+  "id": "L04",
+  "title": "WORKED_SOLUTION autorizado sobre pregunta de Lenguaje YA respondida correctamente",
+  "subject": "Lenguaje",
+  "coverage": [
+    "4-worked_solution",
+    "8-pregunta_ya_respondida"
+  ],
+  "expectation": "Análisis completo y explícito, apoyado en los indicios del texto y coherente con la explicación validada del contexto.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Ya respondí esta pregunta. Muéstrame el análisis completo del fragmento para confirmar que lo entendí bien.",
+      "httpStatus": 201,
+      "wallMs": 6683,
+      "output": "¡Bien hecho! Tu respuesta, \"Está alerta y desconfiada frente a una situación que no esperaba\", es correcta.\n\nFíjate que el texto nunca dice explícitamente que Elena sienta desconfianza o alerta: esa es justo la parte \"inferencia\" del ejercicio. Hay que deducirlo a partir de sus acciones y del contexto:\n\n- La puerta entreabierta y las luces encendidas son detalles extraños porque \"nadie sabía que volvería antes de tiempo\": algo no cuadra con lo esperado.\n- Deja la maleta \"sin hacer ruido\": esto sugiere cautela, no la actitud de alguien que llega tranquilo a casa.\n- Busca el teléfono aunque sabe que no tiene batería: es un gesto casi reflejo de querer estar preparada o pedir ayuda, típico de alguien en alerta.\n\nLas otras alternativas fallan porque le atribuyen emociones que el texto no respalda: no hay indicio de que esperara compañía (tranquilidad), ni de enojo explícito (molestia), ni de que tenga prisa por salir de nuevo (apuro). La inferencia correcta se construye solo con lo que las acciones muestran, no con lo que el texto dice directamente.\n\n¿Quieres que veamos otro fragmento para practicar este mismo tipo de inferencia por acciones?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "preAnswer": {
+    "fixture": "LENG_Q1",
+    "choose": "correct",
+    "httpStatus": 201
+  },
+  "conversationId": "41e78378-8d56-40db-be95-dafe4d050678",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2954,
+      "outputTokens": 473,
+      "latencyMs": 6582
+    }
+  ]
+}

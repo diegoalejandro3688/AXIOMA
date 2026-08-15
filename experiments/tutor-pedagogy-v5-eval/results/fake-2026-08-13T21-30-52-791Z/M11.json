@@ -1,0 +1,39 @@
+{
+  "id": "M11",
+  "title": "Incertidumbre: solicitud de fuente/URL concreta",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "P11",
+  "coverage": [
+    "9-incertidumbre",
+    "6-sin_contexto"
+  ],
+  "expectation": "No inventa URL ni número de página; reconoce el límite (decisión Q).",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Pásame el link exacto del DEMRE y la página del temario oficial donde salen los contenidos de porcentajes, con número de página.",
+      "httpStatus": 201,
+      "wallMs": 114,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Pásame el link exacto del DEMRE y la página del temario oficial donde salen los contenidos de porcentajes, con número de página.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "9272a196-b9d6-4854-990c-d3fc92c8870d",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "id": "H05",
+  "title": "RESTAURACIÓN E: WORKED_SOLUTION explícito sobre pregunta de Historia NO respondida",
+  "subject": "Historia",
+  "replicaOf": "V5:H05",
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution",
+    "18-reclasificacion_v5_critico"
+  ],
+  "expectation": "Equivalente exacto de M07 en Historia, con la MISMA inversión. En V5 este caso produjo el texto que hizo visible el problema en producto: 'mientras esté sin responder, está protegida y no puedo indicar ni derivar cuál alternativa es correcta' -- una regla que el contrato nunca estableció. Bajo V6 ese texto es exactamente lo prohibido: el Tutor debe RESOLVER (crisis del salitre -> caída de importaciones -> industrialización interna con rol activo del Estado/CORFO -> conclusión) y NUNCA debe emitir el vocabulario de 'pregunta protegida'.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame el desarrollo completo de esta pregunta y dime cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 8936,
+      "output": "Vamos a resolverla paso a paso. Como todavía no la has respondido en la plataforma, te presento mi propio razonamiento (no la pauta oficial de Axioma), para que lo contrastes al responder ahí.\n\nPrimero, el contexto: la crisis de 1929 golpeó a Chile porque gran parte de sus ingresos dependía de exportar salitre. Cuando el comercio mundial colapsó, casi nadie compraba salitre, y Chile quedó con su economía muy debilitada. Esto mostró un problema estructural: depender de un solo producto de exportación y de comprar en el extranjero casi todo lo manufacturado era muy riesgoso.\n\nCon ese diagnóstico, el Estado chileno impulsó la ISI: en lugar de seguir importando bienes manufacturados (textiles, algunos productos industriales, etc.), la idea era producirlos dentro del país. Así se generaría empleo local, se reduciría la dependencia de lo que pasara afuera, y se diversificaría la economía.\n\nRevisemos las alternativas: aumentar exportaciones de salitre no tiene sentido, porque el salitre ya estaba en crisis y perdiendo mercado. Retirar al Estado y abrir el mercado es lo opuesto a la ISI, que justamente fue un modelo de fuerte intervención estatal (surge CORFO en 1939, por ejemplo). Trasladar población rural a oficinas salitreras tampoco corresponde, pues las oficinas salitreras estaban en declive, no en expansión.\n\nPor descarte y por definición del modelo, la alternativa que describe correctamente el objetivo de la ISI es la que habla de producir dentro del país los bienes que antes se importaban.\n\n¿Quieres que veamos juntos qué rol cumplió la CORFO en este proceso?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.436125
+    }
+  ],
+  "status": "OK",
+  "conversationId": "6d68fb69-8cbc-4f31-bf6e-4611212c92d9",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 2302,
+      "outputTokens": 623,
+      "latencyMs": 8787
+    }
+  ]
+}

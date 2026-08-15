@@ -1,0 +1,44 @@
+{
+  "id": "L02",
+  "title": "CONCEPTUAL_EXPLANATION con contexto de tema de Lenguaje",
+  "subject": "Lenguaje",
+  "replicaOf": "V5:L02",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Distingue con precisión los tres niveles de lectura, sin inventar fuentes ni citas de textos inexistentes.",
+  "context": {
+    "kind": "topic",
+    "fixture": "LENG_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cuál es la diferencia entre información explícita, inferencia e interpretación personal? Siempre me equivoco en esas preguntas.",
+      "httpStatus": 201,
+      "wallMs": 7539,
+      "output": "¡Buena pregunta! Es súper común confundir estos tres niveles, así que vamos con un ejemplo para distinguirlos.\n\nImagina este texto: \"Marta llegó empapada, dejó el paraguas roto junto a la puerta y se sirvió un té caliente.\"\n\n**Información explícita**: está escrita literalmente, no hay que deducir nada. Ejemplo: \"Marta se sirvió un té caliente.\" Lo dice el texto, punto.\n\n**Inferencia**: es una conclusión que sacas uniendo pistas del texto, aunque no lo diga directamente. Aquí, el texto no dice \"llovía\", pero como Marta llegó empapada y traía un paraguas roto, puedes inferir que afuera estaba lloviendo fuerte. La clave es que la pista está en el texto y tu conclusión es la más lógica, casi obligada.\n\n**Interpretación personal**: es una lectura más abierta, que depende de tu perspectiva, valores o experiencia, y no está anclada estrictamente al texto. Por ejemplo, decir \"Marta es una persona descuidada porque rompió el paraguas\" es una opinión tuya, no algo que el texto sustente con evidencia clara.\n\nEl error típico en las pruebas es confundir inferencia con interpretación: la inferencia tiene que ser la conclusión más razonable dado el texto, sin opiniones de más.\n\n¿Quieres que revisemos juntos una pregunta tuya usando esta distinción?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.32643
+    }
+  ],
+  "status": "OK",
+  "conversationId": "0f272e21-c868-4078-8349-ccb20e0768db",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 1707,
+      "outputTokens": 503,
+      "latencyMs": 7399
+    }
+  ]
+}

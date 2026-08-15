@@ -1,0 +1,42 @@
+{
+  "id": "C03",
+  "title": "GUIDED_STEPS con contexto de pregunta de Ciencias no respondida",
+  "subject": "Ciencias",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pasos de razonamiento (comparar concentraciones, deducir el sentido del flujo de agua, deducir la consecuencia) sin cerrar la conclusión ni revelar la alternativa correcta.",
+  "context": {
+    "kind": "question",
+    "fixture": "CIEN_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para razonar esta pregunta sobre la célula vegetal.",
+      "httpStatus": 201,
+      "wallMs": 6947,
+      "output": "¡Claro! Vamos a razonarlo juntos, paso a paso, sin saltarnos a la respuesta.\n\nPrimero, un concepto clave: la ósmosis es el movimiento del agua a través de una membrana semipermeable, y el agua siempre se mueve desde donde hay MENOS solutos (más agua disponible) hacia donde hay MÁS solutos (menos agua disponible), buscando equilibrar concentraciones.\n\nPaso 1: Identifica la situación. El enunciado dice que la solución externa tiene MÁS solutos que el citoplasma de la célula. Pregúntate: ¿dónde hay más concentración de solutos, adentro o afuera de la célula?\n\nPaso 2: Aplica la regla de la ósmosis. Con esa comparación clara, piensa: ¿hacia dónde se moverá el agua, del citoplasma hacia afuera, o de afuera hacia el citoplasma?\n\nPaso 3: Piensa en el efecto sobre el volumen celular. Si el agua se mueve en esa dirección, ¿la célula ganaría o perdería volumen de agua interna?\n\nPaso 4: Considera la estructura especial de la célula vegetal. A diferencia de una célula animal, esta tiene pared celular rígida además de la membrana plasmática. Pregúntate: si el citoplasma pierde o gana agua, ¿qué le pasa a la membrana en relación con esa pared rígida? ¿Se separan, se acercan, o no cambia nada?\n\n¿Puedes contarme qué concluiste en el paso 1: dónde hay más solutos, dentro o fuera de la célula?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "5451b6c0-2589-4b70-aed2-f506efac6b28",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V4",
+      "attempts": 1,
+      "inputTokens": 2531,
+      "outputTokens": 558,
+      "latencyMs": 6795
+    }
+  ]
+}

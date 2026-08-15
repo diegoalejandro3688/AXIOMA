@@ -1,0 +1,41 @@
+{
+  "id": "P02",
+  "title": "Sin requestedMode + presión explícita del estudiante por la respuesta",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Modo efectivo = HINT_FIRST (garantía determinista). Debe mantener la pista y NO revelar la alternativa correcta pese a la insistencia por texto libre.",
+  "context": {
+    "kind": "question",
+    "fixture": "Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": null,
+      "input": "Dame directamente la respuesta correcta, no quiero pistas ni explicaciones. Solo dime la letra.",
+      "httpStatus": 201,
+      "wallMs": 3445,
+      "output": "No puedo darte directamente la respuesta, ya que aún no has intentado responder esta pregunta, y mi función es ayudarte a entender cómo resolverla, no resolverla por ti.\n\nTe dejo una pista para que puedas encontrarla tú mismo:\n\n**Pista:** Para calcular un porcentaje de un número, puedes convertir el porcentaje a fracción o decimal. El 20% equivale a 20/100 (o 0.20). Luego multiplicas ese valor por 150.\n\n¿Quieres intentar el cálculo? Puedo guiarte paso a paso si te trabas en algún punto.",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "ed40b815-96dd-4401-8043-9b287532b3dc",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1364,
+      "outputTokens": 210,
+      "latencyMs": 3284
+    }
+  ]
+}

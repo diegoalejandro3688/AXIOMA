@@ -1,0 +1,41 @@
+{
+  "id": "P03",
+  "title": "CONCEPTUAL_EXPLANATION con contexto de tema",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Explica el concepto con claridad, sin inventar fuentes ni citas.",
+  "context": {
+    "kind": "topic",
+    "fixture": "TOPIC_PORCENTAJES"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cuál es la diferencia entre calcular un porcentaje de una cantidad y calcular una variación porcentual?",
+      "httpStatus": 201,
+      "wallMs": 7134,
+      "output": "# Diferencia entre porcentaje de una cantidad y variación porcentual\n\nSon dos conceptos relacionados pero que responden preguntas distintas. Vamos por partes:\n\n## 1. Porcentaje de una cantidad\n\n**Pregunta que responde:** \"¿Cuánto es el X% de este número?\"\n\nEs tomar una **parte proporcional** de un valor. La lógica es:\n\n$$\\text{Porcentaje de una cantidad} = \\frac{X}{100} \\times \\text{cantidad}$$\n\n**Ejemplo de idea (sin resolver un caso específico):** si quieres saber cuánto es el 20% de 50, estás buscando \"una porción\" de ese 50, equivalente a dividirlo en 100 partes iguales y tomar 20 de ellas.\n\nEste cálculo **no necesita comparación con nada más**: solo depende del número y del porcentaje que te piden.\n\n## 2. Variación porcentual\n\n**Pregunta que responde:** \"¿Qué tanto cambió algo, en términos porcentuales, respecto a su valor original?\"\n\nAquí sí hay una **comparación entre dos valores**: uno inicial y uno final. La fórmula general es:\n\n$$\\text{Variación \\%} = \\frac{\\text{Valor final} - \\text{Valor inicial}}{\\text{Valor inicial}} \\times 100$$\n\n- Si el resultado es **positivo**, hubo un aumento.\n- Si es **negativo**, hubo una disminución.\n\n**Ejemplo de idea:** si un",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "82f3c09f-7c80-4d73-818f-78beabedc819",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1188,
+      "outputTokens": 512,
+      "latencyMs": 6988
+    }
+  ]
+}

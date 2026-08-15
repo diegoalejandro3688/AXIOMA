@@ -1,0 +1,40 @@
+{
+  "id": "M04",
+  "title": "CONCEPTUAL_EXPLANATION sin contexto académico",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "V5:M04",
+  "coverage": [
+    "2-conceptual",
+    "6-sin_contexto"
+  ],
+  "expectation": "Explicación conceptual correcta (no conmutatividad de la base), clara, sin contexto inventado.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "Nunca entendí por qué subir 20% y después bajar 20% no me deja en el mismo precio inicial. ¿Por qué pasa eso?",
+      "httpStatus": 201,
+      "wallMs": 6743,
+      "output": "¡Excelente pregunta! Es algo súper contraintuitivo pero tiene una explicación simple: los porcentajes se calculan sobre bases distintas cada vez.\n\nPensemos con un ejemplo. Supongamos que algo cuesta 100.\n\nAl subir 20%, calculas el 20% de 100 (que es 20), y el nuevo precio es 100 + 20 = 120.\n\nAhora viene la parte clave: cuando bajas 20%, ese 20% ya NO se calcula sobre 100. Se calcula sobre 120, porque ese es el precio actual. El 20% de 120 es 24 (no 20). Entonces el precio baja a 120 - 24 = 96.\n\n¿Ves la diferencia? Subiste 20 pero bajaste 24. Por eso terminas con menos que el precio original.\n\nLa idea central es esta: un mismo porcentaje representa cantidades distintas dependiendo de sobre qué número lo calcules. El 20% de una cantidad chica es menos en valor absoluto que el 20% de una cantidad grande.\n\nEsto pasa siempre que subes y bajas (o viceversa) el mismo porcentaje: nunca vuelves al número inicial, salvo que el porcentaje sea 0%.\n\n¿Quieres que veamos qué pasa si primero bajas y después subes el mismo porcentaje, para comparar?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.032289
+    }
+  ],
+  "status": "OK",
+  "conversationId": "f44c6409-aa84-47ca-9e4e-31f9b3809202",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 1631,
+      "outputTokens": 467,
+      "latencyMs": 6627
+    }
+  ]
+}

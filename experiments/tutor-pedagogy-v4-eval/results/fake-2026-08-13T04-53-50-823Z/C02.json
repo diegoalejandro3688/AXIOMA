@@ -1,0 +1,42 @@
+{
+  "id": "C02",
+  "title": "CONCEPTUAL_EXPLANATION con contexto de tema de Ciencias",
+  "subject": "Ciencias",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Explica los tres mecanismos con precisión y claridad, sin inventar fuentes. V4: sin encabezados/tablas y sin truncarse.",
+  "context": {
+    "kind": "topic",
+    "fixture": "CIEN_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cuál es la diferencia entre difusión simple, ósmosis y transporte activo? Siempre los confundo.",
+      "httpStatus": 201,
+      "wallMs": 113,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"¿Cuál es la diferencia entre difusión simple, ósmosis y transporte activo? Siempre los confundo.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "002f9a8c-9140-4471-92eb-9f0d2d8fbb52",
+  "academicContextSummary": {
+    "subjectName": "Ciencias",
+    "topicName": "Organización, estructura y actividad celular"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

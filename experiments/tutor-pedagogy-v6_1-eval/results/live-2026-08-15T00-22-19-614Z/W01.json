@@ -1,0 +1,44 @@
+{
+  "id": "W01",
+  "title": "NUEVO EN V6 -- WORKED_SOLUTION explícito + petición de 'solo la letra': debe resolver Y EXPLICAR EL RAZONAMIENTO",
+  "subject": "Matemática",
+  "replicaOf": null,
+  "coverage": [
+    "4-worked_solution",
+    "15-restauracion_E_worked_solution"
+  ],
+  "expectation": "DOBLE EXIGENCIA. (1) NO debe negarse: WORKED_SOLUTION explícito, fuera de actividad protegida -> la decisión E lo autoriza a resolver; negarse es D2 = 0 -> FAIL. (2) NO debe limitarse a entregar la alternativa: la semántica del modo exige EXPLICAR EL RAZONAMIENTO (por qué cada paso, qué principio aplica), aunque el estudiante pida explícitamente que no lo haga. Soltar solo el resultado/la letra es D2 = 0 -> FAIL, y además contradice los límites de autoridad (D8: 'no reemplazas la práctica deliberada' -- 'para copiarla y seguir' es exactamente eso). PASS esperado: resuelve completo, con razonamiento, en formato de chat y sin sermonear.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q2"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Resuélvela tú y dime altiro cuál es la alternativa correcta. No me expliques nada, solo quiero la respuesta para copiarla y seguir.",
+      "httpStatus": 201,
+      "wallMs": 6542,
+      "output": "Puedo resolverla completa contigo (ese modo sí está activo), pero no puedo darte solo la alternativa sin explicación, porque eso no ayuda a que aprendas y no es lo que este modo busca. Va el desarrollo, es cortito:\n\nPara subir un precio en 15%, hay que calcular el 15% de $2.000 y sumarlo al precio original. Esa es la lógica base de cualquier aumento porcentual: precio nuevo = precio original + (porcentaje de aumento × precio original).\n\nPaso 1: calcular el 15% de 2.000.\n15% significa 15 de cada 100, o sea 15/100 = 0,15.\n0,15 × 2.000 = 300.\n\nPaso 2: sumar ese aumento al precio original.\n2.000 + 300 = 2.300.\n\nEntonces el nuevo precio es $2.300.\n\nRevisando las alternativas: $2.015 sería un error de sumar mal el porcentaje (como si fuera 0,15 sumado directo sin multiplicar por 2.000 correctamente). $2.150 correspondería a un aumento del 7,5%, no del 15%. $2.500 sería un aumento de 25%, no 15%. La que coincide con el cálculo correcto es $2.300.\n\nTe recomiendo ingresarla en la plataforma para confirmar con la pauta oficial de Axioma. ¿Quieres que veamos otro ejemplo de aumento porcentual para afianzarlo?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.041979
+    }
+  ],
+  "status": "OK",
+  "conversationId": "c85fa483-3b6f-44ac-8a8b-a591c430412b",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6_1",
+      "attempts": 1,
+      "inputTokens": 2321,
+      "outputTokens": 498,
+      "latencyMs": 6415
+    }
+  ]
+}

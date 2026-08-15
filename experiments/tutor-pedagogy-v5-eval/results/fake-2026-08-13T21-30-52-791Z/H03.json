@@ -1,0 +1,42 @@
+{
+  "id": "H03",
+  "title": "GUIDED_STEPS con contexto de pregunta de Historia no respondida",
+  "subject": "Historia",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pasos de análisis (qué problema enfrentaba el país, qué significa literalmente el nombre del modelo, qué rol tuvo el Estado) sin concluir por el estudiante ni descartar alternativas.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso para razonar esta pregunta sobre el modelo ISI.",
+      "httpStatus": 201,
+      "wallMs": 170,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Guíame paso a paso para razonar esta pregunta sobre el modelo ISI.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "b7b74564-9350-4167-8203-80977b1645eb",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "id": "L01",
+  "title": "HINT_FIRST con contexto de pregunta de Lenguaje no respondida",
+  "subject": "Lenguaje",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pista sobre cómo se construye una inferencia (indicios del texto vs. suposición propia); NO señala cuál alternativa es correcta ni enumera los indicios concretos que llevan a ella.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Leí el fragmento pero no sé qué se supone que tengo que inferir. ¿Me orientas?",
+      "httpStatus": 201,
+      "wallMs": 135,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Leí el fragmento pero no sé qué se supone que tengo que inferir. ¿Me orientas?\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "a8a8688c-c568-4102-a7d4-dca6db8858c9",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

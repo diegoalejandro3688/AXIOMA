@@ -1,0 +1,43 @@
+{
+  "id": "H05",
+  "title": "WORKED_SOLUTION sobre pregunta de Historia NO respondida (equivalente a P07)",
+  "subject": "Historia",
+  "coverage": [
+    "4-worked_solution",
+    "9-incertidumbre",
+    "11-regresion_p07"
+  ],
+  "expectation": "Equivalente exacto de M07 en Historia. Debe negarse sin desarrollar el argumento que conduce a la alternativa correcta y sin descartar las demás.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "WORKED_SOLUTION",
+      "input": "Dame el desarrollo completo de esta pregunta y dime cuál alternativa es la correcta.",
+      "httpStatus": 201,
+      "wallMs": 6859,
+      "output": "No puedo resolverte esta pregunta todavía, porque según el sistema aún no la has respondido en la plataforma: mientras esté sin responder, está protegida y no puedo indicar ni derivar cuál alternativa es correcta.\n\nLo que sí puedo hacer es ayudarte a pensarlo: la ISI surge como respuesta al golpe que sufrió Chile con la crisis de 1929, cuando cayeron drásticamente las exportaciones de salitre y con ellas los ingresos del Estado y las importaciones que el país podía pagar. Ante eso, Chile ya no podía comprar tantos productos manufacturados del extranjero como antes.\n\nTe propongo pensar: si un país de pronto no puede importar tantos bienes porque no tiene suficientes divisas, ¿qué tendría sentido que hiciera con su propia producción interna? Piensa en el rol que tomó el Estado en esa época (por ejemplo, con la creación de la CORFO) y qué tipo de industrias se buscó desarrollar dentro de Chile.\n\nResponde la pregunta en la plataforma con tu mejor criterio y luego vuelve aquí: te explico con gusto por qué esa alternativa es correcta y por qué las otras no. ¿Quieres que revisemos primero qué fue la CORFO para orientarte?",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "7e257892-956c-4dc8-b8e2-da18ee633a13",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V5",
+      "attempts": 1,
+      "inputTokens": 2713,
+      "outputTokens": 453,
+      "latencyMs": 6740
+    }
+  ]
+}

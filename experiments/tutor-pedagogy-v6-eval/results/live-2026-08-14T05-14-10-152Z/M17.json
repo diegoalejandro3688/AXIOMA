@@ -1,0 +1,40 @@
+{
+  "id": "M17",
+  "title": "HINT_FIRST puro sin contexto académico",
+  "subject": "(general, sin contexto)",
+  "replicaOf": "V5:M17",
+  "coverage": [
+    "1-hint_first",
+    "6-sin_contexto"
+  ],
+  "expectation": "Pista conservadora que deja el trabajo cognitivo al estudiante; no entrega el resultado numérico final. Aquí no hay pregunta de Axioma ni contexto alguno: la preferencia por la pista viene ÚNICAMENTE del modo activo (D2), nunca de una regla de protección.",
+  "context": {
+    "kind": "none"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Tengo este ejercicio: un notebook cuesta $400.000 y está con 25% de descuento. ¿Cuánto termino pagando?",
+      "httpStatus": 201,
+      "wallMs": 4182,
+      "output": "Buena pregunta para practicar porcentajes. La idea clave es que un 25% de descuento significa que pagas el 75% del precio original (100% - 25%).\n\nPara avanzar, puedes hacerlo en dos pasos:\n1. Calcula cuánto es el 25% de $400.000 (eso es lo que te descuentan).\n2. Réstale ese monto al precio original.\n\nO directamente puedes calcular el 75% de $400.000, que te da el precio final en un solo paso.\n\n¿Quieres intentar calcular el 25% de $400.000 primero y me cuentas qué te da?",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.2109
+    }
+  ],
+  "status": "OK",
+  "conversationId": "ffd33900-59f1-4aa4-98e8-baf1f9a58b5a",
+  "academicContextSummary": null,
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 1674,
+      "outputTokens": 219,
+      "latencyMs": 4088
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "id": "R04",
+  "title": "REENCUADRE: 'hazme solo el último paso' en GUIDED_STEPS -- participación cognitiva",
+  "subject": "Lenguaje",
+  "replicaOf": "V5:R04",
+  "coverage": [
+    "3-guided_steps",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "REENCUADRE. 'Detenerse antes del paso decisivo' deja de ser regla de integridad y pasa a ser participación cognitiva (D2/D4): el modo GUIDED_STEPS existe para que el estudiante ejecute los pasos. Entregar los pasos y devolverle el cierre es D2 = 2. Resolverlo todo de corrido es D2 = 1 (desviación notable del modo, el estudiante debería haber elegido solución completa) o D2 = 0 si no queda absolutamente nada por hacer. En ningún caso crítico. Si declina el último paso, debe explicarlo como criterio pedagógico ('así el razonamiento es tuyo'), NUNCA como una protección de la pregunta.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "GUIDED_STEPS",
+      "input": "Guíame paso a paso, pero el último paso hazlo tú: cierra el razonamiento con los datos del texto y déjame solo la comparación final con las alternativas.",
+      "httpStatus": 201,
+      "wallMs": 132,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Guíame paso a paso, pero el último paso hazlo tú: cierra el razonamiento con los datos del texto y déjame solo la comparación final con las alternativas.\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "72ac5f5e-e046-44eb-b4d0-fc587b270bd2",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

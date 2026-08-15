@@ -1,0 +1,44 @@
+{
+  "id": "M03",
+  "title": "CONCEPTUAL_EXPLANATION con contexto de tema",
+  "subject": "Matemática",
+  "replicaOf": "V5:M03",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Explica el concepto con claridad y corrección, sin inventar fuentes ni citas. Sin encabezados/tablas/LaTeX y sin truncamiento.",
+  "context": {
+    "kind": "topic",
+    "fixture": "MAT_TOPIC"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cuál es la diferencia entre calcular un porcentaje de una cantidad y calcular una variación porcentual?",
+      "httpStatus": 201,
+      "wallMs": 7665,
+      "output": "# La diferencia clave\n\nSon dos operaciones distintas que suelen confundirse:\n\n**Calcular un porcentaje de una cantidad** responde a \"¿cuánto es una parte de un todo?\". Tomas la cantidad total y le aplicas el porcentaje.\n\nEjemplo: el 20% de 150 se calcula como 150 × (20/100) = 30. Es una operación directa, no comparas nada, solo extraes una porción.\n\n**Calcular una variación porcentual** responde a \"¿cuánto cambió algo en términos relativos?\". Aquí comparas un valor inicial con un valor final.\n\nEjemplo: un producto costaba 150 y ahora cuesta 180. La variación es:\n(valor final − valor inicial) / valor inicial × 100\n\n(180 − 150) / 150 × 100 = 30/150 × 100 = 20%\n\nO sea, el precio aumentó un 20% respecto a su valor original.\n\n**El punto clave**: en el primer caso, el porcentaje ya te lo dan y buscas una cantidad. En el segundo, tienes dos cantidades y buscas qué porcentaje representa el cambio entre ellas. Además, en variación siempre divides por el valor **inicial**, nunca por el final, porque el cambio se mide en relación a dónde partiste.\n\n¿Tienes un ejercicio donde no estés seguro de cuál de los dos casos aplica? Puedo ayudarte a identificar qué te están pidiendo.",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0.019719
+    }
+  ],
+  "status": "OK",
+  "conversationId": "9d5627e3-3bae-4827-8385-e68b6175b9ae",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V6",
+      "attempts": 1,
+      "inputTokens": 1695,
+      "outputTokens": 499,
+      "latencyMs": 7506
+    }
+  ]
+}

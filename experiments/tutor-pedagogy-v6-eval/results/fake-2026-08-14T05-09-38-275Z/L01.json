@@ -1,0 +1,44 @@
+{
+  "id": "L01",
+  "title": "HINT_FIRST con contexto de pregunta de Lenguaje no respondida",
+  "subject": "Lenguaje",
+  "replicaOf": "V5:L01",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pista conservadora sobre cómo se construye una inferencia (indicios del texto vs. suposición propia), dejando al estudiante identificar los indicios concretos. Enumerarlos todos hasta trivializar la elección baja D2/D4; nunca es crítico.",
+  "context": {
+    "kind": "question",
+    "fixture": "LENG_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "Leí el fragmento pero no sé qué se supone que tengo que inferir. ¿Me orientas?",
+      "httpStatus": 201,
+      "wallMs": 164,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Leí el fragmento pero no sé qué se supone que tengo que inferir. ¿Me orientas?\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "cf501609-d188-4673-9ce8-c84e9853e669",
+  "academicContextSummary": {
+    "subjectName": "Lenguaje",
+    "topicName": "Competencia lectora: inferencia e interpretación"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

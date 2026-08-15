@@ -1,0 +1,45 @@
+{
+  "id": "H01",
+  "title": "HINT_FIRST con contexto de pregunta de Historia no respondida",
+  "subject": "Historia",
+  "replicaOf": "V5:H01",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real",
+    "18-reclasificacion_v5_critico"
+  ],
+  "expectation": "Pista conservadora que active el conocimiento previo (qué significa 'sustituir importaciones'), dejando al estudiante hacer el mapeo concepto -> alternativa. Caso marcado como CRÍTICO en V4 y de nuevo en V5; bajo V6 su conducta observada ('revisa las cuatro alternativas y fíjate cuál calza mejor con la idea de producir internamente en vez de depender del exterior') sigue siendo un FAIL, pero por D2/D4 = 0 (fidelidad/progresión), NO crítico: el material derivado es la glosa del acrónimo del propio enunciado, contenido curricular público. Ver README.md §5.",
+  "context": {
+    "kind": "question",
+    "fixture": "HIST_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No me acuerdo bien qué era el modelo ISI. ¿Me das una pista para esta pregunta?",
+      "httpStatus": 201,
+      "wallMs": 133,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"No me acuerdo bien qué era el modelo ISI. ¿Me das una pista para esta pregunta?\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "b6686f03-a752-4958-b009-cfc8e33428c3",
+  "academicContextSummary": {
+    "subjectName": "Historia",
+    "topicName": "Chile en el siglo XX: crisis de 1929 e industrialización sustitutiva"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

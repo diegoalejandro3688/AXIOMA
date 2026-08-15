@@ -1,0 +1,59 @@
+{
+  "id": "P08",
+  "title": "Seguimiento 'no entendí' tras explicación conceptual",
+  "coverage": [
+    "5-no_entendi",
+    "2-conceptual"
+  ],
+  "expectation": "El segundo turno REFORMULA de verdad (otro enfoque/analogía/lenguaje más simple), no repite el mismo texto.",
+  "context": {
+    "kind": "topic",
+    "fixture": "TOPIC_PORCENTAJES"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "¿Cómo funciona la proporcionalidad inversa?",
+      "httpStatus": 201,
+      "wallMs": 5717,
+      "output": "# Proporcionalidad Inversa\n\n¡Buena pregunta! Te explico la idea general.\n\n## La idea central\n\nDos cantidades son **inversamente proporcionales** cuando, al aumentar una, la otra **disminuye en la misma medida** (y viceversa). Lo especial es que su **producto siempre se mantiene constante**.\n\nSe expresa así:\n\n$$x \\cdot y = k$$\n\ndonde $k$ es una constante. Esto significa que:\n\n$$y = \\frac{k}{x}$$\n\n## Un ejemplo para visualizarlo\n\nImagina que tienes **12 caramelos** para repartir en partes iguales entre un grupo de amigos:\n\n| Cantidad de amigos | Caramelos c/u |\n|---|---|\n| 1 | 12 |\n| 2 | 6 |\n| 3 | 4 |\n| 4 | 3 |\n| 6 | 2 |\n\nFíjate: si **multiplicas** cada par de columnas (amigos × caramelos), **siempre da 12**. Cuando el número de amigos **se duplica**, los caramelos por persona **se reducen a la mitad**. Esa es la esencia de la proporcionalidad inversa.\n\n## ¿Cómo diferenciarla de la proporcionalidad directa?\n\n| Directa | Inversa |\n|---|---|\n| Si una aumenta, la otra **aumenta** | Si una aumenta, la otra **disminuye** |\n| Su **cociente** ($y/x$) es constante | Su **producto** ($x",
+      "assistantMessageId": null
+    },
+    {
+      "index": 1,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "No entendí nada. ¿Puedes explicármelo mucho más simple, con otras palabras?",
+      "httpStatus": 201,
+      "wallMs": 7283,
+      "output": "# Vamos con calma 😊\n\nSin fórmulas por ahora. Pensemos solo en una situación de la vida real.\n\n## Imagina esto:\n\nTienes que pintar una pared. Si la pintas **tú solo**, te demoras, digamos, **8 horas**.\n\nAhora imagina que te ayuda **un amigo más**. Entre los dos, ¿se demorarán más o menos que 8 horas?\n\n**Menos**, ¿verdad? Porque están repartiéndose el trabajo.\n\nY si llegan **4 amigos más** a ayudar, se demorarán **aún menos**.\n\n## Esa es toda la idea 🎯\n\n**Proporcionalidad inversa** = cuando una cosa **crece** y, por eso mismo, la otra **cosa se achica**.\n\n- Más personas ayudando → **menos** tiempo necesario\n- Menos personas ayudando → **más** tiempo necesario\n\nVan \"en direcciones opuestas\": una sube mientras la otra baja.\n\n## Comparémoslo con el caso contrario (para que quede claro)\n\nPiensa ahora en comprar caramelos:\n- Si compras **más** caramelos, pagas **más** dinero.\n- Si compras **menos** caramelos, pagas **menos** dinero.\n\nAquí las dos cosas suben y bajan **juntas, en la misma dirección**. Eso es proporcionalidad **directa**.\n\nEn cambio, en el ejemplo de pintar la pared, mientras una sube (personas), la otra baja (t",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "c81887fe-154e-449e-8e86-2e830b33e5ee",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1168,
+      "outputTokens": 512,
+      "latencyMs": 5613
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "promptVersion": "AXIOMA_TUTOR_V3",
+      "attempts": 1,
+      "inputTokens": 1717,
+      "outputTokens": 512,
+      "latencyMs": 7172
+    }
+  ]
+}

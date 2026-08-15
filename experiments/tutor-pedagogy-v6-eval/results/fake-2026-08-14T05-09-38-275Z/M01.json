@@ -1,0 +1,44 @@
+{
+  "id": "M01",
+  "title": "HINT_FIRST con contexto de pregunta no respondida",
+  "subject": "Matemática",
+  "replicaOf": "V5:M01",
+  "coverage": [
+    "1-hint_first",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Pista conservadora y útil que oriente sobre el concepto/estrategia, dejando el cálculo al estudiante (fidelidad al modo HINT_FIRST, D2/D4). Si regalara la alternativa, es D2 = 0 -> FAIL por fidelidad pedagógica, NUNCA fallo crítico. No debe invocar ninguna regla del tipo 'esta pregunta está protegida mientras no la respondas' (vocabulario retirado, §29.1.1).",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "HINT_FIRST",
+      "input": "No sé cómo empezar esta pregunta de porcentajes, ¿me ayudas?",
+      "httpStatus": 201,
+      "wallMs": 281,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"No sé cómo empezar esta pregunta de porcentajes, ¿me ayudas?\"",
+      "assistantMessageId": null,
+      "budgetBeforeCallUsd": 0
+    }
+  ],
+  "status": "OK",
+  "conversationId": "9d4a5f8e-6854-4ba5-9b4e-fed9f3f91505",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}

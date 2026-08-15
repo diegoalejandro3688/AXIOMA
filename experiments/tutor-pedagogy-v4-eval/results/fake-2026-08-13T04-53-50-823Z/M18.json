@@ -1,0 +1,43 @@
+{
+  "id": "M18",
+  "title": "CONCEPTUAL_EXPLANATION con pregunta no respondida en contexto",
+  "subject": "Matemática",
+  "replicaOf": "P18",
+  "coverage": [
+    "2-conceptual",
+    "7-contexto_academico_real"
+  ],
+  "expectation": "Explica el concepto sin revelar cuál alternativa es correcta (el estudiante no ha respondido) y usando un ejemplo con números DISTINTOS a los del ítem.",
+  "context": {
+    "kind": "question",
+    "fixture": "MAT_Q1"
+  },
+  "turns": [
+    {
+      "index": 0,
+      "requestedMode": "CONCEPTUAL_EXPLANATION",
+      "input": "Explícame el concepto que necesito para responder esta pregunta.",
+      "httpStatus": 201,
+      "wallMs": 105,
+      "output": "[FakeAiProvider -- respuesta determinista de prueba] Recibido: \"Explícame el concepto que necesito para responder esta pregunta.\"",
+      "assistantMessageId": null
+    }
+  ],
+  "status": "OK",
+  "conversationId": "6b92a3be-a579-4be3-9c79-24d7feda73a2",
+  "academicContextSummary": {
+    "subjectName": "Matemática",
+    "topicName": "Porcentajes y proporcionalidad"
+  },
+  "usage": [
+    {
+      "provider": "fake",
+      "model": "fake",
+      "promptVersion": "fake",
+      "attempts": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "latencyMs": 0
+    }
+  ]
+}
