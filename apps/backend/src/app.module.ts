@@ -14,6 +14,7 @@ import { UserModule } from './user/user.module';
 import { ProgressModule } from './progress/progress.module';
 import { GamificationModule } from './gamification/gamification.module';
 import { AiModule } from './ai/ai.module';
+import { AdministrationModule } from './administration/administration.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { AiModule } from './ai/ai.module';
     ProgressModule,
     GamificationModule,
     AiModule,
+    AdministrationModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

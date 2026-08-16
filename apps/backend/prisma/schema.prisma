@@ -2504,3 +2504,168 @@ enum AiResponseReportType {
 
   @@map("ai_response_report_type")
 }
+
+// ============================================================================
+// Dominio ADMINISTRATION -- LEF Bloque VII ("Plataforma Editorial"),
+// Incremento 2: "Actor administrativo, roles y autorización editorial".
+// Ver docs/adr/LEF-BLOCK-VII-DEFINITION.md §9 (modelo), §9.5 (token, DG-7),
+// §9.6 (ADMIN-002 parcial), §11.4 (DG-9), §12.2 (frontera), §13.2 (gate).
+//
+// Dominio ya canónico en Master Context §6.17 ("actor administrativo; rol;
+// permiso; acción administrativa") -- NO se crea un dominio nuevo.
+//
+// SEPARACIÓN, regla dura (decisión B + invariante 6): ninguna de estas tablas
+// tiene FK hacia `account`, ni `account` gana ningún campo de rol. Un
+// AdminActor y un Account NUNCA son la misma fila ni comparten sesión. La
+// autenticación administrativa tampoco reutiliza `InternalOpsGuard` (clave
+// COMPARTIDA, prohibida por ADMIN-002) ni `AuthGuard` (sesión de estudiante).
+// ============================================================================
+
+/// Roles administrativos de V1 -- EXACTAMENTE dos (decisión B, §9.2).
+/// Los otros cuatro de ADMIN-003 (Revisor académico, Editor, Soporte,
+/// Administrador) NO se eliminan del contrato: quedan fuera del alcance de
+/// implementación de V1 (§9.4) y deliberadamente NO figuran en este enum.
+enum AdminRole {
+  AUTHOR // T1..T4 -- crear/editar borradores y enviarlos a revisión
+  PUBLISHER // T4..T8 -- aprobar, publicar, devolver y retirar
+
+  @@map("admin_role")
+}
+
+/// Identidad administrativa individual y atribuible (§9.1). Un actor = una
+/// persona real del equipo; las identidades compartidas están prohibidas
+/// (ADMIN-002: "No se utilizarán cuentas administrativas compartidas").
+///
+/// Ciclo de vida (DG-9, invariante 23): desactivación/revocación, NUNCA
+/// hard-delete. `isActive=false` impide operar pero no borra ni la fila ni
+/// ninguna entrada del registro append-only que la referencia (FK Restrict),
+/// de modo que "qué actor hizo qué" sobrevive intacto para siempre.
+///
+/// SIN campos de retención ni de anonimización, deliberadamente (§12.2): el
+/// periodo exacto de retención administrativa quedó EXPLÍCITAMENTE DIFERIDO
+/// por DG-9 (§11.4) ante la ausencia de una fuente contractual que fije un
+/// número. No se reutilizan los 90 días del Tutor IA ni el pipeline de
+/// ADR-0005 (clase de sujeto distinta) -- inventar el campo antes que la
+/// política sería fijar la política.
+model AdminActor {
+  id                  String    @id @default(uuid()) @db.Uuid
+  /// Identificador humano legible, para atribución en la auditoría (§9.1).
+  displayName         String    @map("display_name")
+  isActive            Boolean   @default(true) @map("is_active")
+  /// Momento de la desactivación -- hace interpretable el registro de acceso.
+  deactivatedAt       DateTime? @map("deactivated_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  /// "Momento del último acceso" de §9.1 -- vive en el ACTOR, no en el token.
+  lastAuthenticatedAt DateTime? @map("last_authenticated_at")
+
+  roles            AdminActorRole[]
+  tokens           AdminActorToken[]
+  accessLogEntries AdminAccessLogEntry[]
+
+  @@map("admin_actor")
+}
+
+/// Asignación de rol a actor. Relación N:N explícita (tabla propia, nombre
+/// fijado por §9.1) en vez de un array de enum: es el estilo relacional ya
+/// usado en todo el schema, permite adjuntar `grantedAt` a cada concesión, y
+/// hace verificable por consulta directa que un actor tiene AMBOS roles.
+///
+/// ADMIN-003 autoriza expresamente la acumulación de roles. Pero tener AUTHOR
+/// y PUBLISHER a la vez NO autoriza silenciosamente la excepción de CMS-018
+/// (auto-aprobación): invariante 24 / §8.5 exigen activación deliberada +
+/// actor registrado + motivo por uso, y eso es un mecanismo del Incremento 3
+/// que este incremento NO construye ni insinúa.
+model AdminActorRole {
+  actorId   String    @map("actor_id") @db.Uuid
+  role      AdminRole
+  grantedAt DateTime  @default(now()) @map("granted_at")
+
+  actor AdminActor @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@id([actorId, role])
+  @@map("admin_actor_role")
+}
+
+/// Credencial personal del actor (§9.5, DG-7). Entidad SEPARADA de
+/// `AdminActor` -- no un campo directo -- para que rotar/reemplazar una
+/// credencial no implique tocar la identidad, y para que un token revocado
+/// siga siendo una fila consultable que explica el registro de acceso.
+///
+/// El valor EN CLARO existe únicamente en el instante de la emisión (lo
+/// imprime el CLI de bootstrap una sola vez) y NO se persiste JAMÁS: esta
+/// tabla solo guarda su hash. No hay ninguna columna, ningún log y ningún
+/// endpoint que permita recuperarlo después.
+///
+/// Modelo estrictamente mínimo: los seis campos de la tabla de §9.5 y ni uno
+/// más. Sin ámbitos, sin rotación automática, sin límite de intentos, sin
+/// listas de IP -- serían sobreconstrucción no autorizada por DG-7.
+/// El token NO lleva roles embebidos (no es un JWT con claims): el backend
+/// resuelve identidad y roles consultando estas tablas en CADA request
+/// (invariante 22).
+model AdminActorToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  actorId   String    @map("actor_id") @db.Uuid
+  /// SHA-256 (hex) del token en claro. Único: dos actores nunca comparten
+  /// credencial, y la resolución token->actor es una búsqueda indexada exacta.
+  tokenHash String    @unique @map("token_hash")
+  issuedAt  DateTime  @default(now()) @map("issued_at")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  actor AdminActor @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([actorId])
+  @@map("admin_actor_token")
+}
+
+/// Resultado de una presentación de credencial administrativa. Categorías
+/// EXACTAS de §9.3 ("si el token fue aceptado, rechazado por revocación o
+/// rechazado por expiración"), más las dos que el guard distingue de hecho.
+///
+/// Nota de seguridad: esta granularidad es INTERNA (registro append-only).
+/// La respuesta HTTP es siempre un 401 con el MISMO mensaje genérico, sin
+/// revelar cuál de las cinco causas ocurrió.
+enum AdminAccessOutcome {
+  ACCEPTED
+  REJECTED_UNKNOWN_TOKEN
+  REJECTED_EXPIRED
+  REJECTED_REVOKED
+  REJECTED_ACTOR_INACTIVE
+
+  @@map("admin_access_outcome")
+}
+
+/// "Registro de accesos relevantes" de ADMIN-002, en la lectura precisa que
+/// §9.3 fija para V1: presentación y resolución de token -- qué actor se
+/// autenticó, cuándo, y con qué resultado.
+///
+/// Append-only, aplicado por PostgreSQL (`enforce_admin_access_log_immutable`,
+/// mismo patrón que `enforce_student_response_immutable` y
+/// `enforce_ai_message_immutable`). El servicio no es la garantía.
+///
+/// NUNCA guarda el token en claro ni su hash: solo la referencia a la fila de
+/// `admin_actor_token` que resolvió (o NULL si no resolvió ninguna).
+///
+/// `actorId` es NULLABLE porque un token desconocido no resuelve a ningún
+/// actor -- y ese intento también debe quedar registrado. Cuando sí resuelve,
+/// la FK es Restrict (invariante 23): la base rechaza cualquier borrado de
+/// actor que rompiera la atribución histórica.
+///
+/// NO es el `admin_action` de §9.3 (registro de ACCIÓN editorial, T1..T8):
+/// ese llega con las transiciones del Incremento 3. Aquí todavía no existe
+/// ninguna operación editorial que registrar.
+model AdminAccessLogEntry {
+  id          String             @id @default(uuid()) @db.Uuid
+  actorId     String?            @map("actor_id") @db.Uuid
+  tokenId     String?            @map("token_id") @db.Uuid
+  outcome     AdminAccessOutcome
+  /// Ruta solicitada -- "acceso relevante" necesita saber a qué se accedió.
+  requestPath String             @map("request_path")
+  occurredAt  DateTime           @default(now()) @map("occurred_at")
+
+  actor AdminActor? @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([actorId, occurredAt])
+  @@map("admin_access_log")
+}

@@ -24,6 +24,15 @@ const SENSITIVE_KEYS = new Set([
   'analyticsactorsecret',
   'apikey',
   'anthropicapikey',
+  // LEF Bloque VII, Incremento 2 -- credencial administrativa personal.
+  // `normalizeKey` elimina lo no alfabético, así que estas tres entradas
+  // cubren `X-Admin-Token`, `x-admin-token`, `adminToken`, `admin_token`,
+  // `plainToken` y `token_hash`/`tokenHash`. El hash se redacta igual que el
+  // valor en claro: no es reversible, pero tampoco tiene por qué circular.
+  'admintoken',
+  'xadmintoken',
+  'tokenhash',
+  'plaintoken',
 ]);
 
 function normalizeKey(key: string): string {
