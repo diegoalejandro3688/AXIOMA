@@ -2562,6 +2562,10 @@ model AdminActor {
   roles            AdminActorRole[]
   tokens           AdminActorToken[]
   accessLogEntries AdminAccessLogEntry[]
+  /// Incremento 3 -- FK Restrict desde el registro de acción: la base rechaza
+  /// cualquier borrado que rompiera "qué actor hizo qué transición".
+  actions          AdminAction[]                    @relation("AdminActionActor")
+  cms018Activations AdminCms018ExceptionActivation[] @relation("Cms018ExceptionActivator")
 
   @@map("admin_actor")
 }
@@ -2668,4 +2672,145 @@ model AdminAccessLogEntry {
 
   @@index([actorId, occurredAt])
   @@map("admin_access_log")
+}
+
+// ============================================================================
+// LEF Bloque VII -- Plataforma Editorial, Incremento 3.
+// "Transiciones de estado con auditoría (retiro primero)."
+// Ver docs/adr/LEF-BLOCK-VII-DEFINITION.md §8.2, §8.3, §8.5, §8.6, §9.3,
+// §12.3, §13.3.
+//
+// Alcance del incremento: T4, T5, T6, T7 y T8. NO T1/T2/T3 (autoría, que es
+// el Incremento 4) y NO las validaciones CMS-013 (también Incremento 4).
+// ============================================================================
+
+/// Tipo de acción administrativa registrada (§9.3, campo 4: "la transición
+/// ejecutada (T1..T8)").
+///
+/// El enum cubre las OCHO transiciones de §8.2 porque el enforcement de
+/// CMS-018 del Incremento 3 (§8.3) se define literalmente como "el actor que
+/// ejecuta T5/T7 no puede ser el mismo que creó la versión (T1) ni el que la
+/// editó por última vez (T2)": sin capacidad de REPRESENTAR T1/T2 en el
+/// registro, esa comprobación no podría leerse y §13.3 punto 6 no podría
+/// demostrarse. Representarlas no las implementa.
+///
+/// NINGUNA ruta productiva del Incremento 3 escribe T1, T2 ni T3 -- son
+/// exclusivamente valores LEGIBLES (y, en el gate, fixtures de verificación
+/// de autoría). Mismo criterio que `ARCHIVED` en `EditorialStatus`: el valor
+/// existe, ninguna ruta de este incremento lo produce. Verificado
+/// estáticamente por `verify:editorial-transitions-gate`.
+enum AdminActionType {
+  T1 // (inexistente) -> DRAFT           -- Incremento 4, NO producido aquí
+  T2 // DRAFT -> DRAFT (edición)         -- Incremento 4, NO producido aquí
+  T3 // DRAFT -> IN_REVIEW               -- Incremento 4 (DG-12, Opción C)
+  T4 // IN_REVIEW -> DRAFT (devolución)
+  T5 // IN_REVIEW -> APPROVED
+  T6 // APPROVED -> DRAFT (rechazo tardío)
+  T7 // APPROVED -> PUBLISHED
+  T8 // PUBLISHED -> DEPRECATED (retiro)
+
+  @@map("admin_action_type")
+}
+
+/// Tipo del objeto afectado (§9.3, campo 5). Se guarda TIPO + IDENTIFICADOR,
+/// nunca una copia del contenido académico: el contenido previo siempre es
+/// recuperable porque la versión anterior sigue existiendo íntegra
+/// (invariante 5). Mismo criterio que `AiConversation.contextQuestionVersionId`.
+enum AdminActionObjectType {
+  QUESTION_VERSION
+  LEARNING_RESOURCE_VERSION
+  ANSWER_OPTION
+
+  @@map("admin_action_object_type")
+}
+
+/// Activación DELIBERADA de la excepción de CMS-018 (§8.5, DG-10,
+/// invariante 24).
+///
+/// Existe como ENTIDAD PROPIA, y no como un booleano en la petición, porque
+/// §8.5 exige que la activación sea "un acto deliberado" y que "ninguna
+/// configuración inicial, ningún valor por defecto, ninguna inferencia del
+/// sistema" la deje activa. Un campo de request con `false` por defecto sería
+/// exactamente una inferencia a un paso de distancia; una fila que alguien
+/// tuvo que crear explícitamente, fuera de banda (CLI), no lo es.
+///
+/// ÁMBITO: una activación apunta a UNA versión concreta (`targetObjectType` +
+/// `targetObjectId`). Es la lectura más estrecha compatible con §8.5, que
+/// prohíbe expresamente "un flag global de bypass" y "un modo equipo de una
+/// persona permanente", y a la vez permite los DOS usos que la propia sección
+/// contempla sobre una misma versión (T5 y luego T7), cada uno con su motivo
+/// propio (condición 3: la justificación es POR USO, no por activación).
+///
+/// NO relaja nada más: los invariantes 1-5 (inmutabilidad) y el 16 (unicidad)
+/// siguen aplicándose sin cambio con una activación viva (§7.1, alcance
+/// acotado del invariante 24).
+model AdminCms018ExceptionActivation {
+  id                String                @id @default(uuid()) @db.Uuid
+  /// Actor que ACTIVÓ la excepción (§8.5, condición 2). FK Restrict:
+  /// la atribución histórica nunca puede romperse (invariante 23).
+  activatedByActorId String               @map("activated_by_actor_id") @db.Uuid
+  targetObjectType   AdminActionObjectType @map("target_object_type")
+  targetObjectId     String                @map("target_object_id") @db.Uuid
+  /// Justificación de la ACTIVACIÓN. No sustituye al motivo por uso.
+  activationReason   String                @map("activation_reason")
+  activatedAt        DateTime              @default(now()) @map("activated_at")
+  revokedAt          DateTime?             @map("revoked_at")
+
+  activatedByActor AdminActor    @relation("Cms018ExceptionActivator", fields: [activatedByActorId], references: [id], onDelete: Restrict)
+  uses             AdminAction[]
+
+  @@index([targetObjectType, targetObjectId])
+  @@map("admin_cms018_exception_activation")
+}
+
+/// Registro de ACCIÓN editorial -- los NUEVE campos de §9.3, ni uno más.
+///
+/// Append-only, aplicado por PostgreSQL (`enforce_admin_action_immutable`),
+/// mismo patrón que `enforce_admin_access_log_immutable`,
+/// `enforce_student_response_immutable` y `enforce_ai_message_immutable`. El
+/// servicio nunca es la garantía (§7.2, nota de rigor sobre la capa).
+///
+/// Se escribe DENTRO de la misma transacción que aplica el efecto de la
+/// transición (§9.3, "cuándo se registra"): si la transacción falla no hay
+/// registro; si hay registro, el efecto ocurrió. Nunca asíncrono ni best-effort.
+model AdminAction {
+  id                String                @id @default(uuid()) @db.Uuid
+  /// (1) Actor. NUNCA nulo, NUNCA "sistema" (§9.3). FK Restrict.
+  actorId           String                @map("actor_id") @db.Uuid
+  /// (2) Rol EJERCIDO -- cuál de los dos habilitó la operación, relevante
+  /// cuando el actor tiene ambos. Lo resuelve el backend, jamás el cliente.
+  roleExercised     AdminRole             @map("role_exercised")
+  /// (3) Momento.
+  occurredAt        DateTime              @default(now()) @map("occurred_at")
+  /// (4) Tipo de acción (transición ejecutada).
+  actionType        AdminActionType       @map("action_type")
+  /// (5) Objeto afectado: REFERENCIA (tipo + id), nunca copia del contenido.
+  objectType        AdminActionObjectType @map("object_type")
+  objectId          String                @map("object_id") @db.Uuid
+  /// (6) Estado previo -> estado nuevo. Obligatorio para T3-T8 (CHECK en la
+  /// migración). Todas las transiciones del Incremento 3 son T4 en adelante.
+  previousStatus    EditorialStatus?      @map("previous_status")
+  newStatus         EditorialStatus?      @map("new_status")
+  /// (7) Motivo. Obligatorio en T4, T6, T8 y en TODO uso de la excepción de
+  /// CMS-018 (CHECK en la migración + rechazo de servicio). La despublicación
+  /// automática por supersesión dentro de T7 lleva motivo DETERMINADO POR EL
+  /// SISTEMA con referencia a la versión que la sustituye (§8.6).
+  reason            String?
+  /// (8) Clave de idempotencia (invariante 11), mismo patrón que
+  /// `StudentResponse.operationId`. Nula donde §8.2 no la exige (T4/T5/T6) y
+  /// en el registro de supersesión, que no es una operación del cliente.
+  operationId       String?               @unique @map("operation_id") @db.Uuid
+  /// (9) Marca de excepción de CMS-018 (§8.5). AUSENTE por defecto: su
+  /// presencia es siempre el resultado de un acto deliberado. Referencia la
+  /// activación, de la que sale el actor que la ACTIVÓ; el actor que la USÓ
+  /// es `actorId` de esta misma fila. Ambos quedan registrados y consultables.
+  cms018ActivationId String?              @map("cms018_activation_id") @db.Uuid
+
+  actor            AdminActor                      @relation("AdminActionActor", fields: [actorId], references: [id], onDelete: Restrict)
+  cms018Activation AdminCms018ExceptionActivation? @relation(fields: [cms018ActivationId], references: [id], onDelete: Restrict)
+
+  @@index([objectType, objectId, occurredAt])
+  @@index([actorId, occurredAt])
+  @@index([cms018ActivationId])
+  @@map("admin_action")
 }

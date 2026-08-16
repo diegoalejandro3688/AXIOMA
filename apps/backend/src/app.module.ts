@@ -15,6 +15,7 @@ import { ProgressModule } from './progress/progress.module';
 import { GamificationModule } from './gamification/gamification.module';
 import { AiModule } from './ai/ai.module';
 import { AdministrationModule } from './administration/administration.module';
+import { EditorialModule } from './editorial/editorial.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AdministrationModule } from './administration/administration.module';
     GamificationModule,
     AiModule,
     AdministrationModule,
+    EditorialModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

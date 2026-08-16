@@ -13,7 +13,7 @@
 import 'dotenv/config';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
 
@@ -652,8 +652,73 @@ async function main() {
   );
   check('la migración no crea ninguna tabla ni columna nueva', !/CREATE TABLE|ADD COLUMN|ALTER TYPE/i.test(migrationSql));
   const srcDir = join(__dirname, '..', 'src');
-  const adminSurface = readdirSync(srcDir).filter((d) => d === 'admin' || d === 'editorial');
-  check('no existe ningún módulo administrativo/editorial en src (Incrementos 2-6, todavía no construidos)', adminSurface.length === 0);
+  // --------------------------------------------------------------------------
+  // ACTUALIZACIÓN DE ASERCIÓN (no relajación) -- trazabilidad obligatoria.
+  //
+  // Esta aserción decía antes: "no existe ningún módulo administrativo/editorial
+  // en src (Incrementos 2-6, todavía no construidos)". Era una condición
+  // TEMPORAL: cierta mientras el Bloque VII solo tenía cerrado el Incremento 1,
+  // y expresada como "no existe carpeta admin/editorial" únicamente porque en
+  // ese momento NADA administrativo estaba autorizado todavía.
+  //
+  // Quedó SUPERSEDED por la implementación LEGÍTIMA del Incremento 3 de LEF
+  // Bloque VII (transiciones editoriales T4-T8, `admin_action`, CMS-018 con
+  // excepción auditada), que crea `src/editorial/` con autorización explícita
+  // del PO. Mantener la condición antigua haría fallar el gate por una razón
+  // falsa: no hay ninguna regresión de inmutabilidad, solo alcance nuevo válido.
+  //
+  // Esta es su SUCESORA, con el mismo propósito original --guardar la frontera
+  // del Incremento 1-- pero apuntando a lo que SIGUE fuera de alcance aun con
+  // el I3 ya construido: importación masiva de contenido, Content Coverage
+  // Matrix, y cualquier superficie de Incremento 4+ (creación/edición de
+  // contenido vía API, es decir T1/T2/T3, y `CMS-013`). Sigue siendo un check
+  // ESTÁTICO real sobre el código fuente (lectura + grep sobre el código
+  // ejecutable, sin comentarios), no una comprobación debilitada ni vaga: las
+  // menciones en comentarios de frontera se descartan a propósito, porque
+  // documentar "esto NO se hace aquí" es justamente lo que se exige.
+  // --------------------------------------------------------------------------
+  const collectTsFiles = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      if (entry.name === 'node_modules' || entry.name === 'generated' || entry.name.startsWith('.')) return [];
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) return collectTsFiles(full);
+      return entry.name.endsWith('.ts') ? [full] : [];
+    });
+  const stripTsComments = (source: string): string =>
+    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  // Superficie administrativa/editorial: es la única donde el I4+ podría
+  // aparecer adelantado. Se lee el código real, no la lista de carpetas.
+  const adminEditorialDirs = ['administration', 'editorial'].map((d) => join(srcDir, d)).filter(existsSync);
+  const adminEditorialCode = adminEditorialDirs
+    .flatMap(collectTsFiles)
+    .map((f) => stripTsComments(readFileSync(f, 'utf8')))
+    .join('\n');
+  // Todo el `src` ejecutable: importación masiva y Coverage Matrix quedan fuera
+  // de alcance EN CUALQUIER módulo, no solo en el administrativo.
+  const allSrcCode = collectTsFiles(srcDir)
+    .map((f) => stripTsComments(readFileSync(f, 'utf8')))
+    .join('\n');
+  // Rutas de escritura realmente declaradas en la superficie administrativa/
+  // editorial. El Incremento 3 solo autoriza DOS: las dos transiciones (T4-T8).
+  // Cualquier otra ruta de escritura sería creación/edición de contenido (T1/
+  // T2/T3) o importación, es decir Incremento 4+ adelantado.
+  const writeRoutes = [...adminEditorialCode.matchAll(/@(?:Post|Put|Patch|Delete)\(\s*(['"`])(.*?)\1/g)].map(
+    (m) => m[2],
+  );
+  const bareWriteDecorators = [...adminEditorialCode.matchAll(/@(?:Post|Put|Patch|Delete)\(\s*\)/g)].length;
+  const authorizedI3WriteRoutes = [
+    'question-versions/:versionId/transitions',
+    'learning-resource-versions/:versionId/transitions',
+  ];
+  check(
+    'las capacidades que SIGUEN fuera de alcance continúan ausentes en el código: sin importación masiva, sin Content Coverage Matrix y sin superficie de Incremento 4+ (T1/T2/T3 ni CMS-013); la superficie administrativa/editorial solo declara las 2 rutas de escritura de transición del Incremento 3',
+    !/coverage[_-]?matrix|coveragematrix/i.test(allSrcCode) &&
+      !/bulk[_-]?import|importjob|import[_-]?batch|importcontent|content[_-]?import/i.test(allSrcCode) &&
+      !/CMS-?013/i.test(adminEditorialCode) &&
+      bareWriteDecorators === 0 &&
+      writeRoutes.length === authorizedI3WriteRoutes.length &&
+      writeRoutes.every((r) => authorizedI3WriteRoutes.includes(r)),
+  );
 
   // ==========================================================================
   // 13. `prisma/seed.ts` sigue siendo idempotente (§13.1 punto 7).

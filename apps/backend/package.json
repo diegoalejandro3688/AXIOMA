@@ -66,8 +66,10 @@
     "verify:ai-status-gate": "tsx scripts/verify-ai-status-gate.ts",
     "verify:ai-answerkey-isolation-gate": "tsx scripts/verify-ai-answerkey-isolation-gate.ts",
     "verify:admin-identity-gate": "tsx scripts/verify-admin-identity-gate.ts",
+    "verify:editorial-transitions-gate": "tsx scripts/verify-editorial-transitions-gate.ts",
     "cli:recover-account": "node dist/cli/recover-account.js",
     "cli:create-admin-actor": "node dist/cli/create-admin-actor.js",
+    "cli:activate-cms018-exception": "node dist/cli/activate-cms018-exception.js",
     "db:up": "docker compose -f ../../docker-compose.yml up -d",
     "db:down": "docker compose -f ../../docker-compose.yml down"
   },

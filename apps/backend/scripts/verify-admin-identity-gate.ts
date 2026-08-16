@@ -642,10 +642,115 @@ async function main() {
     'el controller administrativo solo expone GET (cero rutas de escritura)',
     !/@Post|@Put|@Patch|@Delete/.test(readFileSync(join(adminDir, 'administration.controller.ts'), 'utf8')),
   );
+  // --------------------------------------------------------------------------
+  // ACTUALIZACIÓN DE ASERCIÓN (no relajación) -- trazabilidad obligatoria.
+  //
+  // Esta aserción decía antes: "no existe módulo/controller editorial de
+  // contenido (Incrementos 3-6 NO construidos)", implementada como "la carpeta
+  // `editorial` no existe". Era una condición TEMPORAL, cierta al cerrar el
+  // Incremento 2 y escrita así porque entonces NINGÚN incremento editorial
+  // estaba autorizado.
+  //
+  // Quedó SUPERSEDED por la implementación LEGÍTIMA del Incremento 3 de LEF
+  // Bloque VII (transiciones editoriales T4-T8, `admin_action`, CMS-018 con
+  // excepción auditada), autorizada por el PO, que crea `src/editorial/`.
+  //
+  // Esta es su SUCESORA y conserva el propósito original en sus DOS mitades,
+  // sin debilitar nada:
+  //   (a) FRONTERA: I4/I5/I6 SIGUEN ausentes -- Content Coverage Matrix,
+  //       importación masiva, `CMS-013` y T1/T2/T3 (creación/edición de
+  //       contenido vía API). La superficie administrativa/editorial solo puede
+  //       declarar las DOS rutas de escritura de transición del I3.
+  //   (b) NO REGRESIÓN DE IDENTIDAD: el I3 NO alteró ninguna garantía del I2--
+  //       `AdminAuthGuard`/`AdminRoleGuard` siguen definidos UNA sola vez en
+  //       `src/administration` (no reimplementados ni duplicados en
+  //       `src/editorial`), el I3 los CONSUME importándolos, no los redefine;
+  //       no hay ningún camino de autenticación administrativa alternativo
+  //       (ni cabecera distinta de `x-admin-token`, ni verificación de token
+  //       propia fuera de `administration`); y `admin_actor`,
+  //       `admin_actor_token` y `admin_access_log` conservan su forma exacta en
+  //       PostgreSQL real (la migración del I3 no las toca).
+  // Todo se comprueba estáticamente sobre el código ejecutable (sin
+  // comentarios) más el SQL real de la migración del I3.
+  // --------------------------------------------------------------------------
+  const collectTsFiles = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      if (entry.name === 'node_modules' || entry.name === 'generated' || entry.name.startsWith('.')) return [];
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) return collectTsFiles(full);
+      return entry.name.endsWith('.ts') ? [full] : [];
+    });
+  const editorialDir = join(srcDir, 'editorial');
+  const adminEditorialFiles = [adminDir, editorialDir].filter(existsSync).flatMap(collectTsFiles);
+  const adminEditorialCode = adminEditorialFiles.map((f) => stripComments(readFileSync(f, 'utf8'))).join('\n');
+  const allSrcCode = collectTsFiles(srcDir)
+    .map((f) => stripComments(readFileSync(f, 'utf8')))
+    .join('\n');
+  const i3WriteRoutes = [...adminEditorialCode.matchAll(/@(?:Post|Put|Patch|Delete)\(\s*(['"`])(.*?)\1/g)].map(
+    (m) => m[2],
+  );
+  const authorizedI3WriteRoutes = [
+    'question-versions/:versionId/transitions',
+    'learning-resource-versions/:versionId/transitions',
+  ];
+  // (b) Los dos guards siguen teniendo UNA definición única, y vive en
+  // `src/administration`. Fuera de ahí solo pueden aparecer como importación/uso.
+  const guardDefinitions = collectTsFiles(srcDir).filter((f) =>
+    /export\s+class\s+(AdminAuthGuard|AdminRoleGuard)\b/.test(stripComments(readFileSync(f, 'utf8'))),
+  );
+  const guardsOnlyInAdministration =
+    guardDefinitions.length === 2 && guardDefinitions.every((f) => f.startsWith(adminDir));
+  const editorialCode = existsSync(editorialDir)
+    ? collectTsFiles(editorialDir)
+        .map((f) => stripComments(readFileSync(f, 'utf8')))
+        .join('\n')
+    : '';
+  // El I3 consume la identidad del I2: la importa, no la reimplementa.
+  const i3ReusesAdminIdentity =
+    editorialCode === '' ||
+    (/from\s+['"]\.\.\/administration\/admin-auth\.guard['"]/.test(editorialCode) &&
+      /from\s+['"]\.\.\/administration\/admin-role\.guard['"]/.test(editorialCode) &&
+      !/x-admin-token/i.test(editorialCode) &&
+      !/createHash|bcrypt|argon2|compareToken|verifyToken/i.test(editorialCode));
+  // Forma exacta de las tres tablas de identidad del I2, en PostgreSQL REAL.
+  const identityShape = await pg.query(
+    `SELECT table_name, column_name, data_type, is_nullable
+       FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name IN ('admin_actor','admin_actor_token','admin_access_log')
+      ORDER BY table_name, column_name`,
+  );
+  const identityFingerprint = identityShape.rows
+    .map((r) => `${r.table_name}.${r.column_name}:${r.data_type}:${r.is_nullable}`)
+    .join('|');
+  const i3MigrationDir = readdirSync(join(backendDir, 'prisma', 'migrations')).find((d) =>
+    d.includes('lef_vii_i3_editorial_transitions'),
+  );
+  const i3MigrationSql = i3MigrationDir
+    ? readFileSync(join(backendDir, 'prisma', 'migrations', i3MigrationDir, 'migration.sql'), 'utf8')
+    : '';
+  const i3DoesNotTouchIdentityTables =
+    !/ALTER\s+TABLE\s+"?(admin_actor|admin_actor_token|admin_access_log|admin_actor_role)"?/i.test(i3MigrationSql) &&
+    !/DROP\s+(TABLE|COLUMN)\s+"?(admin_actor|admin_actor_token|admin_access_log|admin_actor_role)"?/i.test(
+      i3MigrationSql,
+    );
   check(
-    'no existe módulo/controller editorial de contenido (Incrementos 3-6 NO construidos)',
-    !readdirSync(srcDir).includes('editorial') &&
-      !adminFiles.some((f) => /coverage|editorial|import|transition|workflow/i.test(f)),
+    'I4/I5/I6 siguen ausentes (sin Coverage Matrix, sin importación masiva, sin CMS-013, sin T1/T2/T3) y el Incremento 3 no alteró ninguna garantía de identidad administrativa del Incremento 2 (guards no reimplementados ni debilitados, mismo patrón de autenticación, y admin_actor/admin_actor_token/admin_access_log sin cambio de forma)',
+    // (a) frontera I4+
+    !/coverage[_-]?matrix|coveragematrix/i.test(allSrcCode) &&
+      !/bulk[_-]?import|importjob|import[_-]?batch|importcontent|content[_-]?import/i.test(allSrcCode) &&
+      !/CMS-?013/i.test(adminEditorialCode) &&
+      [...adminEditorialCode.matchAll(/@(?:Post|Put|Patch|Delete)\(\s*\)/g)].length === 0 &&
+      i3WriteRoutes.length === authorizedI3WriteRoutes.length &&
+      i3WriteRoutes.every((r) => authorizedI3WriteRoutes.includes(r)) &&
+      // (b) no regresión de identidad del I2
+      guardsOnlyInAdministration &&
+      i3ReusesAdminIdentity &&
+      identityShape.rowCount > 0 &&
+      identityFingerprint.includes('admin_actor.') &&
+      identityFingerprint.includes('admin_actor_token.') &&
+      identityFingerprint.includes('admin_access_log.') &&
+      i3DoesNotTouchIdentityTables,
   );
 
   const i1Migration = readdirSync(join(backendDir, 'prisma', 'migrations')).find((d) =>
