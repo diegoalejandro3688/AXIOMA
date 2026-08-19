@@ -751,10 +751,46 @@ async function main() {
     !/DROP\s+(TABLE|COLUMN)\s+"?(admin_actor|admin_actor_token|admin_access_log|admin_actor_role)"?/i.test(
       i3MigrationSql,
     );
+  // --------------------------------------------------------------------------
+  // ACTUALIZACIÓN LEGÍTIMA -- LEF Bloque VII, Incremento 5 (2026-08-19).
+  //
+  // CLASIFICACIÓN (A vs B): "sin Coverage Matrix" era una **aserción temporal
+  // de frontera entre incrementos** (tipo B) -- decía "el I5 todavía no
+  // existe" --, no una garantía funcional de identidad administrativa (tipo
+  // A). Ninguna de las garantías que este gate protege de verdad (guards con
+  // definición única en `src/administration`, token hasheado, backend como
+  // autoridad de rol, forma de las tres tablas de identidad, `InternalOpsGuard`
+  // sin acceso editorial) dependía jamás de que la matriz no existiera.
+  //
+  // NO ES UNA RELAJACIÓN: la aserción se sustituye por su sucesora, MÁS
+  // FUERTE. Antes se afirmaba la ausencia de la matriz; ahora se afirma que la
+  // matriz existe y (i) NO añadió ninguna ruta de escritura -- la lista sigue
+  // siendo EXACTAMENTE la misma de ocho, y `src/editorial/` ya está dentro del
+  // barrido, de modo que un `@Post` nuevo en el módulo de la matriz haría caer
+  // este check --, y (ii) CONSUME la identidad del I2 en vez de reimplementarla
+  // (lo cubre `i3ReusesAdminIdentity`, que barre todo `src/editorial/` y por
+  // tanto también el controller de la matriz).
+  // --------------------------------------------------------------------------
+  const coverageModuleFiles = [
+    join(srcDir, 'editorial', 'coverage-matrix.controller.ts'),
+    join(srcDir, 'editorial', 'coverage-matrix.module.ts'),
+    join(srcDir, 'education', 'content-coverage.service.ts'),
+    join(srcDir, 'education', 'content-coverage.repository.ts'),
+  ].filter(existsSync);
+  const coverageModuleCode = coverageModuleFiles.map((f) => stripComments(readFileSync(f, 'utf8'))).join('\n');
+  const coverageIsReadOnlyAndReusesIdentity =
+    coverageModuleFiles.length === 4 &&
+    !/@(?:Post|Put|Patch|Delete)\s*\(/.test(coverageModuleCode) &&
+    !/\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(coverageModuleCode) &&
+    // No abre un camino de autenticación administrativa alternativo.
+    !/x-admin-token/i.test(coverageModuleCode) &&
+    !/createHash|bcrypt|argon2|compareToken|verifyToken/i.test(coverageModuleCode) &&
+    // No devuelve datos de estudiante por la superficie administrativa (§11.4).
+    !/StudentResponse|AiConversation|AiMessage/.test(coverageModuleCode);
   check(
-    'I5/I6 siguen ausentes (sin Coverage Matrix, sin importación masiva) y ni el Incremento 3 ni el Incremento 4 alteraron ninguna garantía de identidad administrativa del Incremento 2 (guards no reimplementados ni debilitados, mismo patrón de autenticación, y admin_actor/admin_actor_token/admin_access_log sin cambio de forma)',
-    // (a) frontera I5+
-    !/coverage[_-]?matrix|coveragematrix/i.test(allSrcCode) &&
+    'I6 sigue ausente (sin importación masiva); la Content Coverage Matrix del Incremento 5 existe pero es de SOLO LECTURA y CONSUME la identidad administrativa del Incremento 2 sin reimplementarla; y ni el I3, ni el I4, ni el I5 alteraron ninguna garantía de identidad administrativa del Incremento 2 (guards no reimplementados ni debilitados, mismo patrón de autenticación, y admin_actor/admin_actor_token/admin_access_log sin cambio de forma)',
+    // (a) frontera I5/I6
+    coverageIsReadOnlyAndReusesIdentity &&
       !/bulk[_-]?import|importjob|import[_-]?batch|importcontent|content[_-]?import/i.test(allSrcCode) &&
       [...adminEditorialCode.matchAll(/@(?:Post|Put|Patch|Delete)\(\s*\)/g)].length === 0 &&
       i3WriteRoutes.length === authorizedI3WriteRoutes.length &&

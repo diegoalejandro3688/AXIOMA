@@ -726,9 +726,39 @@ async function main() {
   // alcance que el Product Owner movió.
   //
   // Lo que SIGUE fuera de alcance, y por tanto sigue verificándose como
-  // ausente: importación masiva (CMS-026..029), Content Coverage Matrix
-  // (Incremento 5) y cualquier ruta de escritura que no sea una de las OCHO
-  // autorizadas (2 transiciones de I3 + 6 de autoría de I4).
+  // ausente: importación masiva (CMS-026..029) y cualquier ruta de escritura
+  // que no sea una de las OCHO autorizadas (2 transiciones de I3 + 6 de
+  // autoría de I4).
+  //
+  // --------------------------------------------------------------------------
+  // ACTUALIZACIÓN LEGÍTIMA -- LEF Bloque VII, Incremento 5 (2026-08-19).
+  //
+  // CLASIFICACIÓN (A vs B): la cláusula "sin Content Coverage Matrix" era una
+  // **aserción temporal de frontera entre incrementos** (tipo B), no una
+  // garantía funcional de inmutabilidad (tipo A). Decía "el I5 todavía no
+  // existe", nunca "una matriz de cobertura pondría en riesgo la inmutabilidad
+  // de la versión publicada" -- no podría decirlo: §12.5 la define como
+  // ESTRICTAMENTE de solo lectura y el invariante 14 se lo prohíbe. El
+  // Incremento 5 se construyó dentro de esa frontera, de modo que mantener la
+  // condición antigua haría fallar este gate por una razón FALSA, igual que
+  // ocurrió en las transiciones I2->I3 e I3->I4, y con el mismo tratamiento.
+  //
+  // NO ES UNA RELAJACIÓN. La aserción se SUSTITUYE por su sucesora, que es
+  // estrictamente MÁS FUERTE en lo que de verdad protegía este gate:
+  //   - antes: "no existe ninguna matriz de cobertura";
+  //   - ahora: "la matriz existe y NO añadió NI UNA ruta de escritura" -- lo
+  //     que se comprueba porque `adminEditorialDirs` ya cubre `src/editorial/`,
+  //     donde vive el módulo de la matriz, y la lista de rutas de escritura
+  //     autorizadas sigue siendo EXACTAMENTE la misma de ocho. Si el I5
+  //     hubiera introducido un `@Post`/`@Patch`, este check caería.
+  //   - se añade además la comprobación de que ningún archivo del módulo de la
+  //     matriz invoca una escritura de Prisma sobre las tablas que este gate
+  //     protege.
+  //
+  // Lo que NO cambia, y es la sustancia de este gate: los triggers de
+  // inmutabilidad, los dos índices únicos parciales, los rechazos por SQL
+  // directo y la idempotencia del seed. Ninguna de esas comprobaciones se ha
+  // tocado ni relajado.
   // --------------------------------------------------------------------------
   const authorizedWriteRoutes = [
     // Incremento 3 -- transiciones T4..T8 (y, desde el Incremento 4, también T3).
@@ -742,13 +772,28 @@ async function main() {
     'question-versions/:versionId',
     'learning-resource-versions/:versionId',
   ];
+  // Módulo de la Content Coverage Matrix (Incremento 5): existe, y su única
+  // capacidad autorizada es LEER. Se mide su código real, no su nombre.
+  const coverageModuleFiles = [
+    join(srcDir, 'editorial', 'coverage-matrix.controller.ts'),
+    join(srcDir, 'editorial', 'coverage-matrix.module.ts'),
+    join(srcDir, 'education', 'content-coverage.service.ts'),
+    join(srcDir, 'education', 'content-coverage.repository.ts'),
+  ].filter(existsSync);
+  const coverageModuleCode = coverageModuleFiles.map((f) => stripTsComments(readFileSync(f, 'utf8'))).join('\n');
+  const coverageIsReadOnly =
+    coverageModuleFiles.length === 4 &&
+    !/@(?:Post|Put|Patch|Delete)\s*\(/.test(coverageModuleCode) &&
+    !/\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(coverageModuleCode) &&
+    !/\$executeRaw|\$transaction/.test(coverageModuleCode);
   check(
-    'las capacidades que SIGUEN fuera de alcance continúan ausentes en el código: sin importación masiva y sin Content Coverage Matrix; la superficie administrativa/editorial declara EXACTAMENTE las 8 rutas de escritura autorizadas (2 transiciones del Incremento 3 + 6 de autoría del Incremento 4) y ninguna más',
-    !/coverage[_-]?matrix|coveragematrix/i.test(allSrcCode) &&
+    'las capacidades que SIGUEN fuera de alcance continúan ausentes (sin importación masiva); la Content Coverage Matrix del Incremento 5 existe pero es ESTRICTAMENTE de solo lectura (cero verbos de escritura, cero escrituras de Prisma); y la superficie administrativa/editorial declara EXACTAMENTE las 8 rutas de escritura autorizadas (2 transiciones del Incremento 3 + 6 de autoría del Incremento 4) y ninguna más',
+    coverageIsReadOnly &&
       !/bulk[_-]?import|importjob|import[_-]?batch|importcontent|content[_-]?import/i.test(allSrcCode) &&
       bareWriteDecorators === 0 &&
       writeRoutes.length === authorizedWriteRoutes.length &&
       writeRoutes.every((r) => authorizedWriteRoutes.includes(r)),
+    `coverageReadOnly=${coverageIsReadOnly} writeRoutes=${writeRoutes.join(',')}`,
   );
 
   // ==========================================================================

@@ -16,6 +16,8 @@ import { GamificationModule } from './gamification/gamification.module';
 import { AiModule } from './ai/ai.module';
 import { AdministrationModule } from './administration/administration.module';
 import { EditorialModule } from './editorial/editorial.module';
+// LEF Bloque VII, Incremento 5 -- Content Coverage Matrix (SOLO LECTURA, §12.5).
+import { CoverageMatrixModule } from './editorial/coverage-matrix.module';
 
 @Module({
   imports: [
@@ -34,6 +36,7 @@ import { EditorialModule } from './editorial/editorial.module';
     AiModule,
     AdministrationModule,
     EditorialModule,
+    CoverageMatrixModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

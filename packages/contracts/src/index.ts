@@ -11,3 +11,4 @@ export * from './league-participation';
 export * from './ai';
 export * from './administration';
 export * from './editorial';
+export * from './content-coverage';

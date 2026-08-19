@@ -780,7 +780,39 @@ async function main() {
     .join('\n');
   const educationCode = collectTsFiles(join(srcDir, 'education')).map((f) => stripComments(readFileSync(f, 'utf8'))).join('\n');
 
-  check('Incremento 5 NO construido: no existe ninguna Content Coverage Matrix', !/coverage[_-]?matrix|coveragematrix/i.test(allSrc));
+  // --------------------------------------------------------------------------
+  // ACTUALIZACIÓN LEGÍTIMA -- LEF Bloque VII, Incremento 5 (2026-08-19).
+  //
+  // CLASIFICACIÓN (A vs B): "Incremento 5 NO construido" era una **aserción
+  // temporal de frontera entre incrementos** (tipo B) por su propio enunciado.
+  // No era una garantía funcional de autoría (tipo A): nada de lo que este
+  // gate protege --T1/T2/T3, CMS-013, unicidad de versión publicada, orden de
+  // escritura de T7, integridad de la versión anterior-- dependía de que la
+  // matriz no existiera. El I5 se construyó dentro de la frontera de §12.5.
+  //
+  // NO ES UNA RELAJACIÓN: la sucesora es MÁS FUERTE que la original en lo que
+  // importa. Antes se afirmaba que el I5 no existía; ahora se afirma que
+  // existe y que respeta el invariante 14 -- cero verbos de escritura, cero
+  // escrituras de Prisma y ninguna invocación de los servicios editoriales de
+  // I3/I4 --, es decir, que el I5 no puede haber abierto ninguna segunda ruta
+  // de autoría por la puerta de atrás. El número de checks se conserva (1 -> 1).
+  // --------------------------------------------------------------------------
+  const coverageModuleFiles = [
+    join(srcDir, 'editorial', 'coverage-matrix.controller.ts'),
+    join(srcDir, 'editorial', 'coverage-matrix.module.ts'),
+    join(srcDir, 'education', 'content-coverage.service.ts'),
+    join(srcDir, 'education', 'content-coverage.repository.ts'),
+  ].filter(existsSync);
+  const coverageModuleCode = coverageModuleFiles.map((f) => stripComments(readFileSync(f, 'utf8'))).join('\n');
+  check(
+    'Incremento 5 construido DENTRO de su frontera (§12.5, invariante 14): la Content Coverage Matrix no declara ningún verbo de escritura, no ejecuta ninguna escritura de Prisma y no invoca los servicios editoriales de I3/I4 -- no es una segunda ruta de autoría',
+    coverageModuleFiles.length === 4 &&
+      !/@(?:Post|Put|Patch|Delete)\s*\(/.test(coverageModuleCode) &&
+      !/\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(coverageModuleCode) &&
+      !/\$executeRaw|\$transaction/.test(coverageModuleCode) &&
+      !/EditorialTransitionService|EditorialAuthoringService|EditorialAuthoringRepository/.test(coverageModuleCode),
+    `archivos=${coverageModuleFiles.length}`,
+  );
   check('importación masiva sigue diferida (CMS-026..029): ningún módulo la implementa', !/bulk[_-]?import|importjob|import[_-]?batch|importcontent|content[_-]?import/i.test(allSrc));
   check('vista previa sigue diferida (CMS-007): ningún módulo editorial la implementa', !/editorialpreview|content[_-]?preview/i.test(adminEditorialCode));
   check('Incremento 6 NO construido: no existe ningún CLI de ciclo editorial (crear/publicar por línea de comandos)',
