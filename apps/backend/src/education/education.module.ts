@@ -13,6 +13,9 @@ import { EducationService } from './education.service';
 import { EducationController } from './education.controller';
 import { EditorialVersionRepository } from './editorial-version.repository';
 import { EditorialTransitionService } from './editorial-transition.service';
+// LEF Bloque VII, Incremento 4 -- autoría (T1 crear borrador, T2 editar en DRAFT).
+import { EditorialAuthoringRepository } from './editorial-authoring.repository';
+import { EditorialAuthoringService } from './editorial-authoring.service';
 
 @Module({
   // `AdministrationModule` (LEF VII, Incremento 3) aporta el registro de
@@ -36,6 +39,8 @@ import { EditorialTransitionService } from './editorial-transition.service';
     EducationService,
     EditorialVersionRepository,
     EditorialTransitionService,
+    EditorialAuthoringRepository,
+    EditorialAuthoringService,
   ],
   exports: [
     CurriculumTopicRepository,
@@ -49,6 +54,10 @@ import { EditorialTransitionService } from './editorial-transition.service';
     // publica"): la capa administrativa SOLICITA a través de este servicio y
     // nunca escribe en los repositorios de EDUCATION por su cuenta.
     EditorialTransitionService,
+    // Incremento 4: misma razón (invariante 15) -- la capa administrativa
+    // SOLICITA la creación/edición a través de este servicio de EDUCATION y
+    // nunca escribe en sus repositorios por su cuenta.
+    EditorialAuthoringService,
   ],
 })
 export class EducationModule {}

@@ -5,6 +5,8 @@ import { AdminActionRepository } from '../administration/admin-action.repository
 import { AdminCms018ExceptionRepository } from '../administration/admin-cms018-exception.repository';
 import type { AuthenticatedAdminActor } from '../administration/admin-identity.service';
 import { EditorialVersionRepository, type EditorialObjectType, type EditorialVersionRef } from './editorial-version.repository';
+import { EditorialAuthoringRepository } from './editorial-authoring.repository';
+import { evaluateCms013ForLearningResource, evaluateCms013ForQuestion } from './cms013-content-validation';
 import type { AdminActionType, AdminRole, EditorialStatus, Prisma } from '../generated/prisma/client';
 
 /**
@@ -22,12 +24,15 @@ import type { AdminActionType, AdminRole, EditorialStatus, Prisma } from '../gen
  * HTTP autenticada: no decide, no valida estados, no escribe. Toda la
  * autoridad de dominio está en este archivo.
  *
- * ALCANCE EXACTO DEL INCREMENTO 3: T4, T5, T6, T7 y T8.
- *  - T1/T2 (crear y editar borradores) y T3 (DRAFT -> IN_REVIEW) pertenecen al
- *    Incremento 4 (§12.4). Este servicio NO crea contenido, NO edita contenido
- *    y NO implementa T3 ni ninguna versión reducida de T3.
- *  - Las validaciones de contenido de CMS-013 son precondición de T3 y por
- *    tanto también del Incremento 4. No aparecen aquí.
+ * ALCANCE. Incremento 3: T4, T5, T6, T7 y T8. **Incremento 4 (§12.4): se añade
+ * T3 (DRAFT -> IN_REVIEW) con las validaciones de contenido de CMS-013 como
+ * precondición dura, y NADA MÁS.** El comportamiento de T4..T8 no cambia.
+ *  - T1/T2 (crear y editar borradores) NO viven aquí: no son transiciones de
+ *    estado sino escritura de contenido, y viven en
+ *    `editorial-authoring.service.ts` (Incremento 4).
+ *  - Este servicio sigue sin crear ni editar contenido: su único método de
+ *    escritura sobre EDUCATION cambia `editorial_status` (y `published_at` en
+ *    T7) y ninguna columna de contenido.
  *
  * DEFENSA EN PROFUNDIDAD, NO SUSTITUCIÓN. Todo lo que este servicio rechaza,
  * PostgreSQL lo rechazaría igualmente sobre una fila que alcanzó publicación
@@ -38,9 +43,23 @@ import type { AdminActionType, AdminRole, EditorialStatus, Prisma } from '../gen
  * Aquí la base sigue siendo la autoridad final; esto es la puerta educada.
  */
 
-/** Las CINCO transiciones del Incremento 3 (§8.2, filas T4..T8). */
+/**
+ * Las transiciones implementadas por esta máquina de estados.
+ *
+ * Incremento 3: T4..T8. Incremento 4 (§12.4): **se añade T3**, y nada más.
+ *
+ * POR QUÉ T3 SE AÑADE AQUÍ Y NO EN UN SERVICIO PROPIO: §8.2 es UNA lista
+ * cerrada de transiciones y §12.3 sitúa "la máquina de estados de §8.2" en el
+ * dominio EDUCATION -- este archivo. Construir T3 en un servicio paralelo
+ * crearía una SEGUNDA ruta de transición de estado sobre las mismas tablas,
+ * que es exactamente lo que el invariante 4 ("la lista de §8.4 es cerrada, sin
+ * excepción genérica") desaconseja. El Incremento 3 ya reservó explícitamente
+ * el hueco (`DEFERRED_TO_INCREMENT_4`, ahora consumido). T4..T8 no se alteran:
+ * su comportamiento, sus roles, su enforcement de CMS-018 y su orden de
+ * escritura de T7 quedan byte-equivalentes.
+ */
 interface TransitionSpec {
-  readonly code: Extract<AdminActionType, 'T4' | 'T5' | 'T6' | 'T7' | 'T8'>;
+  readonly code: Extract<AdminActionType, 'T3' | 'T4' | 'T5' | 'T6' | 'T7' | 'T8'>;
   readonly from: EditorialStatus;
   readonly to: EditorialStatus;
   /** Roles que pueden ejecutarla (§8.2 columna "Actor autorizado", §9.2). */
@@ -51,9 +70,43 @@ interface TransitionSpec {
   readonly cms018Applies: boolean;
   /** §8.2: "operación con clave de idempotencia" (invariante 11). */
   readonly idempotencyKeyRequired: boolean;
+  /**
+   * §8.2, fila T3: "validaciones de contenido de CMS-013 en PASS". Es
+   * precondición DURA de T3 y de NINGUNA otra transición -- §8.2 no la nombra
+   * en ninguna otra fila, y aplicarla en T5/T7 sería endurecer un contrato que
+   * el Product Owner ya cerró.
+   */
+  readonly cms013Applies?: boolean;
 }
 
 const TRANSITIONS: readonly TransitionSpec[] = [
+  // T3 -- DRAFT -> IN_REVIEW (envío a revisión). Incremento 4, §12.4.
+  //
+  // Actor: **Autor**, en exclusiva. §9.2 asigna T3 al Autor y se la niega
+  // expresamente al Publicador ("No puede: T1, T2, T3 -- crear/editar
+  // contenido, menor privilegio, ADMIN-004"). §8.2 no añade ningún
+  // paréntesis "el mismo": CUALQUIER Autor puede enviar a revisión, a
+  // diferencia de T4, donde el paréntesis sí es normativo.
+  //
+  // Precondición: la versión está en DRAFT + CMS-013 en PASS.
+  // Efecto (§8.2): "congela la edición" -- a partir de aquí T2 rechaza, y
+  // reabrir exige T4. Ese congelamiento lo aplica
+  // `EditorialAuthoringService.assertDraft`, y PostgreSQL es la defensa final
+  // en cuanto la versión alcance publicación.
+  //
+  // Sin motivo obligatorio (§9.3 campo 7 lo exige en T4, T6 y T8 autónomo) y
+  // sin clave de idempotencia obligatoria (§8.2 solo la exige en T7 y T8);
+  // si el cliente la envía, se honra igualmente.
+  {
+    code: 'T3',
+    from: 'DRAFT',
+    to: 'IN_REVIEW',
+    roles: ['AUTHOR'],
+    reasonRequired: false,
+    cms018Applies: false,
+    idempotencyKeyRequired: false,
+    cms013Applies: true,
+  },
   // T4 -- IN_REVIEW -> DRAFT (devolución). Actor: Autor (EL MISMO que la creó
   // o editó por última vez) o Publicador. Motivo obligatorio.
   {
@@ -111,14 +164,17 @@ const TRANSITIONS: readonly TransitionSpec[] = [
 ];
 
 /**
- * Transiciones que existen en §8.2 pero pertenecen al Incremento 4. Se
- * distinguen de las PROHIBIDAS para que el error diga la verdad: T3 no está
- * prohibida por el contrato, simplemente no está construida todavía (DG-12,
- * Opción C -- el Product Owner la asignó al Incremento 4 junto con CMS-013).
+ * Transiciones que existen en §8.2 y todavía no están construidas.
+ *
+ * En el Incremento 3 esta lista contenía T3 (DG-12, Opción C: el Product Owner
+ * la asignó al Incremento 4 junto con CMS-013). **El Incremento 4 la
+ * construyó**, de modo que la lista queda VACÍA: con T1..T8 implementadas, la
+ * lista cerrada de §8.2 está completa y no queda ninguna transición del
+ * contrato pendiente de construir. Se conserva la estructura --y no se borra--
+ * porque distinguir "prohibida" de "aún no construida" es una propiedad del
+ * mensaje de error que merece la pena preservar si el contrato creciera.
  */
-const DEFERRED_TO_INCREMENT_4: ReadonlyArray<{ from: EditorialStatus; to: EditorialStatus; code: string }> = [
-  { from: 'DRAFT', to: 'IN_REVIEW', code: 'T3' },
-];
+const DEFERRED_TRANSITIONS: ReadonlyArray<{ from: EditorialStatus; to: EditorialStatus; code: string }> = [];
 
 /**
  * Autoría de una versión, tal como §8.3 la define: "el AdminActor que creó la
@@ -148,6 +204,13 @@ export class EditorialTransitionService {
     private readonly versionRepo: EditorialVersionRepository,
     private readonly actionRepo: AdminActionRepository,
     private readonly cms018Repo: AdminCms018ExceptionRepository,
+    /**
+     * Incremento 4: SOLO para LEER lo que CMS-013 necesita evaluar antes de
+     * T3. Esta clase no escribe contenido por ninguna vía -- el único
+     * repositorio de escritura que usa sigue siendo `EditorialVersionRepository`,
+     * cuyo único método de escritura cambia `editorial_status` y nada más.
+     */
+    private readonly authoringRepo: EditorialAuthoringRepository,
   ) {}
 
   async transition(actor: AuthenticatedAdminActor, input: TransitionInput): Promise<EditorialTransitionResponse> {
@@ -210,6 +273,14 @@ export class EditorialTransitionService {
       );
     }
 
+    // ------------------------------------------------------------------
+    // §8.2, fila T3 -- CMS-013 como PRECONDICIÓN DURA, evaluada ANTES de
+    // autorizar y antes de cualquier efecto. Incremento 4, §12.4, §13.4 punto 5.
+    // ------------------------------------------------------------------
+    if (spec.cms013Applies) {
+      await this.enforceCms013(input.objectType, input.versionId);
+    }
+
     const authorship = await this.resolveAuthorship(input.objectType, input.versionId);
     const roleExercised = this.authorize(actor, spec, authorship);
 
@@ -229,10 +300,10 @@ export class EditorialTransitionService {
     const spec = TRANSITIONS.find((t) => t.from === from && t.to === to);
     if (spec) return spec;
 
-    const deferred = DEFERRED_TO_INCREMENT_4.find((t) => t.from === from && t.to === to);
+    const deferred = DEFERRED_TRANSITIONS.find((t) => t.from === from && t.to === to);
     if (deferred) {
       throw new BadRequestException(
-        `La transición ${from} -> ${to} (${deferred.code}) pertenece al Incremento 4 (autoría) y no está implementada en el Incremento 3, que cubre exactamente T4..T8.`,
+        `La transición ${from} -> ${to} (${deferred.code}) existe en §8.2 pero todavía no está construida.`,
       );
     }
 
@@ -334,6 +405,43 @@ export class EditorialTransitionService {
     }
 
     return activation.id;
+  }
+
+  // ==========================================================================
+  // §8.2 fila T3 -- "validaciones de contenido de CMS-013 en PASS".
+  // Incremento 4. Ver `cms013-content-validation.ts` para las cinco reglas y
+  // su procedencia literal del documento.
+  //
+  // Es un RECHAZO BINARIO con mensaje de dominio explícito, no una
+  // tipificación de hallazgos por severidad: `editorial_finding`/`DM-D113`
+  // están DIFERIDOS por DM §9.21 (§5.2) y este incremento no los adelanta.
+  //
+  // Se devuelven TODOS los incumplimientos a la vez, no el primero: el autor
+  // merece ver todo lo que le falta en un solo intento.
+  // ==========================================================================
+  private async enforceCms013(objectType: EditorialObjectType, versionId: string): Promise<void> {
+    const violations =
+      objectType === 'QUESTION_VERSION'
+        ? await this.evaluateQuestionCms013(versionId)
+        : await this.evaluateLearningResourceCms013(versionId);
+
+    if (violations.length > 0) {
+      throw new BadRequestException(
+        `T3 (DRAFT -> IN_REVIEW) exige las validaciones de contenido de CMS-013 en PASS (§8.2). Incumplimientos: ${violations.join(' ')}`,
+      );
+    }
+  }
+
+  private async evaluateQuestionCms013(versionId: string): Promise<string[]> {
+    const version = await this.authoringRepo.findQuestionVersionForAuthoring(versionId);
+    if (!version) throw new NotFoundException('La versión editorial no existe.');
+    return evaluateCms013ForQuestion(version);
+  }
+
+  private async evaluateLearningResourceCms013(versionId: string): Promise<string[]> {
+    const version = await this.authoringRepo.findLearningResourceVersionForAuthoring(versionId);
+    if (!version) throw new NotFoundException('La versión editorial no existe.');
+    return evaluateCms013ForLearningResource(version);
   }
 
   /** Impide marcar como excepción una transición a la que §8.5 no alcanza. */

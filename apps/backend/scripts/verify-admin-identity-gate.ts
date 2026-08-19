@@ -689,9 +689,26 @@ async function main() {
   const i3WriteRoutes = [...adminEditorialCode.matchAll(/@(?:Post|Put|Patch|Delete)\(\s*(['"`])(.*?)\1/g)].map(
     (m) => m[2],
   );
+  // ACTUALIZACIÓN LEGÍTIMA -- LEF Bloque VII, Incremento 4 (2026-08-18).
+  // Misma naturaleza y mismo tratamiento que en el gate del Incremento 1: la
+  // enumeración de rutas era una ASERCIÓN TEMPORAL DE AUSENCIA del I4, no una
+  // garantía funcional de identidad administrativa. El I4 se construyó con
+  // autorización explícita y dentro de §12.4, de modo que la lista se amplía a
+  // las OCHO rutas de escritura autorizadas. Todo lo que este gate protege de
+  // verdad --guards no reimplementados, token hasheado, backend como autoridad
+  // de rol, forma de las tres tablas de identidad, InternalOpsGuard sin acceso
+  // editorial-- queda intacto y sigue verificándose exactamente igual.
   const authorizedI3WriteRoutes = [
+    // Incremento 3 -- transiciones.
     'question-versions/:versionId/transitions',
     'learning-resource-versions/:versionId/transitions',
+    // Incremento 4 -- autoría (T1 y T2), §12.4.
+    'questions',
+    'questions/:questionId/versions',
+    'learning-resources',
+    'learning-resources/:resourceId/versions',
+    'question-versions/:versionId',
+    'learning-resource-versions/:versionId',
   ];
   // (b) Los dos guards siguen teniendo UNA definición única, y vive en
   // `src/administration`. Fuera de ahí solo pueden aparecer como importación/uso.
@@ -735,11 +752,10 @@ async function main() {
       i3MigrationSql,
     );
   check(
-    'I4/I5/I6 siguen ausentes (sin Coverage Matrix, sin importación masiva, sin CMS-013, sin T1/T2/T3) y el Incremento 3 no alteró ninguna garantía de identidad administrativa del Incremento 2 (guards no reimplementados ni debilitados, mismo patrón de autenticación, y admin_actor/admin_actor_token/admin_access_log sin cambio de forma)',
-    // (a) frontera I4+
+    'I5/I6 siguen ausentes (sin Coverage Matrix, sin importación masiva) y ni el Incremento 3 ni el Incremento 4 alteraron ninguna garantía de identidad administrativa del Incremento 2 (guards no reimplementados ni debilitados, mismo patrón de autenticación, y admin_actor/admin_actor_token/admin_access_log sin cambio de forma)',
+    // (a) frontera I5+
     !/coverage[_-]?matrix|coveragematrix/i.test(allSrcCode) &&
       !/bulk[_-]?import|importjob|import[_-]?batch|importcontent|content[_-]?import/i.test(allSrcCode) &&
-      !/CMS-?013/i.test(adminEditorialCode) &&
       [...adminEditorialCode.matchAll(/@(?:Post|Put|Patch|Delete)\(\s*\)/g)].length === 0 &&
       i3WriteRoutes.length === authorizedI3WriteRoutes.length &&
       i3WriteRoutes.every((r) => authorizedI3WriteRoutes.includes(r)) &&

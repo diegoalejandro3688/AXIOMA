@@ -706,18 +706,49 @@ async function main() {
     (m) => m[2],
   );
   const bareWriteDecorators = [...adminEditorialCode.matchAll(/@(?:Post|Put|Patch|Delete)\(\s*\)/g)].length;
-  const authorizedI3WriteRoutes = [
+  // --------------------------------------------------------------------------
+  // ACTUALIZACIÓN LEGÍTIMA -- LEF Bloque VII, Incremento 4 (2026-08-18).
+  //
+  // La lista anterior enumeraba las DOS rutas de escritura del Incremento 3 y
+  // afirmaba, además, la AUSENCIA de la superficie de Incremento 4+. Esa
+  // segunda mitad era una **aserción temporal de ausencia**, no una garantía
+  // funcional de inmutabilidad: decía "el I4 todavía no existe", no "el I4
+  // sería inseguro". El Incremento 4 se construyó CON autorización explícita y
+  // dentro de la frontera de §12.4, de modo que mantener la condición antigua
+  // haría fallar este gate por una razón FALSA -- igual que ocurrió al cerrar
+  // el Incremento 3, y con el mismo tratamiento.
+  //
+  // Lo que NO cambia, y es lo que este gate realmente protege: los triggers de
+  // inmutabilidad, los dos índices únicos parciales, los rechazos por SQL
+  // directo y la idempotencia del seed. Ninguna de esas comprobaciones se ha
+  // tocado ni relajado -- siguen siendo exactamente las mismas y siguen en
+  // PASS. Esto NO es una relajación: es la actualización de una frontera de
+  // alcance que el Product Owner movió.
+  //
+  // Lo que SIGUE fuera de alcance, y por tanto sigue verificándose como
+  // ausente: importación masiva (CMS-026..029), Content Coverage Matrix
+  // (Incremento 5) y cualquier ruta de escritura que no sea una de las OCHO
+  // autorizadas (2 transiciones de I3 + 6 de autoría de I4).
+  // --------------------------------------------------------------------------
+  const authorizedWriteRoutes = [
+    // Incremento 3 -- transiciones T4..T8 (y, desde el Incremento 4, también T3).
     'question-versions/:versionId/transitions',
     'learning-resource-versions/:versionId/transitions',
+    // Incremento 4 -- T1 (crear borrador) y T2 (editar en DRAFT), §12.4.
+    'questions',
+    'questions/:questionId/versions',
+    'learning-resources',
+    'learning-resources/:resourceId/versions',
+    'question-versions/:versionId',
+    'learning-resource-versions/:versionId',
   ];
   check(
-    'las capacidades que SIGUEN fuera de alcance continúan ausentes en el código: sin importación masiva, sin Content Coverage Matrix y sin superficie de Incremento 4+ (T1/T2/T3 ni CMS-013); la superficie administrativa/editorial solo declara las 2 rutas de escritura de transición del Incremento 3',
+    'las capacidades que SIGUEN fuera de alcance continúan ausentes en el código: sin importación masiva y sin Content Coverage Matrix; la superficie administrativa/editorial declara EXACTAMENTE las 8 rutas de escritura autorizadas (2 transiciones del Incremento 3 + 6 de autoría del Incremento 4) y ninguna más',
     !/coverage[_-]?matrix|coveragematrix/i.test(allSrcCode) &&
       !/bulk[_-]?import|importjob|import[_-]?batch|importcontent|content[_-]?import/i.test(allSrcCode) &&
-      !/CMS-?013/i.test(adminEditorialCode) &&
       bareWriteDecorators === 0 &&
-      writeRoutes.length === authorizedI3WriteRoutes.length &&
-      writeRoutes.every((r) => authorizedI3WriteRoutes.includes(r)),
+      writeRoutes.length === authorizedWriteRoutes.length &&
+      writeRoutes.every((r) => authorizedWriteRoutes.includes(r)),
   );
 
   // ==========================================================================

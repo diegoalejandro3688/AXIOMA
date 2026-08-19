@@ -67,6 +67,7 @@
     "verify:ai-answerkey-isolation-gate": "tsx scripts/verify-ai-answerkey-isolation-gate.ts",
     "verify:admin-identity-gate": "tsx scripts/verify-admin-identity-gate.ts",
     "verify:editorial-transitions-gate": "tsx scripts/verify-editorial-transitions-gate.ts",
+    "verify:editorial-authoring-gate": "tsx scripts/verify-editorial-authoring-gate.ts",
     "cli:recover-account": "node dist/cli/recover-account.js",
     "cli:create-admin-actor": "node dist/cli/create-admin-actor.js",
     "cli:activate-cms018-exception": "node dist/cli/activate-cms018-exception.js",

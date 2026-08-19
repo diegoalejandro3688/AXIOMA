@@ -1,9 +1,17 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import {
   adminActionListResponseSchema,
+  editorialAuthoringResponseSchema,
+  editorialCreateLearningResourceRequestSchema,
+  editorialCreateLearningResourceVersionRequestSchema,
+  editorialCreateQuestionRequestSchema,
+  editorialCreateQuestionVersionRequestSchema,
   editorialTransitionRequestSchema,
   editorialTransitionResponseSchema,
+  editorialUpdateLearningResourceVersionRequestSchema,
+  editorialUpdateQuestionVersionRequestSchema,
   type AdminActionListResponse,
+  type EditorialAuthoringResponse,
   type EditorialTransitionResponse,
 } from '@axioma/contracts';
 import { AdminAuthGuard, type AdminAuthenticatedRequest } from '../administration/admin-auth.guard';
@@ -11,6 +19,8 @@ import { AdminRoleGuard } from '../administration/admin-role.guard';
 import { RequireAdminRole } from '../administration/require-admin-role.decorator';
 import { AdminActionRepository, type AdminActionWithActors } from '../administration/admin-action.repository';
 import { EditorialTransitionService } from '../education/editorial-transition.service';
+import { EditorialAuthoringService } from '../education/editorial-authoring.service';
+import { parseRequestBody } from '../platform/validation/parse-request-body';
 import type { AdminActionObjectType } from '../generated/prisma/client';
 
 /**
@@ -30,9 +40,12 @@ import type { AdminActionObjectType } from '../generated/prisma/client';
  * ---------------------------------------------------------------------------
  * FRONTERA -- lo que este controller NO hace
  * ---------------------------------------------------------------------------
- *  - NO crea contenido, NO edita contenido, NO implementa T1, T2 ni T3, y NO
- *    contiene ninguna validación de CMS-013: todo eso es el Incremento 4
- *    (DG-12, Opción C). No existe ninguna ruta productiva adelantada de I4.
+ *  - Incremento 4 (§12.4): SE AÑADEN las rutas de T1 (crear borrador) y T2
+ *    (editar en DRAFT). T3 (DRAFT -> IN_REVIEW) NO estrena ruta propia: es una
+ *    transición de §8.2 y viaja por el mismo endpoint de transiciones que
+ *    T4..T8, con `targetStatus: 'IN_REVIEW'`. Las validaciones de CMS-013 son
+ *    su precondición y viven en EDUCATION, no aquí -- este archivo sigue sin
+ *    contener ni una decisión de dominio.
  *  - NO expone la Content Coverage Matrix (Incremento 5).
  *  - NO importa contenido (CMS-026..029, diferido).
  *  - NO activa la excepción de CMS-018 por HTTP: activarla es un acto
@@ -53,7 +66,114 @@ export class EditorialController {
   constructor(
     private readonly transitions: EditorialTransitionService,
     private readonly actionRepo: AdminActionRepository,
+    /** Incremento 4 -- T1 y T2. Autoridad de dominio en EDUCATION (invariante 15). */
+    private readonly authoring: EditorialAuthoringService,
   ) {}
+
+  // ==========================================================================
+  // T1 -- CREAR BORRADOR. LEF Bloque VII, Incremento 4 (§8.2 fila T1, §12.4).
+  //
+  // `@RequireAdminRole('AUTHOR')` -- EXCLUSIVO del Autor, sin `'PUBLISHER'`.
+  // No es un descuido ni un endurecimiento inventado: §9.2 le niega T1/T2/T3 al
+  // Publicador de forma literal ("crear/editar contenido -- menor privilegio,
+  // ADMIN-004") y §7.2 lo repite ("Editar el contenido de una versión, ni en
+  // DRAFT -- eso es del Autor"). Un actor que tenga AMBOS roles pasa por ser
+  // Autor, no por ser Publicador.
+  //
+  // Ninguna de estas rutas admite `editorialStatus` ni `id`: el contrato no los
+  // declara y `.strict()` rechaza el intento. Crear en PUBLISHED no es
+  // representable (invariante 5, §8.4).
+  // ==========================================================================
+
+  /** T1 -- pregunta nueva: identidad + versión `DRAFT` + alternativas, en una transacción. */
+  @Post('questions')
+  @RequireAdminRole('AUTHOR')
+  async createQuestion(
+    @Req() request: AdminAuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<EditorialAuthoringResponse> {
+    const input = parseRequestBody(editorialCreateQuestionRequestSchema, body);
+    const result = await this.authoring.createQuestion(request.adminActor, input);
+    return editorialAuthoringResponseSchema.parse(result);
+  }
+
+  /**
+   * T1 -- versión `DRAFT` NUEVA de una pregunta existente.
+   *
+   * Ésta es la ruta de CORRECCIÓN de contenido publicado (invariante 5,
+   * `CMS-025`): no existe, y no existirá, ninguna ruta que edite una versión
+   * publicada. Corregir es siempre crear una versión nueva.
+   */
+  @Post('questions/:questionId/versions')
+  @RequireAdminRole('AUTHOR')
+  async createQuestionVersion(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param('questionId', new ParseUUIDPipe()) questionId: string,
+    @Body() body: unknown,
+  ): Promise<EditorialAuthoringResponse> {
+    const input = parseRequestBody(editorialCreateQuestionVersionRequestSchema, body);
+    const result = await this.authoring.createQuestionVersion(request.adminActor, questionId, input);
+    return editorialAuthoringResponseSchema.parse(result);
+  }
+
+  /** T1 -- recurso de aprendizaje nuevo. §8.2/§8.4 tratan ambas familias en paralelo. */
+  @Post('learning-resources')
+  @RequireAdminRole('AUTHOR')
+  async createLearningResource(
+    @Req() request: AdminAuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<EditorialAuthoringResponse> {
+    const input = parseRequestBody(editorialCreateLearningResourceRequestSchema, body);
+    const result = await this.authoring.createLearningResource(request.adminActor, input);
+    return editorialAuthoringResponseSchema.parse(result);
+  }
+
+  /** T1 -- versión `DRAFT` nueva de un recurso existente (corrección). */
+  @Post('learning-resources/:resourceId/versions')
+  @RequireAdminRole('AUTHOR')
+  async createLearningResourceVersion(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param('resourceId', new ParseUUIDPipe()) resourceId: string,
+    @Body() body: unknown,
+  ): Promise<EditorialAuthoringResponse> {
+    const input = parseRequestBody(editorialCreateLearningResourceVersionRequestSchema, body);
+    const result = await this.authoring.createLearningResourceVersion(request.adminActor, resourceId, input);
+    return editorialAuthoringResponseSchema.parse(result);
+  }
+
+  // ==========================================================================
+  // T2 -- EDITAR EN `DRAFT` (§8.2 fila T2, §12.4).
+  //
+  // `PATCH` y no `PUT`: la petición admite enviar solo los campos que cambian.
+  // Lo que NO es parcial es el conjunto de alternativas -- si se envía, se
+  // reemplaza entero (ver el contrato). El servicio rechaza la edición si la
+  // versión no está en `DRAFT`; PostgreSQL es la defensa final en cuanto la
+  // versión alcanza publicación (triggers del Incremento 1).
+  // ==========================================================================
+
+  @Patch('question-versions/:versionId')
+  @RequireAdminRole('AUTHOR')
+  async updateQuestionVersion(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param('versionId', new ParseUUIDPipe()) versionId: string,
+    @Body() body: unknown,
+  ): Promise<EditorialAuthoringResponse> {
+    const input = parseRequestBody(editorialUpdateQuestionVersionRequestSchema, body);
+    const result = await this.authoring.updateQuestionVersion(request.adminActor, versionId, input);
+    return editorialAuthoringResponseSchema.parse(result);
+  }
+
+  @Patch('learning-resource-versions/:versionId')
+  @RequireAdminRole('AUTHOR')
+  async updateLearningResourceVersion(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param('versionId', new ParseUUIDPipe()) versionId: string,
+    @Body() body: unknown,
+  ): Promise<EditorialAuthoringResponse> {
+    const input = parseRequestBody(editorialUpdateLearningResourceVersionRequestSchema, body);
+    const result = await this.authoring.updateLearningResourceVersion(request.adminActor, versionId, input);
+    return editorialAuthoringResponseSchema.parse(result);
+  }
 
   /**
    * Transición de una `question_version`.

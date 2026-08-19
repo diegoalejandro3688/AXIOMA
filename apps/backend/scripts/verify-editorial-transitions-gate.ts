@@ -532,11 +532,24 @@ async function main() {
   const archivedRows = await pg.query(`SELECT count(*)::int AS n FROM question_version WHERE editorial_status = 'ARCHIVED'`);
   check('ninguna fila quedó en ARCHIVED en toda la base (el valor sigue en el enum, inalcanzable)', archivedRows.rows[0].n === 0);
 
-  // T3 pertenece al Incremento 4 (DG-12, Opción C): rechazada, y el mensaje lo dice.
-  const t3 = await transition(AUTHOR, draftV.versionId, { targetStatus: 'IN_REVIEW', reason: 'intento de T3 (gate I3)' });
+  // ACTUALIZACIÓN LEGÍTIMA -- LEF Bloque VII, Incremento 4 (2026-08-18).
+  //
+  // Esta aserción comprobaba que T3 (DRAFT -> IN_REVIEW) todavía NO estaba
+  // construida (DG-12, Opción C: el Product Owner la asignó al Incremento 4).
+  // Era una ASERCIÓN TEMPORAL DE AUSENCIA, no una garantía funcional: §13.3
+  // --los nueve criterios contractuales del Incremento 3-- NO exige en ningún
+  // punto que T3 sea rechazada; su punto 5 enumera las transiciones PROHIBIDAS
+  // de §8.4, y T3 nunca estuvo entre ellas. Con el Incremento 4 construido,
+  // mantenerla haría fallar este gate por una razón falsa y, peor, afirmaría
+  // algo CONTRARIO al contrato (§8.2 declara T3 autorizada).
+  //
+  // Su sucesora comprueba lo que sí importa desde la perspectiva del
+  // Incremento 3: que T3 se integró en la misma máquina de estados sin romper
+  // T4..T8 y respetando el rol que §9.2 fija.
+  const t3 = await transition(AUTHOR, draftV.versionId, { targetStatus: 'IN_REVIEW', reason: 'T3 ejecutada desde el gate I3' });
   check(
-    'T3 (DRAFT -> IN_REVIEW) NO está implementada en el Incremento 3 y se rechaza nombrando el Incremento 4 (DG-12, Opción C)',
-    t3.status >= 400 && /Incremento 4/.test(String(t3.body?.error?.message ?? '')),
+    'T3 (DRAFT -> IN_REVIEW), construida por el Incremento 4, la ejecuta el AUTOR por la MISMA máquina de estados (§8.2, §9.2)',
+    t3.status === 200 || t3.status === 201,
     `status=${t3.status} ${String(t3.body?.error?.message).slice(0, 200)}`,
   );
 
@@ -780,19 +793,45 @@ async function main() {
   const controllerSource = stripComments(readFileSync(join(srcDir, 'editorial', 'editorial.controller.ts'), 'utf8'));
   const versionRepoSource = stripComments(readFileSync(join(srcDir, 'education', 'editorial-version.repository.ts'), 'utf8'));
 
-  check("ninguna ruta productiva emite T1 (crear) -- es Incremento 4", !/actionType:\s*'T1'/.test(domainSource + controllerSource));
-  check("ninguna ruta productiva emite T2 (editar) -- es Incremento 4", !/actionType:\s*'T2'/.test(domainSource + controllerSource));
-  check("ninguna ruta productiva emite T3 (DRAFT -> IN_REVIEW) -- es Incremento 4 (DG-12, Opción C)", !/actionType:\s*'T3'/.test(domainSource + controllerSource));
+  // ACTUALIZACIÓN LEGÍTIMA (Incremento 4, 2026-08-18): estas tres líneas
+  // comprobaban la AUSENCIA de T1/T2/T3, que el Incremento 4 construyó con
+  // autorización explícita. Sus sucesoras comprueban lo que sigue siendo una
+  // garantía real del Incremento 3: que esta máquina de estados NO se
+  // convirtió en una ruta de escritura de contenido. T1/T2 viven en
+  // editorial-authoring.service.ts y este servicio no los emite.
+  check('la máquina de estados NO emite T1 (crear): la creación vive en el servicio de autoría', !/actionType:\s*'T1'/.test(domainSource));
+  check('la máquina de estados NO emite T2 (editar): la edición vive en el servicio de autoría', !/actionType:\s*'T2'/.test(domainSource));
+  check('el controller editorial no construye ninguna acción T1/T2 por su cuenta: delega en EDUCATION (invariante 15)', !/actionType:\s*'T[12]'/.test(controllerSource));
   const transitionsTable = /const TRANSITIONS[\s\S]*?\n\];/.exec(domainSource)?.[0] ?? '';
   const declaredCodes = (transitionsTable.match(/code:\s*'(T[0-9])'/g) ?? []).map((m) => m.slice(-3, -1));
+  // ACTUALIZACIÓN LEGÍTIMA (Incremento 4): la lista pasa de T4..T8 a T3..T8.
+  // Es exactamente lo que §12.4 autorizó añadir, y ni una transición más --
+  // T1/T2 NO son transiciones de estado y no aparecen aquí. Que la aserción
+  // siga siendo "EXACTAMENTE, ni una más ni una menos" es lo que impide que
+  // esta actualización se convierta en una puerta abierta.
   check(
-    'la máquina de estados declara EXACTAMENTE las cinco transiciones T4..T8 (ni una más, ni una menos)',
-    declaredCodes.join(',') === 'T4,T5,T6,T7,T8',
+    'la máquina de estados declara EXACTAMENTE las seis transiciones T3..T8 (ni una más, ni una menos)',
+    declaredCodes.join(',') === 'T3,T4,T5,T6,T7,T8',
     declaredCodes.join(','),
   );
-  check('ninguna validación de CMS-013 se adelantó al Incremento 3', !/CMS-013|exactamente una alternativa correcta|alternativas duplicadas/.test(domainSource + controllerSource));
+  // ACTUALIZACIÓN LEGÍTIMA (Incremento 4): CMS-013 es la precondición de T3 y
+  // entra aquí legítimamente. Lo que se sigue comprobando es que NO se
+  // implementó DENTRO de este archivo ni del controller: vive en su propio
+  // módulo puro y se invoca. El controller sigue sin contener ni una regla de
+  // contenido.
+  check(
+    'CMS-013 no se implementa dentro de la máquina de estados ni del controller: vive en su propio módulo y solo se INVOCA',
+    /evaluateCms013For/.test(domainSource) &&
+      !/alternativa correcta|alternativas duplicadas|answerOptions\.filter/.test(domainSource) &&
+      !/CMS-013|evaluateCms013For/.test(controllerSource),
+  );
   check('el repositorio editorial NO escribe ninguna columna de contenido (no crea ni edita contenido)', !/stemContent|explanationContent|contentBlocks|title:/.test(versionRepoSource));
-  check('el controller editorial NO expone ningún POST/PUT/PATCH/DELETE de creación o edición de contenido', !/@(Put|Patch|Delete)\(/.test(controllerSource));
+  // ACTUALIZACIÓN LEGÍTIMA (Incremento 4): el controller ahora SÍ expone T1
+  // (POST) y T2 (PATCH). Lo que se sigue comprobando --y es lo que de verdad
+  // protegía esta línea-- es que NO expone `PUT` ni `DELETE`: no existe
+  // reemplazo total de una versión ni borrado de contenido por ninguna ruta
+  // (invariantes 3 y 5).
+  check('el controller editorial NO expone ningún PUT ni DELETE: no hay reemplazo total ni borrado de contenido por API', !/@(Put|Delete)\(/.test(controllerSource));
   check('el controller editorial NO expone la Content Coverage Matrix (Incremento 5)', !/coverage|matrix/i.test(controllerSource));
   check('no existe ningún módulo de importación masiva (CMS-026..029, diferido)', !existsSync(join(srcDir, 'import')) && !existsSync(join(srcDir, 'editorial', 'import')));
 
