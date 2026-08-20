@@ -26,6 +26,7 @@
     "verify:gamification-schema-gate": "tsx scripts/verify-gamification-schema-gate.ts",
     "verify:gamification-integration-gate": "tsx scripts/verify-gamification-integration-gate.ts",
     "verify:gamification-xp-grant-gate": "tsx scripts/verify-gamification-xp-grant-gate.ts",
+    "verify:gamification-serialization-conflict-gate": "tsx scripts/verify-gamification-serialization-conflict-gate.ts",
     "verify:gamification-progression-gate": "tsx scripts/verify-gamification-progression-gate.ts",
     "verify:public-profile-gate": "tsx scripts/verify-public-profile-gate.ts",
     "verify:reward-foundation-gate": "tsx scripts/verify-reward-foundation-gate.ts",
