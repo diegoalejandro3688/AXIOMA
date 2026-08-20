@@ -12,8 +12,42 @@ import { LeaguePointLedgerEntryRepository } from './league-point-ledger-entry.re
 const GRANT_BATCH_SIZE = 100;
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 const SERIALIZATION_CONFLICT_CODE = 'P2034';
+/**
+ * SQLSTATE de Postgres para `serialization_failure` -- mismo hallazgo y
+ * misma constante que `ai-conversation.service.ts`/`xp-grant.service.ts`
+ * (LEF Bloque VI Fase B / LEF Bloque VIII).
+ */
+const SERIALIZATION_CONFLICT_SQLSTATE = '40001';
+const DRIVER_ADAPTER_ERROR_NAME = 'DriverAdapterError';
+const DRIVER_ADAPTER_WRITE_CONFLICT_KIND = 'TransactionWriteConflict';
 const MAX_SERIALIZABLE_RETRIES = 3;
 const RETRY_BACKOFF_MS = [25, 75, 150];
+
+/** Réplica literal de la misma función en `xp-grant.service.ts`/`ai-conversation.service.ts`. */
+export function isDriverAdapterErrorShape(error: unknown): error is { name: string; cause: Record<string, unknown> } {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { name?: unknown; cause?: unknown };
+  return candidate.name === DRIVER_ADAPTER_ERROR_NAME && typeof candidate.cause === 'object' && candidate.cause !== null;
+}
+
+/**
+ * Corrección de `hallazgo-latente` (LEF Bloque VIII, DG-14) -- mismo
+ * criterio EXACTO que `isSerializationConflict` de `ai-conversation.service.ts`
+ * y `xp-grant.service.ts`: reconoce el conflicto detectado en sentencia
+ * intermedia (P2034) y el detectado en el COMMIT (`DriverAdapterError`).
+ */
+export function isSerializationConflict(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === SERIALIZATION_CONFLICT_CODE) return true;
+
+  if (isDriverAdapterErrorShape(error)) {
+    const cause = error.cause as { kind?: unknown; code?: unknown; originalCode?: unknown };
+    if (cause.kind === DRIVER_ADAPTER_WRITE_CONFLICT_KIND) return true;
+    if (cause.originalCode === SERIALIZATION_CONFLICT_SQLSTATE) return true;
+    if (cause.kind === 'postgres' && cause.code === SERIALIZATION_CONFLICT_SQLSTATE) return true;
+  }
+
+  return error instanceof Error && error.message.includes(DRIVER_ADAPTER_WRITE_CONFLICT_KIND);
+}
 
 export type LeagueGrantOutcome =
   | { outcome: 'LP_GRANTED'; entry: LeaguePointLedgerEntry }
@@ -170,7 +204,12 @@ export class LeaguePointGrantService {
     }
   }
 
-  /** Mismo mecanismo que `XpGrantService.runSerializable` -- reintento acotado ante conflicto real (P2034). */
+  /**
+   * Mismo mecanismo que `XpGrantService.runSerializable` -- reintento
+   * acotado ante conflicto real, reconociendo tanto P2034 como el
+   * `DriverAdapterError`/`TransactionWriteConflict` detectado en el COMMIT
+   * (corrección de `hallazgo-latente`, LEF Bloque VIII).
+   */
   private async runSerializable<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
     let attempt = 0;
     for (;;) {
@@ -178,13 +217,7 @@ export class LeaguePointGrantService {
       try {
         return await this.txRunner.run(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
       } catch (error) {
-        // TODO(hallazgo-latente): mismo predicado insuficiente que ai-conversation.service.ts -- ver
-        // `isSerializationConflict` allí (hallazgo correctivo de concurrencia, Fase B): un conflicto de
-        // serialización detectado por Postgres en el COMMIT llega como `DriverAdapterError`
-        // (`cause.kind === 'TransactionWriteConflict'`, SQLSTATE 40001), NO como P2034, y por tanto NO
-        // entra a este retry. No reproducido, no corregido en este scope.
-        const isSerializationConflict = error instanceof Prisma.PrismaClientKnownRequestError && error.code === SERIALIZATION_CONFLICT_CODE;
-        if (!isSerializationConflict || attempt >= MAX_SERIALIZABLE_RETRIES) throw error;
+        if (!isSerializationConflict(error) || attempt >= MAX_SERIALIZABLE_RETRIES) throw error;
 
         const cause = error instanceof Prisma.PrismaClientKnownRequestError ? (error.meta?.cause ?? error.message) : String(error);
         this.logger.warn(`Conflicto serializable en otorgamiento de League Points (intento ${attempt}/${MAX_SERIALIZABLE_RETRIES}): ${cause} -- reintentando`);

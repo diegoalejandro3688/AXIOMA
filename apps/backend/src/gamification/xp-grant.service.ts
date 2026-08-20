@@ -16,9 +16,58 @@ const GRANT_BATCH_SIZE = 100;
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 const SERIALIZATION_CONFLICT_CODE = 'P2034';
+/**
+ * SQLSTATE de Postgres para `serialization_failure`. `@prisma/adapter-pg` lo
+ * mapea explícitamente a `{ kind: 'TransactionWriteConflict' }` y ADEMÁS
+ * conserva el código crudo en `originalCode` -- mismo hallazgo y misma
+ * constante que `ai-conversation.service.ts` (LEF Bloque VI, Fase B).
+ */
+const SERIALIZATION_CONFLICT_SQLSTATE = '40001';
+/**
+ * Nombre/forma del error que el runtime de Prisma 7 deja escapar cuando el
+ * conflicto de serialización lo detecta Postgres en el `COMMIT` y no en una
+ * sentencia intermedia -- ver `isSerializationConflict` en
+ * `ai-conversation.service.ts`, mismo criterio replicado aquí (LEF Bloque
+ * VIII, corrección de `hallazgo-latente`).
+ */
+const DRIVER_ADAPTER_ERROR_NAME = 'DriverAdapterError';
+const DRIVER_ADAPTER_WRITE_CONFLICT_KIND = 'TransactionWriteConflict';
 const MAX_SERIALIZABLE_RETRIES = 3;
 /** Backoff acotado entre reintentos de conflicto serializable -- no exponencial sin límite. */
 const RETRY_BACKOFF_MS = [25, 75, 150];
+
+/**
+ * Comprobación ESTRUCTURAL de `DriverAdapterError` -- réplica literal de la
+ * misma función en `ai-conversation.service.ts`. Deliberadamente NO usa
+ * `instanceof`: esa clase es interna del runtime de Prisma, no forma parte
+ * de la API pública de `@prisma/client`.
+ */
+export function isDriverAdapterErrorShape(error: unknown): error is { name: string; cause: Record<string, unknown> } {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { name?: unknown; cause?: unknown };
+  return candidate.name === DRIVER_ADAPTER_ERROR_NAME && typeof candidate.cause === 'object' && candidate.cause !== null;
+}
+
+/**
+ * Corrección de `hallazgo-latente` (LEF Bloque VIII, DG-14) -- el predicado
+ * original solo reconocía `P2034` (conflicto detectado en sentencia
+ * intermedia). Cuando Postgres lo detecta en el `COMMIT`, Prisma 7 +
+ * `@prisma/adapter-pg` lo dejan escapar como `DriverAdapterError` sin
+ * traducir. Mismo criterio EXACTO que `isSerializationConflict` de
+ * `ai-conversation.service.ts` (3 señales, la textual como último recurso).
+ */
+export function isSerializationConflict(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === SERIALIZATION_CONFLICT_CODE) return true;
+
+  if (isDriverAdapterErrorShape(error)) {
+    const cause = error.cause as { kind?: unknown; code?: unknown; originalCode?: unknown };
+    if (cause.kind === DRIVER_ADAPTER_WRITE_CONFLICT_KIND) return true;
+    if (cause.originalCode === SERIALIZATION_CONFLICT_SQLSTATE) return true;
+    if (cause.kind === 'postgres' && cause.code === SERIALIZATION_CONFLICT_SQLSTATE) return true;
+  }
+
+  return error instanceof Error && error.message.includes(DRIVER_ADAPTER_WRITE_CONFLICT_KIND);
+}
 
 /**
  * Backoff determinista para NO_ACTIVE_RULE -- creciente y con tope (24h),
@@ -274,10 +323,13 @@ export class XpGrantService {
    * de un INSERT dentro de una transacción normal no impide que dos
    * transacciones concurrentes lean el mismo total "bajo el tope" antes de
    * que cualquiera confirme (ver brief). Ante conflicto real, Postgres
-   * aborta una de las dos con un error que Prisma expone como P2034
-   * ("Transaction failed due to a write conflict or a deadlock") --
-   * reintento acotado (máx. 3, backoff fijo pequeño), nunca para errores
-   * distintos.
+   * aborta una de las dos -- reintento acotado (máx. 3, backoff fijo
+   * pequeño), nunca para errores distintos. `isSerializationConflict`
+   * reconoce tanto el conflicto detectado en sentencia intermedia (P2034)
+   * como el detectado en el COMMIT (`DriverAdapterError`/
+   * `TransactionWriteConflict`, SQLSTATE 40001) -- corrección de
+   * `hallazgo-latente`, LEF Bloque VIII, mismo criterio que
+   * `ai-conversation.service.ts`.
    */
   private async runSerializable<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
     let attempt = 0;
@@ -286,14 +338,7 @@ export class XpGrantService {
       try {
         return await this.txRunner.run(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
       } catch (error) {
-        // TODO(hallazgo-latente): mismo predicado insuficiente que ai-conversation.service.ts -- ver
-        // `isSerializationConflict` allí (hallazgo correctivo de concurrencia, Fase B): un conflicto de
-        // serialización detectado por Postgres en el COMMIT llega como `DriverAdapterError`
-        // (`cause.kind === 'TransactionWriteConflict'`, SQLSTATE 40001), NO como P2034, y por tanto NO
-        // entra a este retry. No reproducido, no corregido en este scope.
-        const isSerializationConflict =
-          error instanceof Prisma.PrismaClientKnownRequestError && error.code === SERIALIZATION_CONFLICT_CODE;
-        if (!isSerializationConflict || attempt >= MAX_SERIALIZABLE_RETRIES) throw error;
+        if (!isSerializationConflict(error) || attempt >= MAX_SERIALIZABLE_RETRIES) throw error;
 
         const cause =
           error instanceof Prisma.PrismaClientKnownRequestError ? (error.meta?.cause ?? error.message) : String(error);
