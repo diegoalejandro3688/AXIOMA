@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { useTheme, typeScale, borders } from '../../../theme';
 
 /**
  * Sub-navegación de Competir -- ver docs/adr/LEF-BLOCK-IV-DEFINITION.md,
@@ -13,10 +14,28 @@ import { Stack } from 'expo-router';
  * gesto) NUNCA cierra la sesión (`close()` solo se invoca desde el botón
  * "Salir" dentro de la propia pantalla) -- una sesión ACTIVE queda
  * simplemente abierta para retomarse después.
+ *
+ * UI-2 (Shell): header nativo tematizado vía `screenOptions` -- mismo
+ * criterio que `estudio/_layout.tsx`. `quick-question` mantiene la tab bar
+ * visible (no lleva `headerShown:false` a nivel de tabs) y solo cambia
+ * apariencia de su header nativo aquí, nunca su lógica de cierre.
  */
 export default function CompetirLayout() {
+  const tokens = useTheme();
+
   return (
-    <Stack>
+    <Stack
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: tokens.color.background.surface,
+          borderBottomWidth: borders.hairline,
+          borderBottomColor: tokens.color.border.default,
+        } as never,
+        headerTintColor: tokens.color.text.primary,
+        headerTitleStyle: { color: tokens.color.text.primary, fontWeight: '700', fontSize: typeScale.titleLarge.fontSize },
+        headerShadowVisible: false,
+      }}
+    >
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="ranking" options={{ title: 'Ranking' }} />
       <Stack.Screen name="perfil/[username]" options={{ title: 'Perfil' }} />

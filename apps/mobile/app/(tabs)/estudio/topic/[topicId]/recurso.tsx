@@ -8,7 +8,8 @@ import { LoadingState } from '../../../../../components/loading-state';
 import { ErrorState } from '../../../../../components/error-state';
 import { EmptyState } from '../../../../../components/empty-state';
 import { ContentBlockRenderer } from '../../../../../components/content-block-renderer';
-import { useThemedStyles } from '../../../../../theme';
+import { IconButton } from '../../../../../components/ui';
+import { useThemedStyles, spacing, radii } from '../../../../../theme';
 import type { ThemeTokens } from '../../../../../theme';
 
 type ScreenState =
@@ -81,9 +82,7 @@ export default function RecursoScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
       <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Cerrar recurso" onPress={backToUnidades} hitSlop={8}>
-          <Text style={styles.closeIcon}>✕</Text>
-        </Pressable>
+        <IconButton name="close" accessibilityLabel="Cerrar recurso" onPress={backToUnidades} color="secondary" />
         <View style={styles.progressTrack} accessibilityRole="progressbar" accessibilityLabel={`Paso 1 de ${state.totalSteps}`}>
           {Array.from({ length: state.totalSteps }).map((_, index) => (
             <View key={index} style={[styles.progressSegment, index === 0 ? styles.progressSegmentDone : styles.progressSegmentPending]} />
@@ -108,10 +107,9 @@ export default function RecursoScreen() {
 function createStyles(t: ThemeTokens) {
   return {
     screen: { flex: 1, backgroundColor: t.color.background.default, paddingHorizontal: 18 },
-    header: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, marginBottom: 20 },
-    closeIcon: { fontSize: 16, color: t.color.text.secondary },
-    progressTrack: { flex: 1, flexDirection: 'row' as const, gap: 4 },
-    progressSegment: { flex: 1, height: 6, borderRadius: 3 },
+    header: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.space2, marginBottom: spacing.space5 },
+    progressTrack: { flex: 1, flexDirection: 'row' as const, gap: spacing.space1 },
+    progressSegment: { flex: 1, height: 6, borderRadius: radii.small },
     progressSegmentDone: { backgroundColor: t.color.accent.default },
     progressSegmentPending: { backgroundColor: t.color.border.default },
     content: { gap: 12, paddingBottom: 12 },
