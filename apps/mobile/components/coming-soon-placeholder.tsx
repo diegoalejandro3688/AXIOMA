@@ -1,6 +1,7 @@
-import { Text, View } from 'react-native';
-import { useThemedStyles } from '../theme';
+import { View } from 'react-native';
+import { useThemedStyles, spacing } from '../theme';
 import type { ThemeTokens } from '../theme';
+import { Text } from './ui/text';
 
 interface ComingSoonPlaceholderProps {
   title: string;
@@ -20,10 +21,12 @@ export function ComingSoonPlaceholder({ title }: ComingSoonPlaceholderProps) {
   const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.container}>
-      <Text style={styles.title} accessibilityRole="header">
+      <Text variant="heading3" accessibilityRole="header">
         {title}
       </Text>
-      <Text style={styles.message}>Próximamente.</Text>
+      <Text variant="bodySmall" color="secondary">
+        Próximamente.
+      </Text>
     </View>
   );
 }
@@ -34,11 +37,9 @@ function createStyles(t: ThemeTokens) {
       flex: 1,
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
-      gap: 8,
-      padding: 24,
+      gap: spacing.space2,
+      padding: spacing.space6,
       backgroundColor: t.color.background.default,
     },
-    title: { fontSize: 20, fontWeight: '700' as const, color: t.color.text.primary },
-    message: { fontSize: 14, color: t.color.text.secondary },
   };
 }

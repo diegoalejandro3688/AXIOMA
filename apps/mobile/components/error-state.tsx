@@ -1,6 +1,8 @@
-import { Pressable, Text, View } from 'react-native';
-import { useThemedStyles } from '../theme';
+import { View } from 'react-native';
+import { useThemedStyles, spacing } from '../theme';
 import type { ThemeTokens } from '../theme';
+import { Text } from './ui/text';
+import { Button } from './ui/button';
 
 /**
  * Estado "Error recuperable" -- Master Context §4.15 ("Explicar y permitir
@@ -12,13 +14,13 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry: () 
   const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.container} accessibilityRole="alert">
-      <Text style={styles.title} accessibilityRole="header">
+      <Text variant="titleLarge" color="error" style={{ textAlign: 'center' }} accessibilityRole="header">
         No se pudo cargar el contenido
       </Text>
-      <Text style={styles.message}>{message}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="Reintentar" onPress={onRetry} style={styles.button}>
-        <Text style={styles.buttonText}>Reintentar</Text>
-      </Pressable>
+      <Text variant="bodySmall" color="secondary" style={{ textAlign: 'center' }}>
+        {message}
+      </Text>
+      <Button label="Reintentar" onPress={onRetry} variant="primary" size="small" />
     </View>
   );
 }
@@ -29,19 +31,9 @@ function createStyles(t: ThemeTokens) {
       flex: 1,
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
-      gap: 12,
-      padding: 24,
+      gap: spacing.space3,
+      padding: spacing.space6,
       backgroundColor: t.color.background.default,
     },
-    title: { fontSize: 18, fontWeight: '700' as const, textAlign: 'center' as const, color: t.color.state.error.text },
-    message: { fontSize: 14, color: t.color.text.secondary, textAlign: 'center' as const },
-    button: {
-      backgroundColor: t.color.background.inverse,
-      paddingVertical: 10,
-      paddingHorizontal: 24,
-      borderRadius: 8,
-      marginTop: 8,
-    },
-    buttonText: { color: t.color.text.onInverse, fontWeight: '600' as const },
   };
 }

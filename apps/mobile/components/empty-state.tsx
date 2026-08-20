@@ -1,18 +1,18 @@
-import { Pressable, Text, View } from 'react-native';
-import { useThemedStyles } from '../theme';
+import { View } from 'react-native';
+import { useThemedStyles, spacing } from '../theme';
 import type { ThemeTokens } from '../theme';
+import { Text } from './ui/text';
+import { Button } from './ui/button';
 
 /** Estado "Vacío" -- Master Context §4.15 ("Explicar por qué no hay contenido"). Ver ADR-0013/ADR-0015. */
 export function EmptyState({ message, actionLabel, onAction }: { message: string; actionLabel?: string; onAction?: () => void }) {
   const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.container}>
-      <Text style={styles.message}>{message}</Text>
-      {actionLabel && onAction ? (
-        <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} onPress={onAction} style={styles.button}>
-          <Text style={styles.buttonText}>{actionLabel}</Text>
-        </Pressable>
-      ) : null}
+      <Text variant="bodySmall" color="secondary" style={{ textAlign: 'center' }}>
+        {message}
+      </Text>
+      {actionLabel && onAction ? <Button label={actionLabel} onPress={onAction} variant="secondary" size="small" /> : null}
     </View>
   );
 }
@@ -23,19 +23,9 @@ function createStyles(t: ThemeTokens) {
       flex: 1,
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
-      gap: 12,
-      padding: 24,
+      gap: spacing.space3,
+      padding: spacing.space6,
       backgroundColor: t.color.background.default,
     },
-    message: { fontSize: 14, color: t.color.text.secondary, textAlign: 'center' as const },
-    button: {
-      borderWidth: 1,
-      borderColor: t.color.text.primary,
-      paddingVertical: 10,
-      paddingHorizontal: 24,
-      borderRadius: 8,
-      marginTop: 4,
-    },
-    buttonText: { color: t.color.text.primary, fontWeight: '600' as const },
   };
 }
