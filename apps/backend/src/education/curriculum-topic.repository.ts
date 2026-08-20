@@ -19,6 +19,22 @@ export class CurriculumTopicRepository {
     return this.prisma.curriculumTopic.findUnique({ where: { id } });
   }
 
+  /**
+   * Bloque V/Progreso batch -- qué subconjunto de los ids solicitados
+   * corresponde a un tema real, en una sola consulta `IN`. Usado por
+   * `ProgressService.getTopicsProgressBatch` para omitir en silencio ids
+   * que no existen (nunca sintetizar `NOT_STARTED` para un tema
+   * inexistente -- sería semánticamente falso: "sin empezar" implica que
+   * SÍ se podría empezar).
+   */
+  async findExistingIds(ids: string[]): Promise<Set<string>> {
+    const rows = await this.prisma.curriculumTopic.findMany({
+      where: { id: { in: ids } },
+      select: { id: true },
+    });
+    return new Set(rows.map((row) => row.id));
+  }
+
   findByCode(code: string): Promise<CurriculumTopic | null> {
     return this.prisma.curriculumTopic.findUnique({ where: { code } });
   }

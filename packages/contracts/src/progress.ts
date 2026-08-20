@@ -33,6 +33,44 @@ export const topicProgressResponseSchema = z.object({
 });
 export type TopicProgressResponse = z.infer<typeof topicProgressResponseSchema>;
 
+// --- GET /progress/topics?topicIds=... ---
+
+/**
+ * Cota de la solicitud batch -- EDUCATION no pagina `GET
+ * /subjects/:id/topics`, así que un cliente que necesita el progreso de
+ * TODOS los temas raíz de una materia (ej. "Continuar estudiando" en
+ * Inicio) podía antes disparar un `GET /progress/topics/:id` POR CADA
+ * tema (fan-out N+1, ver hallazgo de rate-limit). Este endpoint colapsa
+ * eso en UNA sola solicitud; el máximo es una cota de API de propósito
+ * general (protege cualquier catálogo sin acotar), no un filtro sobre el
+ * contenido solicitado.
+ *
+ * 300, no 500: `topicIds` viaja en la query string (GET, no un body) --
+ * verificado empíricamente que Node rechaza la solicitud con 431 (Request
+ * Header Fields Too Large, `--max-http-header-size` por defecto 16 KiB)
+ * a partir de ~450 UUIDs (~16.6 KB solo en el parámetro, antes de sumar
+ * `authorization`/`x-session-id`/el resto de cabeceras); 400 UUIDs
+ * (~14.8 KB) sí llegan al servidor. 300 dejas margen real sobre esa
+ * frontera medida, no un número arbitrario.
+ */
+export const MAX_TOPIC_PROGRESS_BATCH_IDS = 300;
+
+export const topicProgressBatchQuerySchema = z.object({
+  topicIds: z.array(entityId).min(1).max(MAX_TOPIC_PROGRESS_BATCH_IDS),
+});
+export type TopicProgressBatchQuery = z.infer<typeof topicProgressBatchQuerySchema>;
+
+/**
+ * Mismo shape por tema que `GET /progress/topics/:topicId` (reutiliza
+ * `topicProgressResponseSchema` sin cambios), en un array -- un elemento
+ * por cada `topicId` solicitado que corresponde a un `curriculum_topic`
+ * real. IDs que no existen se omiten en silencio (mismo criterio "best
+ * effort sobre un lote ya acotado" que ya usa `getAcademicSummary`), nunca
+ * un 404 parcial que rompa el resto del lote.
+ */
+export const topicProgressBatchResponseSchema = z.array(topicProgressResponseSchema);
+export type TopicProgressBatchResponse = z.infer<typeof topicProgressBatchResponseSchema>;
+
 // --- POST /progress/topics/:topicId/responses ---
 
 /**

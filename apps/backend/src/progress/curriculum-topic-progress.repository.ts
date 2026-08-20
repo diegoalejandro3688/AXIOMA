@@ -19,6 +19,19 @@ export class CurriculumTopicProgressRepository {
     });
   }
 
+  /**
+   * Progreso de la cuenta para MUCHOS temas a la vez -- evita el fan-out
+   * N+1 de `findByAccountAndTopic` repetido por tema (ver hallazgo de
+   * rate-limit en Inicio). Mismo criterio que `findAllByAccountIdWithSubject`:
+   * una sola consulta `IN`, acotada por la cantidad de ids solicitados
+   * (validada en el controller, máximo `MAX_TOPIC_PROGRESS_BATCH_IDS`).
+   */
+  findManyByAccountAndTopicIds(accountId: string, curriculumTopicIds: string[]): Promise<CurriculumTopicProgress[]> {
+    return this.prisma.curriculumTopicProgress.findMany({
+      where: { accountId, curriculumTopicId: { in: curriculumTopicIds } },
+    });
+  }
+
   /** Crea la fila si no existe (primera respuesta del estudiante en el tema); `IN_PROGRESS` por defecto. */
   createIfMissing(accountId: string, curriculumTopicId: string): Promise<CurriculumTopicProgress> {
     return this.prisma.curriculumTopicProgress.upsert({

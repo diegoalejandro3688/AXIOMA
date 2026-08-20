@@ -1,8 +1,10 @@
 import {
   topicProgressResponseSchema,
+  topicProgressBatchResponseSchema,
   submitResponseResponseSchema,
   responseConflictBodySchema,
   type TopicProgressResponse,
+  type TopicProgressBatchResponse,
   type SubmitResponseResponse,
   type StudentResponseSummary,
 } from '@axioma/contracts';
@@ -15,6 +17,20 @@ import { apiRequest, type ApiResult } from './client';
 
 export function getTopicProgress(topicId: string): Promise<ApiResult<TopicProgressResponse>> {
   return apiRequest('GET', `/progress/topics/${topicId}`, { schema: topicProgressResponseSchema });
+}
+
+/**
+ * Progreso de MUCHOS temas en UNA sola solicitud -- reemplaza el fan-out
+ * `Promise.all(topics.map(getTopicProgress))` que un cliente con muchos
+ * temas raíz (ej. "Continuar estudiando" en Inicio) hacía antes, uno por
+ * tema. Mismo contrato por tema que `getTopicProgress` (`TopicProgressResponse`),
+ * ahora en un array -- ver `topicProgressBatchResponseSchema`.
+ */
+export function getTopicsProgressBatch(topicIds: string[]): Promise<ApiResult<TopicProgressBatchResponse>> {
+  const query = [...new Set(topicIds)].join(',');
+  return apiRequest('GET', `/progress/topics?topicIds=${encodeURIComponent(query)}`, {
+    schema: topicProgressBatchResponseSchema,
+  });
 }
 
 export interface SubmitResponseInput {

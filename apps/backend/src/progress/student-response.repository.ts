@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../platform/prisma/prisma.service';
 import type { Prisma, StudentResponse } from '../generated/prisma/client';
 
+export type StudentResponseWithTopic = StudentResponse & { questionVersion: { curriculumTopicId: string } };
+
 /**
  * Repositorio propio del agregado StudentResponse (dominio PROGRESS). Ver
  * ADR-0014. La fila es inmutable tras crearse (aplicado por trigger de
@@ -29,6 +31,21 @@ export class StudentResponseRepository {
   listByAccountAndTopic(accountId: string, curriculumTopicId: string): Promise<StudentResponse[]> {
     return this.prisma.studentResponse.findMany({
       where: { accountId, questionVersion: { curriculumTopicId } },
+      orderBy: { respondedAt: 'asc' },
+    });
+  }
+
+  /**
+   * Respuestas de una cuenta para MUCHOS temas a la vez -- evita el fan-out
+   * N+1 de `listByAccountAndTopic` repetido por tema. Incluye
+   * `questionVersion.curriculumTopicId` porque, a diferencia del método de
+   * un solo tema, el llamador todavía no sabe a qué tema pertenece cada
+   * fila -- lo necesita para agrupar en la capa de servicio.
+   */
+  listByAccountAndTopics(accountId: string, curriculumTopicIds: string[]): Promise<StudentResponseWithTopic[]> {
+    return this.prisma.studentResponse.findMany({
+      where: { accountId, questionVersion: { curriculumTopicId: { in: curriculumTopicIds } } },
+      include: { questionVersion: { select: { curriculumTopicId: true } } },
       orderBy: { respondedAt: 'asc' },
     });
   }

@@ -3,7 +3,7 @@ import { FlatList, Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { CurriculumTopicResponse, TopicProgressResponse } from '@axioma/contracts';
 import { listRootTopics } from '../../../../lib/api/education';
-import { getTopicProgress } from '../../../../lib/api/progress';
+import { getTopicsProgressBatch } from '../../../../lib/api/progress';
 import { resolveContinuationEntry } from '../../../../lib/progress/resolve-continuation';
 import { LoadingState } from '../../../../components/loading-state';
 import { ErrorState } from '../../../../components/error-state';
@@ -31,17 +31,23 @@ export default function UnidadesScreen() {
       return;
     }
 
-    const progressResults = await Promise.all(topicsResult.data.map((topic) => getTopicProgress(topic.id)));
-    const failed = progressResults.find((result) => !result.ok);
-    if (failed && !failed.ok) {
-      setState({ status: 'error', message: failed.message });
+    // Una sola solicitud batch para TODOS los temas raíz -- antes era un
+    // `GET /progress/topics/:id` POR TEMA (mismo fan-out N+1 corregido en
+    // Inicio, reproducible aquí con los mismos datos reales). Un tema
+    // ausente en la respuesta batch (ej. borrado entre `listRootTopics` y
+    // esta llamada) se trata como sin progreso -- mismo criterio que ya usa
+    // el render de abajo (`progress?.status ?? 'NOT_STARTED'`), nunca hace
+    // fallar toda la pantalla por un solo tema.
+    const progressResult = await getTopicsProgressBatch(topicsResult.data.map((topic) => topic.id));
+    if (!progressResult.ok) {
+      setState({ status: 'error', message: progressResult.message });
       return;
     }
 
     const progressByTopic: Record<string, TopicProgressResponse> = {};
-    progressResults.forEach((result, index) => {
-      if (result.ok) progressByTopic[topicsResult.data[index].id] = result.data;
-    });
+    for (const progress of progressResult.data) {
+      progressByTopic[progress.curriculumTopicId] = progress;
+    }
 
     setState({ status: 'ready', topics: topicsResult.data, progressByTopic });
   }, [subjectId]);

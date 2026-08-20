@@ -1,6 +1,6 @@
-import type { CurriculumTopicResponse, SubjectResponse } from '@axioma/contracts';
+import type { CurriculumTopicResponse, SubjectResponse, TopicProgressResponse } from '@axioma/contracts';
 import { listRootTopics, listSubjects } from '../api/education';
-import { getTopicProgress } from '../api/progress';
+import { getTopicsProgressBatch } from '../api/progress';
 import { resolveContinuationEntry } from './resolve-continuation';
 
 export type ContinueTarget =
@@ -28,15 +28,22 @@ export async function pickContinueTarget(): Promise<PickContinueResult> {
   if (!topicsResult.ok) return { ok: false, message: topicsResult.message };
   if (topicsResult.data.length === 0) return { ok: true, target: { kind: 'no-content' } };
 
-  const progressResults = await Promise.all(topicsResult.data.map((topic) => getTopicProgress(topic.id)));
-  const failed = progressResults.find((result) => !result.ok);
-  if (failed && !failed.ok) return { ok: false, message: failed.message };
+  // Una sola solicitud batch para TODOS los temas raíz -- antes era un
+  // `GET /progress/topics/:id` POR TEMA (fan-out N+1 que llegó a superar el
+  // rate limit con un catálogo de prueba contaminado, ver hallazgo de
+  // Inicio). El contrato por tema no cambia (`TopicProgressResponse`).
+  const progressResult = await getTopicsProgressBatch(topicsResult.data.map((topic) => topic.id));
+  if (!progressResult.ok) {
+    return { ok: false, message: progressResult.message };
+  }
 
-  const withProgress = topicsResult.data.map((topic, index) => {
-    const progressResult = progressResults[index];
-    // Ya se descartó cualquier fallo arriba -- `progressResult.ok` es `true` aquí.
-    return { topic, progress: progressResult.ok ? progressResult.data : null };
-  });
+  const progressByTopic = new Map<string, TopicProgressResponse>(
+    progressResult.data.map((progress) => [progress.curriculumTopicId, progress]),
+  );
+  const withProgress = topicsResult.data.map((topic) => ({
+    topic,
+    progress: progressByTopic.get(topic.id) ?? null,
+  }));
 
   const inProgress = withProgress.find(({ progress }) => progress && resolveContinuationEntry(progress) === 'exercise');
   if (inProgress) return { ok: true, target: { kind: 'topic', subject, topic: inProgress.topic, entry: 'exercise' } };

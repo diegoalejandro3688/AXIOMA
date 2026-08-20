@@ -1,10 +1,12 @@
-import { Body, Controller, Get, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import {
   submitResponseRequestSchema,
   submitResponseResponseSchema,
   responseConflictBodySchema,
+  topicProgressBatchQuerySchema,
   type TopicProgressResponse,
+  type TopicProgressBatchResponse,
   type SubmitResponseResponse,
   type ResponseConflictBody,
   type AcademicSummaryResponse,
@@ -38,6 +40,25 @@ export class ProgressController {
   @Get('me/summary')
   getAcademicSummary(@Req() request: AuthenticatedRequest): Promise<AcademicSummaryResponse> {
     return this.progressService.getAcademicSummary(request.accountId);
+  }
+
+  /**
+   * Progreso de MUCHOS temas en una sola solicitud -- ver
+   * `ProgressService.getTopicsProgressBatch`. Registrada ANTES de
+   * `topics/:topicId` -- mismo motivo que `me/leaderboard`/`me/summary`:
+   * ruta estática antes que la paramétrica.
+   */
+  @Get('topics')
+  getTopicsProgressBatch(
+    @Req() request: AuthenticatedRequest,
+    @Query('topicIds') topicIdsParam?: string,
+  ): Promise<TopicProgressBatchResponse> {
+    const rawIds = (topicIdsParam ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+    const { topicIds } = parseRequestBody(topicProgressBatchQuerySchema, { topicIds: [...new Set(rawIds)] });
+    return this.progressService.getTopicsProgressBatch(request.accountId, topicIds);
   }
 
   @Get('topics/:topicId')

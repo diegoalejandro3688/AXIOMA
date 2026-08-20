@@ -9,7 +9,7 @@ import {
   type AcademicSummaryResponse,
 } from '@axioma/contracts';
 import { Prisma } from '../generated/prisma/client';
-import type { StudentResponse } from '../generated/prisma/client';
+import type { StudentResponse, CurriculumTopicProgress } from '../generated/prisma/client';
 import { CurriculumTopicProgressRepository } from './curriculum-topic-progress.repository';
 import { StudentResponseRepository } from './student-response.repository';
 import { CurriculumTopicRepository } from '../education/curriculum-topic.repository';
@@ -71,6 +71,56 @@ export class ProgressService {
       this.responseRepo.listByAccountAndTopic(accountId, topicId),
     ]);
 
+    return this.assembleTopicProgress(topicId, progress, responses);
+  }
+
+  /**
+   * Progreso de MUCHOS temas en una sola llamada -- evita que un cliente
+   * (ej. "Continuar estudiando" en Inicio) dispare un `GET
+   * /progress/topics/:topicId` por cada tema raíz devuelto por EDUCATION
+   * (fan-out N+1 que llegó a superar el rate limit con un catálogo de
+   * prueba contaminado). Mismo criterio "una consulta `IN`, agregar en TS"
+   * que `getAcademicSummary`.
+   *
+   * A diferencia del endpoint singular, NO 404 por tema inexistente -- un
+   * id que no corresponde a ningún `curriculum_topic` real simplemente no
+   * aparece en el array de salida (best effort sobre un lote ya acotado por
+   * el controller, nunca un error parcial que tumbe el resto del lote).
+   */
+  async getTopicsProgressBatch(accountId: string, topicIds: string[]): Promise<TopicProgressResponse[]> {
+    const [existingIds, progressRows, responseRows] = await Promise.all([
+      this.topicRepo.findExistingIds(topicIds),
+      this.topicProgressRepo.findManyByAccountAndTopicIds(accountId, topicIds),
+      this.responseRepo.listByAccountAndTopics(accountId, topicIds),
+    ]);
+
+    const progressByTopic = new Map(progressRows.map((row) => [row.curriculumTopicId, row]));
+    const responsesByTopic = new Map<string, StudentResponse[]>();
+    for (const response of responseRows) {
+      const topicId = response.questionVersion.curriculumTopicId;
+      const bucket = responsesByTopic.get(topicId);
+      if (bucket) bucket.push(response);
+      else responsesByTopic.set(topicId, [response]);
+    }
+
+    return topicIds
+      .filter((topicId) => existingIds.has(topicId))
+      .map((topicId) =>
+        this.assembleTopicProgress(topicId, progressByTopic.get(topicId) ?? null, responsesByTopic.get(topicId) ?? []),
+      );
+  }
+
+  /**
+   * Único ensamblador de `TopicProgressResponse` -- compartido por el
+   * endpoint singular y el batch para que nunca diverjan en cómo se
+   * sintetiza `NOT_STARTED` o se proyectan las respuestas (ver ADR-0014,
+   * precisión 1).
+   */
+  private assembleTopicProgress(
+    topicId: string,
+    progress: CurriculumTopicProgress | null,
+    responses: StudentResponse[],
+  ): TopicProgressResponse {
     return topicProgressResponseSchema.parse({
       curriculumTopicId: topicId,
       status: progress?.status ?? 'NOT_STARTED',
