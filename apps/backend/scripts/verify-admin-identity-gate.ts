@@ -778,6 +778,21 @@ async function main() {
     join(srcDir, 'education', 'content-coverage.repository.ts'),
   ].filter(existsSync);
   const coverageModuleCode = coverageModuleFiles.map((f) => stripComments(readFileSync(f, 'utf8'))).join('\n');
+
+  // El CLI del Incremento 6 CONSUME la identidad administrativa del I2; no la
+  // reimplementa. Presenta el token por la MISMA cabecera y deja que el backend
+  // resuelva identidad y rol (invariante 22): no lo hashea, no lo verifica, no
+  // consulta roles y no abre ninguna cabecera de autenticación alternativa.
+  const i6CliFile = join(srcDir, 'cli', 'editorial.ts');
+  const i6CliCode = existsSync(i6CliFile) ? stripComments(readFileSync(i6CliFile, 'utf8')) : '';
+  const i6CliReusesAdminIdentity =
+    i6CliCode.length > 0 &&
+    /x-admin-token/.test(i6CliCode) &&
+    !/createHash|bcrypt|argon2|compareToken|verifyToken/.test(i6CliCode) &&
+    !/adminActorRole|admin_actor_role|AdminRoleGuard|AdminAuthGuard/.test(i6CliCode) &&
+    !/['"]AUTHOR['"]|['"]PUBLISHER['"]/.test(i6CliCode) &&
+    !/PrismaService|@prisma\/client|generated\/prisma/.test(i6CliCode);
+
   const coverageIsReadOnlyAndReusesIdentity =
     coverageModuleFiles.length === 4 &&
     !/@(?:Post|Put|Patch|Delete)\s*\(/.test(coverageModuleCode) &&
@@ -788,10 +803,33 @@ async function main() {
     // No devuelve datos de estudiante por la superficie administrativa (§11.4).
     !/StudentResponse|AiConversation|AiMessage/.test(coverageModuleCode);
   check(
-    'I6 sigue ausente (sin importación masiva); la Content Coverage Matrix del Incremento 5 existe pero es de SOLO LECTURA y CONSUME la identidad administrativa del Incremento 2 sin reimplementarla; y ni el I3, ni el I4, ni el I5 alteraron ninguna garantía de identidad administrativa del Incremento 2 (guards no reimplementados ni debilitados, mismo patrón de autenticación, y admin_actor/admin_actor_token/admin_access_log sin cambio de forma)',
+    // ------------------------------------------------------------------------
+    // ACTUALIZACIÓN LEGÍTIMA -- LEF Bloque VII, Incremento 6 (2026-08-19).
+    //
+    // CLASIFICACIÓN (A vs B): este check es MIXTO y se trata pieza a pieza.
+    //  - "sin importación masiva" es una garantía **tipo A, PERMANENTE**:
+    //    CMS-026..029 está diferido para TODO el Bloque VII por decisión E, no
+    //    solo hasta el I6. Su condición (el regex sobre `allSrcCode`) NO se
+    //    toca y sigue exactamente igual.
+    //  - "I6 sigue ausente" era una **aserción temporal de frontera (tipo B)**
+    //    y además IMPRECISA: conflaba el Incremento 6 con la importación
+    //    masiva, que son cosas distintas (§12.6 define el I6 como CLI interna,
+    //    y §3 difiere la importación por separado). El I6 ya está construido.
+    //
+    // NO ES UNA RELAJACIÓN: no se elimina ninguna condición. Solo se corrige el
+    // enunciado para que describa lo que el check realmente mide, y se AÑADE
+    // una condición nueva -- que el CLI del I6 no reimplementa la
+    // identidad administrativa ni abre un camino de autenticación alternativo
+    // --, que es justo la garantía del I2 que un cliente nuevo podría amenazar.
+    // El número de checks se conserva (1 -> 1).
+    // ------------------------------------------------------------------------
+    'la importación masiva sigue ausente (CMS-026..029, diferida para TODO el bloque por decisión E); la Content Coverage Matrix del Incremento 5 existe pero es de SOLO LECTURA y CONSUME la identidad administrativa del Incremento 2 sin reimplementarla; el CLI del Incremento 6 tampoco la reimplementa (no hashea ni verifica tokens, no consulta roles y presenta el token por la MISMA cabecera del I2); y ni el I3, ni el I4, ni el I5, ni el I6 alteraron ninguna garantía de identidad administrativa del Incremento 2 (guards no reimplementados ni debilitados, mismo patrón de autenticación, y admin_actor/admin_actor_token/admin_access_log sin cambio de forma)',
     // (a) frontera I5/I6
     coverageIsReadOnlyAndReusesIdentity &&
+      // Tipo A, sin cambios: la importación masiva sigue diferida para todo el bloque.
       !/bulk[_-]?import|importjob|import[_-]?batch|importcontent|content[_-]?import/i.test(allSrcCode) &&
+      // Añadido por el I6: el CLI nuevo NO reimplementa la identidad del I2.
+      i6CliReusesAdminIdentity &&
       [...adminEditorialCode.matchAll(/@(?:Post|Put|Patch|Delete)\(\s*\)/g)].length === 0 &&
       i3WriteRoutes.length === authorizedI3WriteRoutes.length &&
       i3WriteRoutes.every((r) => authorizedI3WriteRoutes.includes(r)) &&

@@ -602,14 +602,42 @@ async function main() {
   // ==========================================================================
   console.log('--- 10. Frontera del Incremento 5: I6 sigue sin construir y el no-alcance sigue ausente ---');
   const allSrc = collectTsFiles(srcDir).map((f) => stripComments(readFileSync(f, 'utf8'))).join('\n');
-  check('Incremento 6 NO construido: no existe ningún CLI de ciclo editorial (crear/publicar por línea de comandos)',
-    !existsSync(join(srcDir, 'cli', 'editorial.ts')) && !existsSync(join(srcDir, 'cli', 'publish-content.ts')));
+  // --------------------------------------------------------------------------
+  // ACTUALIZACIÓN LEGÍTIMA -- LEF Bloque VII, Incremento 6 (2026-08-19).
+  //
+  // CLASIFICACIÓN (A vs B): los TRES checks originales de este bloque
+  // ("Incremento 6 NO construido", "`src/cli/` sin CLI editorial" y "ningún
+  // comando consume la matriz") eran **aserciones temporales de frontera**
+  // (tipo B). El tercero lo dice de forma literal en su propio texto: "eso
+  // sería I6 ADELANTADO" -- es decir, consumir la matriz desde el CLI es
+  // exactamente lo que el I6 debía hacer cuando llegara su turno, y §12.6 lo
+  // ordena ("consumen la misma API administrativa de los Incrementos 2-5").
+  // Ninguno era una garantía de solo-lectura de la matriz (tipo A): el
+  // invariante 14 lo protegen los checks del bloque 9 de este mismo gate, que
+  // no se tocan y siguen midiendo el módulo de la matriz.
+  //
+  // NO ES UNA RELAJACIÓN: las sucesoras son MÁS FUERTES. Antes se afirmaba que
+  // el CLI no existía y que no leía la matriz; ahora se afirma que existe, que
+  // la lee POR LA API (no por la base) y que al hacerlo NO adquiere ninguna
+  // capacidad de escritura sobre ella -- que es la propiedad que de verdad
+  // protegía el invariante 14 frente a un cliente nuevo. El número de checks se
+  // conserva (3 -> 3).
+  // --------------------------------------------------------------------------
+  const i6CliFile = join(srcDir, 'cli', 'editorial.ts');
+  const i6CliCode = existsSync(i6CliFile) ? stripComments(readFileSync(i6CliFile, 'utf8')) : '';
+  check('Incremento 6 construido: existe el CLI del ciclo editorial y es un CLIENTE de la API -- sin Prisma, sin conexión propia a la base y sin SQL (§12.6, §13.6 punto 3)',
+    i6CliCode.length > 0 &&
+      !/PrismaService|@prisma\/client|generated\/prisma|PrismaClient/.test(i6CliCode) &&
+      !/from\s+['"]pg['"]|new\s+Client\(|DATABASE_URL/.test(i6CliCode) &&
+      !/\bSELECT\b|\bINSERT\b|\bUPDATE\b|\bDELETE\b/.test(i6CliCode));
   const cliFiles = existsSync(join(srcDir, 'cli')) ? readdirSync(join(srcDir, 'cli')).filter((f) => f.endsWith('.ts')) : [];
-  check('`src/cli/` sigue conteniendo SOLO las herramientas previas a I5 (bootstrap de actor y recuperación de cuenta), sin CLI editorial',
-    cliFiles.every((f) => !/editorial|publish|coverage|transition|authoring/i.test(f)), cliFiles.join(','));
+  check('`src/cli/` contiene exactamente las tres herramientas fuera de banda previas más el CLI editorial del I6, y ninguna herramienta más',
+    cliFiles.sort().join(',') === 'activate-cms018-exception.ts,create-admin-actor.ts,editorial.ts,recover-account.ts', cliFiles.join(','));
   const cliCode = collectTsFiles(join(srcDir, 'cli')).map((f) => stripComments(readFileSync(f, 'utf8'))).join('\n');
-  check('ningún comando de `src/cli/` consume la matriz de cobertura (eso sería I6 adelantado)',
-    !new RegExp('coverage-matrix').test(cliCode));
+  check('el CLI consume la matriz SOLO por `GET` de la API (§12.6) y ningún comando le abre una ruta de escritura: la matriz sigue siendo estrictamente de solo lectura (invariante 14)',
+    new RegExp('coverage-matrix').test(cliCode) &&
+      !/(POST|PUT|PATCH|DELETE)[^\n]*coverage-matrix/i.test(cliCode) &&
+      !/coverage-matrix[^\n]*(POST|PUT|PATCH|DELETE)/i.test(cliCode));
   check('importación masiva sigue diferida (CMS-026..029): ningún módulo la implementa',
     !/bulk[_-]?import|importjob|import[_-]?batch|importcontent|content[_-]?import/i.test(allSrc));
   check('vista previa sigue diferida (CMS-007): ningún módulo la implementa',

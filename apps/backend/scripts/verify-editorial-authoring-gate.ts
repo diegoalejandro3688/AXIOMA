@@ -815,8 +815,35 @@ async function main() {
   );
   check('importación masiva sigue diferida (CMS-026..029): ningún módulo la implementa', !/bulk[_-]?import|importjob|import[_-]?batch|importcontent|content[_-]?import/i.test(allSrc));
   check('vista previa sigue diferida (CMS-007): ningún módulo editorial la implementa', !/editorialpreview|content[_-]?preview/i.test(adminEditorialCode));
-  check('Incremento 6 NO construido: no existe ningún CLI de ciclo editorial (crear/publicar por línea de comandos)',
-    !existsSync(join(srcDir, 'cli', 'editorial.ts')) && !existsSync(join(srcDir, 'cli', 'publish-content.ts')));
+  // --------------------------------------------------------------------------
+  // ACTUALIZACIÓN LEGÍTIMA -- LEF Bloque VII, Incremento 6 (2026-08-19).
+  //
+  // CLASIFICACIÓN (A vs B): "Incremento 6 NO construido" era una **aserción
+  // temporal de frontera entre incrementos** (tipo B) por su propio enunciado.
+  // No era una garantía funcional de autoría (tipo A): nada de lo que este gate
+  // protege --T1/T2/T3, CMS-013, unicidad de versión publicada, orden de
+  // escritura de T7, integridad de la versión anterior-- dependía de que el CLI
+  // no existiera. El I6 se construyó dentro de la frontera de §12.6.
+  //
+  // NO ES UNA RELAJACIÓN: la sucesora es MÁS FUERTE que la original en lo que
+  // importa. Antes se afirmaba que el CLI no existía; ahora se afirma que
+  // existe y que es un CLIENTE, no una segunda ruta de escritura -- sin acceso
+  // a Prisma, sin conexión propia a la base, sin contexto de Nest y sin SQL --,
+  // es decir, que el I6 no puede haber abierto ninguna vía de autoría que
+  // esquive la API y sus validaciones. El número de checks se conserva (1 -> 1).
+  // --------------------------------------------------------------------------
+  const i6CliFile = join(srcDir, 'cli', 'editorial.ts');
+  const i6CliCode = existsSync(i6CliFile) ? stripComments(readFileSync(i6CliFile, 'utf8')) : '';
+  check(
+    'Incremento 6 construido DENTRO de su frontera (§12.6, §13.6 punto 3): el CLI editorial es un CLIENTE de la API -- no importa Prisma ni repositorios, no abre conexión propia a la base, no levanta Nest y no ejecuta SQL -- por lo que no es una segunda ruta de autoría que esquive CMS-013',
+    i6CliCode.length > 0 &&
+      !/PrismaService|@prisma\/client|generated\/prisma|PrismaClient/.test(i6CliCode) &&
+      !/from\s+['"]pg['"]|new\s+Client\(|DATABASE_URL/.test(i6CliCode) &&
+      !/NestFactory|AppModule/.test(i6CliCode) &&
+      !/\bSELECT\b|\bINSERT\b|\bUPDATE\b|\bDELETE\b|\$executeRaw|\$queryRaw/.test(i6CliCode) &&
+      !/from\s+['"]\.\.\/(administration|editorial|education)\//.test(i6CliCode),
+    `cli=${i6CliCode.length} bytes`,
+  );
   check('invariante 18: ningún módulo editorial ni de autoría importa el dominio `ai/`',
     !/from\s+['"][^'"]*\/ai\//.test(adminEditorialCode) && !/from\s+['"][^'"]*\/ai\//.test(educationCode));
   check('invariante 17: la superficie editorial no escribe en `xp_ledger_entry` ni en `league_point_ledger_entry`',
