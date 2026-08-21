@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router';
 import type { MyAdvancedProfileResponse } from '@axioma/contracts';
 import { useAuth } from '../../../lib/auth/auth-provider';
 import { initializeProfile, updateProfile } from '../../../lib/api/user';
+import { claimPublicProfile, getMyPublicProfile, setPublicProfileVisibility } from '../../../lib/api/public-profile';
+import type { PublicProfileResponse } from '@axioma/contracts';
 import { getMyAdvancedProfile } from '../../../lib/api/advanced-profile';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
@@ -56,6 +58,23 @@ export default function PerfilScreen() {
   const [displayName, setDisplayName] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [claimUsername, setClaimUsername] = useState('');
+  const [claiming, setClaiming] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
+  type VisibilityState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; profile: PublicProfileResponse };
+  const [visibility, setVisibility] = useState<VisibilityState | null>(null);
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
+  const [toggleVisibilityError, setToggleVisibilityError] = useState<string | null>(null);
+
+  const loadVisibility = useCallback(async () => {
+    setVisibility({ status: 'loading' });
+    const result = await getMyPublicProfile();
+    if (!result.ok) {
+      setVisibility({ status: 'error', message: result.message });
+      return;
+    }
+    setVisibility({ status: 'ready', profile: result.data });
+  }, []);
 
   const load = useCallback(async () => {
     setState({ status: 'loading' });
@@ -66,7 +85,14 @@ export default function PerfilScreen() {
     }
     setDisplayName(result.data.profile?.displayName ?? '');
     setState({ status: 'ready', view: result.data });
-  }, []);
+    // `visibilityStatus` no viene en el agregador (meCompetitiveProfileResponseSchema
+    // no lo expone) -- se consulta aparte, únicamente si ya existe PublicProfile.
+    if (result.data.publicProfile !== null) {
+      await loadVisibility();
+    } else {
+      setVisibility(null);
+    }
+  }, [loadVisibility]);
 
   useEffect(() => {
     load();
@@ -95,6 +121,48 @@ export default function PerfilScreen() {
       return;
     }
     setSaveError(result.message);
+  }
+
+  /**
+   * `PublicProfile.username` -- concepto DISTINTO de `UserProfile.displayName`
+   * (arriba). Sin optimismo: el perfil competitivo se considera creado
+   * únicamente tras la respuesta 200/201 real del servidor, nunca antes --
+   * `load()` recarga el agregador completo para que `CompetitiveProfileSection`
+   * reciba `publicProfile` ya resuelto y deje de mostrar el mensaje de
+   * "configura tu nombre de usuario" por sí sola (no se le pasa ningún prop
+   * nuevo, sigue con su firma exacta `{ profile }`).
+   */
+  async function handleClaimUsername() {
+    setClaimError(null);
+    setClaiming(true);
+    const result = await claimPublicProfile(claimUsername.trim());
+    setClaiming(false);
+    if (result.ok) {
+      setClaimUsername('');
+      await load();
+      return;
+    }
+    setClaimError(result.message);
+  }
+
+  /**
+   * Opt-in/opt-out explícito -- el default PRIVATE al crear el perfil no se
+   * toca aquí. Sin optimismo: `visibility` solo refleja el resultado
+   * REAL devuelto por el PATCH, nunca el valor que el usuario acaba de
+   * pedir hasta que el servidor lo confirma.
+   */
+  async function handleToggleVisibility() {
+    if (visibility?.status !== 'ready') return;
+    const nextVisible = visibility.profile.visibilityStatus !== 'VISIBLE';
+    setToggleVisibilityError(null);
+    setTogglingVisibility(true);
+    const result = await setPublicProfileVisibility(nextVisible);
+    setTogglingVisibility(false);
+    if (result.ok) {
+      setVisibility({ status: 'ready', profile: result.data });
+      return;
+    }
+    setToggleVisibilityError(result.message);
   }
 
   if (state.status === 'loading') return <LoadingState message="Cargando perfil…" />;
@@ -174,6 +242,70 @@ export default function PerfilScreen() {
           componente.
         */}
         {identityEditor}
+        {view.publicProfile === null ? (
+          <View style={styles.editor}>
+            <Text variant="titleLarge">Reclama tu nombre de usuario</Text>
+            <Text variant="bodySmall" color="secondary">
+              Necesitas un nombre de usuario público para tener perfil competitivo, aparecer en Clasificación y que otros puedan verte.
+            </Text>
+            <TextInput
+              accessibilityLabel="Nombre de usuario"
+              placeholder="Nombre de usuario"
+              placeholderTextColor={tokens.color.text.muted}
+              selectionColor={tokens.color.accent.default}
+              cursorColor={tokens.color.accent.default}
+              autoCapitalize="none"
+              autoCorrect={false}
+              value={claimUsername}
+              onChangeText={setClaimUsername}
+              style={styles.input}
+            />
+            {claimError ? (
+              <Text variant="bodySmall" color="error">
+                {claimError}
+              </Text>
+            ) : null}
+            <Button
+              label="Reclamar nombre de usuario"
+              accessibilityLabel="Reclamar nombre de usuario"
+              onPress={handleClaimUsername}
+              loading={claiming}
+              disabled={!claimUsername.trim()}
+              variant="primary"
+              size="small"
+            />
+          </View>
+        ) : null}
+        {view.publicProfile !== null ? (
+          <View style={styles.editor}>
+            <Text variant="bodySmall" color="secondary">
+              {visibility?.status === 'ready'
+                ? visibility.profile.visibilityStatus === 'VISIBLE'
+                  ? 'Tu perfil es visible públicamente.'
+                  : 'Tu perfil es privado -- no aparece para otros usuarios.'
+                : 'Cargando visibilidad de tu perfil…'}
+            </Text>
+            {toggleVisibilityError ? (
+              <Text variant="bodySmall" color="error">
+                {toggleVisibilityError}
+              </Text>
+            ) : null}
+            {visibility?.status === 'error' ? (
+              <Text variant="bodySmall" color="error">
+                {visibility.message}
+              </Text>
+            ) : null}
+            <Button
+              label={visibility?.status === 'ready' && visibility.profile.visibilityStatus === 'VISIBLE' ? 'Hacer privado' : 'Hacer público'}
+              accessibilityLabel={visibility?.status === 'ready' && visibility.profile.visibilityStatus === 'VISIBLE' ? 'Hacer perfil privado' : 'Hacer perfil público'}
+              onPress={handleToggleVisibility}
+              loading={togglingVisibility}
+              disabled={visibility?.status !== 'ready'}
+              variant="secondary"
+              size="small"
+            />
+          </View>
+        ) : null}
         <CompetitiveProfileSection profile={view.publicProfile} />
         <AcademicSummarySection summary={view.academicSummary} />
         <CompetitiveHistorySection history={view.competitiveHistory} />
