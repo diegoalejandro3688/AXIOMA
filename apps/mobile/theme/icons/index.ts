@@ -11,6 +11,8 @@ import {
   BackArrowIcon,
   CheckIcon,
   ChevronRightIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
   CloseIcon,
   ColumnIcon,
   EyeIcon,
@@ -36,6 +38,8 @@ export const iconRegistry = {
   ai: AiNavIcon,
   // Acción
   'chevron-right': ChevronRightIcon,
+  'chevron-up': ChevronUpIcon,
+  'chevron-down': ChevronDownIcon,
   close: CloseIcon,
   'back-arrow': BackArrowIcon,
   eye: EyeIcon,

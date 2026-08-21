@@ -6,7 +6,7 @@ import { COSMETIC_SLOTS, SLOT_LABEL, groupOwnedCosmetics, groupLockedCosmetics }
 import { describeUnlockRequirements } from '../lib/personalization/unlock-requirement-copy';
 import { LoadingState } from './loading-state';
 import { ErrorState } from './error-state';
-import { Text, Card, Chip, Avatar } from './ui';
+import { Text, Card, Chip, Avatar, Icon } from './ui';
 import { useThemedStyles } from '../theme';
 import type { ThemeTokens } from '../theme';
 
@@ -134,10 +134,7 @@ export function CosmeticsSection() {
               {isEquipping ? (
                 <ActivityIndicator />
               ) : (
-                // `theme/icons/` no tiene chevron arriba/abajo (solo `chevron-right`, fuera de alcance de UI-5 tocarlo) -- se conserva el glifo unicode ya usado antes de UI-5, ahora vía `Text`.
-                <Text variant="caption" color="muted">
-                  {isExpanded ? '▲' : '▼'}
-                </Text>
+                <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={20} color="muted" />
               )}
             </Pressable>
 

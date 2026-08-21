@@ -39,44 +39,64 @@ export function CompetitiveIdentityHeader({
 
   return (
     <View style={styles.container}>
-      {banner ? (
-        <Image source={{ uri: banner }} style={styles.banner} resizeMode="cover" accessibilityLabel="Banner de perfil" />
-      ) : (
-        <View style={styles.bannerPlaceholder} />
-      )}
-      <View style={styles.identityRow}>
-        <Avatar avatarUri={avatar} frameUri={frame?.assetReference} size="hero" accessibilityLabel={`Avatar de ${username}`} />
-        <View style={styles.info}>
-          {/*
-            `username` del backend NUNCA incluye "@" (verificado contra
-            `USERNAME_PATTERN` en `packages/contracts/src/user.ts`) -- el "@"
-            de abajo es puramente de presentación (14-perfil-consolidado-APROBADA.png),
-            nunca se antepone a un valor que ya pudiera traerlo.
-          */}
-          <Text variant="heading3" accessibilityRole="header">
-            @{username}
-          </Text>
-          {equippedTitle ? (
-            <Text variant="bodySmall" color="secondary">
-              {equippedTitle.displayText}
-            </Text>
-          ) : null}
-          <Text variant="caption" color="muted">
-            Nivel {levelNumber}
-          </Text>
+      {/*
+        Composición "hero" (UI-6, 14-perfil-consolidado-APROBADA.png):
+        banner de fondo con el Avatar superpuesto sobre su borde inferior,
+        en vez de dos bloques apilados (UI-5). Mismos datos/fallbacks que
+        antes -- solo cambia la composición visual.
+      */}
+      <View style={styles.hero}>
+        {banner ? (
+          <Image source={{ uri: banner }} style={styles.banner} resizeMode="cover" accessibilityLabel="Banner de perfil" />
+        ) : (
+          <View style={styles.bannerPlaceholder} />
+        )}
+        <View style={styles.avatarOverlap}>
+          <Avatar avatarUri={avatar} frameUri={frame?.assetReference} size="hero" accessibilityLabel={`Avatar de ${username}`} />
         </View>
+      </View>
+      <View style={styles.info}>
+        {/*
+          `username` del backend NUNCA incluye "@" (verificado contra
+          `USERNAME_PATTERN` en `packages/contracts/src/user.ts`) -- el "@"
+          de abajo es puramente de presentación (14-perfil-consolidado-APROBADA.png),
+          nunca se antepone a un valor que ya pudiera traerlo.
+        */}
+        <Text variant="heading3" accessibilityRole="header">
+          @{username}
+        </Text>
+        {equippedTitle ? (
+          <Text variant="bodySmall" color="secondary">
+            {equippedTitle.displayText}
+          </Text>
+        ) : null}
+        <Text variant="caption" color="muted">
+          Nivel {levelNumber}
+        </Text>
       </View>
     </View>
   );
 }
 
+/** Mitad del tamaño `hero` del `Avatar` (96/2) -- desplaza el avatar para que quede a caballo del borde inferior del banner. */
+const HERO_AVATAR_OVERLAP = 48;
+
 function createStyles(t: ThemeTokens) {
   return {
-    container: { gap: 12 },
-    banner: { width: '100%' as const, height: 96, borderRadius: 14, backgroundColor: t.color.background.surface },
+    container: { gap: 8 },
+    hero: { width: '100%' as const },
+    banner: { width: '100%' as const, height: 120, borderRadius: 14, backgroundColor: t.color.background.surface },
     /** Placeholder neutral cuando `banner` es `null` -- mismo contenedor vacío, nunca una imagen inventada (UI-5, criterio A.2). */
-    bannerPlaceholder: { width: '100%' as const, height: 96, borderRadius: 14, backgroundColor: t.color.accent.subtleBg },
-    identityRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12 },
-    info: { gap: 2 },
+    bannerPlaceholder: { width: '100%' as const, height: 120, borderRadius: 14, backgroundColor: t.color.accent.subtleBg },
+    avatarOverlap: {
+      marginTop: -HERO_AVATAR_OVERLAP,
+      marginLeft: 16,
+      alignSelf: 'flex-start' as const,
+      borderRadius: 999,
+      borderWidth: 3,
+      borderColor: t.color.background.default,
+      backgroundColor: t.color.background.default,
+    },
+    info: { gap: 2, paddingLeft: 16 },
   };
 }

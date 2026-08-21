@@ -1,6 +1,7 @@
-import { Image, Text, View } from 'react-native';
+import { Image, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import type { ResourceContentBlockResponse } from '@axioma/contracts';
+import { Text } from './ui';
 import { useTheme, useThemedStyles } from '../theme';
 import type { ThemeTokens } from '../theme';
 
@@ -27,12 +28,12 @@ function ContentBlock({ block, styles }: { block: ResourceContentBlockResponse; 
   switch (block.type) {
     case 'heading':
       return (
-        <Text accessibilityRole="header" style={styles.heading}>
+        <Text variant="heading3" accessibilityRole="header">
           {block.text}
         </Text>
       );
     case 'paragraph':
-      return <Text style={styles.paragraph}>{block.text}</Text>;
+      return <Text variant="body">{block.text}</Text>;
     case 'formula':
       return <FormulaBlock latex={block.latex} svg={block.svg} styles={styles} />;
     case 'image':
@@ -77,18 +78,15 @@ function extractSvgElement(mjxOutput: string): string {
 }
 
 /**
- * Solo el color de texto está tematizado (ver ADR-0015) -- el resto del
- * componente queda fuera del alcance de migración de Bloque IV, pero un
- * `paragraph`/`heading` con color fijo quedaría ilegible sobre un fondo
- * oscuro (gate de ADR-0015, punto 7). El `svg` de fórmulas y las imágenes
- * ya vienen resueltos del servidor -- no son "color de interfaz" (ver
- * ADR-0015, "cero color hardcodeado sin justificación").
+ * `heading`/`paragraph` usan `variant` de la primitiva `Text` (UI-1,
+ * `theme/typography.ts`) -- ya tematizados por color/escala vía esa
+ * primitiva, sin estilo propio aquí (UI-6). El `svg` de fórmulas y las
+ * imágenes ya vienen resueltos del servidor -- no son "color de interfaz"
+ * (ver ADR-0015, "cero color hardcodeado sin justificación").
  */
-function createStyles(t: ThemeTokens) {
+function createStyles(_t: ThemeTokens) {
   return {
     container: { gap: 12 },
-    heading: { fontSize: 20, fontWeight: '700' as const, color: t.color.text.primary },
-    paragraph: { fontSize: 15, lineHeight: 22, color: t.color.text.primary },
     formulaContainer: { paddingVertical: 4 },
     image: { width: '100%' as const, height: 200, borderRadius: 8 },
   };

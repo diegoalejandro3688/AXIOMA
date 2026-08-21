@@ -14,6 +14,24 @@ export function ChevronRightIcon({ size = 24, color }: NavIconProps) {
   );
 }
 
+/** UI-6 -- reemplaza el carácter unicode "▲" en `CosmeticsSection` (expandir/colapsar). */
+export function ChevronUpIcon({ size = 24, color }: NavIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M5 15l7-7 7 7" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+/** UI-6 -- reemplaza el carácter unicode "▼" en `CosmeticsSection` (expandir/colapsar). */
+export function ChevronDownIcon({ size = 24, color }: NavIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M5 9l7 7 7-7" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
 export function CloseIcon({ size = 24, color }: NavIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
