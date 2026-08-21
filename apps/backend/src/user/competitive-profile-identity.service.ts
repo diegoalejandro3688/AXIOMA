@@ -201,10 +201,17 @@ export class CompetitiveProfileIdentityService {
       // (sin banner equipado), no una redacción -- mismo criterio que
       // `equippedTitle: null`.
       const bannerCosmetic = profileCosmetics.find((c) => c.cosmeticSlot === 'PROFILE_BANNER');
+      // AVATAR-RECON -- corte limpio (Decision Gate 7 / ADR-0021 §4): el
+      // avatar visible se resuelve desde el cosmético equipado en el slot
+      // AVATAR, igual que el banner, NO desde `public_profile.avatarReference`.
+      // Sin AVATAR equipado, avatar es null -- no hay coalesce hacia el
+      // campo legacy. `avatarReference` permanece físicamente en el schema
+      // pero deja de ser fuente de lectura para la identidad visible.
+      const avatarCosmetic = profileCosmetics.find((c) => c.cosmeticSlot === 'AVATAR');
       const identity: CompetitiveProfileIdentity = {
         accountId: profile.accountId,
         username: profile.usernameNormalized,
-        avatar: profile.avatarReference,
+        avatar: avatarCosmetic?.inventoryItem.cosmeticItem.assetReference ?? null,
         banner: bannerCosmetic?.inventoryItem.cosmeticItem.assetReference ?? null,
         equippedTitle: equippedTitle
           ? {

@@ -1,15 +1,18 @@
 // ASSET-1 (Integración de assets reales, pipeline mínimo) -- script de datos
 // GENÉRICO parametrizado por CLI, nunca un endpoint de producto. Sube los 3
 // assets reales a un bucket MinIO/S3 dedicado con lectura pública, crea/
-// asegura los 2 CosmeticItem (AVATAR_FRAME, PROFILE_BANNER), otorga el
-// inventario a la cuenta indicada, y fija PublicProfile.avatarReference
-// directamente (operación de datos, ver DG ASSET1-1 Opción 3 del handoff --
-// el slot cosmético AVATAR no tiene ningún efecto visual hoy, confirmado
-// por auditoría de código: CompetitiveProfileIdentityService nunca busca
-// cosmeticSlot === 'AVATAR', solo lee profile.avatarReference).
+// asegura los 3 CosmeticItem (AVATAR, AVATAR_FRAME, PROFILE_BANNER) y otorga
+// el inventario a la cuenta indicada.
 //
-// Deliberadamente NO equipa marco ni banner -- eso se hace a mano desde
-// Personalización en Android para validar el flujo real de equipamiento.
+// AVATAR-RECON: el avatar ya sigue el mismo modelo que marco/banner --
+// CosmeticItem -> InventoryItem -- en vez de fijar
+// PublicProfile.avatarReference directamente. CompetitiveProfileIdentityService
+// resuelve el avatar visible desde el cosmético equipado en el slot AVATAR
+// (equipped_cosmetic), nunca desde avatarReference.
+//
+// Deliberadamente NO equipa marco, banner ni avatar -- eso se hace a mano
+// desde Personalización en Android para validar el flujo real de
+// equipamiento.
 //
 // Uso:
 //   tsx scripts/seed-asset1-test-cosmetics.ts <username> <avatarPngPath> <framePngPath> <bannerPngPath>
@@ -190,7 +193,7 @@ async function main() {
   console.log(`  marco  -> ${frameUrl}`);
   console.log(`  banner -> ${bannerUrl}`);
 
-  console.log('--- 3. CosmeticItem (AVATAR_FRAME, PROFILE_BANNER) ---');
+  console.log('--- 3. CosmeticItem (AVATAR, AVATAR_FRAME, PROFILE_BANNER) ---');
   // CosmeticItemRepository no tiene upsert (inmutable por diseño) -- se
   // reutiliza el ítem existente si el script ya se ejecutó antes con la
   // misma itemKey, en vez de fallar por la restricción UNIQUE.
@@ -214,6 +217,15 @@ async function main() {
     return created;
   }
 
+  const avatarItem = await ensureCosmeticItem({
+    itemKey: 'asset1-avatar-buho',
+    itemType: 'AVATAR',
+    name: 'Búho (avatar base)',
+    rarityClass: 'COMMON',
+    assetReference: avatarUrl,
+    visibilityStatus: 'PUBLIC',
+  });
+
   const frameItem = await ensureCosmeticItem({
     itemKey: 'asset1-frame-madera-nivel5',
     itemType: 'AVATAR_FRAME',
@@ -233,6 +245,15 @@ async function main() {
   });
 
   console.log('--- 4. Inventario (sin equipar) -- no depende de PublicProfile ---');
+  const { inventoryItem: avatarInventory, created: avatarGranted } = await inventoryItemRepo.createIdempotent({
+    accountId,
+    cosmeticItemId: avatarItem.id,
+    acquisitionSourceType: 'LEVEL',
+    acquisitionSourceId: `asset1-seed:${accountId}`,
+    acquiredAt: new Date(),
+  });
+  console.log(`  avatar: inventoryItemId=${avatarInventory.id} (${avatarGranted ? 'otorgado ahora' : 'ya existía'})`);
+
   const { inventoryItem: frameInventory, created: frameGranted } = await inventoryItemRepo.createIdempotent({
     accountId,
     cosmeticItemId: frameItem.id,
@@ -251,20 +272,15 @@ async function main() {
   });
   console.log(`  banner: inventoryItemId=${bannerInventory.id} (${bannerGranted ? 'otorgado ahora' : 'ya existía'})`);
 
-  console.log('--- 5. avatarReference (operación de datos directa -- DG ASSET1-1, Opción 3) ---');
-  if (profile) {
-    await prisma.publicProfile.update({ where: { accountId }, data: { avatarReference: avatarUrl } });
-    console.log(`  PublicProfile.avatarReference actualizado -> ${avatarUrl}`);
-  } else {
-    console.log('  OMITIDO: esta cuenta todavía no tiene ningún PublicProfile (no reclamó ningún username).');
-    console.log('  El mecanismo normal de la app para crear uno es POST /user/public-profile (pantalla de');
-    console.log('  Registro/reclamo de username) -- este script NO lo crea por su cuenta. Reclama un');
-    console.log('  username desde la app y vuelve a correr el script (con --account-id o con ese username)');
-    console.log('  para fijar avatarReference.');
+  if (!profile) {
+    console.log('--- Nota: cuenta sin PublicProfile ---');
+    console.log('  Esta cuenta todavía no tiene ningún PublicProfile (no reclamó ningún username). El');
+    console.log('  inventario (avatar/marco/banner) ya quedó otorgado -- reclama un username desde la app');
+    console.log('  (POST /user/public-profile) para poder equipar cosméticos y ver identidad pública.');
   }
 
   console.log('--- Resumen ---');
-  console.log('Marco y banner quedaron OTORGADOS pero SIN EQUIPAR -- equípalos manualmente desde Personalización en Android.');
+  console.log('Avatar, marco y banner quedaron OTORGADOS pero SIN EQUIPAR -- equípalos manualmente desde Personalización en Android.');
 
   await prisma.$disconnect();
 }

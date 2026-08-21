@@ -114,6 +114,18 @@ async function main() {
     assetReference: 'asset://cpi-gate/frame',
     visibilityStatus: 'PUBLIC',
   });
+  // AVATAR-RECON -- cosmético AVATAR de fixture: la fuente de verdad del
+  // avatar visible ahora es el cosmético EQUIPADO en este slot, nunca
+  // `public_profile.avatar_reference` (que las fixtures de abajo siguen
+  // insertando deliberadamente, para probar que ya NO se lee).
+  const avatarCosmetic = await cosmeticItemRepo.create({
+    itemKey: `cpi-gate-avatar-${suffix}`,
+    itemType: 'AVATAR',
+    name: 'Avatar de fixture',
+    rarityClass: 'COMMON',
+    assetReference: 'asset://cpi-gate/avatar-equipped',
+    visibilityStatus: 'PUBLIC',
+  });
   const publicAchievementDef = await achievementDefinitionRepo.create({
     achievementKey: `cpi-gate-public-${suffix}`,
     name: 'Logro público de prueba',
@@ -161,6 +173,14 @@ async function main() {
     acquiredAt: new Date(),
   });
   await equippedCosmeticRepo.upsert(profileFull!.id, 'AVATAR_FRAME', inventoryItem.id);
+  const { inventoryItem: avatarInventoryItem } = await inventoryItemRepo.createIdempotent({
+    accountId: accountFull,
+    cosmeticItemId: avatarCosmetic.id,
+    acquisitionSourceType: 'LEVEL',
+    acquisitionSourceId: `${accountFull}:2`,
+    acquiredAt: new Date(),
+  });
+  await equippedCosmeticRepo.upsert(profileFull!.id, 'AVATAR', avatarInventoryItem.id);
   // Logro público ACTIVE -- debe aparecer.
   await pg.query(
     `INSERT INTO achievement_unlock (id, account_id, achievement_definition_id, achievement_version_id, unlock_instance, unlocked_at, status)
@@ -198,9 +218,15 @@ async function main() {
   if (resolvedFull.presentable) {
     const identity = resolvedFull.identity;
     check('username correcto', identity.username === `full-${suffix}`.toLowerCase());
-    check('avatar correcto', identity.avatar === 'avatar-full');
+    check(
+      'avatar resuelve desde el cosmético AVATAR equipado, NO desde public_profile.avatar_reference (AVATAR-RECON)',
+      identity.avatar === avatarCosmetic.assetReference && identity.avatar !== `avatar-full`,
+    );
     check('equippedTitle presente con los campos esperados', identity.equippedTitle?.titleKey === title.titleKey && identity.equippedTitle?.displayText === title.displayText);
-    check('equippedCosmetics contiene exactamente el cosmético equipado', identity.equippedCosmetics.length === 1 && identity.equippedCosmetics[0]?.itemKey === cosmetic.itemKey);
+    check(
+      'equippedCosmetics contiene exactamente los dos cosméticos equipados (AVATAR_FRAME + AVATAR)',
+      identity.equippedCosmetics.length === 2 && identity.equippedCosmetics.some((c) => c.itemKey === cosmetic.itemKey) && identity.equippedCosmetics.some((c) => c.itemKey === avatarCosmetic.itemKey),
+    );
     check('levelNumber derivado correctamente (150 XP -> nivel 2)', identity.levelNumber === 2);
     check('publicAchievements contiene EXACTAMENTE el logro público ACTIVE (ni el privado ni el revocado)', identity.publicAchievements.length === 1 && identity.publicAchievements[0]?.achievementKey === publicAchievementDef.achievementKey);
     check('la respuesta NUNCA expone lifetimeXp/XP en crudo', !('lifetimeXp' in identity) && !('xpAmount' in identity));
@@ -212,6 +238,7 @@ async function main() {
   check('perfil mínimo resuelve presentable=true', resolvedMinimal.presentable === true);
   if (resolvedMinimal.presentable) {
     const identity = resolvedMinimal.identity;
+    check('avatar es null sin ningún cosmético AVATAR equipado (corte limpio AVATAR-RECON, sin coalesce a avatar_reference)', identity.avatar === null);
     check('equippedTitle es null (campo vacío legítimo, no redacción)', identity.equippedTitle === null);
     check('equippedCosmetics es un arreglo vacío', identity.equippedCosmetics.length === 0);
     check('publicAchievements es un arreglo vacío', identity.publicAchievements.length === 0);
@@ -223,6 +250,27 @@ async function main() {
   const accountRetired = await createNonPresentableProfile('retired', 'RETIRED', 'PRIVATE');
   const accountAnonymized = await createNonPresentableProfile('anonymized', 'ANONYMIZED', 'PRIVATE');
   const accountNonexistent = randomUUID(); // sin fila public_profile en absoluto
+
+  // AVATAR-RECON, comportamiento protegido #8: un perfil ANONYMIZED con un
+  // AVATAR todavía equipado (la anonimización histórica limpia
+  // avatar_reference, pero ya NO controla el avatar visible) nunca debe
+  // exponerlo -- isPresentable() exige ACTIVE+VISIBLE, así que ANONYMIZED
+  // jamás llega a assembleIdentitiesForProfiles.
+  // El trigger `enforce_equipped_cosmetic_account_consistency` exige
+  // lifecycle_status=ACTIVE para equipar -- se equipa mientras el perfil
+  // está ACTIVE y LUEGO se pasa a ANONYMIZED, reflejando cómo llegaría un
+  // caso real a este estado (cuenta activa con avatar equipado, cerrada después).
+  const profileAnonymized = await publicProfileRepo.findByAccountId(accountAnonymized);
+  await pg.query("UPDATE public_profile SET lifecycle_status = 'ACTIVE' WHERE account_id = $1", [accountAnonymized]);
+  const { inventoryItem: anonAvatarInventory } = await inventoryItemRepo.createIdempotent({
+    accountId: accountAnonymized,
+    cosmeticItemId: avatarCosmetic.id,
+    acquisitionSourceType: 'LEVEL',
+    acquisitionSourceId: `${accountAnonymized}:anon`,
+    acquiredAt: new Date(),
+  });
+  await equippedCosmeticRepo.upsert(profileAnonymized!.id, 'AVATAR', anonAvatarInventory.id);
+  await pg.query("UPDATE public_profile SET lifecycle_status = 'ANONYMIZED' WHERE account_id = $1", [accountAnonymized]);
 
   for (const [label, accountId] of [
     ['PRIVATE', accountPrivate],
