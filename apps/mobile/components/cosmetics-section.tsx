@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import type { CosmeticSlotValue, ListCosmeticsResponse, OwnedCosmetic } from '@axioma/contracts';
 import { listCosmetics, equipCosmetic } from '../lib/api/cosmetics';
 import { COSMETIC_SLOTS, SLOT_LABEL, groupOwnedCosmetics, groupLockedCosmetics } from '../lib/cosmetics/group-cosmetics';
 import { describeUnlockRequirements } from '../lib/personalization/unlock-requirement-copy';
 import { LoadingState } from './loading-state';
 import { ErrorState } from './error-state';
+import { Text, Card, Chip, Avatar } from './ui';
 import { useThemedStyles } from '../theme';
 import type { ThemeTokens } from '../theme';
 
@@ -92,7 +93,7 @@ export function CosmeticsSection() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title} accessibilityRole="header">
+      <Text variant="heading3" accessibilityRole="header">
         Personalización
       </Text>
 
@@ -102,9 +103,10 @@ export function CosmeticsSection() {
         const lockedForSlot = groupedLocked[slot];
         const isExpanded = expandedSlot === slot;
         const isEquipping = equippingSlot === slot;
+        const isAvatarLikeSlot = slot === 'AVATAR' || slot === 'AVATAR_FRAME';
 
         return (
-          <View key={slot} style={styles.card}>
+          <Card key={slot} variant="outlined" style={styles.card}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`${SLOT_LABEL[slot]} -- ${equippedItem ? equippedItem.name : 'sin equipar'}`}
@@ -113,25 +115,44 @@ export function CosmeticsSection() {
               style={styles.slotHeader}
             >
               <View style={styles.slotPreview}>
-                {equippedItem ? (
-                  <Image source={{ uri: equippedItem.assetReference }} style={styles.previewImage} resizeMode="cover" />
+                {isAvatarLikeSlot ? (
+                  <Avatar avatarUri={equippedItem?.assetReference ?? null} size="small" />
+                ) : equippedItem ? (
+                  <Avatar avatarUri={equippedItem.assetReference} size="small" />
                 ) : (
                   <View style={styles.previewPlaceholder} />
                 )}
               </View>
               <View style={styles.slotInfo}>
-                <Text style={styles.slotLabel}>{SLOT_LABEL[slot]}</Text>
-                <Text style={styles.slotEquipped}>{equippedItem ? equippedItem.name : 'Sin equipar'}</Text>
+                <Text variant="caption" weight="bold" color="secondary" style={styles.slotLabel}>
+                  {SLOT_LABEL[slot]}
+                </Text>
+                <Text variant="titleMedium" weight="semibold">
+                  {equippedItem ? equippedItem.name : 'Sin equipar'}
+                </Text>
               </View>
-              {isEquipping ? <ActivityIndicator /> : <Text style={styles.chevron}>{isExpanded ? '▲' : '▼'}</Text>}
+              {isEquipping ? (
+                <ActivityIndicator />
+              ) : (
+                // `theme/icons/` no tiene chevron arriba/abajo (solo `chevron-right`, fuera de alcance de UI-5 tocarlo) -- se conserva el glifo unicode ya usado antes de UI-5, ahora vía `Text`.
+                <Text variant="caption" color="muted">
+                  {isExpanded ? '▲' : '▼'}
+                </Text>
+              )}
             </Pressable>
 
-            {slotErrors[slot] ? <Text style={styles.slotError}>{slotErrors[slot]}</Text> : null}
+            {slotErrors[slot] ? (
+              <Text variant="bodySmall" color="error">
+                {slotErrors[slot]}
+              </Text>
+            ) : null}
 
             {isExpanded ? (
               <View style={styles.optionsList}>
                 {ownedForSlot.length === 0 ? (
-                  <Text style={styles.emptySlot}>Todavía no posees cosméticos de este tipo.</Text>
+                  <Text variant="bodySmall" color="muted" style={styles.emptySlot}>
+                    Todavía no posees cosméticos de este tipo.
+                  </Text>
                 ) : (
                   ownedForSlot.map((item) => {
                     const isCurrentlyEquipped = equippedItem?.inventoryItemId === item.inventoryItemId;
@@ -144,8 +165,10 @@ export function CosmeticsSection() {
                         disabled={isEquipping || isCurrentlyEquipped}
                         style={[styles.optionRow, isCurrentlyEquipped && styles.optionRowActive]}
                       >
-                        <Text style={styles.optionName}>{item.name}</Text>
-                        <Text style={styles.optionMeta}>{isCurrentlyEquipped ? 'Equipado' : item.rarityClass}</Text>
+                        <Text variant="body" weight="semibold">
+                          {item.name}
+                        </Text>
+                        <Chip label={isCurrentlyEquipped ? 'Equipado' : item.rarityClass} variant={isCurrentlyEquipped ? 'selected' : 'neutral'} />
                       </Pressable>
                     );
                   })
@@ -153,18 +176,22 @@ export function CosmeticsSection() {
 
                 {lockedForSlot.length > 0 ? (
                   <View style={styles.lockedSection}>
-                    <Text style={styles.lockedSectionTitle}>Bloqueados</Text>
+                    <Text variant="caption" weight="bold" color="secondary" style={styles.lockedSectionTitle}>
+                      Bloqueados
+                    </Text>
                     {lockedForSlot.map((item) => (
-                      <View key={item.cosmeticItemId} style={styles.lockedRow}>
-                        <Text style={styles.lockedName}>{item.name}</Text>
-                        <Text style={styles.lockedRequirement}>{describeUnlockRequirements(item.unlockRequirements)}</Text>
-                      </View>
+                      <Card key={item.cosmeticItemId} variant="subtle" style={styles.lockedRow}>
+                        <Text variant="bodySmall" weight="semibold" color="muted">
+                          {item.name}
+                        </Text>
+                        <Chip label={describeUnlockRequirements(item.unlockRequirements)} variant="disabled" />
+                      </Card>
                     ))}
                   </View>
                 ) : null}
               </View>
             ) : null}
-          </View>
+          </Card>
         );
       })}
     </View>
@@ -174,26 +201,14 @@ export function CosmeticsSection() {
 function createStyles(t: ThemeTokens) {
   return {
     container: { gap: 12, marginTop: 8 },
-    title: { fontSize: 18, fontWeight: '700' as const, color: t.color.text.primary },
-    card: {
-      backgroundColor: t.color.background.surface,
-      borderWidth: 1,
-      borderColor: t.color.border.default,
-      borderRadius: 14,
-      padding: 12,
-      gap: 8,
-    },
+    card: { gap: 8 },
     slotHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12 },
     slotPreview: { width: 40, height: 40, borderRadius: 8, overflow: 'hidden' as const, backgroundColor: t.color.background.default },
-    previewImage: { width: 40, height: 40 },
     previewPlaceholder: { width: 40, height: 40, borderWidth: 1, borderColor: t.color.border.default, borderRadius: 8 },
     slotInfo: { flex: 1, gap: 2 },
-    slotLabel: { fontSize: 13, fontWeight: '700' as const, color: t.color.text.secondary, textTransform: 'uppercase' as const },
-    slotEquipped: { fontSize: 15, fontWeight: '600' as const, color: t.color.text.primary },
-    chevron: { fontSize: 12, color: t.color.text.muted },
-    slotError: { fontSize: 13, color: t.color.state.error.text },
+    slotLabel: { textTransform: 'uppercase' as const },
     optionsList: { gap: 6, paddingTop: 4, borderTopWidth: 1, borderTopColor: t.color.border.default },
-    emptySlot: { fontSize: 13, color: t.color.text.muted, paddingVertical: 6 },
+    emptySlot: { paddingVertical: 6 },
     optionRow: {
       flexDirection: 'row' as const,
       justifyContent: 'space-between' as const,
@@ -203,20 +218,8 @@ function createStyles(t: ThemeTokens) {
       borderRadius: 8,
     },
     optionRowActive: { backgroundColor: t.color.accent.subtleBg },
-    optionName: { fontSize: 14, color: t.color.text.primary, fontWeight: '600' as const },
-    optionMeta: { fontSize: 12, color: t.color.text.muted },
     lockedSection: { gap: 6, marginTop: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: t.color.border.default },
-    lockedSectionTitle: { fontSize: 12, fontWeight: '700' as const, color: t.color.text.secondary, textTransform: 'uppercase' as const },
-    lockedRow: {
-      backgroundColor: t.color.action.disabledBackground,
-      borderWidth: 1,
-      borderColor: t.color.action.disabledBorder,
-      borderRadius: 8,
-      paddingVertical: 8,
-      paddingHorizontal: 10,
-      gap: 2,
-    },
-    lockedName: { fontSize: 13, fontWeight: '600' as const, color: t.color.action.disabledText },
-    lockedRequirement: { fontSize: 11, color: t.color.action.disabledText },
+    lockedSectionTitle: { textTransform: 'uppercase' as const },
+    lockedRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, gap: 8 },
   };
 }

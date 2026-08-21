@@ -7,7 +7,7 @@ import { mergeLeaderboardPages, describeMyPosition } from '../../../lib/leaderbo
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
 import { EmptyState } from '../../../components/empty-state';
-import { Text, Card, Button } from '../../../components/ui';
+import { Text, Card, Button, Avatar } from '../../../components/ui';
 import { useThemedStyles, radii } from '../../../theme';
 import type { ThemeTokens } from '../../../theme';
 
@@ -187,15 +187,47 @@ function LeaderboardRowCard({ row, styles, router }: { row: LeaderboardRow; styl
   }
 
   return (
+    <PresentableLeaderboardRow row={row} highlight={highlight} styles={styles} router={router} />
+  );
+}
+
+/**
+ * Separada de `LeaderboardRowCard` para que solo esta función (nunca la
+ * rama redactada) acceda a los campos exclusivos de una fila presentable
+ * (avatar, cosméticos equipados) -- garantía estructural adicional a la
+ * que ya da TypeScript con la unión discriminada.
+ */
+function PresentableLeaderboardRow({
+  row,
+  highlight,
+  styles,
+  router,
+}: {
+  row: Extract<LeaderboardRow, { presentable: true }>;
+  highlight: boolean;
+  styles: ReturnType<typeof createStyles>;
+  router: ReturnType<typeof useRouter>;
+}) {
+  // Top 3 (rankPosition <= 3): Avatar de tamaño medium + borde de acento, en vez de small -- realce visual derivado del rango ya disponible, sin dato nuevo (UI-5, punto A.7).
+  const isTopThree = row.rankPosition <= 3;
+  const frame = row.equippedCosmetics.find((c) => c.cosmeticSlot === 'AVATAR_FRAME') ?? null;
+
+  return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Ver perfil de ${row.username}`}
       onPress={() => router.push({ pathname: '/(tabs)/competir/perfil/[username]', params: { username: row.username } })}
-      style={[styles.row, highlight && styles.rowHighlighted]}
+      style={[styles.row, highlight && styles.rowHighlighted, isTopThree && styles.rowTopThree]}
     >
       <Text variant="titleMedium" weight="bold" color="secondary" style={styles.rankPosition}>
         #{row.rankPosition}
       </Text>
+      <Avatar
+        avatarUri={row.avatar}
+        frameUri={frame?.assetReference}
+        size={isTopThree ? 'medium' : 'small'}
+        accessibilityLabel={`Avatar de ${row.username}`}
+      />
       <View style={styles.rowInfo}>
         <Text variant="titleMedium" weight="semibold">
           {row.username}
@@ -234,6 +266,7 @@ function createStyles(t: ThemeTokens) {
     },
     rowInfo: { flex: 1, gap: 2 },
     rowHighlighted: { borderColor: t.color.accent.default, backgroundColor: t.color.accent.subtleBg },
+    rowTopThree: { borderColor: t.color.accent.default, borderWidth: 2 },
     rankPosition: { minWidth: 36 },
     redactedLabel: { flex: 1, fontStyle: 'italic' as const },
     footer: { gap: 8, paddingTop: 8, alignItems: 'center' as const },

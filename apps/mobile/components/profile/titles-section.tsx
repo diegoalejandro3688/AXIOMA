@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import type { ListTitlesResponse } from '@axioma/contracts';
 import { listTitles, equipTitle } from '../../lib/api/titles';
 import { describeUnlockRequirements } from '../../lib/personalization/unlock-requirement-copy';
 import { LoadingState } from '../loading-state';
 import { ErrorState } from '../error-state';
+import { Text, Card, Chip } from '../ui';
 import { useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
@@ -71,10 +72,14 @@ export function TitlesSection() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title} accessibilityRole="header">
+      <Text variant="heading3" accessibilityRole="header">
         Títulos
       </Text>
-      {equipError ? <Text style={styles.equipError}>{equipError}</Text> : null}
+      {equipError ? (
+        <Text variant="bodySmall" color="error">
+          {equipError}
+        </Text>
+      ) : null}
 
       <Pressable
         accessibilityRole="button"
@@ -83,12 +88,20 @@ export function TitlesSection() {
         disabled={equipping || equipped === null}
         style={[styles.optionRow, equipped === null && styles.optionRowActive]}
       >
-        <Text style={styles.optionName}>Sin título</Text>
-        {equipping ? <ActivityIndicator size="small" /> : <Text style={styles.optionMeta}>{equipped === null ? 'Equipado' : ''}</Text>}
+        <Text variant="body" weight="semibold">
+          Sin título
+        </Text>
+        {equipping ? (
+          <ActivityIndicator size="small" />
+        ) : equipped === null ? (
+          <Chip label="Equipado" variant="selected" />
+        ) : null}
       </Pressable>
 
       {owned.length === 0 ? (
-        <Text style={styles.emptyMessage}>Todavía no posees ningún título.</Text>
+        <Text variant="bodySmall" color="muted" style={styles.emptyMessage}>
+          Todavía no posees ningún título.
+        </Text>
       ) : (
         owned.map((item) => {
           const isEquipped = equipped?.accountTitleId === item.accountTitleId;
@@ -101,8 +114,10 @@ export function TitlesSection() {
               disabled={equipping || isEquipped}
               style={[styles.optionRow, isEquipped && styles.optionRowActive]}
             >
-              <Text style={styles.optionName}>{item.displayText}</Text>
-              <Text style={styles.optionMeta}>{isEquipped ? 'Equipado' : item.rarityClass}</Text>
+              <Text variant="body" weight="semibold">
+                {item.displayText}
+              </Text>
+              <Chip label={isEquipped ? 'Equipado' : item.rarityClass} variant={isEquipped ? 'selected' : 'neutral'} />
             </Pressable>
           );
         })
@@ -110,12 +125,16 @@ export function TitlesSection() {
 
       {locked.length > 0 ? (
         <View style={styles.lockedSection}>
-          <Text style={styles.lockedTitle}>Bloqueados</Text>
+          <Text variant="caption" weight="bold" color="secondary" style={styles.lockedTitle}>
+            Bloqueados
+          </Text>
           {locked.map((item) => (
-            <View key={item.titleDefinitionId} style={styles.lockedRow}>
-              <Text style={styles.lockedName}>{item.displayText}</Text>
-              <Text style={styles.lockedRequirement}>{describeUnlockRequirements(item.unlockRequirements)}</Text>
-            </View>
+            <Card key={item.titleDefinitionId} variant="subtle" style={styles.lockedRow}>
+              <Text variant="bodySmall" weight="semibold" color="muted">
+                {item.displayText}
+              </Text>
+              <Chip label={describeUnlockRequirements(item.unlockRequirements)} variant="disabled" />
+            </Card>
           ))}
         </View>
       ) : null}
@@ -126,9 +145,7 @@ export function TitlesSection() {
 function createStyles(t: ThemeTokens) {
   return {
     container: { gap: 8 },
-    title: { fontSize: 18, fontWeight: '700' as const, color: t.color.text.primary },
-    equipError: { fontSize: 13, color: t.color.state.error.text },
-    emptyMessage: { fontSize: 13, color: t.color.text.muted, paddingVertical: 6 },
+    emptyMessage: { paddingVertical: 6 },
     optionRow: {
       flexDirection: 'row' as const,
       justifyContent: 'space-between' as const,
@@ -141,20 +158,8 @@ function createStyles(t: ThemeTokens) {
       paddingHorizontal: 12,
     },
     optionRowActive: { backgroundColor: t.color.accent.subtleBg, borderColor: t.color.accent.default },
-    optionName: { fontSize: 14, color: t.color.text.primary, fontWeight: '600' as const },
-    optionMeta: { fontSize: 12, color: t.color.text.muted },
     lockedSection: { gap: 6, marginTop: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: t.color.border.default },
-    lockedTitle: { fontSize: 13, fontWeight: '700' as const, color: t.color.text.secondary, textTransform: 'uppercase' as const },
-    lockedRow: {
-      backgroundColor: t.color.action.disabledBackground,
-      borderWidth: 1,
-      borderColor: t.color.action.disabledBorder,
-      borderRadius: 10,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      gap: 2,
-    },
-    lockedName: { fontSize: 13, fontWeight: '600' as const, color: t.color.action.disabledText },
-    lockedRequirement: { fontSize: 11, color: t.color.action.disabledText },
+    lockedTitle: { textTransform: 'uppercase' as const },
+    lockedRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, gap: 8 },
   };
 }

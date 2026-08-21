@@ -2,7 +2,7 @@ import { Image, View } from 'react-native';
 import type { CompetitiveEquippedTitle, CompetitiveEquippedCosmetic } from '@axioma/contracts';
 import { useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
-import { Text } from '../ui';
+import { Text, Avatar } from '../ui';
 
 /**
  * Cabecera de identidad competitiva -- compartida entre el perfil PROPIO
@@ -39,12 +39,13 @@ export function CompetitiveIdentityHeader({
 
   return (
     <View style={styles.container}>
-      {banner ? <Image source={{ uri: banner }} style={styles.banner} resizeMode="cover" accessibilityLabel="Banner de perfil" /> : null}
+      {banner ? (
+        <Image source={{ uri: banner }} style={styles.banner} resizeMode="cover" accessibilityLabel="Banner de perfil" />
+      ) : (
+        <View style={styles.bannerPlaceholder} />
+      )}
       <View style={styles.identityRow}>
-        <View style={styles.avatarWrapper}>
-          {avatar ? <Image source={{ uri: avatar }} style={styles.avatar} resizeMode="cover" /> : <View style={styles.avatarPlaceholder} />}
-          {frame ? <Image source={{ uri: frame.assetReference }} style={styles.avatarFrame} resizeMode="contain" accessibilityLabel={`Marco: ${frame.name}`} /> : null}
-        </View>
+        <Avatar avatarUri={avatar} frameUri={frame?.assetReference} size="hero" accessibilityLabel={`Avatar de ${username}`} />
         <View style={styles.info}>
           {/*
             `username` del backend NUNCA incluye "@" (verificado contra
@@ -69,32 +70,13 @@ export function CompetitiveIdentityHeader({
   );
 }
 
-/**
- * Avatar "hero" de perfil propio -- 96x96. UI-1 no definió variantes de
- * tamaño de avatar (no existe un componente `Avatar` en `components/ui/`);
- * 96 es una aproximación razonable frente a los 56x56 anteriores para
- * acercarse a `14-perfil-consolidado-APROBADA.png` (avatar notablemente
- * más grande que el resto de usos de este mismo header en perfil de
- * terceros/preview) -- ver UI-3 Implementation Report.
- */
-const AVATAR_SIZE = 96;
-
 function createStyles(t: ThemeTokens) {
   return {
     container: { gap: 12 },
     banner: { width: '100%' as const, height: 96, borderRadius: 14, backgroundColor: t.color.background.surface },
+    /** Placeholder neutral cuando `banner` es `null` -- mismo contenedor vacío, nunca una imagen inventada (UI-5, criterio A.2). */
+    bannerPlaceholder: { width: '100%' as const, height: 96, borderRadius: 14, backgroundColor: t.color.accent.subtleBg },
     identityRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12 },
-    avatarWrapper: { width: AVATAR_SIZE, height: AVATAR_SIZE },
-    avatar: { width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2 },
-    avatarPlaceholder: {
-      width: AVATAR_SIZE,
-      height: AVATAR_SIZE,
-      borderRadius: AVATAR_SIZE / 2,
-      borderWidth: 1,
-      borderColor: t.color.border.default,
-      backgroundColor: t.color.background.surface,
-    },
-    avatarFrame: { position: 'absolute' as const, top: -8, left: -8, width: AVATAR_SIZE + 16, height: AVATAR_SIZE + 16 },
     info: { gap: 2 },
   };
 }

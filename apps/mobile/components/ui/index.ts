@@ -1,6 +1,9 @@
 export { Text } from './text';
 export type { TextProps, TextColorToken } from './text';
 
+export { Avatar } from './avatar';
+export type { AvatarProps, AvatarSize } from './avatar';
+
 export { AnswerOption } from './answer-option';
 export type { AnswerOptionProps, AnswerOptionState } from './answer-option';
 
