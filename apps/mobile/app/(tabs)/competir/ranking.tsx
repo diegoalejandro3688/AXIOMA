@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Text, Pressable, View } from 'react-native';
+import { FlatList, Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { LeaderboardRow } from '@axioma/contracts';
 import { getLeaderboardPage } from '../../../lib/api/competitive';
@@ -7,7 +7,8 @@ import { mergeLeaderboardPages, describeMyPosition } from '../../../lib/leaderbo
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
 import { EmptyState } from '../../../components/empty-state';
-import { useThemedStyles } from '../../../theme';
+import { Text, Card, Button } from '../../../components/ui';
+import { useThemedStyles, radii } from '../../../theme';
 import type { ThemeTokens } from '../../../theme';
 
 type ScreenState =
@@ -99,18 +100,28 @@ export default function RankingScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.myPositionCard}>
-        <Text style={styles.myPositionTitle}>Tu posición</Text>
+      <Card variant="brand" style={styles.myPositionCard}>
+        <Text variant="caption" weight="bold" color="onInverse" style={styles.myPositionTitle}>
+          Tu posición
+        </Text>
         {myPosition.kind === 'pending' ? (
-          <Text style={styles.myPositionPending}>Actualizando tu posición…</Text>
+          <Text variant="body" color="onInverse">
+            Actualizando tu posición…
+          </Text>
         ) : (
           <>
-            <Text style={styles.myPositionLeague}>{myPosition.leagueName}</Text>
-            <Text style={styles.myPositionRank}>Posición #{myPosition.rankPosition}</Text>
-            <Text style={styles.myPositionPoints}>{myPosition.metricValue} puntos de liga</Text>
+            <Text variant="heading2" color="onInverse">
+              {myPosition.leagueName}
+            </Text>
+            <Text variant="titleMedium" color="onInverse">
+              Posición #{myPosition.rankPosition}
+            </Text>
+            <Text variant="caption" color="onInverse">
+              {myPosition.metricValue} puntos de liga
+            </Text>
           </>
         )}
-      </View>
+      </Card>
 
       {state.entries.length === 0 ? (
         <EmptyState message="Todavía no hay participantes en tu grupo." />
@@ -122,17 +133,20 @@ export default function RankingScreen() {
           renderItem={({ item }) => <LeaderboardRowCard row={item} styles={styles} router={router} />}
           ListFooterComponent={
             <View style={styles.footer}>
-              {state.loadMoreError ? <Text style={styles.loadMoreError}>{state.loadMoreError}</Text> : null}
+              {state.loadMoreError ? (
+                <Text variant="bodySmall" color="error" style={styles.loadMoreError}>
+                  {state.loadMoreError}
+                </Text>
+              ) : null}
               {state.nextCursor !== null ? (
-                <Pressable
-                  accessibilityRole="button"
+                <Button
+                  variant="secondary"
+                  label="Ver más"
                   accessibilityLabel="Ver más"
                   onPress={handleLoadMore}
                   disabled={state.loadingMore}
-                  style={[styles.loadMoreButton, state.loadingMore && styles.loadMoreButtonDisabled]}
-                >
-                  {state.loadingMore ? <ActivityIndicator /> : <Text style={styles.loadMoreButtonText}>Ver más</Text>}
-                </Pressable>
+                  loading={state.loadingMore}
+                />
               ) : null}
             </View>
           }
@@ -158,11 +172,17 @@ function LeaderboardRowCard({ row, styles, router }: { row: LeaderboardRow; styl
 
   if (!row.presentable) {
     return (
-      <View style={[styles.row, highlight && styles.rowHighlighted]}>
-        <Text style={styles.rankPosition}>#{row.rankPosition}</Text>
-        <Text style={styles.redactedLabel}>Perfil privado</Text>
-        <Text style={styles.metricValue}>{row.metricValue}</Text>
-      </View>
+      <Card variant="outlined" style={[styles.row, highlight && styles.rowHighlighted]}>
+        <Text variant="titleMedium" weight="bold" color="secondary" style={styles.rankPosition}>
+          #{row.rankPosition}
+        </Text>
+        <Text variant="body" color="muted" style={styles.redactedLabel}>
+          Perfil privado
+        </Text>
+        <Text variant="titleMedium" weight="bold">
+          {row.metricValue}
+        </Text>
+      </Card>
     );
   }
 
@@ -173,13 +193,25 @@ function LeaderboardRowCard({ row, styles, router }: { row: LeaderboardRow; styl
       onPress={() => router.push({ pathname: '/(tabs)/competir/perfil/[username]', params: { username: row.username } })}
       style={[styles.row, highlight && styles.rowHighlighted]}
     >
-      <Text style={styles.rankPosition}>#{row.rankPosition}</Text>
+      <Text variant="titleMedium" weight="bold" color="secondary" style={styles.rankPosition}>
+        #{row.rankPosition}
+      </Text>
       <View style={styles.rowInfo}>
-        <Text style={styles.username}>{row.username}</Text>
-        {row.equippedTitle ? <Text style={styles.equippedTitle}>{row.equippedTitle.displayText}</Text> : null}
-        <Text style={styles.levelNumber}>Nivel {row.levelNumber}</Text>
+        <Text variant="titleMedium" weight="semibold">
+          {row.username}
+        </Text>
+        {row.equippedTitle ? (
+          <Text variant="bodySmall" color="secondary">
+            {row.equippedTitle.displayText}
+          </Text>
+        ) : null}
+        <Text variant="caption" color="muted">
+          Nivel {row.levelNumber}
+        </Text>
       </View>
-      <Text style={styles.metricValue}>{row.metricValue}</Text>
+      <Text variant="titleMedium" weight="bold">
+        {row.metricValue}
+      </Text>
     </Pressable>
   );
 }
@@ -187,40 +219,24 @@ function LeaderboardRowCard({ row, styles, router }: { row: LeaderboardRow; styl
 function createStyles(t: ThemeTokens) {
   return {
     container: { flex: 1, padding: 16, gap: 12, backgroundColor: t.color.background.default },
-    myPositionCard: {
-      backgroundColor: t.color.background.inverse,
-      borderRadius: 14,
-      padding: 16,
-      gap: 4,
-    },
-    myPositionTitle: { fontSize: 13, fontWeight: '700' as const, color: t.color.text.onInverse, textTransform: 'uppercase' as const },
-    myPositionPending: { fontSize: 14, color: t.color.text.onInverse },
-    myPositionLeague: { fontSize: 18, fontWeight: '700' as const, color: t.color.text.onInverse },
-    myPositionRank: { fontSize: 15, color: t.color.text.onInverse },
-    myPositionPoints: { fontSize: 13, color: t.color.text.onInverse },
+    myPositionCard: { gap: 4 },
+    myPositionTitle: { textTransform: 'uppercase' as const },
     list: { gap: 8, paddingBottom: 24 },
     row: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
       gap: 12,
-      backgroundColor: t.color.background.surface,
+      borderRadius: radii.large,
       borderWidth: 1,
       borderColor: t.color.border.default,
-      borderRadius: 12,
-      padding: 12,
+      backgroundColor: t.color.background.surface,
+      padding: 16,
     },
-    rowHighlighted: { borderColor: t.color.accent.default, backgroundColor: t.color.accent.subtleBg },
-    rankPosition: { fontSize: 15, fontWeight: '700' as const, color: t.color.text.secondary, minWidth: 36 },
     rowInfo: { flex: 1, gap: 2 },
-    username: { fontSize: 15, fontWeight: '600' as const, color: t.color.text.primary },
-    equippedTitle: { fontSize: 12, color: t.color.text.secondary },
-    levelNumber: { fontSize: 12, color: t.color.text.muted },
-    redactedLabel: { flex: 1, fontSize: 14, color: t.color.text.muted, fontStyle: 'italic' as const },
-    metricValue: { fontSize: 15, fontWeight: '700' as const, color: t.color.text.primary },
+    rowHighlighted: { borderColor: t.color.accent.default, backgroundColor: t.color.accent.subtleBg },
+    rankPosition: { minWidth: 36 },
+    redactedLabel: { flex: 1, fontStyle: 'italic' as const },
     footer: { gap: 8, paddingTop: 8, alignItems: 'center' as const },
-    loadMoreError: { fontSize: 13, color: t.color.state.error.text, textAlign: 'center' as const },
-    loadMoreButton: { backgroundColor: t.color.accent.default, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 8, alignItems: 'center' as const },
-    loadMoreButtonDisabled: { opacity: 0.5 },
-    loadMoreButtonText: { color: t.color.text.onAccent, fontWeight: '700' as const },
+    loadMoreError: { textAlign: 'center' as const },
   };
 }

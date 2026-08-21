@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import type { AiAssistanceMode, AiConversationDetailResponse, AiResponseReportType } from '@axioma/contracts';
@@ -13,6 +13,7 @@ import { AiDisclaimer } from '../../../../components/ai/ai-disclaimer';
 import { AiModeSelector } from '../../../../components/ai/ai-mode-selector';
 import { LoadingState } from '../../../../components/loading-state';
 import { ErrorState } from '../../../../components/error-state';
+import { Text, Button } from '../../../../components/ui';
 import { useTheme, useThemedStyles } from '../../../../theme';
 import type { ThemeTokens } from '../../../../theme';
 
@@ -156,7 +157,7 @@ export default function AiConversationScreen() {
       <View style={styles.header}>
         <AiQuotaSummary dailyQuota={detail.dailyQuota} turnCount={detail.turnCount} maxTurns={detail.maxTurns} />
         {detail.academicContext ? (
-          <Text style={styles.context}>
+          <Text variant="caption" color="secondary">
             Contexto: {detail.academicContext.subjectName} · {detail.academicContext.topicName}
           </Text>
         ) : null}
@@ -171,8 +172,12 @@ export default function AiConversationScreen() {
       >
         {detail.messages.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyTitle}>Conversación nueva</Text>
-            <Text style={styles.emptyText}>Escribe tu duda para empezar. El Tutor te ayuda a comprender, no reemplaza tu práctica.</Text>
+            <Text variant="titleMedium" weight="bold">
+              Conversación nueva
+            </Text>
+            <Text variant="bodySmall" color="secondary" style={styles.emptyText}>
+              Escribe tu duda para empezar. El Tutor te ayuda a comprender, no reemplaza tu práctica.
+            </Text>
           </View>
         ) : (
           detail.messages.map((message) => (
@@ -183,7 +188,9 @@ export default function AiConversationScreen() {
         {sending ? (
           <View style={styles.thinking}>
             <ActivityIndicator size="small" color={tokens.color.accent.default} />
-            <Text style={styles.thinkingText}>El Tutor está preparando su respuesta…</Text>
+            <Text variant="caption" color="secondary">
+              El Tutor está preparando su respuesta…
+            </Text>
           </View>
         ) : null}
       </ScrollView>
@@ -202,18 +209,30 @@ export default function AiConversationScreen() {
           ]}
           accessibilityRole="alert"
         >
-          <Text style={sendState.outcome.kind === 'safety_blocked' ? styles.noticeSafetyText : styles.noticeErrorText}>{sendState.outcome.message}</Text>
+          <Text
+            variant="bodySmall"
+            style={sendState.outcome.kind === 'safety_blocked' ? styles.noticeSafetyText : styles.noticeErrorText}
+          >
+            {sendState.outcome.message}
+          </Text>
           {sendState.retryable && pending ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Reintentar envío" onPress={() => submit(pending.content)} disabled={sending}>
-              <Text style={styles.retryText}>Reintentar</Text>
-            </Pressable>
+            <Button
+              variant="tertiary"
+              label="Reintentar"
+              accessibilityLabel="Reintentar envío"
+              onPress={() => submit(pending.content)}
+              disabled={sending}
+              style={styles.retryButton}
+            />
           ) : null}
         </View>
       ) : null}
 
       {!availability.canSend ? (
         <View style={styles.blockedBox} accessibilityRole="alert">
-          <Text style={styles.blockedText}>{availability.message}</Text>
+          <Text variant="bodySmall" style={styles.blockedText}>
+            {availability.message}
+          </Text>
         </View>
       ) : null}
 
@@ -233,15 +252,15 @@ export default function AiConversationScreen() {
             maxLength={4000}
             style={[styles.input, inputDisabled && styles.inputDisabled]}
           />
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="primary"
+            label="Enviar"
             accessibilityLabel="Enviar mensaje"
             onPress={() => submit(draft)}
             disabled={inputDisabled || !draft.trim()}
-            style={[styles.sendButton, (inputDisabled || !draft.trim()) && styles.buttonDisabled]}
-          >
-            {sending ? <ActivityIndicator color={tokens.color.text.onInverse} /> : <Text style={styles.sendButtonText}>Enviar</Text>}
-          </Pressable>
+            loading={sending}
+            style={styles.sendButton}
+          />
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -252,7 +271,6 @@ function createStyles(t: ThemeTokens) {
   return {
     container: { flex: 1, backgroundColor: t.color.background.default },
     header: { gap: 8, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
-    context: { fontSize: 12, color: t.color.text.secondary },
     messages: { flex: 1 },
     messagesContent: { gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
     emptyBox: {
@@ -263,16 +281,14 @@ function createStyles(t: ThemeTokens) {
       borderRadius: 12,
       padding: 16,
     },
-    emptyTitle: { fontSize: 15, fontWeight: '700' as const, color: t.color.text.primary },
-    emptyText: { fontSize: 13, color: t.color.text.secondary, lineHeight: 19 },
+    emptyText: { lineHeight: 19 },
     thinking: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
-    thinkingText: { fontSize: 12, color: t.color.text.secondary },
     notice: { marginHorizontal: 16, marginBottom: 8, borderWidth: 1, borderRadius: 8, padding: 10, gap: 6 },
     noticeError: { backgroundColor: t.color.state.error.background, borderColor: t.color.state.error.border },
-    noticeErrorText: { fontSize: 13, color: t.color.state.error.text },
+    noticeErrorText: { color: t.color.state.error.text },
     noticeSafety: { backgroundColor: t.color.state.warning.background, borderColor: t.color.state.warning.border },
-    noticeSafetyText: { fontSize: 13, color: t.color.state.warning.text },
-    retryText: { fontSize: 13, color: t.color.accent.strong, fontWeight: '600' as const },
+    noticeSafetyText: { color: t.color.state.warning.text },
+    retryButton: { alignSelf: 'flex-start' as const },
     blockedBox: {
       marginHorizontal: 16,
       marginBottom: 8,
@@ -282,7 +298,7 @@ function createStyles(t: ThemeTokens) {
       borderRadius: 8,
       padding: 10,
     },
-    blockedText: { fontSize: 13, color: t.color.state.warning.text },
+    blockedText: { color: t.color.state.warning.text },
     composer: {
       gap: 8,
       paddingHorizontal: 16,
@@ -307,15 +323,6 @@ function createStyles(t: ThemeTokens) {
       fontSize: 15,
     },
     inputDisabled: { backgroundColor: t.color.action.disabledBackground, color: t.color.action.disabledText },
-    sendButton: {
-      backgroundColor: t.color.background.inverse,
-      borderRadius: 10,
-      paddingVertical: 12,
-      paddingHorizontal: 18,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-    },
-    sendButtonText: { color: t.color.text.onInverse, fontWeight: '600' as const, fontSize: 14 },
-    buttonDisabled: { opacity: 0.5 },
+    sendButton: { minWidth: 88 },
   };
 }

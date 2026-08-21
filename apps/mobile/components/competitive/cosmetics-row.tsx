@@ -1,5 +1,6 @@
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 import type { CompetitiveEquippedCosmetic } from '@axioma/contracts';
+import { Chip } from '../ui';
 import { useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
@@ -15,18 +16,14 @@ export function CompetitiveCosmeticsRow({ equippedCosmetics }: { equippedCosmeti
   return (
     <View style={styles.container}>
       {equippedCosmetics.map((item) => (
-        <View key={item.itemKey} style={styles.chip}>
-          <Text style={styles.chipText}>{item.name}</Text>
-        </View>
+        <Chip key={item.itemKey} label={item.name} variant="neutral" />
       ))}
     </View>
   );
 }
 
-function createStyles(t: ThemeTokens) {
+function createStyles(_t: ThemeTokens) {
   return {
     container: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 },
-    chip: { backgroundColor: t.color.background.surface, borderWidth: 1, borderColor: t.color.border.default, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 12 },
-    chipText: { fontSize: 12, color: t.color.text.secondary },
   };
 }

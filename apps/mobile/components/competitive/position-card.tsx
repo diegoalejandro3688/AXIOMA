@@ -1,8 +1,8 @@
-import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { CompetitiveContext } from '@axioma/contracts';
 import { describeMyPosition } from '../../lib/leaderboard/paginate-leaderboard';
 import { describePositionCardEmptyState, type PositionCardVariant } from '../../lib/competitive/position-card-copy';
+import { Text, Card, Button } from '../ui';
 import { useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
@@ -22,39 +22,41 @@ export function CompetitivePositionCard({ competitive, variant }: { competitive:
   if (view.kind === 'pending') {
     const empty = describePositionCardEmptyState(variant);
     return (
-      <View style={styles.card}>
-        <Text style={styles.emptyMessage}>{empty.message}</Text>
+      <Card variant="brand" style={styles.card}>
+        <Text variant="body" color="onInverse">
+          {empty.message}
+        </Text>
         {empty.showAction ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Ir a Competir" onPress={() => router.push('/(tabs)/competir')} style={styles.actionButton}>
-            <Text style={styles.actionButtonText}>Ir a Competir</Text>
-          </Pressable>
+          <Button
+            variant="primary"
+            label="Ir a Competir"
+            accessibilityLabel="Ir a Competir"
+            onPress={() => router.push('/(tabs)/competir')}
+            style={styles.actionButton}
+          />
         ) : null}
-      </View>
+      </Card>
     );
   }
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.league}>{view.leagueName}</Text>
-      <Text style={styles.rank}>Posición #{view.rankPosition}</Text>
-      <Text style={styles.points}>{view.metricValue} puntos de liga</Text>
-    </View>
+    <Card variant="brand" style={styles.card}>
+      <Text variant="titleMedium" weight="bold" color="onInverse">
+        {view.leagueName}
+      </Text>
+      <Text variant="body" color="onInverse">
+        Posición #{view.rankPosition}
+      </Text>
+      <Text variant="caption" color="onInverse">
+        {view.metricValue} puntos de liga
+      </Text>
+    </Card>
   );
 }
 
-function createStyles(t: ThemeTokens) {
+function createStyles(_t: ThemeTokens) {
   return {
-    card: {
-      backgroundColor: t.color.background.inverse,
-      borderRadius: 14,
-      padding: 16,
-      gap: 4,
-    },
-    emptyMessage: { fontSize: 14, color: t.color.text.onInverse },
-    actionButton: { marginTop: 8, alignSelf: 'flex-start' as const, backgroundColor: t.color.accent.default, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8 },
-    actionButtonText: { color: t.color.text.onAccent, fontWeight: '700' as const },
-    league: { fontSize: 16, fontWeight: '700' as const, color: t.color.text.onInverse },
-    rank: { fontSize: 14, color: t.color.text.onInverse },
-    points: { fontSize: 13, color: t.color.text.onInverse },
+    card: { gap: 4 },
+    actionButton: { marginTop: 8, alignSelf: 'flex-start' as const },
   };
 }

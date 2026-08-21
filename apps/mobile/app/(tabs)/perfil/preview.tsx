@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 import type { CompetitiveProfileResponse } from '@axioma/contracts';
 import { getMyProfilePreview } from '../../../lib/api/preview';
 import { PublicProfileView } from '../../../components/competitive/public-profile-view';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
+import { Text } from '../../../components/ui';
 import { useThemedStyles } from '../../../theme';
 import type { ThemeTokens } from '../../../theme';
 
@@ -60,10 +61,10 @@ export default function PublicProfilePreviewScreen() {
   if (state.status === 'not_presentable') {
     return (
       <View style={styles.notPresentableContainer}>
-        <Text style={styles.notPresentableTitle} accessibilityRole="header">
+        <Text variant="titleMedium" weight="bold" accessibilityRole="header" style={styles.notPresentableTitle}>
           Así te ven ahora mismo otros usuarios
         </Text>
-        <Text style={styles.notPresentableMessage}>
+        <Text variant="body" color="secondary" style={styles.notPresentableMessage}>
           Tu perfil no es visible públicamente en este momento, así que otras personas no pueden verlo. Esto es exactamente lo que verían.
         </Text>
       </View>
@@ -76,7 +77,7 @@ export default function PublicProfilePreviewScreen() {
 function createStyles(t: ThemeTokens) {
   return {
     notPresentableContainer: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, padding: 24, gap: 8, backgroundColor: t.color.background.default },
-    notPresentableTitle: { fontSize: 17, fontWeight: '700' as const, color: t.color.text.primary, textAlign: 'center' as const },
-    notPresentableMessage: { fontSize: 14, color: t.color.text.secondary, textAlign: 'center' as const },
+    notPresentableTitle: { textAlign: 'center' as const },
+    notPresentableMessage: { textAlign: 'center' as const },
   };
 }

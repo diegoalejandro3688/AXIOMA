@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Platform, ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { QuestionResponse, TopicProgressResponse } from '@axioma/contracts';
@@ -11,8 +11,9 @@ import { LoadingState } from '../../../../../components/loading-state';
 import { ErrorState } from '../../../../../components/error-state';
 import { EmptyState } from '../../../../../components/empty-state';
 import { ContentBlockRenderer } from '../../../../../components/content-block-renderer';
-import { IconButton } from '../../../../../components/ui';
-import { useThemedStyles, spacing, radii } from '../../../../../theme';
+import { IconButton, Text, Button, AnswerOption, Icon } from '../../../../../components/ui';
+import type { AnswerOptionState } from '../../../../../components/ui';
+import { useTheme, useThemedStyles, spacing, radii } from '../../../../../theme';
 import type { ThemeTokens } from '../../../../../theme';
 
 /** `isCorrect: null` = respondida localmente, pendiente de confirmación del servidor (ver ADR-0014, punto 5). */
@@ -40,6 +41,7 @@ export default function EjercicioScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(createStyles);
+  const tokens = useTheme();
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
   const [displayedQuestionVersionId, setDisplayedQuestionVersionId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
@@ -155,15 +157,15 @@ export default function EjercicioScreen() {
     return (
       <View style={[styles.completedScreen, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
         <View style={styles.completedBadge}>
-          <Text style={styles.completedIcon}>✓</Text>
+          <Icon name="check" size={28} color={tokens.color.state.success.text} />
         </View>
-        <Text style={styles.completedTitle} accessibilityRole="header">
+        <Text variant="heading2" accessibilityRole="header">
           Unidad completada
         </Text>
-        <Text style={styles.completedMessage}>Respondiste todas las preguntas de esta unidad.</Text>
-        <Pressable accessibilityRole="button" style={styles.continueButton} onPress={backToUnidades}>
-          <Text style={styles.continueButtonText}>Volver a Unidades</Text>
-        </Pressable>
+        <Text variant="body" color="secondary" style={styles.completedMessage}>
+          Respondiste todas las preguntas de esta unidad.
+        </Text>
+        <Button variant="primary" label="Volver a Unidades" onPress={backToUnidades} style={styles.completedButton} />
       </View>
     );
   }
@@ -190,43 +192,50 @@ export default function EjercicioScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.questionNumber}>Pregunta {questionIndex + 1}</Text>
+        <Text variant="caption" color="secondary" style={styles.questionNumber}>
+          Pregunta {questionIndex + 1}
+        </Text>
         <ContentBlockRenderer blocks={currentQuestion.stemContent} />
 
-        {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
+        {submitError ? (
+          <Text variant="bodySmall" color="error">
+            {submitError}
+          </Text>
+        ) : null}
 
         <View style={styles.options}>
           {currentQuestion.answerOptions.map((option, optionIndex) => {
             const isSelected = answered?.answerOptionId === option.id;
+            let optionState: AnswerOptionState = 'default';
+            if (isSelected && answered?.isCorrect === true) optionState = 'correct';
+            else if (isSelected && answered?.isCorrect === false) optionState = 'incorrect';
+            else if (isSelected && answered?.isCorrect === null) optionState = 'submitting';
+            else if (submitting && isSelected) optionState = 'submitting';
+
             return (
-              <Pressable
+              <AnswerOption
                 key={option.id}
-                accessibilityRole="button"
-                accessibilityLabel={`Alternativa ${String.fromCharCode(65 + optionIndex)}`}
+                label={String.fromCharCode(65 + optionIndex)}
+                state={optionState}
                 disabled={isAnswered || submitting}
+                accessibilityLabel={`Alternativa ${String.fromCharCode(65 + optionIndex)}`}
                 onPress={() => handleSelect(currentQuestion, option.id)}
-                style={[
-                  styles.option,
-                  isSelected && answered?.isCorrect === true && styles.optionCorrect,
-                  isSelected && answered?.isCorrect === false && styles.optionIncorrect,
-                  isSelected && answered?.isCorrect === null && styles.optionPending,
-                ]}
               >
-                <Text style={styles.optionLetter}>{String.fromCharCode(65 + optionIndex)})</Text>
                 <ContentBlockRenderer blocks={[option.content]} />
-                {submitting && isSelected ? <ActivityIndicator size="small" /> : null}
-              </Pressable>
+              </AnswerOption>
             );
           })}
         </View>
 
         {answered && answered.isCorrect === null ? (
-          <Text style={styles.pendingNote}>Guardada localmente -- pendiente de sincronizar.</Text>
+          <Text variant="caption" color="secondary" style={styles.pendingNote}>
+            Guardada localmente -- pendiente de sincronizar.
+          </Text>
         ) : null}
 
         {answered && answered.isCorrect !== null ? (
           <View style={[styles.feedback, answered.isCorrect ? styles.feedbackCorrect : styles.feedbackIncorrect]}>
-            <Text style={answered.isCorrect ? styles.feedbackTextCorrect : styles.feedbackTextIncorrect}>
+            <Text weight="bold" color={answered.isCorrect ? 'success' : 'error'}>
               {answered.isCorrect ? 'Correcto' : 'Incorrecto'}
             </Text>
             <ContentBlockRenderer blocks={currentQuestion.explanationContent} />
@@ -241,22 +250,20 @@ export default function EjercicioScreen() {
               retroalimentación ya está revelada), sin alterar en nada el
               flujo del ejercicio.
             */}
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="tertiary"
+              icon="ai"
+              label="Preguntar al Tutor IA"
               accessibilityLabel="Preguntar al Tutor IA sobre esta pregunta"
               onPress={() => router.push({ pathname: '/(tabs)/ia', params: { contextQuestionVersionId: currentQuestion.versionId } })}
               style={styles.tutorButton}
-            >
-              <Text style={styles.tutorButtonText}>Preguntar al Tutor IA</Text>
-            </Pressable>
+            />
           </View>
         ) : null}
       </ScrollView>
 
       {answered && answered.isCorrect !== null ? (
-        <Pressable accessibilityRole="button" style={styles.continueButton} onPress={handleContinue}>
-          <Text style={styles.continueButtonText}>Continuar</Text>
-        </Pressable>
+        <Button variant="primary" label="Continuar" onPress={handleContinue} style={styles.continueButton} />
       ) : null}
     </View>
   );
@@ -271,44 +278,13 @@ function createStyles(t: ThemeTokens) {
     progressSegmentDone: { backgroundColor: t.color.accent.default },
     progressSegmentPending: { backgroundColor: t.color.border.default },
     content: { gap: 14, paddingBottom: 24 },
-    questionNumber: {
-      fontSize: 12,
-      color: t.color.text.secondary,
-      textTransform: 'uppercase' as const,
-      letterSpacing: 0.5,
-    },
-    submitError: { color: t.color.state.error.text, fontSize: 13 },
+    questionNumber: { textTransform: 'uppercase' as const, letterSpacing: 0.5 },
     options: { gap: 10 },
-    option: {
-      flexDirection: 'row' as const,
-      gap: 8,
-      alignItems: 'center' as const,
-      padding: 14,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: t.color.border.default,
-      backgroundColor: t.color.background.surface,
-    },
-    optionCorrect: { backgroundColor: t.color.state.success.background, borderColor: t.color.state.success.border },
-    optionIncorrect: { backgroundColor: t.color.state.error.background, borderColor: t.color.state.error.border },
-    optionPending: { backgroundColor: t.color.state.warning.background, borderColor: t.color.state.warning.border },
-    optionLetter: { fontWeight: '700' as const, color: t.color.text.primary },
-    pendingNote: { fontSize: 12, color: t.color.state.warning.text, fontStyle: 'italic' as const },
+    pendingNote: { fontStyle: 'italic' as const },
     feedback: { gap: 8, borderRadius: 12, borderWidth: 1, padding: 14 },
     feedbackCorrect: { backgroundColor: t.color.state.success.background, borderColor: t.color.state.success.border },
     feedbackIncorrect: { backgroundColor: t.color.state.error.background, borderColor: t.color.state.error.border },
-    feedbackTextCorrect: { color: t.color.state.success.text, fontWeight: '700' as const },
-    feedbackTextIncorrect: { color: t.color.state.error.text, fontWeight: '700' as const },
-    tutorButton: {
-      alignSelf: 'flex-start' as const,
-      borderWidth: 1,
-      borderColor: t.color.accent.default,
-      borderRadius: 8,
-      paddingVertical: 8,
-      paddingHorizontal: 14,
-      marginTop: 4,
-    },
-    tutorButtonText: { color: t.color.accent.strong, fontWeight: '600' as const, fontSize: 13 },
+    tutorButton: { alignSelf: 'flex-start' as const, marginTop: 4 },
     completedScreen: {
       flex: 1,
       alignItems: 'center' as const,
@@ -325,17 +301,8 @@ function createStyles(t: ThemeTokens) {
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
     },
-    completedIcon: { fontSize: 28, color: t.color.state.success.text, fontWeight: '700' as const },
-    completedTitle: { fontSize: 19, fontWeight: '700' as const, color: t.color.text.primary },
-    completedMessage: { fontSize: 14, color: t.color.text.secondary, textAlign: 'center' as const },
-    continueButton: {
-      backgroundColor: t.color.background.inverse,
-      borderRadius: 10,
-      paddingVertical: 14,
-      paddingHorizontal: 24,
-      alignItems: 'center' as const,
-      marginTop: 8,
-    },
-    continueButtonText: { color: t.color.text.onInverse, fontSize: 14, fontWeight: '500' as const },
+    completedMessage: { textAlign: 'center' as const },
+    completedButton: { marginTop: 8, alignSelf: 'stretch' as const },
+    continueButton: { marginTop: 8 },
   };
 }

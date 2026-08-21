@@ -1,6 +1,9 @@
 export { Text } from './text';
 export type { TextProps, TextColorToken } from './text';
 
+export { AnswerOption } from './answer-option';
+export type { AnswerOptionProps, AnswerOptionState } from './answer-option';
+
 export { Icon } from './icon';
 export type { IconProps, IconColorToken } from './icon';
 

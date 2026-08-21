@@ -1,13 +1,16 @@
-import { Pressable, Text, View } from 'react-native';
+import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useThemedStyles } from '../../../../theme';
+import { useThemedStyles, spacing } from '../../../../theme';
 import type { ThemeTokens } from '../../../../theme';
+import { Text, Card, ListRow, Chip, Icon } from '../../../../components/ui';
+import { subjectIcon } from '../index';
 
 /**
  * Detalle de materia -- 4 accesos del wireframe aprobado (Unidades, Recursos,
  * Práctica libre, Ensayo). Solo Unidades es funcional en Bloque IV; los otros
  * 3 se muestran deshabilitados con "Próximamente", sin navegación ni lógica
- * (aprobación de alcance explícita del usuario).
+ * (aprobación de alcance explícita del usuario -- ver UI-4 Gate 4, no
+ * activarlas).
  */
 export default function SubjectDetailScreen() {
   const { subjectId, name } = useLocalSearchParams<{ subjectId: string; name?: string }>();
@@ -21,32 +24,32 @@ export default function SubjectDetailScreen() {
     { key: 'ensayo', label: 'Ensayo', enabled: false },
   ];
 
+  // Mismo mapeo por nombre real de materia que Materias (UI-3) -- reutilizado
+  // desde `estudio/index.tsx` (exportado ahí), nunca duplicado.
+  const { icon } = subjectIcon(name ?? '');
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title} accessibilityRole="header">
+      <Text variant="heading2" accessibilityRole="header">
         {name ?? 'Materia'}
       </Text>
       <View style={styles.list}>
         {tiles.map((tile) => (
-          <Pressable
-            key={tile.key}
-            disabled={!tile.enabled}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !tile.enabled }}
-            accessibilityLabel={tile.enabled ? tile.label : `${tile.label}, próximamente`}
-            style={[styles.row, !tile.enabled && styles.rowDisabled]}
-            onPress={() =>
-              tile.enabled &&
-              router.push({ pathname: '/(tabs)/estudio/[subjectId]/unidades', params: { subjectId, name: name ?? '' } })
-            }
-          >
-            <Text style={[styles.rowLabel, !tile.enabled && styles.rowLabelDisabled]}>{tile.label}</Text>
-            {tile.enabled ? (
-              <Text style={styles.chevron}>›</Text>
-            ) : (
-              <Text style={styles.comingSoon}>Próximamente</Text>
-            )}
-          </Pressable>
+          <Card key={tile.key} variant="outlined" style={styles.card}>
+            <ListRow
+              title={tile.label}
+              leading={<Icon name={icon} size={20} color="secondary" />}
+              navigable={tile.enabled}
+              trailing={tile.enabled ? undefined : <Chip label="Próximamente" variant="disabled" />}
+              disabled={!tile.enabled}
+              accessibilityLabel={tile.enabled ? tile.label : `${tile.label}, próximamente`}
+              onPress={
+                tile.enabled
+                  ? () => router.push({ pathname: '/(tabs)/estudio/[subjectId]/unidades', params: { subjectId, name: name ?? '' } })
+                  : undefined
+              }
+            />
+          </Card>
         ))}
       </View>
     </View>
@@ -56,23 +59,7 @@ export default function SubjectDetailScreen() {
 function createStyles(t: ThemeTokens) {
   return {
     container: { flex: 1, padding: 16, gap: 16, backgroundColor: t.color.background.default },
-    title: { fontSize: 22, fontWeight: '700' as const, color: t.color.text.primary },
-    list: { gap: 10 },
-    row: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      justifyContent: 'space-between' as const,
-      backgroundColor: t.color.background.surface,
-      borderRadius: 12,
-      paddingVertical: 14,
-      paddingHorizontal: 16,
-      borderWidth: 1,
-      borderColor: t.color.border.default,
-    },
-    rowDisabled: { backgroundColor: t.color.action.disabledBackground, borderColor: t.color.action.disabledBorder },
-    rowLabel: { fontSize: 14, color: t.color.text.primary },
-    rowLabelDisabled: { color: t.color.action.disabledText },
-    chevron: { fontSize: 16, color: t.color.text.secondary },
-    comingSoon: { fontSize: 11, fontWeight: '500' as const, color: t.color.action.disabledText },
+    list: { gap: spacing.space2 },
+    card: { padding: 0, overflow: 'hidden' as const },
   };
 }

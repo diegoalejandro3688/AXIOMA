@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import type { CompetitiveProfileResponse } from '@axioma/contracts';
 import { getUserCompetitiveProfile } from '../../../../lib/api/competitive';
 import { PublicProfileView } from '../../../../components/competitive/public-profile-view';
 import { LoadingState } from '../../../../components/loading-state';
 import { ErrorState } from '../../../../components/error-state';
+import { Text } from '../../../../components/ui';
 import { useThemedStyles } from '../../../../theme';
 import type { ThemeTokens } from '../../../../theme';
 
@@ -58,7 +59,9 @@ export default function OtherCompetitiveProfileScreen() {
   if (state.status === 'not_found') {
     return (
       <View style={styles.notFoundContainer}>
-        <Text style={styles.notFoundMessage}>Este perfil no está disponible.</Text>
+        <Text variant="body" color="secondary" style={styles.notFoundMessage}>
+          Este perfil no está disponible.
+        </Text>
       </View>
     );
   }
@@ -69,6 +72,6 @@ export default function OtherCompetitiveProfileScreen() {
 function createStyles(t: ThemeTokens) {
   return {
     notFoundContainer: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, padding: 24, backgroundColor: t.color.background.default },
-    notFoundMessage: { fontSize: 14, color: t.color.text.secondary, textAlign: 'center' as const },
+    notFoundMessage: { textAlign: 'center' as const },
   };
 }

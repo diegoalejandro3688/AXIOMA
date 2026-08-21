@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import type { AiMessageResponse, AiResponseReportType } from '@axioma/contracts';
 import { REPORT_CATEGORY_OPTIONS, REPORT_SENT_MESSAGE } from '../../lib/ai/report-categories';
 import { describeAssistanceMode } from '../../lib/ai/assistance-modes';
+import { Text } from '../ui';
 import { useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
@@ -44,20 +45,32 @@ export function AiMessageBubble({
   return (
     <View style={[styles.row, isAssistant ? styles.rowAssistant : styles.rowUser]}>
       <View style={[styles.bubble, isAssistant ? styles.bubbleAssistant : styles.bubbleUser]}>
-        <Text style={styles.author}>{isAssistant ? 'Tutor IA' : 'Tú'}</Text>
-        <Text style={[styles.content, isAssistant ? styles.contentAssistant : styles.contentUser]}>{message.content}</Text>
-        {!isAssistant && message.requestedMode ? <Text style={styles.mode}>Modo: {describeAssistanceMode(message.requestedMode)}</Text> : null}
+        <Text variant="caption" color="muted" style={styles.author}>
+          {isAssistant ? 'Tutor IA' : 'Tú'}
+        </Text>
+        <Text variant="body" style={styles.content}>
+          {message.content}
+        </Text>
+        {!isAssistant && message.requestedMode ? (
+          <Text variant="caption" color="muted" style={styles.mode}>
+            Modo: {describeAssistanceMode(message.requestedMode)}
+          </Text>
+        ) : null}
       </View>
 
       {isAssistant && onReport ? (
         <View style={styles.reportArea}>
           {state.status === 'sent' ? (
-            <Text style={styles.reportSent}>{REPORT_SENT_MESSAGE}</Text>
+            <Text variant="caption" style={styles.reportSent}>
+              {REPORT_SENT_MESSAGE}
+            </Text>
           ) : state.status === 'sending' ? (
             <ActivityIndicator size="small" />
           ) : pickerOpen ? (
             <View style={styles.reportPicker}>
-              <Text style={styles.reportPickerTitle}>¿Qué problema tiene esta respuesta?</Text>
+              <Text variant="caption" color="secondary">
+                ¿Qué problema tiene esta respuesta?
+              </Text>
               <View style={styles.reportOptions}>
                 {REPORT_CATEGORY_OPTIONS.map((option) => (
                   <Pressable
@@ -67,20 +80,28 @@ export function AiMessageBubble({
                     onPress={() => handlePick(option.value)}
                     style={styles.reportOption}
                   >
-                    <Text style={styles.reportOptionText}>{option.label}</Text>
+                    <Text variant="caption">{option.label}</Text>
                   </Pressable>
                 ))}
               </View>
               <Pressable accessibilityRole="button" accessibilityLabel="Cancelar reporte" onPress={() => setPickerOpen(false)}>
-                <Text style={styles.reportCancel}>Cancelar</Text>
+                <Text variant="caption" style={styles.reportCancel}>
+                  Cancelar
+                </Text>
               </Pressable>
             </View>
           ) : (
             <Pressable accessibilityRole="button" accessibilityLabel="Reportar esta respuesta" onPress={() => setPickerOpen(true)}>
-              <Text style={styles.reportTrigger}>Reportar respuesta</Text>
+              <Text variant="caption" color="muted" style={styles.reportTrigger}>
+                Reportar respuesta
+              </Text>
             </Pressable>
           )}
-          {state.error ? <Text style={styles.reportError}>{state.error}</Text> : null}
+          {state.error ? (
+            <Text variant="caption" color="error">
+              {state.error}
+            </Text>
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -95,15 +116,12 @@ function createStyles(t: ThemeTokens) {
     bubble: { borderRadius: 12, borderWidth: 1, paddingVertical: 10, paddingHorizontal: 12, gap: 4 },
     bubbleAssistant: { backgroundColor: t.color.background.surface, borderColor: t.color.border.default },
     bubbleUser: { backgroundColor: t.color.accent.subtleBg, borderColor: t.color.accent.default },
-    author: { fontSize: 11, color: t.color.text.muted, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
-    content: { fontSize: 15, lineHeight: 21 },
-    contentAssistant: { color: t.color.text.primary },
-    contentUser: { color: t.color.text.primary },
-    mode: { fontSize: 11, color: t.color.text.muted, fontStyle: 'italic' as const },
+    author: { textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+    content: { color: t.color.text.primary },
+    mode: { fontStyle: 'italic' as const },
     reportArea: { gap: 4 },
-    reportTrigger: { fontSize: 12, color: t.color.text.muted, textDecorationLine: 'underline' as const },
-    reportSent: { fontSize: 12, color: t.color.state.success.text },
-    reportError: { fontSize: 12, color: t.color.state.error.text },
+    reportTrigger: { textDecorationLine: 'underline' as const },
+    reportSent: { color: t.color.state.success.text },
     reportPicker: {
       gap: 8,
       borderWidth: 1,
@@ -112,7 +130,6 @@ function createStyles(t: ThemeTokens) {
       borderRadius: 10,
       padding: 10,
     },
-    reportPickerTitle: { fontSize: 12, color: t.color.text.secondary },
     reportOptions: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6 },
     reportOption: {
       borderWidth: 1,
@@ -121,7 +138,6 @@ function createStyles(t: ThemeTokens) {
       paddingVertical: 5,
       paddingHorizontal: 10,
     },
-    reportOptionText: { fontSize: 12, color: t.color.text.primary },
-    reportCancel: { fontSize: 12, color: t.color.accent.strong },
+    reportCancel: { color: t.color.accent.strong },
   };
 }

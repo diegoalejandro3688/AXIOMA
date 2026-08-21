@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { FlatList, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { CurriculumTopicResponse, TopicProgressResponse } from '@axioma/contracts';
 import { listRootTopics } from '../../../../lib/api/education';
@@ -8,15 +8,25 @@ import { resolveContinuationEntry } from '../../../../lib/progress/resolve-conti
 import { LoadingState } from '../../../../components/loading-state';
 import { ErrorState } from '../../../../components/error-state';
 import { EmptyState } from '../../../../components/empty-state';
-import { useThemedStyles } from '../../../../theme';
+import { Text, Card, Chip } from '../../../../components/ui';
+import { useThemedStyles, spacing } from '../../../../theme';
 import type { ThemeTokens } from '../../../../theme';
+import type { ChipVariant } from '../../../../components/ui';
 
 type ScreenState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'ready'; topics: CurriculumTopicResponse[]; progressByTopic: Record<string, TopicProgressResponse> };
 
-/** Lista de unidades de una materia, con progreso real (PROGRESS, ADR-0014). Ver ADR-0015 (theming). */
+/**
+ * Lista de unidades de una materia, con progreso real (PROGRESS, ADR-0014).
+ * Ver ADR-0015 (theming). UI-4: rediseño puramente visual -- preserva
+ * exactamente `getTopicsProgressBatch()` (Progress Batch Fix, una sola
+ * solicitud batch para todos los temas raíz, NUNCA revertir al patrón
+ * N+1 `getTopicProgress` por tema) y el criterio de tema ausente del
+ * batch -> `NOT_STARTED` (`progress?.status ?? 'NOT_STARTED'` implícito
+ * en `topicStatusLabel`).
+ */
 export default function UnidadesScreen() {
   const { subjectId, name } = useLocalSearchParams<{ subjectId: string; name?: string }>();
   const router = useRouter();
@@ -73,7 +83,7 @@ export default function UnidadesScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title} accessibilityRole="header">
+      <Text variant="heading2" accessibilityRole="header">
         {name ?? 'Unidades'}
       </Text>
       <FlatList
@@ -84,17 +94,15 @@ export default function UnidadesScreen() {
           const progress = state.status === 'ready' ? state.progressByTopic[item.id] : undefined;
           const status = progress?.status ?? 'NOT_STARTED';
           return (
-            <Pressable
-              accessibilityRole="button"
+            <Card
+              variant="interactive"
               accessibilityLabel={`Abrir unidad ${item.name}, ${topicStatusLabel(status)}`}
               style={styles.topicCard}
               onPress={() => openTopic(item)}
             >
-              <Text style={styles.topicName}>{item.name}</Text>
-              <View style={[styles.statusBadge, statusBadgeStyle(status, styles)]}>
-                <Text style={[styles.statusText, statusTextStyle(status, styles)]}>{topicStatusLabel(status)}</Text>
-              </View>
-            </Pressable>
+              <Text variant="titleMedium">{item.name}</Text>
+              <Chip label={topicStatusLabel(status)} variant={statusChipVariant(status)} />
+            </Card>
           );
         }}
       />
@@ -113,39 +121,22 @@ function topicStatusLabel(status: TopicProgressResponse['status']): string {
   }
 }
 
-function statusBadgeStyle(status: TopicProgressResponse['status'], styles: ReturnType<typeof createStyles>) {
-  if (status === 'COMPLETED') return styles.statusBadgeSuccess;
-  if (status === 'IN_PROGRESS') return styles.statusBadgeInfo;
-  return styles.statusBadgeNeutral;
-}
-
-function statusTextStyle(status: TopicProgressResponse['status'], styles: ReturnType<typeof createStyles>) {
-  if (status === 'COMPLETED') return styles.statusTextSuccess;
-  if (status === 'IN_PROGRESS') return styles.statusTextInfo;
-  return styles.statusTextNeutral;
+/**
+ * `Chip` (UI-1) no tiene una variante "info" -- el original usaba
+ * `state.info` (azul) para IN_PROGRESS. Se usa `accent` (también azul) como
+ * la variante existente más cercana; documentado como desviación menor,
+ * mismo criterio que otras primitivas sin variante exacta en fases previas.
+ */
+function statusChipVariant(status: TopicProgressResponse['status']): ChipVariant {
+  if (status === 'COMPLETED') return 'success';
+  if (status === 'IN_PROGRESS') return 'accent';
+  return 'neutral';
 }
 
 function createStyles(t: ThemeTokens) {
   return {
     container: { flex: 1, padding: 16, gap: 16, backgroundColor: t.color.background.default },
-    title: { fontSize: 20, fontWeight: '700' as const, color: t.color.text.primary },
-    list: { gap: 10 },
-    topicCard: {
-      backgroundColor: t.color.background.surface,
-      borderWidth: 1,
-      borderColor: t.color.border.default,
-      borderRadius: 14,
-      padding: 14,
-      gap: 8,
-    },
-    topicName: { fontSize: 14, fontWeight: '500' as const, color: t.color.text.primary },
-    statusBadge: { alignSelf: 'flex-start' as const, borderRadius: 20, paddingVertical: 4, paddingHorizontal: 10, borderWidth: 1 },
-    statusBadgeSuccess: { backgroundColor: t.color.state.success.background, borderColor: t.color.state.success.border },
-    statusBadgeInfo: { backgroundColor: t.color.state.info.background, borderColor: t.color.state.info.border },
-    statusBadgeNeutral: { backgroundColor: t.color.action.disabledBackground, borderColor: t.color.action.disabledBorder },
-    statusText: { fontSize: 11, fontWeight: '500' as const },
-    statusTextSuccess: { color: t.color.state.success.text },
-    statusTextInfo: { color: t.color.state.info.text },
-    statusTextNeutral: { color: t.color.action.disabledText },
+    list: { gap: spacing.space2 },
+    topicCard: { gap: spacing.space2, alignItems: 'flex-start' as const },
   };
 }

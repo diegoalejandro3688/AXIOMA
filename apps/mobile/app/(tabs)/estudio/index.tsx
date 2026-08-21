@@ -34,7 +34,7 @@ type ScreenState =
  * token disponible) -- ver "Materia no mapeada" en el UI-3 Implementation
  * Report.
  */
-function subjectIcon(name: string): { icon: IconName; tone: 'accent' | 'success' | 'warning' | null } {
+export function subjectIcon(name: string): { icon: IconName; tone: 'accent' | 'success' | 'warning' | null } {
   switch (name) {
     case 'Matemática':
       return { icon: 'subject-math', tone: 'accent' };

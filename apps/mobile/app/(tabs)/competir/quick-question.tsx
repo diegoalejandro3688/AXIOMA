@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import type { AnswerOptionPublicResponse, ResourceContentBlockResponse } from '@axioma/contracts';
@@ -8,7 +8,8 @@ import { mapNextResult, mapAnswerResult, resolveAnswerOperationId, type Question
 import { ContentBlockRenderer } from '../../../components/content-block-renderer';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
-import { useTheme, useThemedStyles } from '../../../theme';
+import { Text, Button, AnswerOption } from '../../../components/ui';
+import { useThemedStyles } from '../../../theme';
 import type { ThemeTokens } from '../../../theme';
 
 type Screen =
@@ -45,7 +46,6 @@ type Screen =
  * después. `mountedRef` evita `setState` tras desmontar.
  */
 export default function QuickQuestionScreen() {
-  const tokens = useTheme();
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
   const [screen, setScreen] = useState<Screen>({ status: 'initializing' });
@@ -171,10 +171,10 @@ export default function QuickQuestionScreen() {
   if (screen.status === 'session_closed') {
     return (
       <View style={styles.centered}>
-        <Text style={styles.infoMessage}>Esta sesión ya se cerró.</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Volver a Competir" onPress={() => router.push('/(tabs)/competir')} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Volver a Competir</Text>
-        </Pressable>
+        <Text variant="body" color="secondary" style={styles.infoMessage}>
+          Esta sesión ya se cerró.
+        </Text>
+        <Button variant="primary" label="Volver a Competir" onPress={() => router.push('/(tabs)/competir')} style={styles.primaryButton} />
       </View>
     );
   }
@@ -182,10 +182,10 @@ export default function QuickQuestionScreen() {
   if (screen.status === 'no_questions') {
     return (
       <View style={styles.centered}>
-        <Text style={styles.infoMessage}>No hay preguntas disponibles ahora.</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Salir" onPress={handleExit} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Salir</Text>
-        </Pressable>
+        <Text variant="body" color="secondary" style={styles.infoMessage}>
+          No hay preguntas disponibles ahora.
+        </Text>
+        <Button variant="primary" label="Salir" onPress={handleExit} style={styles.primaryButton} />
       </View>
     );
   }
@@ -206,19 +206,21 @@ export default function QuickQuestionScreen() {
             />
           ))}
         </View>
-        {screen.submitError ? <Text style={styles.errorMessage}>{screen.submitError}</Text> : null}
-        <Pressable
-          accessibilityRole="button"
+        {screen.submitError ? (
+          <Text variant="bodySmall" color="error">
+            {screen.submitError}
+          </Text>
+        ) : null}
+        <Button
+          variant="primary"
+          label="Responder"
           accessibilityLabel="Responder"
           onPress={handleSubmit}
           disabled={screen.selectedOptionId === null || screen.submitting}
-          style={[styles.primaryButton, (screen.selectedOptionId === null || screen.submitting) && styles.primaryButtonDisabled]}
-        >
-          {screen.submitting ? <ActivityIndicator color={tokens.color.text.onAccent} /> : <Text style={styles.primaryButtonText}>Responder</Text>}
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Salir" onPress={handleExit} style={styles.exitButton}>
-          <Text style={styles.exitButtonText}>Salir</Text>
-        </Pressable>
+          loading={screen.submitting}
+          style={styles.primaryButton}
+        />
+        <Button variant="tertiary" label="Salir" accessibilityLabel="Salir" onPress={handleExit} style={styles.exitButton} />
       </ScrollView>
     );
   }
@@ -226,21 +228,25 @@ export default function QuickQuestionScreen() {
   // screen.status === 'result'
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={screen.isCorrect ? styles.correctLabel : styles.incorrectLabel}>{screen.isCorrect ? 'Correcto' : 'Incorrecto'}</Text>
+      <Text variant="heading2" weight="bold" color={screen.isCorrect ? 'success' : 'error'}>
+        {screen.isCorrect ? 'Correcto' : 'Incorrecto'}
+      </Text>
       {screen.explanationContent ? <ContentBlockRenderer blocks={screen.explanationContent} /> : null}
-      {screen.nextError ? <Text style={styles.errorMessage}>{screen.nextError}</Text> : null}
-      <Pressable
-        accessibilityRole="button"
+      {screen.nextError ? (
+        <Text variant="bodySmall" color="error">
+          {screen.nextError}
+        </Text>
+      ) : null}
+      <Button
+        variant="primary"
+        label="Siguiente pregunta"
         accessibilityLabel="Siguiente pregunta"
         onPress={handleNextQuestion}
         disabled={screen.loadingNext}
-        style={[styles.primaryButton, screen.loadingNext && styles.primaryButtonDisabled]}
-      >
-        {screen.loadingNext ? <ActivityIndicator color={tokens.color.text.onAccent} /> : <Text style={styles.primaryButtonText}>Siguiente pregunta</Text>}
-      </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="Salir" onPress={handleExit} style={styles.exitButton}>
-        <Text style={styles.exitButtonText}>Salir</Text>
-      </Pressable>
+        loading={screen.loadingNext}
+        style={styles.primaryButton}
+      />
+      <Button variant="tertiary" label="Salir" accessibilityLabel="Salir" onPress={handleExit} style={styles.exitButton} />
     </ScrollView>
   );
 }
@@ -250,7 +256,6 @@ function AnswerOptionRow({
   selected,
   disabled,
   onSelect,
-  styles,
 }: {
   option: AnswerOptionPublicResponse;
   selected: boolean;
@@ -259,16 +264,15 @@ function AnswerOptionRow({
   styles: ReturnType<typeof createStyles>;
 }) {
   return (
-    <Pressable
+    <AnswerOption
+      state={selected ? 'selected' : 'default'}
+      disabled={disabled}
       accessibilityRole="radio"
-      accessibilityState={{ checked: selected, disabled }}
       accessibilityLabel={option.content.type === 'paragraph' ? option.content.text : 'Alternativa'}
       onPress={onSelect}
-      disabled={disabled}
-      style={[styles.option, selected && styles.optionSelected]}
     >
       <ContentBlockRenderer blocks={[option.content]} />
-    </Pressable>
+    </AnswerOption>
   );
 }
 
@@ -277,17 +281,9 @@ function createStyles(t: ThemeTokens) {
     container: { flex: 1, backgroundColor: t.color.background.default },
     content: { padding: 16, gap: 16 },
     centered: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 16, padding: 24, backgroundColor: t.color.background.default },
-    infoMessage: { fontSize: 15, color: t.color.text.secondary, textAlign: 'center' as const },
+    infoMessage: { textAlign: 'center' as const },
     options: { gap: 10 },
-    option: { borderWidth: 1, borderColor: t.color.border.default, borderRadius: 12, padding: 14, backgroundColor: t.color.background.surface },
-    optionSelected: { borderColor: t.color.accent.default, backgroundColor: t.color.accent.subtleBg },
-    errorMessage: { fontSize: 13, color: t.color.state.error.text },
-    primaryButton: { backgroundColor: t.color.accent.default, paddingVertical: 12, borderRadius: 8, alignItems: 'center' as const },
-    primaryButtonDisabled: { opacity: 0.5 },
-    primaryButtonText: { color: t.color.text.onAccent, fontWeight: '700' as const },
-    exitButton: { alignSelf: 'center' as const, paddingVertical: 8 },
-    exitButtonText: { color: t.color.text.secondary, fontWeight: '600' as const },
-    correctLabel: { fontSize: 20, fontWeight: '700' as const, color: t.color.state.success.text },
-    incorrectLabel: { fontSize: 20, fontWeight: '700' as const, color: t.color.state.error.text },
+    primaryButton: { marginTop: 4 },
+    exitButton: { alignSelf: 'center' as const },
   };
 }

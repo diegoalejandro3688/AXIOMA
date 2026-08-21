@@ -1,5 +1,6 @@
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 import type { PublicAchievement } from '@axioma/contracts';
+import { Text } from '../ui';
 import { useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
@@ -18,9 +19,11 @@ export function CompetitiveAchievementsList({ achievements, title = 'Logros' }: 
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{title}</Text>
+      <Text variant="caption" weight="bold" color="secondary" style={styles.title}>
+        {title}
+      </Text>
       {achievements.map((achievement) => (
-        <Text key={achievement.achievementKey} style={styles.achievement}>
+        <Text key={achievement.achievementKey} variant="body">
           {achievement.name}
         </Text>
       ))}
@@ -28,10 +31,9 @@ export function CompetitiveAchievementsList({ achievements, title = 'Logros' }: 
   );
 }
 
-function createStyles(t: ThemeTokens) {
+function createStyles(_t: ThemeTokens) {
   return {
     container: { gap: 6 },
-    title: { fontSize: 13, fontWeight: '700' as const, color: t.color.text.secondary, textTransform: 'uppercase' as const },
-    achievement: { fontSize: 14, color: t.color.text.primary },
+    title: { textTransform: 'uppercase' as const },
   };
 }

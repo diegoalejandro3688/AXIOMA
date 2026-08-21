@@ -1,6 +1,7 @@
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import type { AiAssistanceMode } from '@axioma/contracts';
 import { ASSISTANCE_MODE_OPTIONS } from '../../lib/ai/assistance-modes';
+import { Text, Chip } from '../ui';
 import { useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
@@ -28,7 +29,9 @@ export function AiModeSelector({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>Cómo quieres que te ayude</Text>
+      <Text variant="caption" color="secondary" style={styles.label}>
+        Cómo quieres que te ayude
+      </Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
         {ASSISTANCE_MODE_OPTIONS.map((option) => {
           const isSelected = option.value === value;
@@ -40,35 +43,25 @@ export function AiModeSelector({
               accessibilityLabel={`Modo ${option.label}`}
               disabled={disabled}
               onPress={() => onChange(option.value)}
-              style={[styles.option, isSelected && styles.optionSelected, disabled && styles.optionDisabled]}
+              style={disabled ? styles.optionDisabled : undefined}
             >
-              <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>{option.label}</Text>
+              <Chip label={option.label} variant={isSelected ? 'selected' : 'neutral'} />
             </Pressable>
           );
         })}
       </ScrollView>
-      <Text style={styles.hint}>{selected.description}</Text>
+      <Text variant="caption" color="muted">
+        {selected.description}
+      </Text>
     </View>
   );
 }
 
-function createStyles(t: ThemeTokens) {
+function createStyles(_t: ThemeTokens) {
   return {
     container: { gap: 6 },
-    label: { fontSize: 12, color: t.color.text.secondary, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+    label: { textTransform: 'uppercase' as const, letterSpacing: 0.5 },
     row: { flexDirection: 'row' as const, gap: 8, paddingRight: 8 },
-    option: {
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: t.color.border.default,
-      backgroundColor: t.color.background.surface,
-      paddingVertical: 6,
-      paddingHorizontal: 12,
-    },
-    optionSelected: { borderColor: t.color.accent.default, backgroundColor: t.color.accent.subtleBg },
     optionDisabled: { opacity: 0.5 },
-    optionText: { fontSize: 13, color: t.color.text.secondary },
-    optionTextSelected: { color: t.color.accent.strong, fontWeight: '700' as const },
-    hint: { fontSize: 12, color: t.color.text.muted },
   };
 }
