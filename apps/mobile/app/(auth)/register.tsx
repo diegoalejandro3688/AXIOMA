@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { Link } from 'expo-router';
-import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
+import { View } from 'react-native';
 import { useAuth } from '../../lib/auth/auth-provider';
-import { useTheme, useThemedStyles } from '../../theme';
+import { useThemedStyles, spacing } from '../../theme';
 import type { ThemeTokens } from '../../theme';
+import { Text, TextField, Button } from '../../components/ui';
 
-/** Registro real -- ver ADR-0013 (reemplaza el placeholder de ADR-0009). */
+/**
+ * Registro real -- ver ADR-0013 (reemplaza el placeholder de ADR-0009).
+ * UI-3: migrado a primitivas de UI-1, misma plantilla visual que Login
+ * (ver nota sobre el lockup en `app/(auth)/index.tsx`).
+ */
 export default function RegisterScreen() {
   const auth = useAuth();
-  const tokens = useTheme();
   const styles = useThemedStyles(createStyles);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -25,46 +29,38 @@ export default function RegisterScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title} accessibilityRole="header">
+      <Text variant="heading2" style={styles.title} accessibilityRole="header">
         Crear cuenta
       </Text>
-      <TextInput
+      <TextField
+        label="Correo electrónico"
         accessibilityLabel="Correo electrónico"
-        placeholder="Correo electrónico"
-        placeholderTextColor={tokens.color.text.muted}
-        selectionColor={tokens.color.accent.default}
-        cursorColor={tokens.color.accent.default}
         autoCapitalize="none"
         keyboardType="email-address"
         value={email}
         onChangeText={setEmail}
-        style={styles.input}
       />
-      <TextInput
+      <TextField
+        label="Contraseña"
         accessibilityLabel="Contraseña"
-        placeholder="Contraseña"
-        placeholderTextColor={tokens.color.text.muted}
-        selectionColor={tokens.color.accent.default}
-        cursorColor={tokens.color.accent.default}
         secureTextEntry
         value={password}
         onChangeText={setPassword}
-        style={styles.input}
       />
       {error ? (
-        <Text accessibilityLiveRegion="polite" style={styles.error}>
+        <Text accessibilityLiveRegion="polite" variant="bodySmall" color="error" style={styles.error}>
           {error}
         </Text>
       ) : null}
-      <Pressable
-        accessibilityRole="button"
+      <Button
+        label="Crear cuenta"
         accessibilityLabel="Crear cuenta"
         onPress={handleSubmit}
-        disabled={submitting || !email || !password}
-        style={[styles.button, (submitting || !email || !password) && styles.buttonDisabled]}
-      >
-        {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Crear cuenta</Text>}
-      </Pressable>
+        loading={submitting}
+        disabled={!email || !password}
+        variant="primary"
+        size="large"
+      />
       <Link href="/(auth)" style={styles.link}>
         Volver a iniciar sesión
       </Link>
@@ -72,25 +68,18 @@ export default function RegisterScreen() {
   );
 }
 
-/** Alcance mínimo (ver ADR-0015): solo `container`/`title` pasan por tokens. */
 function createStyles(t: ThemeTokens) {
   return {
-    container: { flex: 1, alignItems: 'stretch' as const, justifyContent: 'center' as const, gap: 12, padding: 24, backgroundColor: t.color.background.default },
-    title: { fontSize: 24, fontWeight: '700' as const, textAlign: 'center' as const, marginBottom: 12, color: t.color.text.primary },
-    input: {
-      borderWidth: 1,
-      borderColor: t.color.border.default,
-      backgroundColor: t.color.background.surface,
-      color: t.color.text.primary,
-      borderRadius: 8,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      fontSize: 15,
+    container: {
+      flex: 1,
+      alignItems: 'stretch' as const,
+      justifyContent: 'center' as const,
+      gap: spacing.space3,
+      padding: spacing.space6,
+      backgroundColor: t.color.background.default,
     },
-    error: { color: '#c00', fontSize: 13, textAlign: 'center' as const },
-    button: { backgroundColor: '#111', paddingVertical: 12, borderRadius: 8, alignItems: 'center' as const, marginTop: 8 },
-    buttonDisabled: { opacity: 0.5 },
-    buttonText: { color: '#fff', fontWeight: '600' as const },
-    link: { fontSize: 14, color: '#0a58ca', textAlign: 'center' as const, marginTop: 4 },
+    title: { textAlign: 'center' as const, marginBottom: spacing.space3 },
+    error: { textAlign: 'center' as const },
+    link: { fontSize: 14, color: t.color.accent.strong, textAlign: 'center' as const, marginTop: spacing.space1 },
   };
 }

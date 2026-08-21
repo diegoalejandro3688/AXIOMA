@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, SectionList, Text, View } from 'react-native';
+import { ActivityIndicator, SectionList, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { ChallengeSummary } from '@axioma/contracts';
 import { listChallenges, claimChallenge } from '../../../lib/api/challenges';
@@ -9,7 +9,8 @@ import { describeParticipation, type LeagueParticipationView } from '../../../li
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
 import { EmptyState } from '../../../components/empty-state';
-import { useTheme, useThemedStyles } from '../../../theme';
+import { Text, Card, Button, Progress } from '../../../components/ui';
+import { useTheme, useThemedStyles, spacing } from '../../../theme';
 import type { ThemeTokens } from '../../../theme';
 
 type ScreenState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; challenges: ChallengeSummary[] };
@@ -45,6 +46,11 @@ const PARTICIPATION_STATUS_LABEL: Record<string, string> = {
  * La sección de liga y la de Desafíos son INDEPENDIENTES -- un fallo en
  * una no bloquea la otra (dos `ScreenState` separados, dos cargas
  * separadas).
+ *
+ * UI-3 (DG UI3-2): la tarjeta de Liga muestra EXCLUSIVAMENTE `leagueName` +
+ * `status` (vía `PARTICIPATION_STATUS_LABEL`) + acción -- `describeParticipation`/
+ * `GetLeagueParticipationResponse` no exponen posición ni progreso a la
+ * siguiente división, así que no se agregan aquí.
  */
 export default function CompetirScreen() {
   const tokens = useTheme();
@@ -134,19 +140,19 @@ export default function CompetirScreen() {
   function renderLeagueSection() {
     if (leagueState.status === 'loading') {
       return (
-        <View style={styles.leagueCard}>
+        <Card variant="surface" style={styles.leagueCard}>
           <ActivityIndicator color={tokens.color.accent.default} />
-        </View>
+        </Card>
       );
     }
     if (leagueState.status === 'error') {
       return (
-        <View style={styles.leagueCard}>
-          <Text style={styles.leagueError}>{leagueState.message}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Reintentar" onPress={loadLeague} style={styles.leagueRetryButton}>
-            <Text style={styles.leagueRetryButtonText}>Reintentar</Text>
-          </Pressable>
-        </View>
+        <Card variant="surface" style={styles.leagueCard}>
+          <Text variant="bodySmall" color="error">
+            {leagueState.message}
+          </Text>
+          <Button label="Reintentar" onPress={loadLeague} variant="tertiary" size="small" />
+        </Card>
       );
     }
 
@@ -154,45 +160,36 @@ export default function CompetirScreen() {
 
     if (view.kind === 'no_active_season') {
       return (
-        <View style={styles.leagueCard}>
-          <Text style={styles.leagueTitle}>Liga</Text>
-          <Text style={styles.leagueMessage}>No hay una temporada de liga activa en este momento.</Text>
-        </View>
+        <Card variant="surface" style={styles.leagueCard}>
+          <Text variant="titleLarge">Liga</Text>
+          <Text variant="bodySmall" color="secondary">
+            No hay una temporada de liga activa en este momento.
+          </Text>
+        </Card>
       );
     }
 
     if (view.kind === 'not_enrolled') {
       return (
-        <View style={styles.leagueCard}>
-          <Text style={styles.leagueTitle}>Liga</Text>
-          <Text style={styles.leagueMessage}>Todavía no participas en la liga de esta temporada.</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Unirme a la liga"
-            onPress={handleJoinLeague}
-            disabled={joining}
-            style={[styles.joinButton, joining && styles.joinButtonDisabled]}
-          >
-            {joining ? <ActivityIndicator color={tokens.color.text.onAccent} /> : <Text style={styles.joinButtonText}>Unirme a la liga</Text>}
-          </Pressable>
-        </View>
+        <Card variant="surface" style={styles.leagueCard}>
+          <Text variant="titleLarge">Liga</Text>
+          <Text variant="bodySmall" color="secondary">
+            Todavía no participas en la liga de esta temporada.
+          </Text>
+          <Button label="Unirme a la liga" onPress={handleJoinLeague} loading={joining} variant="primary" size="small" />
+        </Card>
       );
     }
 
-    // view.kind === 'enrolled'
+    // view.kind === 'enrolled' -- SOLO leagueName + status + acción (DG UI3-2, sin posición ni progreso numérico).
     return (
-      <View style={styles.leagueCard}>
-        <Text style={styles.leagueTitle}>{view.leagueName}</Text>
-        <Text style={styles.leagueMessage}>{PARTICIPATION_STATUS_LABEL[view.status] ?? view.status}</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Ver ranking"
-          onPress={() => router.push('/(tabs)/competir/ranking')}
-          style={styles.rankingButton}
-        >
-          <Text style={styles.rankingButtonText}>Ver ranking</Text>
-        </Pressable>
-      </View>
+      <Card variant="surface" style={styles.leagueCard}>
+        <Text variant="titleLarge">{view.leagueName}</Text>
+        <Text variant="bodySmall" color="secondary">
+          {PARTICIPATION_STATUS_LABEL[view.status] ?? view.status}
+        </Text>
+        <Button label="Ver ranking" onPress={() => router.push('/(tabs)/competir/ranking')} variant="tertiary" size="small" />
+      </Card>
     );
   }
 
@@ -208,21 +205,29 @@ export default function CompetirScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title} accessibilityRole="header">
+      <Text variant="heading1" accessibilityRole="header">
         Competir
       </Text>
 
       {renderLeagueSection()}
 
-      <Pressable
-        accessibilityRole="button"
+      {/*
+        `Card` no tiene una variante que reproduzca exactamente
+        `accent.subtleBg` + borde `accent.default` (el tratamiento que el
+        handoff pide MANTENER) -- variant="subtle" da el fondo correcto, el
+        borde se añade vía `style` (ver UI-3 Implementation Report).
+      */}
+      <Card
+        variant="subtle"
         accessibilityLabel="Jugar Pregunta rápida"
         onPress={() => router.push('/(tabs)/competir/quick-question')}
         style={styles.quickQuestionCard}
       >
-        <Text style={styles.quickQuestionTitle}>Pregunta rápida</Text>
-        <Text style={styles.quickQuestionSubtitle}>Responde preguntas y gana XP</Text>
-      </Pressable>
+        <Text variant="titleLarge">Pregunta rápida</Text>
+        <Text variant="bodySmall" color="secondary">
+          Responde preguntas y gana XP
+        </Text>
+      </Card>
 
       {state.challenges.length === 0 ? (
         <EmptyState message="Todavía no tienes desafíos asignados. Sigue estudiando y aparecerán aquí." />
@@ -231,35 +236,51 @@ export default function CompetirScreen() {
           sections={sections}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          renderSectionHeader={({ section }) => <Text style={styles.sectionTitle}>{section.title}</Text>}
+          renderSectionHeader={({ section }) => (
+            <Text variant="label" color="secondary" style={styles.sectionTitle}>
+              {section.title}
+            </Text>
+          )}
           renderItem={({ item }) => (
-            <View style={styles.card}>
-              <Text style={styles.cardName}>{item.name}</Text>
-              {item.description ? <Text style={styles.cardDescription}>{item.description}</Text> : null}
+            <Card variant="outlined" style={styles.card}>
+              <Text variant="titleMedium">{item.name}</Text>
+              {item.description ? (
+                <Text variant="bodySmall" color="secondary">
+                  {item.description}
+                </Text>
+              ) : null}
 
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${progressRatio(item) * 100}%`, backgroundColor: tokens.color.accent.default }]} />
-              </View>
-              <Text style={styles.progressLabel}>
+              <Progress
+                value={progressRatio(item)}
+                accessibilityLabel={`Progreso: ${item.progressValue} de ${item.targetValue}`}
+              />
+              <Text variant="caption" color="muted">
                 {item.progressValue}/{item.targetValue}
               </Text>
 
-              <Text style={styles.statusLabel}>{STATUS_LABEL[item.challengeStatus]}</Text>
+              <Text variant="label" color="secondary">
+                {STATUS_LABEL[item.challengeStatus]}
+              </Text>
 
-              {itemErrors[item.id] ? <Text style={styles.itemError}>{itemErrors[item.id]}</Text> : null}
+              {itemErrors[item.id] ? (
+                <Text variant="bodySmall" color="error">
+                  {itemErrors[item.id]}
+                </Text>
+              ) : null}
 
               {canClaim(item) ? (
-                <Pressable
-                  accessibilityRole="button"
+                <Button
+                  label="Reclamar"
                   accessibilityLabel={`Reclamar recompensa de ${item.name}`}
                   onPress={() => handleClaim(item.id)}
+                  loading={claimingId === item.id}
                   disabled={claimingId !== null}
-                  style={[styles.claimButton, claimingId !== null && styles.claimButtonDisabled]}
-                >
-                  {claimingId === item.id ? <ActivityIndicator color={tokens.color.text.onAccent} /> : <Text style={styles.claimButtonText}>Reclamar</Text>}
-                </Pressable>
+                  variant="primary"
+                  size="small"
+                  style={styles.claimButton}
+                />
               ) : null}
-            </View>
+            </Card>
           )}
         />
       )}
@@ -269,55 +290,12 @@ export default function CompetirScreen() {
 
 function createStyles(t: ThemeTokens) {
   return {
-    container: { flex: 1, padding: 16, gap: 12, backgroundColor: t.color.background.default },
-    title: { fontSize: 22, fontWeight: '700' as const, color: t.color.text.primary },
-    leagueCard: {
-      backgroundColor: t.color.background.surface,
-      borderWidth: 1,
-      borderColor: t.color.border.default,
-      borderRadius: 14,
-      padding: 16,
-      gap: 8,
-    },
-    leagueTitle: { fontSize: 16, fontWeight: '700' as const, color: t.color.text.primary },
-    leagueMessage: { fontSize: 13, color: t.color.text.secondary },
-    leagueError: { fontSize: 13, color: t.color.state.error.text },
-    leagueRetryButton: { alignSelf: 'flex-start' as const, marginTop: 4 },
-    leagueRetryButtonText: { color: t.color.accent.default, fontWeight: '600' as const },
-    joinButton: { marginTop: 4, backgroundColor: t.color.accent.default, paddingVertical: 10, borderRadius: 8, alignItems: 'center' as const },
-    joinButtonDisabled: { opacity: 0.5 },
-    joinButtonText: { color: t.color.text.onAccent, fontWeight: '700' as const },
-    rankingButton: { marginTop: 4, alignSelf: 'flex-start' as const },
-    rankingButtonText: { color: t.color.accent.default, fontWeight: '600' as const },
-    quickQuestionCard: {
-      backgroundColor: t.color.accent.subtleBg,
-      borderWidth: 1,
-      borderColor: t.color.accent.default,
-      borderRadius: 14,
-      padding: 16,
-      gap: 2,
-    },
-    quickQuestionTitle: { fontSize: 16, fontWeight: '700' as const, color: t.color.text.primary },
-    quickQuestionSubtitle: { fontSize: 13, color: t.color.text.secondary },
-    list: { gap: 12, paddingBottom: 24 },
-    sectionTitle: { fontSize: 13, fontWeight: '700' as const, color: t.color.text.secondary, marginTop: 12, marginBottom: 6, textTransform: 'uppercase' as const },
-    card: {
-      backgroundColor: t.color.background.surface,
-      borderWidth: 1,
-      borderColor: t.color.border.default,
-      borderRadius: 14,
-      padding: 16,
-      gap: 6,
-    },
-    cardName: { fontSize: 16, fontWeight: '600' as const, color: t.color.text.primary },
-    cardDescription: { fontSize: 13, color: t.color.text.secondary },
-    progressTrack: { height: 8, borderRadius: 4, backgroundColor: t.color.border.default, overflow: 'hidden' as const, marginTop: 4 },
-    progressFill: { height: '100%' as const, borderRadius: 4 },
-    progressLabel: { fontSize: 12, color: t.color.text.muted },
-    statusLabel: { fontSize: 13, fontWeight: '600' as const, color: t.color.text.secondary },
-    itemError: { fontSize: 13, color: t.color.state.error.text },
-    claimButton: { marginTop: 8, backgroundColor: t.color.accent.default, paddingVertical: 10, borderRadius: 8, alignItems: 'center' as const },
-    claimButtonDisabled: { opacity: 0.5 },
-    claimButtonText: { color: t.color.text.onAccent, fontWeight: '700' as const },
+    container: { flex: 1, padding: 16, gap: spacing.space3, backgroundColor: t.color.background.default },
+    leagueCard: { gap: spacing.space2 },
+    quickQuestionCard: { gap: 2, borderWidth: 1, borderColor: t.color.accent.default },
+    list: { gap: spacing.space3, paddingBottom: 24 },
+    sectionTitle: { marginTop: spacing.space3, marginBottom: spacing.space1, textTransform: 'uppercase' as const },
+    card: { gap: spacing.space2 },
+    claimButton: { marginTop: spacing.space2 },
   };
 }

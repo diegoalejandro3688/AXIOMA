@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import type { AiConversationSummaryResponse, AiMeStatusResponse } from '@axioma/contracts';
 import { createAiConversation, deleteAiConversation, getAiStatus, listAiConversations } from '../../../lib/api/ai';
@@ -7,7 +7,8 @@ import { AiQuotaSummary } from '../../../components/ai/ai-quota-summary';
 import { AiDisclaimer } from '../../../components/ai/ai-disclaimer';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
-import { useTheme, useThemedStyles } from '../../../theme';
+import { Text, Icon, Card, ListRow, Button } from '../../../components/ui';
+import { useTheme, useThemedStyles, spacing } from '../../../theme';
 import type { ThemeTokens } from '../../../theme';
 
 type ScreenState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; conversations: AiConversationSummaryResponse[] };
@@ -161,111 +162,121 @@ export default function IaHubScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.pageTitle} accessibilityRole="header">
+        <Text variant="heading1" accessibilityRole="header">
           Tutor IA
         </Text>
+
+        {/* Símbolo decorativo del Tutor (nodos + vértice, .md 6.6) -- puramente visual, no sustituye ninguna acción. */}
+        <View style={styles.symbolWrap} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <Icon name="ai" size={64} color={tokens.color.accent.default} />
+        </View>
 
         {header ? <AiQuotaSummary dailyQuota={header.dailyQuota} /> : null}
         {header ? <AiDisclaimer text={header.disclaimer} /> : null}
 
-        {!header && statusState.status === 'loading' ? <Text style={styles.statusHint}>Cargando tu cuota diaria…</Text> : null}
+        {!header && statusState.status === 'loading' ? (
+          <Text variant="caption" color="secondary">
+            Cargando tu cuota diaria…
+          </Text>
+        ) : null}
         {!header && statusState.status === 'error' ? (
           <View style={styles.statusErrorBox}>
-            <Text style={styles.error}>{statusState.message}</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Reintentar cuota diaria" onPress={() => void loadStatus()}>
-              <Text style={styles.cancelText}>Reintentar</Text>
-            </Pressable>
+            <Text variant="bodySmall" color="error">
+              {statusState.message}
+            </Text>
+            <Button label="Reintentar" accessibilityLabel="Reintentar cuota diaria" onPress={() => void loadStatus()} variant="tertiary" size="small" />
           </View>
         ) : null}
 
         {hasContext ? (
           <View style={styles.contextBanner}>
-            <Text style={styles.contextBannerText}>
+            <Text variant="caption" color="secondary" style={{ color: tokens.color.accent.strong }}>
               Vas a abrir el Tutor con el contenido de Estudio desde el que llegaste. Solo se envía la referencia de ese contenido.
             </Text>
           </View>
         ) : null}
 
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          label={hasContext ? 'Nueva conversación sobre este contenido' : 'Nueva conversación'}
           accessibilityLabel={hasContext ? 'Nueva conversación sobre este contenido' : 'Nueva conversación'}
           onPress={handleCreate}
-          disabled={creating}
-          style={[styles.primaryButton, creating && styles.buttonDisabled]}
-        >
-          {creating ? (
-            <ActivityIndicator color={tokens.color.text.onInverse} />
-          ) : (
-            <Text style={styles.primaryButtonText}>{hasContext ? 'Nueva conversación sobre este contenido' : 'Nueva conversación'}</Text>
-          )}
-        </Pressable>
+          loading={creating}
+          variant="primary"
+        />
 
-        {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+        {actionError ? (
+          <Text variant="bodySmall" color="error">
+            {actionError}
+          </Text>
+        ) : null}
 
         {conversations.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyTitle}>Todavía no tienes conversaciones</Text>
-            <Text style={styles.emptyText}>
+            <Text variant="titleMedium">Todavía no tienes conversaciones</Text>
+            <Text variant="bodySmall" color="secondary">
               Inicia una conversación para que el Tutor IA te acompañe. Recuerda que te ayuda a comprender, no reemplaza tu práctica.
             </Text>
           </View>
         ) : (
           <View style={styles.list}>
-            <Text style={styles.sectionTitle}>Tus conversaciones</Text>
+            <Text variant="label" color="secondary">
+              Tus conversaciones
+            </Text>
             {conversations.map((conversation) => (
-              <View key={conversation.conversationId} style={styles.card}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Abrir conversación"
+              <Card key={conversation.conversationId} variant="outlined" style={styles.card}>
+                <ListRow
+                  title={
+                    conversation.academicContext
+                      ? `${conversation.academicContext.subjectName} · ${conversation.academicContext.topicName}`
+                      : 'Conversación general'
+                  }
+                  description={
+                    conversation.lastMessageAt
+                      ? `Última actividad: ${formatDateTime(conversation.lastMessageAt)}`
+                      : `Creada: ${formatDateTime(conversation.createdAt)} · sin mensajes`
+                  }
+                  valueText={`${conversation.turnCount} de ${conversation.maxTurns}`}
                   onPress={() =>
                     router.push({ pathname: '/(tabs)/ia/conversation/[conversationId]', params: { conversationId: conversation.conversationId } })
                   }
-                  style={styles.cardBody}
-                >
-                  <Text style={styles.cardTitle}>
-                    {conversation.academicContext
-                      ? `${conversation.academicContext.subjectName} · ${conversation.academicContext.topicName}`
-                      : 'Conversación general'}
-                  </Text>
-                  <Text style={styles.cardMeta}>
-                    {conversation.lastMessageAt
-                      ? `Última actividad: ${formatDateTime(conversation.lastMessageAt)}`
-                      : `Creada: ${formatDateTime(conversation.createdAt)} · sin mensajes`}
-                  </Text>
-                  <Text style={styles.cardMeta}>
-                    Turnos: {conversation.turnCount} de {conversation.maxTurns}
-                  </Text>
-                </Pressable>
+                  accessibilityLabel="Abrir conversación"
+                />
 
                 {pendingDeleteId === conversation.conversationId ? (
                   <View style={styles.confirmRow}>
-                    <Text style={styles.confirmText}>¿Eliminar esta conversación? No se puede deshacer.</Text>
+                    <Text variant="caption" color="secondary">
+                      ¿Eliminar esta conversación? No se puede deshacer.
+                    </Text>
                     <View style={styles.confirmButtons}>
-                      <Pressable
-                        accessibilityRole="button"
+                      <Button
+                        label="Eliminar"
                         accessibilityLabel="Confirmar eliminación"
                         onPress={() => handleDelete(conversation.conversationId)}
+                        loading={deletingId === conversation.conversationId}
                         disabled={deletingId === conversation.conversationId}
-                        style={[styles.dangerButton, deletingId === conversation.conversationId && styles.buttonDisabled]}
-                      >
-                        {deletingId === conversation.conversationId ? <ActivityIndicator size="small" /> : <Text style={styles.dangerButtonText}>Eliminar</Text>}
-                      </Pressable>
-                      <Pressable accessibilityRole="button" accessibilityLabel="Cancelar eliminación" onPress={() => setPendingDeleteId(null)}>
-                        <Text style={styles.cancelText}>Cancelar</Text>
-                      </Pressable>
+                        variant="danger"
+                        size="small"
+                      />
+                      <Button
+                        label="Cancelar"
+                        accessibilityLabel="Cancelar eliminación"
+                        onPress={() => setPendingDeleteId(null)}
+                        variant="tertiary"
+                        size="small"
+                      />
                     </View>
                   </View>
                 ) : (
-                  <Pressable
-                    accessibilityRole="button"
+                  <Button
+                    label="Eliminar"
                     accessibilityLabel="Eliminar conversación"
                     onPress={() => setPendingDeleteId(conversation.conversationId)}
+                    variant="tertiary"
+                    size="small"
                     style={styles.deleteTrigger}
-                  >
-                    <Text style={styles.deleteTriggerText}>Eliminar</Text>
-                  </Pressable>
+                  />
                 )}
-              </View>
+              </Card>
             ))}
           </View>
         )}
@@ -288,71 +299,35 @@ function formatDateTime(iso: string): string {
 function createStyles(t: ThemeTokens) {
   return {
     container: { flex: 1, backgroundColor: t.color.background.default },
-    content: { gap: 12, padding: 20, paddingBottom: 32 },
-    pageTitle: { fontSize: 24, fontWeight: '700' as const, color: t.color.text.primary },
-    sectionTitle: { fontSize: 13, color: t.color.text.secondary, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+    content: { gap: spacing.space3, padding: spacing.space5, paddingBottom: spacing.space8 },
+    symbolWrap: { alignItems: 'center' as const, paddingVertical: spacing.space2 },
+    statusErrorBox: {
+      gap: spacing.space2,
+      borderWidth: 1,
+      borderColor: t.color.state.error.border,
+      backgroundColor: t.color.state.error.background,
+      borderRadius: 8,
+      padding: spacing.space3,
+    },
     contextBanner: {
       borderWidth: 1,
       borderColor: t.color.accent.default,
       backgroundColor: t.color.accent.subtleBg,
       borderRadius: 8,
-      padding: 10,
-    },
-    contextBannerText: { fontSize: 12, color: t.color.accent.strong },
-    primaryButton: {
-      backgroundColor: t.color.background.inverse,
-      borderRadius: 10,
-      paddingVertical: 13,
-      alignItems: 'center' as const,
-    },
-    primaryButtonText: { color: t.color.text.onInverse, fontWeight: '600' as const, fontSize: 14 },
-    buttonDisabled: { opacity: 0.5 },
-    error: { fontSize: 13, color: t.color.state.error.text },
-    statusHint: { fontSize: 12, color: t.color.text.secondary },
-    statusErrorBox: {
-      gap: 6,
-      borderWidth: 1,
-      borderColor: t.color.state.error.border,
-      backgroundColor: t.color.state.error.background,
-      borderRadius: 8,
-      padding: 10,
+      padding: spacing.space3,
     },
     emptyBox: {
-      gap: 6,
+      gap: spacing.space2,
       borderWidth: 1,
       borderColor: t.color.border.default,
       backgroundColor: t.color.background.surface,
       borderRadius: 12,
-      padding: 16,
+      padding: spacing.space4,
     },
-    emptyTitle: { fontSize: 15, fontWeight: '700' as const, color: t.color.text.primary },
-    emptyText: { fontSize: 13, color: t.color.text.secondary, lineHeight: 19 },
-    list: { gap: 10 },
-    card: {
-      borderWidth: 1,
-      borderColor: t.color.border.default,
-      backgroundColor: t.color.background.surface,
-      borderRadius: 12,
-      padding: 14,
-      gap: 8,
-    },
-    cardBody: { gap: 4 },
-    cardTitle: { fontSize: 15, fontWeight: '600' as const, color: t.color.text.primary },
-    cardMeta: { fontSize: 12, color: t.color.text.secondary },
-    deleteTrigger: { alignSelf: 'flex-start' as const },
-    deleteTriggerText: { fontSize: 12, color: t.color.state.error.text },
-    confirmRow: { gap: 8 },
-    confirmText: { fontSize: 12, color: t.color.text.secondary },
-    confirmButtons: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 14 },
-    dangerButton: {
-      borderWidth: 1,
-      borderColor: t.color.state.error.border,
-      backgroundColor: t.color.state.error.background,
-      borderRadius: 8,
-      paddingVertical: 8,
-      paddingHorizontal: 16,
-    },
-    dangerButtonText: { fontSize: 13, color: t.color.state.error.text, fontWeight: '600' as const },
-    cancelText: { fontSize: 13, color: t.color.accent.strong },
+    list: { gap: spacing.space3 },
+    card: { gap: spacing.space2 },
+    confirmRow: { gap: spacing.space2, paddingHorizontal: spacing.space4, paddingBottom: spacing.space2 },
+    confirmButtons: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.space3 },
+    deleteTrigger: { alignSelf: 'flex-start' as const, marginLeft: spacing.space4, marginBottom: spacing.space2 },
   };
 }

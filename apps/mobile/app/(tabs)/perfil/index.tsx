@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { MyAdvancedProfileResponse } from '@axioma/contracts';
 import { useAuth } from '../../../lib/auth/auth-provider';
@@ -12,7 +12,8 @@ import { TitlesSection } from '../../../components/profile/titles-section';
 import { CompetitiveProfileSection } from '../../../components/competitive-profile-section';
 import { AcademicSummarySection } from '../../../components/profile/academic-summary-section';
 import { CompetitiveHistorySection } from '../../../components/profile/competitive-history-section';
-import { useTheme, useThemedStyles } from '../../../theme';
+import { Text, Button } from '../../../components/ui';
+import { useTheme, useThemedStyles, spacing } from '../../../theme';
 import type { ThemeTokens } from '../../../theme';
 
 type ScreenState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; view: MyAdvancedProfileResponse };
@@ -33,6 +34,18 @@ type ScreenState = { status: 'loading' } | { status: 'error'; message: string } 
  * pantalla separada, sin mezclar su estado con el de esta (el contrato de
  * la preview exige ser una representación fiel de la superficie pública
  * real, nunca una vista derivada de este agregador).
+ *
+ * UI-3 (DG UI3-3/DG UI3-4): el editor de `displayName` (mismo `TextInput`,
+ * mismos `handleInitialize`/`handleSave`, mismo estado) se sigue
+ * construyendo y renderizando AQUÍ -- se coloca inmediatamente ANTES de
+ * `CompetitiveProfileSection` para quedar adyacente a
+ * `CompetitiveIdentityHeader` (primer elemento de esa sección) por ORDEN
+ * de renderizado. `CompetitiveProfileSection` conserva su firma exacta
+ * `{ profile }` -- el gate histórico `verify-competitive-profile-gate.ts`
+ * fija por regex que ese componente es presentación pura con esa única
+ * prop, y esa condición se preserva a propósito (no se le pasa el editor
+ * como children/prop). Deliberadamente NO se convierte en un patrón
+ * "tap-to-edit" -- el `TextInput` sigue siempre visible, igual que antes.
  */
 export default function PerfilScreen() {
   const auth = useAuth();
@@ -89,62 +102,78 @@ export default function PerfilScreen() {
 
   const { view } = state;
 
+  const identityEditor = (
+    <View style={styles.editor}>
+      <TextInput
+        accessibilityLabel="Nombre a mostrar"
+        placeholder="Nombre a mostrar"
+        placeholderTextColor={tokens.color.text.muted}
+        selectionColor={tokens.color.accent.default}
+        cursorColor={tokens.color.accent.default}
+        value={displayName}
+        onChangeText={setDisplayName}
+        style={styles.input}
+      />
+      {saveError ? (
+        <Text variant="bodySmall" color="error">
+          {saveError}
+        </Text>
+      ) : null}
+
+      {view.profile === null ? (
+        <Button
+          label="Guardar perfil"
+          accessibilityLabel="Guardar perfil"
+          onPress={handleInitialize}
+          loading={saving}
+          disabled={!displayName.trim()}
+          variant="primary"
+          size="small"
+        />
+      ) : (
+        <>
+          <Text variant="caption" color="secondary">
+            Zona horaria: {view.profile.timezone}
+          </Text>
+          <Button
+            label="Guardar cambios"
+            accessibilityLabel="Guardar cambios"
+            onPress={handleSave}
+            loading={saving}
+            disabled={!displayName.trim() || displayName === view.profile.displayName}
+            variant="primary"
+            size="small"
+          />
+        </>
+      )}
+    </View>
+  );
+
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.pageTitle} accessibilityRole="header">
+        <Text variant="heading1" accessibilityRole="header">
           Perfil
         </Text>
 
-        <TextInput
-          accessibilityLabel="Nombre a mostrar"
-          placeholder="Nombre a mostrar"
-          placeholderTextColor={tokens.color.text.muted}
-          selectionColor={tokens.color.accent.default}
-          cursorColor={tokens.color.accent.default}
-          value={displayName}
-          onChangeText={setDisplayName}
-          style={styles.input}
-        />
-        {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
-
-        {view.profile === null ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Guardar perfil"
-            onPress={handleInitialize}
-            disabled={saving || !displayName.trim()}
-            style={[styles.saveButton, (saving || !displayName.trim()) && styles.buttonDisabled]}
-          >
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Guardar perfil</Text>}
-          </Pressable>
-        ) : (
-          <>
-            <Text style={styles.meta}>Zona horaria: {view.profile.timezone}</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Guardar cambios"
-              onPress={handleSave}
-              disabled={saving || !displayName.trim() || displayName === view.profile.displayName}
-              style={[
-                styles.saveButton,
-                (saving || !displayName.trim() || displayName === view.profile.displayName) && styles.buttonDisabled,
-              ]}
-            >
-              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Guardar cambios</Text>}
-            </Pressable>
-          </>
-        )}
-
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          label="Ver cómo me ven otros"
           accessibilityLabel="Ver cómo me ven otros"
           onPress={() => router.push('/(tabs)/perfil/preview')}
+          variant="secondary"
+          size="small"
           style={styles.previewButton}
-        >
-          <Text style={styles.previewButtonText}>Ver cómo me ven otros</Text>
-        </Pressable>
+        />
 
+        {/*
+          DG UI3-4: `CompetitiveProfileSection` conserva su firma exacta
+          `{ profile }` (gate histórico) -- el editor se renderiza AQUÍ,
+          inmediatamente antes, para quedar adyacente a
+          `CompetitiveIdentityHeader` (primer elemento dentro de la
+          sección) por ORDEN de renderizado, sin ampliar el contrato del
+          componente.
+        */}
+        {identityEditor}
         <CompetitiveProfileSection profile={view.publicProfile} />
         <AcademicSummarySection summary={view.academicSummary} />
         <CompetitiveHistorySection history={view.competitiveHistory} />
@@ -152,25 +181,30 @@ export default function PerfilScreen() {
         <TitlesSection />
       </ScrollView>
 
-      <Pressable accessibilityRole="button" accessibilityLabel="Cerrar sesión" onPress={auth.logout} style={styles.logoutButton}>
-        <Text style={styles.logoutButtonText}>Cerrar sesión</Text>
-      </Pressable>
+      {/*
+        Handoff UI-3 §6: "Ver cómo me ven otros" -> secondary, "Cerrar
+        sesión" -> tertiary -- explícito, no se preserva el rojo que tenía
+        antes (`Button` tampoco tiene una variante "outline destructivo"
+        para reproducirlo).
+      */}
+      <Button
+        label="Cerrar sesión"
+        accessibilityLabel="Cerrar sesión"
+        onPress={auth.logout}
+        variant="tertiary"
+        size="small"
+        style={styles.logoutButton}
+      />
     </View>
   );
 }
 
-/**
- * Alcance mínimo (ver ADR-0015, corrección de contraste fuera de M1): solo
- * `container`/`pageTitle`/`meta` pasan por tokens -- el resto de esta
- * pantalla (input, botones, logout) no se rediseña ni se migra, queda igual
- * que antes.
- */
 function createStyles(t: ThemeTokens) {
   return {
-    container: { flex: 1, paddingHorizontal: 24, paddingTop: 24, backgroundColor: t.color.background.default },
+    container: { flex: 1, paddingHorizontal: spacing.space6, paddingTop: spacing.space6, backgroundColor: t.color.background.default },
     scroll: { flex: 1 },
-    scrollContent: { gap: 12, paddingBottom: 16 },
-    pageTitle: { fontSize: 24, fontWeight: '700' as const, marginBottom: 8, color: t.color.text.primary },
+    scrollContent: { gap: spacing.space3, paddingBottom: spacing.space4 },
+    editor: { gap: spacing.space2 },
     input: {
       borderWidth: 1,
       borderColor: t.color.border.default,
@@ -181,30 +215,7 @@ function createStyles(t: ThemeTokens) {
       paddingHorizontal: 12,
       fontSize: 15,
     },
-    error: { color: '#c00', fontSize: 13 },
-    meta: { fontSize: 13, color: t.color.text.secondary },
-    saveButton: { backgroundColor: '#111', paddingVertical: 12, borderRadius: 8, alignItems: 'center' as const },
-    buttonDisabled: { opacity: 0.5 },
-    saveButtonText: { color: '#fff', fontWeight: '600' as const },
-    previewButton: {
-      alignSelf: 'flex-start' as const,
-      paddingVertical: 8,
-      paddingHorizontal: 14,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: t.color.accent.default,
-    },
-    previewButtonText: { color: t.color.accent.default, fontWeight: '600' as const, fontSize: 13 },
-    logoutButton: {
-      marginTop: 12,
-      alignSelf: 'center' as const,
-      marginBottom: 16,
-      paddingVertical: 10,
-      paddingHorizontal: 24,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: '#c00',
-    },
-    logoutButtonText: { color: '#c00', fontWeight: '600' as const },
+    previewButton: { alignSelf: 'flex-start' as const },
+    logoutButton: { marginTop: spacing.space3, alignSelf: 'center' as const, marginBottom: spacing.space4 },
   };
 }

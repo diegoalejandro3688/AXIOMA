@@ -17,6 +17,14 @@ import type { IconName } from '../../theme';
  * de ruta) no cambian, así que ninguna ruta ni deep link se ve afectado.
  * Iconos de `theme/icons/nav-icons.tsx` (creados en UI-1, sin conectar
  * hasta ahora) + estado activo/inactivo por `color.navigation.*` (.md 6.7).
+ *
+ * `initialRouteName="index"` (ajuste post-validación Android física):
+ * React Navigation/Expo Router usan por defecto la primera pantalla de tab
+ * declarada como ruta inicial -- al reordenar el JSX para que Perfil se
+ * renderizara primero (orden visual), Perfil pasó a abrir primero también
+ * (efecto colateral no intencionado, orden visual y ruta inicial comparten
+ * el mismo default). `initialRouteName` desacopla ambos: fija Inicio como
+ * pantalla de entrada sin tocar el orden de declaración/visual de arriba.
  */
 const TAB_ICON: Record<string, IconName> = {
   perfil: 'profile',
@@ -70,6 +78,7 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      initialRouteName="index"
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: tokens.color.navigation.active,

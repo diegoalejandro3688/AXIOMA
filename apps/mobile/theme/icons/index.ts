@@ -12,9 +12,15 @@ import {
   CheckIcon,
   ChevronRightIcon,
   CloseIcon,
+  ColumnIcon,
   EyeIcon,
   EyeOffIcon,
+  FlameIcon,
+  FlaskIcon,
   InfoIcon,
+  OpenBookIcon,
+  ShieldIcon,
+  SquareRootIcon,
   XCircleIcon,
 } from './action-icons';
 
@@ -37,6 +43,13 @@ export const iconRegistry = {
   check: CheckIcon,
   'x-circle': XCircleIcon,
   info: InfoIcon,
+  // Estado/académicos (UI-3)
+  flame: FlameIcon,
+  shield: ShieldIcon,
+  'subject-math': SquareRootIcon,
+  'subject-science': FlaskIcon,
+  'subject-history': ColumnIcon,
+  'subject-language': OpenBookIcon,
 } satisfies Record<string, ComponentType<NavIconProps>>;
 
 export type IconName = keyof typeof iconRegistry;

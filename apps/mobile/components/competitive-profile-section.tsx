@@ -1,4 +1,4 @@
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 import type { MeCompetitiveProfileResponse } from '@axioma/contracts';
 import { CompetitiveIdentityHeader } from './competitive/identity-header';
 import { CompetitivePositionCard } from './competitive/position-card';
@@ -6,6 +6,7 @@ import { CompetitiveCosmeticsRow } from './competitive/cosmetics-row';
 import { CompetitiveAchievementsList } from './competitive/achievements-list';
 import { useThemedStyles } from '../theme';
 import type { ThemeTokens } from '../theme';
+import { Text } from './ui';
 
 /**
  * Sección "Perfil competitivo" dentro de `perfil/index.tsx` -- Bloque IV,
@@ -28,6 +29,15 @@ import type { ThemeTokens } from '../theme';
  * Esta NO es una reapertura del dominio/backend de Bloque IV -- ADR-0021 y
  * `UserService.getMyCompetitiveProfile` permanecen sin cambio; solo cambió
  * CÓMO la superficie móvil obtiene el dato ya expuesto.
+ *
+ * UI-3 (DG UI3-4): la firma se mantiene EXACTAMENTE `{ profile }` -- el
+ * gate histórico `verify-competitive-profile-gate.ts` fija por regex que
+ * este componente es presentación pura con esa única prop, y esa condición
+ * se preserva deliberadamente. El editor de `displayName` (DG UI3-3) NO
+ * vive aquí -- `perfil/index.tsx` lo renderiza inmediatamente ANTES de
+ * CompetitiveProfileSection (ver ese archivo), logrando la adyacencia
+ * visual con `CompetitiveIdentityHeader` por ORDEN, sin ampliar el
+ * contrato de este componente.
  */
 export function CompetitiveProfileSection({ profile }: { profile: MeCompetitiveProfileResponse | null }) {
   const styles = useThemedStyles(createStyles);
@@ -35,16 +45,22 @@ export function CompetitiveProfileSection({ profile }: { profile: MeCompetitiveP
   if (profile === null) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Perfil competitivo</Text>
-        <Text style={styles.emptyMessage}>Configura tu nombre de usuario para tener un perfil competitivo.</Text>
+        <Text variant="titleLarge">Perfil competitivo</Text>
+        <Text variant="bodySmall" color="secondary">
+          Configura tu nombre de usuario para tener un perfil competitivo.
+        </Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Perfil competitivo</Text>
-      {profile.lifecycleStatus === 'RETIRED' ? <Text style={styles.retiredBadge}>Perfil retirado</Text> : null}
+      <Text variant="titleLarge">Perfil competitivo</Text>
+      {profile.lifecycleStatus === 'RETIRED' ? (
+        <Text variant="label" style={styles.retiredBadge}>
+          Perfil retirado
+        </Text>
+      ) : null}
       <CompetitiveIdentityHeader
         username={profile.username}
         avatar={profile.avatar}
@@ -64,8 +80,6 @@ export function CompetitiveProfileSection({ profile }: { profile: MeCompetitiveP
 function createStyles(t: ThemeTokens) {
   return {
     container: { gap: 12, marginTop: 8 },
-    title: { fontSize: 18, fontWeight: '700' as const, color: t.color.text.primary },
-    emptyMessage: { fontSize: 13, color: t.color.text.secondary },
     retiredBadge: {
       alignSelf: 'flex-start' as const,
       fontSize: 12,

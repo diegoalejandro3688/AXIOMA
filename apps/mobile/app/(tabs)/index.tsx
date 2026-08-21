@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { UserProfileResponse } from '@axioma/contracts';
 import { getProfile } from '../../lib/api/user';
 import { pickContinueTarget, type ContinueTarget } from '../../lib/progress/pick-continue-topic';
 import { LoadingState } from '../../components/loading-state';
 import { ErrorState } from '../../components/error-state';
-import { useThemedStyles } from '../../theme';
+import { Text, Icon } from '../../components/ui';
+import { useTheme, useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
 type ScreenState =
@@ -23,6 +24,7 @@ type ScreenState =
  */
 export default function InicioScreen() {
   const router = useRouter();
+  const tokens = useTheme();
   const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
 
@@ -61,22 +63,28 @@ export default function InicioScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.greeting} accessibilityRole="header">
+        <Text variant="heading2" accessibilityRole="header">
           Hola, {greetingName}
         </Text>
         <View style={styles.streakShell} accessibilityLabel="Racha -- próximamente">
-          <Text style={styles.streakIcon}>🔥</Text>
-          <Text style={styles.streakText}>Próximamente</Text>
+          <Icon name="flame" size={14} color={tokens.color.action.disabledText} />
+          <Text variant="micro" style={{ color: tokens.color.action.disabledText }}>
+            Próximamente
+          </Text>
         </View>
       </View>
 
       <View style={styles.levelShell} accessibilityLabel="Nivel y experiencia -- próximamente">
-        <Text style={styles.levelShellText}>Nivel y XP -- Próximamente</Text>
+        <Text variant="caption" style={{ color: tokens.color.action.disabledText }}>
+          Nivel y XP -- Próximamente
+        </Text>
       </View>
 
       <View style={styles.goalCard}>
-        <Text style={styles.goalLabel}>{goalLabel(state.target)}</Text>
-        <Text style={styles.goalTitle} accessibilityRole="header">
+        <Text variant="label" color="onInverse" style={styles.goalLabel}>
+          {goalLabel(state.target)}
+        </Text>
+        <Text variant="heading3" color="onInverse" style={styles.goalTitle} accessibilityRole="header">
           {goalTitle(state.target)}
         </Text>
         <Pressable
@@ -86,7 +94,11 @@ export default function InicioScreen() {
           style={[styles.continueButton, state.target.kind !== 'topic' && styles.continueButtonDisabled]}
           onPress={goToTarget}
         >
-          <Text style={state.target.kind === 'topic' ? styles.continueButtonText : styles.continueButtonTextDisabled}>
+          <Text
+            variant="titleMedium"
+            color={state.target.kind === 'topic' ? 'onAccent' : undefined}
+            style={state.target.kind === 'topic' ? undefined : { color: tokens.color.action.disabledText }}
+          >
             {continueButtonLabel(state.target)}
           </Text>
         </Pressable>
@@ -94,11 +106,15 @@ export default function InicioScreen() {
 
       <View style={[styles.leagueShell]} accessibilityLabel="Liga -- próximamente">
         <View style={styles.leagueIconWrap}>
-          <Text style={styles.leagueIcon}>🏆</Text>
+          <Icon name="shield" size={16} color={tokens.color.action.disabledText} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.leagueTitle}>Liga</Text>
-          <Text style={styles.leagueSubtitle}>Próximamente</Text>
+          <Text variant="titleMedium" style={{ color: tokens.color.action.disabledText }}>
+            Liga
+          </Text>
+          <Text variant="caption" style={{ color: tokens.color.action.disabledText }}>
+            Próximamente
+          </Text>
         </View>
         <Text style={styles.chevron}>›</Text>
       </View>
@@ -127,7 +143,6 @@ function createStyles(t: ThemeTokens) {
   return {
     container: { flex: 1, padding: 18, gap: 16, backgroundColor: t.color.background.default },
     headerRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const },
-    greeting: { fontSize: 18, fontWeight: '700' as const, color: t.color.text.primary },
     streakShell: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
@@ -137,8 +152,6 @@ function createStyles(t: ThemeTokens) {
       paddingHorizontal: 10,
       borderRadius: 20,
     },
-    streakIcon: { fontSize: 13, opacity: 0.6 },
-    streakText: { fontSize: 11, fontWeight: '500' as const, color: t.color.action.disabledText },
     levelShell: {
       backgroundColor: t.color.action.disabledBackground,
       borderRadius: 8,
@@ -146,22 +159,17 @@ function createStyles(t: ThemeTokens) {
       paddingHorizontal: 12,
       alignSelf: 'flex-start' as const,
     },
-    levelShellText: { fontSize: 12, color: t.color.action.disabledText },
     // Superficie de marca fija (navy) -- ver nota de contraste en tokens.ts.
     goalCard: { backgroundColor: t.color.background.inverse, borderRadius: 16, padding: 20, gap: 4 },
     // Ambos usan `text.onInverse` (texto pensado para esta superficie fija),
     // nunca `accent.default`/`text.primary` -- ese fue el bug real de
     // contraste en oscuro (ver hallazgo de validación Android).
-    goalLabel: { fontSize: 12, color: t.color.text.onInverse, opacity: 0.75 },
-    goalTitle: { fontSize: 18, fontWeight: '700' as const, color: t.color.text.onInverse, marginBottom: 12 },
+    goalLabel: { opacity: 0.75 },
+    goalTitle: { marginBottom: 12 },
     // Botón habilitado: fondo `accent.default` (azul brillante) -> texto
     // `onAccent` (navy oscuro), NUNCA `text.primary`/`background.inverse`.
     continueButton: { backgroundColor: t.color.accent.default, borderRadius: 10, padding: 12, alignItems: 'center' as const },
     continueButtonDisabled: { backgroundColor: t.color.action.disabledBackground },
-    continueButtonText: { color: t.color.text.onAccent, fontSize: 14, fontWeight: '500' as const },
-    // Botón deshabilitado: fondo `action.disabledBackground` -> texto
-    // `action.disabledText` (par ya calibrado para AA), no `onAccent`.
-    continueButtonTextDisabled: { color: t.color.action.disabledText, fontSize: 14, fontWeight: '500' as const },
     leagueShell: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
@@ -180,9 +188,6 @@ function createStyles(t: ThemeTokens) {
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
     },
-    leagueIcon: { fontSize: 15, opacity: 0.5 },
-    leagueTitle: { fontSize: 13, fontWeight: '500' as const, color: t.color.action.disabledText },
-    leagueSubtitle: { fontSize: 12, color: t.color.action.disabledText },
     chevron: { fontSize: 16, color: t.color.action.disabledText },
   };
 }

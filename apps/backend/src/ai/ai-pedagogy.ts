@@ -271,7 +271,7 @@ export const AXIOMA_TUTOR_PROMPT_VERSION = 'AXIOMA_TUTOR_V6_1';
  * (decisión N) se cumple estructuralmente: aparece una vez por conversación
  * (create/list/get), nunca repetido en cada `sendMessage`.
  */
-export const AXIOMA_TUTOR_DISCLAIMER = 'Axioma IA puede cometer errores. Verifica la información importante.';
+export const AXIOMA_TUTOR_DISCLAIMER = 'Zetrynd IA puede cometer errores. Verifica la información importante.';
 
 /**
  * Subconjunto explícito de "15.11 Modos de respuesta educativa" (Data Model

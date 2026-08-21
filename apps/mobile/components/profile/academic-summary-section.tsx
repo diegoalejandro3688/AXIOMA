@@ -87,6 +87,7 @@ function createStyles(t: ThemeTokens) {
       flexDirection: 'row' as const,
       justifyContent: 'space-between' as const,
       alignItems: 'center' as const,
+      gap: 8,
       backgroundColor: t.color.background.surface,
       borderWidth: 1,
       borderColor: t.color.border.default,
@@ -94,7 +95,12 @@ function createStyles(t: ThemeTokens) {
       paddingVertical: 8,
       paddingHorizontal: 12,
     },
-    subjectName: { fontSize: 13, fontWeight: '600' as const, color: t.color.text.primary },
-    subjectProgress: { fontSize: 12, color: t.color.text.secondary },
+    // `flexShrink`/`flexGrow` explícitos -- sin esto, `space-between` puede
+    // dejar ambos textos pegados sin espacio cuando el contenido llena el
+    // ancho de la fila (ej. "Matemática0/134 temas completados…", visto en
+    // validación Android física). Puramente visual: ni el dato ni el
+    // cálculo de progreso cambian.
+    subjectName: { fontSize: 13, fontWeight: '600' as const, color: t.color.text.primary, flexShrink: 1 },
+    subjectProgress: { fontSize: 12, color: t.color.text.secondary, flexShrink: 0, textAlign: 'right' as const },
   };
 }
