@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, SectionList, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import type { ChallengeSummary } from '@axioma/contracts';
 import { listChallenges, claimChallenge } from '../../../lib/api/challenges';
@@ -8,8 +9,8 @@ import { groupChallenges, progressRatio, canClaim } from '../../../lib/challenge
 import { describeParticipation, type LeagueParticipationView } from '../../../lib/league/participation-view';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
-import { EmptyState } from '../../../components/empty-state';
-import { Text, Card, Button, Progress } from '../../../components/ui';
+import { Text, Card, Button, Progress, Icon } from '../../../components/ui';
+import { QuickQuestionIllustration } from '../../../components/competitive/quick-question-illustration';
 import { useTheme, useThemedStyles, spacing } from '../../../theme';
 import type { ThemeTokens } from '../../../theme';
 
@@ -55,6 +56,7 @@ const PARTICIPATION_STATUS_LABEL: Record<string, string> = {
 export default function CompetirScreen() {
   const tokens = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
   const [claimingId, setClaimingId] = useState<string | null>(null);
@@ -137,6 +139,25 @@ export default function CompetirScreen() {
     setItemErrors((prev) => ({ ...prev, [id]: message }));
   }
 
+  /**
+   * COMPETE-2 -- encabezado visual persistente para los 3 estados
+   * "finales" (con/sin temporada, con/sin inscripción): badge circular +
+   * `Icon name="shield"` (genérico, sin datos de división/posición, mismo
+   * ícono/lenguaje visual ya usado en la fila de Liga de Inicio) + título.
+   * Da presencia consistente al card incluso en el estado vacío real de
+   * hoy -- nunca implica una liga/tier concreto que el contrato no expone.
+   */
+  function leagueHeader(title: string) {
+    return (
+      <View style={styles.leagueHeader}>
+        <View style={styles.leagueIconWrap}>
+          <Icon name="shield" size={18} color="accent" />
+        </View>
+        <Text variant="titleLarge">{title}</Text>
+      </View>
+    );
+  }
+
   function renderLeagueSection() {
     if (leagueState.status === 'loading') {
       return (
@@ -161,7 +182,7 @@ export default function CompetirScreen() {
     if (view.kind === 'no_active_season') {
       return (
         <Card variant="surface" style={styles.leagueCard}>
-          <Text variant="titleLarge">Liga</Text>
+          {leagueHeader('Liga')}
           <Text variant="bodySmall" color="secondary">
             No hay una temporada de liga activa en este momento.
           </Text>
@@ -172,7 +193,7 @@ export default function CompetirScreen() {
     if (view.kind === 'not_enrolled') {
       return (
         <Card variant="surface" style={styles.leagueCard}>
-          <Text variant="titleLarge">Liga</Text>
+          {leagueHeader('Liga')}
           <Text variant="bodySmall" color="secondary">
             Todavía no participas en la liga de esta temporada.
           </Text>
@@ -184,7 +205,7 @@ export default function CompetirScreen() {
     // view.kind === 'enrolled' -- SOLO leagueName + status + acción (DG UI3-2, sin posición ni progreso numérico).
     return (
       <Card variant="surface" style={styles.leagueCard}>
-        <Text variant="titleLarge">{view.leagueName}</Text>
+        {leagueHeader(view.leagueName)}
         <Text variant="bodySmall" color="secondary">
           {PARTICIPATION_STATUS_LABEL[view.status] ?? view.status}
         </Text>
@@ -204,33 +225,59 @@ export default function CompetirScreen() {
   ].filter((section) => section.data.length > 0);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 16 }]}>
       <Text variant="heading1" accessibilityRole="header">
         Competir
+      </Text>
+      <Text variant="bodySmall" color="secondary" style={styles.subtitle}>
+        Compite, sube de liga y demuestra lo que sabes.
       </Text>
 
       {renderLeagueSection()}
 
       {/*
-        `Card` no tiene una variante que reproduzca exactamente
-        `accent.subtleBg` + borde `accent.default` (el tratamiento que el
-        handoff pide MANTENER) -- variant="subtle" da el fondo correcto, el
-        borde se añade vía `style` (ver UI-3 Implementation Report).
+        COMPETE-1 -- tratamiento "protagonista" (fondo azul sólido, texto
+        blanco), acercándose a la referencia aprobada. Sigue siendo la MISMA
+        `Card` con `onPress` navegando a la ruta ya existente -- el
+        "Comenzar" de abajo es presentación pura (Text+Icon, sin su propio
+        `onPress`) para no crear un segundo target de toque anidado dentro
+        del card ya pulsable.
       */}
       <Card
-        variant="subtle"
+        variant="brand"
         accessibilityLabel="Jugar Pregunta rápida"
         onPress={() => router.push('/(tabs)/competir/quick-question')}
         style={styles.quickQuestionCard}
       >
-        <Text variant="titleLarge">Pregunta rápida</Text>
-        <Text variant="bodySmall" color="secondary">
+        <QuickQuestionIllustration />
+        <Text variant="titleLarge" color="onInverse">
+          Pregunta rápida
+        </Text>
+        <Text variant="bodySmall" color="onInverse" style={styles.quickQuestionDescription}>
           Responde preguntas y gana XP
         </Text>
+        <View style={styles.quickQuestionButton}>
+          <Text variant="titleMedium" weight="semibold" color="onAccent">
+            Comenzar
+          </Text>
+          <Icon name="chevron-right" size={18} color={tokens.color.text.onAccent} />
+        </View>
       </Card>
 
       {state.challenges.length === 0 ? (
-        <EmptyState message="Todavía no tienes desafíos asignados. Sigue estudiando y aparecerán aquí." />
+        // Mismo patrón aprobado en HOME-1 ("Desafíos de hoy"): `<Text>` plano
+        // dentro del `Card`, NUNCA `EmptyState` aquí -- ese componente es
+        // `flex:1` pensado para ocupar toda la pantalla (ver `empty-state.tsx`),
+        // que dentro de este card haría que creciera para llenar el espacio
+        // restante en vez de quedar compacto.
+        <Card variant="outlined" style={styles.challengesEmptyCard}>
+          <Text variant="titleMedium" accessibilityRole="header">
+            Desafíos
+          </Text>
+          <Text variant="bodySmall" color="secondary">
+            Todavía no tienes desafíos asignados. Sigue estudiando y aparecerán aquí.
+          </Text>
+        </Card>
       ) : (
         <SectionList
           sections={sections}
@@ -291,8 +338,30 @@ export default function CompetirScreen() {
 function createStyles(t: ThemeTokens) {
   return {
     container: { flex: 1, padding: 16, gap: spacing.space3, backgroundColor: t.color.background.default },
-    leagueCard: { gap: spacing.space2 },
-    quickQuestionCard: { gap: 2, borderWidth: 1, borderColor: t.color.accent.default },
+    subtitle: { marginTop: -spacing.space2 },
+    leagueCard: { gap: spacing.space3, paddingVertical: 28 },
+    leagueHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.space3 },
+    leagueIconWrap: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: t.color.accent.subtleBg,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
+    quickQuestionCard: { gap: spacing.space1, overflow: 'hidden' as const },
+    quickQuestionDescription: { opacity: 0.85, marginBottom: spacing.space2 },
+    quickQuestionButton: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      alignSelf: 'flex-start' as const,
+      gap: 6,
+      backgroundColor: t.color.accent.default,
+      borderRadius: 10,
+      paddingVertical: spacing.space2,
+      paddingHorizontal: spacing.space4,
+    },
+    challengesEmptyCard: { gap: spacing.space2 },
     list: { gap: spacing.space3, paddingBottom: 24 },
     sectionTitle: { marginTop: spacing.space3, marginBottom: spacing.space1, textTransform: 'uppercase' as const },
     card: { gap: spacing.space2 },
