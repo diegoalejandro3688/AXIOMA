@@ -22,6 +22,7 @@ import {
   FlameIcon,
   FlaskIcon,
   InfoIcon,
+  MenuIcon,
   MoreHorizontalIcon,
   OpenBookIcon,
   SettingsIcon,
@@ -56,6 +57,7 @@ export const iconRegistry = {
   'more-horizontal': MoreHorizontalIcon,
   edit: EditIcon,
   settings: SettingsIcon,
+  menu: MenuIcon,
   // Estado/académicos (UI-3)
   flame: FlameIcon,
   shield: ShieldIcon,

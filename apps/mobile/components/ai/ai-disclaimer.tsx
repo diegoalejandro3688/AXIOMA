@@ -18,16 +18,20 @@ export function AiDisclaimer({ text }: { text: string }) {
   );
 }
 
+/**
+ * AI-1A -- baja de jerarquía visual (superficie sutil/informativa, no debe
+ * competir con hero/CTA): sin borde, mismo tono `state.info` pero de fondo
+ * únicamente, padding reducido. Mismo texto real recibido por prop, sin
+ * cambio de dato ni de comportamiento.
+ */
 function createStyles(t: ThemeTokens) {
   return {
     container: {
       backgroundColor: t.color.state.info.background,
-      borderColor: t.color.state.info.border,
-      borderWidth: 1,
       borderRadius: 8,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
     },
-    text: { fontSize: 12, color: t.color.state.info.text },
+    text: { fontSize: 11, color: t.color.state.info.text },
   };
 }

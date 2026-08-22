@@ -256,6 +256,22 @@ export function EditIcon({ size = 24, color }: NavIconProps) {
 }
 
 /**
+ * AI-1 -- disparador del historial de conversaciones del Tutor IA (icono
+ * hamburguesa, tres líneas horizontales). Excepción aprobada explícitamente
+ * por el Product Owner a la regla de no crear capacidades nuevas: es
+ * puramente visual, mismo patrón de trazo que el resto de este archivo.
+ */
+export function MenuIcon({ size = 24, color }: NavIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Line x1="4" y1="6.5" x2="20" y2="6.5" stroke={color} strokeWidth={2} strokeLinecap="round" />
+      <Line x1="4" y1="12" x2="20" y2="12" stroke={color} strokeWidth={2} strokeLinecap="round" />
+      <Line x1="4" y1="17.5" x2="20" y2="17.5" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+/**
  * STUDY-2 -- modalidad "Unidades" dentro de una materia (menú de materia,
  * `estudio/[subjectId]/index.tsx`). Representa contenido estructurado/
  * progresivo ("paso a paso") con una escalera ascendente -- inspirado

@@ -86,23 +86,69 @@ export function StudyNavIcon({ size = 24, color }: NavIconProps) {
 }
 
 /**
- * IA -- símbolo propio: estructura de nodos conectados con remate inferior
- * en rombo/vértice (referencia visual: 12-tutor-ia-hub-dark-APROBADA.png).
- * Nunca cerebro, robot, burbuja de chat.
+ * IA -- símbolo propio oficial (AI-1E, corrección de precisión sobre la
+ * captura objetivo aprobada -- reemplaza la geometría de AI-1D, demasiado
+ * pesada en validación física). Rombo vertical fino: nodo superior + nodo
+ * izquierdo + nodo derecho + nodo central (cruce de eje horizontal
+ * izquierda-derecha y eje vertical superior-remate), diagonales SUPERIORES
+ * (superior->izquierda, superior->derecha) Y diagonales INFERIORES
+ * (izquierda->remate, derecha->remate) cerrando la silueta romboidal
+ * completa, con un remate en estrella/diamante de 4 puntas (relleno, nunca
+ * una flecha).
+ *
+ * AI-1F -- corrige el peso visual de AI-1E ("icono azul geométrico" ->
+ * "red de conocimiento fina y elegante"): trazo MÁS fino (0.85, antes 1.25),
+ * nodos MÁS pequeños (r=0.75, antes 1.1) y opacidad reducida en líneas/nodos
+ * (0.85/0.8) para que el azul sólido pese menos -- el remate conserva una
+ * opacidad ligeramente mayor (0.95) porque es la pieza distintiva de la
+ * identidad. Misma geometría conceptual, sin reconstruirla.
+ *
+ * AI-1H -- microajuste sobre la captura objetivo principal: el nodo
+ * superior y el remate inferior pasan de rellenos a HUECOS (solo trazo,
+ * `fill="none"`) -- así se leen como parte de la misma red fina que rodea
+ * el símbolo en vez de como dos masas sólidas, mientras que izquierda/
+ * derecha/centro se mantienen como puntos rellenos pequeños (igual que la
+ * referencia). Nunca cerebro, robot, burbuja de chat.
+ *
+ * AI-1I -- último ajuste de fidelidad a la captura objetivo: trazo aún más
+ * fino (0.7, antes 0.7/0.85 mixto) y nodos rellenos aún más pequeños/tenues
+ * (r=0.6, opacidad 0.72) -- el símbolo debe leerse "pequeño y preciso"
+ * frente a una malla exterior ahora mucho más grande y perceptible (ver
+ * `ai-tutor-mark.tsx`).
+ *
+ * Mismo componente para la tab bar (24px) y para el hero de Tutor Home
+ * (`AiTutorMark`, más grande) -- la red decorativa de fondo del hero vive
+ * FUERA de este ícono (componente aparte), para no afectar su uso en la tab
+ * bar ni en ningún otro consumidor.
  */
 export function AiNavIcon({ size = 24, color }: NavIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Line x1="12" y1="4.5" x2="6" y2="10" stroke={color} strokeWidth={2} strokeLinecap="round" />
-      <Line x1="12" y1="4.5" x2="18" y2="10" stroke={color} strokeWidth={2} strokeLinecap="round" />
-      <Line x1="6" y1="10" x2="12" y2="14" stroke={color} strokeWidth={2} strokeLinecap="round" />
-      <Line x1="18" y1="10" x2="12" y2="14" stroke={color} strokeWidth={2} strokeLinecap="round" />
-      <Line x1="12" y1="14" x2="12" y2="19.5" stroke={color} strokeWidth={2} strokeLinecap="round" />
-      <Circle cx="12" cy="4.5" r="1.5" stroke={color} strokeWidth={2} />
-      <Circle cx="6" cy="10" r="1.5" stroke={color} strokeWidth={2} />
-      <Circle cx="18" cy="10" r="1.5" stroke={color} strokeWidth={2} />
-      <Circle cx="12" cy="14" r="1.5" stroke={color} strokeWidth={2} />
-      <Path d="M9.5 19.5 12 22l2.5-2.5H9.5Z" stroke={color} strokeWidth={2} strokeLinejoin="round" />
+      {/* Eje vertical: nodo superior -> nodo central -> remate. */}
+      <Line x1="12" y1="4" x2="12" y2="17.4" stroke={color} strokeWidth={0.7} strokeLinecap="round" opacity={0.8} />
+      {/* Eje horizontal: izquierda -> centro -> derecha (colineales). */}
+      <Line x1="5" y1="11" x2="19" y2="11" stroke={color} strokeWidth={0.7} strokeLinecap="round" opacity={0.8} />
+      {/* Diagonales superiores (rombo). */}
+      <Line x1="12" y1="4" x2="5" y2="11" stroke={color} strokeWidth={0.7} strokeLinecap="round" opacity={0.8} />
+      <Line x1="12" y1="4" x2="19" y2="11" stroke={color} strokeWidth={0.7} strokeLinecap="round" opacity={0.8} />
+      {/* Diagonales inferiores (cierran el rombo hacia el remate). */}
+      <Line x1="5" y1="11" x2="12" y2="17.4" stroke={color} strokeWidth={0.7} strokeLinecap="round" opacity={0.8} />
+      <Line x1="19" y1="11" x2="12" y2="17.4" stroke={color} strokeWidth={0.7} strokeLinecap="round" opacity={0.8} />
+      {/* Nodo superior -- hueco (solo trazo), se integra con la red fina. */}
+      <Circle cx="12" cy="4" r="0.9" fill="none" stroke={color} strokeWidth={0.7} opacity={0.85} />
+      {/* Izquierda/derecha/centro -- rellenos, pequeños, sin doble contorno. */}
+      <Circle cx="5" cy="11" r="0.6" fill={color} stroke="none" opacity={0.72} />
+      <Circle cx="19" cy="11" r="0.6" fill={color} stroke="none" opacity={0.72} />
+      <Circle cx="12" cy="11" r="0.6" fill={color} stroke="none" opacity={0.72} />
+      {/* Remate: estrella/diamante de 4 puntas, hueca (solo trazo) -- nunca una flecha. */}
+      <Path
+        d="M12 17.4 12.4 18.6 13.6 19 12.4 19.4 12 20.6 11.6 19.4 10.4 19 11.6 18.6Z"
+        fill="none"
+        stroke={color}
+        strokeWidth={0.6}
+        strokeLinejoin="round"
+        opacity={0.9}
+      />
     </Svg>
   );
 }

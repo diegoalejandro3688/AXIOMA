@@ -27,17 +27,29 @@ export function AiQuotaSummary({
   const styles = useThemedStyles(createStyles);
   const exhausted = dailyQuota.remaining <= 0;
 
+  /**
+   * AI-1C -- "dato protagonista" compacto: `remaining`/`limit` (campos
+   * reales del backend, sin recalcular nada) como número destacado, con
+   * `describeDailyQuota(dailyQuota)` conservado como `accessibilityLabel`
+   * (misma llamada real que antes -- ver `verify-ai-mobile-gate.ts`, exige
+   * este substring literal). La explicación ("consultas disponibles hoy")
+   * es el mismo copy que ya usaba `describeDailyQuota`, solo separado en su
+   * propia línea; el reset queda terciario/muted. Mismo criterio de
+   * `exhausted` que ya existía (AI-1A) para reflejar el único estado
+   * especial real del contrato (cuota agotada, `remaining <= 0` -- no hay
+   * ningún otro estado/campo de "ilimitado" en `AiDailyQuotaResponse`).
+   */
   return (
     <View style={styles.container}>
-      <View style={[styles.chip, exhausted ? styles.chipWarning : styles.chipNeutral]}>
-        <Text style={[styles.chipText, exhausted && styles.chipTextWarning]} accessibilityLabel={`Cuota diaria: ${describeDailyQuota(dailyQuota)}`}>
-          {describeDailyQuota(dailyQuota)}
-        </Text>
-      </View>
+      <Text
+        style={[styles.bigNumber, exhausted && styles.bigNumberWarning]}
+        accessibilityLabel={`Cuota diaria: ${describeDailyQuota(dailyQuota)}`}
+      >
+        {dailyQuota.remaining} / {dailyQuota.limit}
+      </Text>
+      <Text style={[styles.explain, exhausted && styles.explainWarning]}>consultas disponibles hoy</Text>
       {typeof turnCount === 'number' && typeof maxTurns === 'number' ? (
-        <View style={[styles.chip, styles.chipNeutral]}>
-          <Text style={styles.chipText}>{describeTurns(turnCount, maxTurns)}</Text>
-        </View>
+        <Text style={styles.line}>{describeTurns(turnCount, maxTurns)}</Text>
       ) : null}
       <Text style={styles.reset}>Se renueva {describeResetAt(dailyQuota.resetAt)}</Text>
     </View>
@@ -46,12 +58,12 @@ export function AiQuotaSummary({
 
 function createStyles(t: ThemeTokens) {
   return {
-    container: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, gap: 8 },
-    chip: { borderRadius: 999, borderWidth: 1, paddingVertical: 4, paddingHorizontal: 10 },
-    chipNeutral: { backgroundColor: t.color.background.surface, borderColor: t.color.border.default },
-    chipWarning: { backgroundColor: t.color.state.warning.background, borderColor: t.color.state.warning.border },
-    chipText: { fontSize: 12, color: t.color.text.secondary },
-    chipTextWarning: { color: t.color.state.warning.text, fontWeight: '600' as const },
-    reset: { fontSize: 12, color: t.color.text.muted },
+    container: { alignItems: 'center' as const, gap: 2 },
+    bigNumber: { fontSize: 20, fontWeight: '700' as const, color: t.color.text.primary },
+    bigNumberWarning: { color: t.color.state.warning.text },
+    explain: { fontSize: 12, color: t.color.text.secondary },
+    explainWarning: { color: t.color.state.warning.text, fontWeight: '600' as const },
+    line: { fontSize: 12, color: t.color.text.secondary },
+    reset: { fontSize: 11, color: t.color.text.muted },
   };
 }
