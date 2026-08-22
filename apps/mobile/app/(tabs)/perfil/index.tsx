@@ -31,6 +31,10 @@ type ScreenState = { status: 'loading' } | { status: 'error'; message: string } 
  * fetch -- son catálogos grandes, independientes del agregador, con su
  * propia escritura (equipar) y su propia reconciliación tras cada `PUT`/
  * `PATCH`, mismo patrón ya usado por `CosmeticsSection` desde Bloque III.
+ * `onEquipped={load}` (ASSET-2) hace que un equipamiento exitoso también
+ * recargue el agregador -- sin eso, `CompetitiveProfileSection` en esta
+ * misma pantalla quedaba mostrando la identidad anterior hasta reabrir la
+ * app, aunque Preview (fetch propio en otra ruta) sí reflejaba el cambio.
  *
  * "Ver cómo me ven otros" navega a `/perfil/preview` (Incremento 7) --
  * pantalla separada, sin mezclar su estado con el de esta (el contrato de
@@ -309,7 +313,7 @@ export default function PerfilScreen() {
         <CompetitiveProfileSection profile={view.publicProfile} />
         <AcademicSummarySection summary={view.academicSummary} />
         <CompetitiveHistorySection history={view.competitiveHistory} />
-        <CosmeticsSection />
+        <CosmeticsSection onEquipped={load} />
         <TitlesSection />
       </ScrollView>
 

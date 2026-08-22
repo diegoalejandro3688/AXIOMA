@@ -51,7 +51,7 @@ export function CompetitiveIdentityHeader({
         ) : (
           <View style={styles.bannerPlaceholder} />
         )}
-        <View style={styles.avatarOverlap}>
+        <View style={[styles.avatarOverlap, frame ? null : styles.avatarOverlapRing]}>
           <Avatar avatarUri={avatar} frameUri={frame?.assetReference} size="hero" accessibilityLabel={`Avatar de ${username}`} />
         </View>
       </View>
@@ -88,11 +88,23 @@ function createStyles(t: ThemeTokens) {
     banner: { width: '100%' as const, height: 120, borderRadius: 14, backgroundColor: t.color.background.surface },
     /** Placeholder neutral cuando `banner` es `null` -- mismo contenedor vacío, nunca una imagen inventada (UI-5, criterio A.2). */
     bannerPlaceholder: { width: '100%' as const, height: 120, borderRadius: 14, backgroundColor: t.color.accent.subtleBg },
+    /**
+     * ASSET-2 -- posicionamiento puro, SIN dibujar nada por sí solo. El
+     * anillo de separación (`avatarOverlapRing`, abajo) solo se aplica sin
+     * marco equipado: con marco, cualquier disco/borde detrás quedaba
+     * expuesto como un halo claro en el hueco donde el arte del marco no
+     * llega exactamente al radio de este contenedor (variable por asset,
+     * nunca garantizado por el código) -- confirmado con madera, plata y
+     * Bronce V2 durante el diagnóstico de ASSET-2.
+     */
     avatarOverlap: {
       marginTop: -HERO_AVATAR_OVERLAP,
       marginLeft: 16,
       alignSelf: 'flex-start' as const,
       borderRadius: 999,
+    },
+    /** Anillo de separación avatar/banner (commit 5eb1822) -- SOLO sin marco equipado; con marco, el propio marco ya aporta el contorno visual. */
+    avatarOverlapRing: {
       borderWidth: 3,
       borderColor: t.color.background.default,
       backgroundColor: t.color.background.default,

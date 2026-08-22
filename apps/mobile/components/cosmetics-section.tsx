@@ -23,8 +23,18 @@ type ScreenState = { status: 'loading' } | { status: 'error'; message: string } 
  * distintos pueden coexistir en el backend (Gate 5.b concurrente por slot),
  * así que esta pantalla solo bloquea el slot que tiene un `PUT` en curso,
  * no los otros tres.
+ *
+ * `onEquipped` (ASSET-2, hallazgo de validación física) -- esta sección
+ * reconcilia SU PROPIO estado (`state.data.equipped`) con la respuesta real
+ * del `PUT`, pero `CompetitiveProfileSection` (pantalla hermana, alimentada
+ * por `GET /user/me/advanced-profile` en `perfil/index.tsx`) no se entera:
+ * son fetches independientes, sin estado compartido. `onEquipped` deja que
+ * el contenedor decida cómo reconciliarse -- mismo patrón ya usado ahí para
+ * `handleInitialize`/`handleSave`/`handleClaimUsername` (recargar el
+ * agregador completo tras una escritura real, nunca optimista). No cambia
+ * la firma de `CompetitiveProfileSection` ni el resto de esta sección.
  */
-export function CosmeticsSection() {
+export function CosmeticsSection({ onEquipped }: { onEquipped?: () => void } = {}) {
   const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
   const [expandedSlot, setExpandedSlot] = useState<CosmeticSlotValue | null>(null);
@@ -72,12 +82,14 @@ export function CosmeticsSection() {
       const equipped = outcome.data;
       setState((prev) => (prev.status === 'ready' ? { status: 'ready', data: { ...prev.data, equipped: { ...prev.data.equipped, [slot]: equipped } } } : prev));
       setExpandedSlot(null);
+      onEquipped?.();
       return;
     }
 
     if (outcome.kind === 'reload') {
       // 404 -- perfil inexistente o inventario desactualizado: reconciliar recargando todo, no adivinar.
       await load();
+      onEquipped?.();
       return;
     }
 
