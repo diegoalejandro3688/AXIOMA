@@ -4,7 +4,7 @@ import { CompetitiveIdentityHeader } from './competitive/identity-header';
 import { CompetitiveAchievementsList } from './competitive/achievements-list';
 import { useThemedStyles } from '../theme';
 import type { ThemeTokens } from '../theme';
-import { Text } from './ui';
+import { Text, Button } from './ui';
 
 /**
  * Sección "Perfil competitivo" dentro de `perfil/index.tsx` -- Bloque IV,
@@ -81,6 +81,15 @@ import { Text } from './ui';
  * da acceso permanente a Competir). `PublicProfileView` (terceros/preview)
  * NO cambia -- sigue usando `CompetitivePositionCard` completo, asimetría
  * intencional documentada en `verify-competitive-profile-gate.ts`.
+ *
+ * PROFILE-HOTFIX-1 (2026-08-22) -- defecto real detectado con una cuenta
+ * nueva sin `PublicProfile`: la rama `profile === null` retornaba ANTES de
+ * llegar a `CompetitiveIdentityHeader`, así que el engranaje de Ajustes
+ * (`onOpenSettings`) nunca se renderizaba -- sin engranaje, la cuenta no
+ * tenía NINGÚN camino hacia `claimPublicProfile()` (que vive únicamente
+ * dentro del panel de Ajustes de `perfil/index.tsx`). Corregido con un
+ * segundo PUNTO DE ENTRADA al mismo `onOpenSettings` en esa rama vacía --
+ * mismo Dialog, mismo controlador, cero lógica de claim duplicada.
  */
 export function CompetitiveProfileSection({
   profile,
@@ -101,6 +110,29 @@ export function CompetitiveProfileSection({
         <Text variant="bodySmall" color="secondary">
           Configura tu nombre de usuario para tener un perfil competitivo.
         </Text>
+        {/*
+          PROFILE-HOTFIX-1 (2026-08-22) -- sin `profile`, este componente
+          nunca llega a renderizar `CompetitiveIdentityHeader` (ni por tanto
+          su engranaje) -- una cuenta sin `PublicProfile` quedaba sin NINGÚN
+          acceso a Ajustes, y `claimPublicProfile()` vive únicamente dentro
+          de Ajustes. Esta acción explícita abre EXACTAMENTE el mismo
+          `Dialog` de Ajustes que el engranaje del hero (mismo
+          `onOpenSettings`, mismo panel, mismo `handleClaimUsername` en
+          `perfil/index.tsx`) -- no es un segundo flujo de reclamo, es un
+          segundo PUNTO DE ENTRADA al único flujo existente. Solo se
+          renderiza si el llamador pasó `onOpenSettings` (perfil propio;
+          `PublicProfileView`/terceros/preview nunca lo pasan).
+        */}
+        {onOpenSettings ? (
+          <Button
+            label="Configurar perfil"
+            accessibilityLabel="Configurar perfil -- abrir Ajustes"
+            onPress={onOpenSettings}
+            variant="secondary"
+            size="small"
+            style={styles.configureButton}
+          />
+        ) : null}
       </View>
     );
   }
@@ -133,6 +165,7 @@ export function CompetitiveProfileSection({
 function createStyles(t: ThemeTokens) {
   return {
     container: { gap: 12, marginTop: 8 },
+    configureButton: { alignSelf: 'flex-start' as const },
     retiredBadge: {
       alignSelf: 'flex-start' as const,
       fontSize: 12,

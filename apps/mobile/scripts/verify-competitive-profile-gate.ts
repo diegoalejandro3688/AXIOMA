@@ -137,6 +137,28 @@ function main() {
   // Se busca el IMPORT real del cliente de API (no una mención en comentario/documentación --
   // este mismo archivo documenta legítimamente `UserService.getMyCompetitiveProfile` en prosa).
   check('CompetitiveProfileSection NUNCA importa el cliente de API competitivo -- cero fetch propio (evita el fetch duplicado, Incremento 8)', !/^import .*from ['"]\.\.\/lib\/api\/competitive['"]/m.test(sectionSource));
+  // PROFILE-HOTFIX-1 (2026-08-22): con `profile === null` (cuenta sin
+  // `PublicProfile`), este componente retorna ANTES de llegar a
+  // `CompetitiveIdentityHeader` -- así que su engranaje (`onOpenSettings`)
+  // nunca se renderizaba, dejando a la cuenta SIN ningún camino hacia
+  // `claimPublicProfile()` (que vive únicamente dentro del panel de
+  // Ajustes). Se localiza la rama vacía por sus marcadores estructurales
+  // reales (`if (profile === null) {` ... el inicio de la rama con datos,
+  // reconocible por `profile.lifecycleStatus`) -- no por indentación --
+  // y se exige que ESA rama, específicamente, reenvíe `onOpenSettings`
+  // hacia algún control interactivo, protegiendo que Ajustes siga siendo
+  // alcanzable sin perfil público.
+  const nullProfileBranchStart = sectionSource.indexOf('if (profile === null) {');
+  const nullProfileBranchEnd = sectionSource.indexOf('profile.lifecycleStatus', nullProfileBranchStart);
+  const nullProfileBranch = sectionSource.slice(nullProfileBranchStart, nullProfileBranchEnd);
+  check(
+    'CompetitiveProfileSection localiza la rama profile===null (Ajustes-sin-perfil-público) de forma estructural, no por indentación',
+    nullProfileBranchStart > -1 && nullProfileBranchEnd > nullProfileBranchStart,
+  );
+  check(
+    'sin PublicProfile, la rama vacía SIGUE ofreciendo un camino a Ajustes (onOpenSettings) -- nunca deja a la cuenta sin acceso a claimPublicProfile()',
+    nullProfileBranch.includes('onOpenSettings'),
+  );
   const perfilIndexSource = readSource('app', '(tabs)', 'perfil', 'index.tsx');
   check('perfil/index.tsx hace LA ÚNICA carga canónica vía getMyAdvancedProfile (Incremento 5) -- fuente única para encabezado/competitivo/académico/historial', perfilIndexSource.includes('getMyAdvancedProfile'));
   check('perfil/index.tsx NUNCA importa getMyCompetitiveProfile por separado -- sin fetch duplicado del mismo dato', !perfilIndexSource.includes('getMyCompetitiveProfile'));
