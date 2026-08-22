@@ -5,7 +5,7 @@ import { listTitles, equipTitle } from '../../lib/api/titles';
 import { describeUnlockRequirements } from '../../lib/personalization/unlock-requirement-copy';
 import { LoadingState } from '../loading-state';
 import { ErrorState } from '../error-state';
-import { Text, Card, Chip } from '../ui';
+import { Text, Card, Chip, Icon } from '../ui';
 import { useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
@@ -21,12 +21,21 @@ type SectionState = { status: 'loading' } | { status: 'error'; message: string }
  * `locked` viene YA filtrado por el backend a elementos VISIBLES con al
  * menos un `unlockRequirement` real (§4.8/§14, decisión del Product Owner)
  * -- este componente nunca decide qué entra ahí, solo lo presenta.
+ *
+ * PROFILE-2 (decisión del Product Owner, 2026-08-22) -- acordeón colapsado
+ * por defecto (`expanded`, NUEVO estado local), mismo patrón ya probado en
+ * `CosmeticsSection` (`expandedSlot`): en colapsado solo se ve el título
+ * equipado actual (o "Sin título") + affordance de expansión; al expandir,
+ * aparecen owned/locked exactamente igual que antes. Reduce el crecimiento
+ * de Perfil cuando la cuenta acumula muchos títulos, sin tocar contratos,
+ * equipamiento, loading/error ni reconciliación.
  */
 export function TitlesSection() {
   const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<SectionState>({ status: 'loading' });
   const [equipping, setEquipping] = useState(false);
   const [equipError, setEquipError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const load = useCallback(async () => {
     setState({ status: 'loading' });
@@ -72,70 +81,88 @@ export function TitlesSection() {
 
   return (
     <View style={styles.container}>
-      <Text variant="heading3" accessibilityRole="header">
-        Títulos
-      </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Títulos -- ${equipped ? equipped.displayText : 'Sin título'}`}
+        onPress={() => setExpanded((prev) => !prev)}
+        style={styles.header}
+      >
+        <View style={styles.headerInfo}>
+          <Text variant="caption" weight="bold" color="secondary" style={styles.headerLabel}>
+            TÍTULOS
+          </Text>
+          <Text variant="titleMedium" weight="semibold">
+            {equipped ? equipped.displayText : 'Sin título'}
+          </Text>
+        </View>
+        <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={20} color="muted" />
+      </Pressable>
+
       {equipError ? (
         <Text variant="bodySmall" color="error">
           {equipError}
         </Text>
       ) : null}
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Quitar título equipado"
-        onPress={() => handleEquip(null)}
-        disabled={equipping || equipped === null}
-        style={[styles.optionRow, equipped === null && styles.optionRowActive]}
-      >
-        <Text variant="body" weight="semibold">
-          Sin título
-        </Text>
-        {equipping ? (
-          <ActivityIndicator size="small" />
-        ) : equipped === null ? (
-          <Chip label="Equipado" variant="selected" />
-        ) : null}
-      </Pressable>
+      {expanded ? (
+        <View style={styles.optionsList}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Quitar título equipado"
+            onPress={() => handleEquip(null)}
+            disabled={equipping || equipped === null}
+            style={[styles.optionRow, equipped === null && styles.optionRowActive]}
+          >
+            <Text variant="body" weight="semibold">
+              Sin título
+            </Text>
+            {equipping ? (
+              <ActivityIndicator size="small" />
+            ) : equipped === null ? (
+              <Chip label="Equipado" variant="selected" />
+            ) : null}
+          </Pressable>
 
-      {owned.length === 0 ? (
-        <Text variant="bodySmall" color="muted" style={styles.emptyMessage}>
-          Todavía no posees ningún título.
-        </Text>
-      ) : (
-        owned.map((item) => {
-          const isEquipped = equipped?.accountTitleId === item.accountTitleId;
-          return (
-            <Pressable
-              key={item.accountTitleId}
-              accessibilityRole="button"
-              accessibilityLabel={`Equipar título ${item.displayText}`}
-              onPress={() => handleEquip(item.accountTitleId)}
-              disabled={equipping || isEquipped}
-              style={[styles.optionRow, isEquipped && styles.optionRowActive]}
-            >
-              <Text variant="body" weight="semibold">
-                {item.displayText}
-              </Text>
-              <Chip label={isEquipped ? 'Equipado' : item.rarityClass} variant={isEquipped ? 'selected' : 'neutral'} />
-            </Pressable>
-          );
-        })
-      )}
+          {owned.length === 0 ? (
+            <Text variant="bodySmall" color="muted" style={styles.emptyMessage}>
+              Todavía no posees ningún título.
+            </Text>
+          ) : (
+            owned.map((item) => {
+              const isEquipped = equipped?.accountTitleId === item.accountTitleId;
+              return (
+                <Pressable
+                  key={item.accountTitleId}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Equipar título ${item.displayText}`}
+                  onPress={() => handleEquip(item.accountTitleId)}
+                  disabled={equipping || isEquipped}
+                  style={[styles.optionRow, isEquipped && styles.optionRowActive]}
+                >
+                  <Text variant="body" weight="semibold">
+                    {item.displayText}
+                  </Text>
+                  <Chip label={isEquipped ? 'Equipado' : item.rarityClass} variant={isEquipped ? 'selected' : 'neutral'} />
+                </Pressable>
+              );
+            })
+          )}
 
-      {locked.length > 0 ? (
-        <View style={styles.lockedSection}>
-          <Text variant="caption" weight="bold" color="secondary" style={styles.lockedTitle}>
-            Bloqueados
-          </Text>
-          {locked.map((item) => (
-            <Card key={item.titleDefinitionId} variant="subtle" style={styles.lockedRow}>
-              <Text variant="bodySmall" weight="semibold" color="muted">
-                {item.displayText}
+          {locked.length > 0 ? (
+            <View style={styles.lockedSection}>
+              <Text variant="caption" weight="bold" color="secondary" style={styles.lockedTitle}>
+                Bloqueados
               </Text>
-              <Chip label={describeUnlockRequirements(item.unlockRequirements)} variant="disabled" />
-            </Card>
-          ))}
+              {locked.map((item) => (
+                <Card key={item.titleDefinitionId} variant="subtle" style={styles.lockedRow}>
+                  <Text variant="bodySmall" weight="semibold" color="muted">
+                    {item.displayText}
+                  </Text>
+                  <Chip label={describeUnlockRequirements(item.unlockRequirements)} variant="disabled" />
+                </Card>
+              ))}
+            </View>
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -145,6 +172,10 @@ export function TitlesSection() {
 function createStyles(t: ThemeTokens) {
   return {
     container: { gap: 8 },
+    header: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12 },
+    headerInfo: { flex: 1, gap: 2 },
+    headerLabel: { textTransform: 'uppercase' as const },
+    optionsList: { gap: 6, paddingTop: 4, borderTopWidth: 1, borderTopColor: t.color.border.default },
     emptyMessage: { paddingVertical: 6 },
     optionRow: {
       flexDirection: 'row' as const,

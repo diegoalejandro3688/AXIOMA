@@ -34,6 +34,7 @@ export default function PerfilLayout() {
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="preview" options={{ title: 'Cómo me ven otros' }} />
+      <Stack.Screen name="personalizacion" options={{ title: 'Personalización' }} />
     </Stack>
   );
 }

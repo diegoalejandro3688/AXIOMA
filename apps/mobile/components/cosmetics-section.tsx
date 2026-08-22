@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import type { CosmeticSlotValue, ListCosmeticsResponse, OwnedCosmetic } from '@axioma/contracts';
 import { listCosmetics, equipCosmetic } from '../lib/api/cosmetics';
-import { COSMETIC_SLOTS, SLOT_LABEL, groupOwnedCosmetics, groupLockedCosmetics } from '../lib/cosmetics/group-cosmetics';
+import { SLOT_LABEL, groupOwnedCosmetics, groupLockedCosmetics } from '../lib/cosmetics/group-cosmetics';
 import { describeUnlockRequirements } from '../lib/personalization/unlock-requirement-copy';
 import { LoadingState } from './loading-state';
 import { ErrorState } from './error-state';
@@ -13,29 +13,26 @@ import type { ThemeTokens } from '../theme';
 type ScreenState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; data: ListCosmeticsResponse };
 
 /**
- * Sección "Personalización" dentro de Perfil -- Incremento 5, sub-incremento
- * 5.c (ver docs/adr/BLOCK-III-DEFINITION.md §4.21). Consume el backend ya
- * cerrado (5.b): `GET`/`PUT /gamification/me/cosmetics[...]`. Sin equipamiento
- * optimista -- el estado local de un slot solo cambia con la respuesta
- * confirmada del `PUT` (`outcome.data`), nunca antes.
+ * PROFILE-5B (decisión del Product Owner, 2026-08-22) -- lógica de
+ * cosméticos extraída a un controlador (`useCosmeticsController`)
+ * reutilizable desde MÚLTIPLES superficies de presentación (las 4 tabs de
+ * `personalizacion.tsx`) sin duplicar `listCosmetics()`. Antes de este
+ * refactor, `CosmeticsSection` mezclaba fetch + estado + presentación de
+ * los 4 slots en un solo componente -- correcto para una lista vertical
+ * única, pero montar/desmontar esa pieza por cada tab (Avatar/Banner/
+ * Insignia) habría disparado un `listCosmetics()` nuevo por cada cambio de
+ * pestaña. El controlador se instancia UNA sola vez en la pantalla
+ * contenedora; `CosmeticSlotCard` es una presentación pura de UN slot,
+ * consumiendo el estado ya resuelto -- cambiar de tab nunca reconsulta el
+ * servidor.
  *
- * Bloqueo de doble toque a nivel de SLOT (no global): dos `PUT` a slots
- * distintos pueden coexistir en el backend (Gate 5.b concurrente por slot),
- * así que esta pantalla solo bloquea el slot que tiene un `PUT` en curso,
- * no los otros tres.
- *
- * `onEquipped` (ASSET-2, hallazgo de validación física) -- esta sección
- * reconcilia SU PROPIO estado (`state.data.equipped`) con la respuesta real
- * del `PUT`, pero `CompetitiveProfileSection` (pantalla hermana, alimentada
- * por `GET /user/me/advanced-profile` en `perfil/index.tsx`) no se entera:
- * son fetches independientes, sin estado compartido. `onEquipped` deja que
- * el contenedor decida cómo reconciliarse -- mismo patrón ya usado ahí para
- * `handleInitialize`/`handleSave`/`handleClaimUsername` (recargar el
- * agregador completo tras una escritura real, nunca optimista). No cambia
- * la firma de `CompetitiveProfileSection` ni el resto de esta sección.
+ * Ninguna regla de negocio cambió: mismo backend (`GET`/`PUT
+ * /gamification/me/cosmetics[...]`), mismo criterio sin equipamiento
+ * optimista, mismo bloqueo de doble toque POR SLOT (no global -- dos `PUT`
+ * a slots distintos pueden coexistir, Gate 5.b), misma reconciliación
+ * (`outcome.data` tras `PUT`, recarga completa ante 404).
  */
-export function CosmeticsSection({ onEquipped }: { onEquipped?: () => void } = {}) {
-  const styles = useThemedStyles(createStyles);
+export function useCosmeticsController(onEquipped?: () => void) {
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
   const [expandedSlot, setExpandedSlot] = useState<CosmeticSlotValue | null>(null);
   const [equippingSlot, setEquippingSlot] = useState<CosmeticSlotValue | null>(null);
@@ -97,119 +94,121 @@ export function CosmeticsSection({ onEquipped }: { onEquipped?: () => void } = {
     setSlotErrors((prev) => ({ ...prev, [slot]: outcome.message }));
   }
 
+  return { state, expandedSlot, equippingSlot, slotErrors, toggleSlot, handleSelect };
+}
+
+export type CosmeticsController = ReturnType<typeof useCosmeticsController>;
+
+/**
+ * Presentación pura de UN slot -- misma tarjeta/acordeón que antes vivía
+ * inline en el `.map(COSMETIC_SLOTS)` de `CosmeticsSection`, ahora
+ * reutilizable de forma independiente (una por tab en Personalización).
+ * AVATAR y AVATAR_FRAME se renderizan como DOS instancias de este
+ * componente -- mismo controlador compartido, pero cada una lee/escribe
+ * ÚNICAMENTE su propia clave en `equipped`/`grouped`, sin fusionar
+ * contrato ni estado entre ambas.
+ */
+export function CosmeticSlotCard({ slot, controller }: { slot: CosmeticSlotValue; controller: CosmeticsController }) {
+  const styles = useThemedStyles(createStyles);
+  const { state, expandedSlot, equippingSlot, slotErrors, toggleSlot, handleSelect } = controller;
+
   if (state.status === 'loading') return <LoadingState message="Cargando personalización…" />;
-  if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
+  if (state.status === 'error') return <ErrorState message={state.message} onRetry={() => toggleSlot(slot)} />;
 
   const grouped = groupOwnedCosmetics(state.data.owned);
   const groupedLocked = groupLockedCosmetics(state.data.locked);
+  const equippedItem = state.data.equipped[slot];
+  const ownedForSlot = grouped[slot];
+  const lockedForSlot = groupedLocked[slot];
+  const isExpanded = expandedSlot === slot;
+  const isEquipping = equippingSlot === slot;
+  const isAvatarLikeSlot = slot === 'AVATAR' || slot === 'AVATAR_FRAME';
 
   return (
-    <View style={styles.container}>
-      <Text variant="heading3" accessibilityRole="header">
-        Personalización
-      </Text>
+    <Card variant="outlined" style={styles.card}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${SLOT_LABEL[slot]} -- ${equippedItem ? equippedItem.name : 'sin equipar'}`}
+        onPress={() => toggleSlot(slot)}
+        disabled={equippingSlot !== null}
+        style={styles.slotHeader}
+      >
+        <View style={styles.slotPreview}>
+          {isAvatarLikeSlot ? (
+            <Avatar avatarUri={equippedItem?.assetReference ?? null} size="small" />
+          ) : equippedItem ? (
+            <Avatar avatarUri={equippedItem.assetReference} size="small" />
+          ) : (
+            <View style={styles.previewPlaceholder} />
+          )}
+        </View>
+        <View style={styles.slotInfo}>
+          <Text variant="caption" weight="bold" color="secondary" style={styles.slotLabel}>
+            {SLOT_LABEL[slot]}
+          </Text>
+          <Text variant="titleMedium" weight="semibold">
+            {equippedItem ? equippedItem.name : 'Sin equipar'}
+          </Text>
+        </View>
+        {isEquipping ? <ActivityIndicator /> : <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={20} color="muted" />}
+      </Pressable>
 
-      {COSMETIC_SLOTS.map((slot) => {
-        const equippedItem = state.data.equipped[slot];
-        const ownedForSlot = grouped[slot];
-        const lockedForSlot = groupedLocked[slot];
-        const isExpanded = expandedSlot === slot;
-        const isEquipping = equippingSlot === slot;
-        const isAvatarLikeSlot = slot === 'AVATAR' || slot === 'AVATAR_FRAME';
+      {slotErrors[slot] ? (
+        <Text variant="bodySmall" color="error">
+          {slotErrors[slot]}
+        </Text>
+      ) : null}
 
-        return (
-          <Card key={slot} variant="outlined" style={styles.card}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`${SLOT_LABEL[slot]} -- ${equippedItem ? equippedItem.name : 'sin equipar'}`}
-              onPress={() => toggleSlot(slot)}
-              disabled={equippingSlot !== null}
-              style={styles.slotHeader}
-            >
-              <View style={styles.slotPreview}>
-                {isAvatarLikeSlot ? (
-                  <Avatar avatarUri={equippedItem?.assetReference ?? null} size="small" />
-                ) : equippedItem ? (
-                  <Avatar avatarUri={equippedItem.assetReference} size="small" />
-                ) : (
-                  <View style={styles.previewPlaceholder} />
-                )}
-              </View>
-              <View style={styles.slotInfo}>
-                <Text variant="caption" weight="bold" color="secondary" style={styles.slotLabel}>
-                  {SLOT_LABEL[slot]}
-                </Text>
-                <Text variant="titleMedium" weight="semibold">
-                  {equippedItem ? equippedItem.name : 'Sin equipar'}
-                </Text>
-              </View>
-              {isEquipping ? (
-                <ActivityIndicator />
-              ) : (
-                <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={20} color="muted" />
-              )}
-            </Pressable>
-
-            {slotErrors[slot] ? (
-              <Text variant="bodySmall" color="error">
-                {slotErrors[slot]}
-              </Text>
-            ) : null}
-
-            {isExpanded ? (
-              <View style={styles.optionsList}>
-                {ownedForSlot.length === 0 ? (
-                  <Text variant="bodySmall" color="muted" style={styles.emptySlot}>
-                    Todavía no posees cosméticos de este tipo.
+      {isExpanded ? (
+        <View style={styles.optionsList}>
+          {ownedForSlot.length === 0 ? (
+            <Text variant="bodySmall" color="muted" style={styles.emptySlot}>
+              Todavía no posees cosméticos de este tipo.
+            </Text>
+          ) : (
+            ownedForSlot.map((item) => {
+              const isCurrentlyEquipped = equippedItem?.inventoryItemId === item.inventoryItemId;
+              return (
+                <Pressable
+                  key={item.inventoryItemId}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Equipar ${item.name}`}
+                  onPress={() => handleSelect(slot, item)}
+                  disabled={isEquipping || isCurrentlyEquipped}
+                  style={[styles.optionRow, isCurrentlyEquipped && styles.optionRowActive]}
+                >
+                  <Text variant="body" weight="semibold">
+                    {item.name}
                   </Text>
-                ) : (
-                  ownedForSlot.map((item) => {
-                    const isCurrentlyEquipped = equippedItem?.inventoryItemId === item.inventoryItemId;
-                    return (
-                      <Pressable
-                        key={item.inventoryItemId}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Equipar ${item.name}`}
-                        onPress={() => handleSelect(slot, item)}
-                        disabled={isEquipping || isCurrentlyEquipped}
-                        style={[styles.optionRow, isCurrentlyEquipped && styles.optionRowActive]}
-                      >
-                        <Text variant="body" weight="semibold">
-                          {item.name}
-                        </Text>
-                        <Chip label={isCurrentlyEquipped ? 'Equipado' : item.rarityClass} variant={isCurrentlyEquipped ? 'selected' : 'neutral'} />
-                      </Pressable>
-                    );
-                  })
-                )}
+                  <Chip label={isCurrentlyEquipped ? 'Equipado' : item.rarityClass} variant={isCurrentlyEquipped ? 'selected' : 'neutral'} />
+                </Pressable>
+              );
+            })
+          )}
 
-                {lockedForSlot.length > 0 ? (
-                  <View style={styles.lockedSection}>
-                    <Text variant="caption" weight="bold" color="secondary" style={styles.lockedSectionTitle}>
-                      Bloqueados
-                    </Text>
-                    {lockedForSlot.map((item) => (
-                      <Card key={item.cosmeticItemId} variant="subtle" style={styles.lockedRow}>
-                        <Text variant="bodySmall" weight="semibold" color="muted">
-                          {item.name}
-                        </Text>
-                        <Chip label={describeUnlockRequirements(item.unlockRequirements)} variant="disabled" />
-                      </Card>
-                    ))}
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-          </Card>
-        );
-      })}
-    </View>
+          {lockedForSlot.length > 0 ? (
+            <View style={styles.lockedSection}>
+              <Text variant="caption" weight="bold" color="secondary" style={styles.lockedSectionTitle}>
+                Bloqueados
+              </Text>
+              {lockedForSlot.map((item) => (
+                <Card key={item.cosmeticItemId} variant="subtle" style={styles.lockedRow}>
+                  <Text variant="bodySmall" weight="semibold" color="muted">
+                    {item.name}
+                  </Text>
+                  <Chip label={describeUnlockRequirements(item.unlockRequirements)} variant="disabled" />
+                </Card>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+    </Card>
   );
 }
 
 function createStyles(t: ThemeTokens) {
   return {
-    container: { gap: 12, marginTop: 8 },
     card: { gap: 8 },
     slotHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12 },
     slotPreview: { width: 40, height: 40, borderRadius: 8, overflow: 'hidden' as const, backgroundColor: t.color.background.default },

@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useThemedStyles, spacing } from '../../../../theme';
 import type { ThemeTokens } from '../../../../theme';
 import { Text, Card, ListRow, Chip, Icon } from '../../../../components/ui';
-import { subjectIcon } from '../index';
+import { subjectIcon } from '../../../../lib/academic/subject-icon';
 
 /**
  * Detalle de materia -- 4 accesos del wireframe aprobado (Unidades, Recursos,

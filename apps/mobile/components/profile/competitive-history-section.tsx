@@ -22,7 +22,7 @@ export function CompetitiveHistorySection({ history }: { history: CompetitiveHis
 
   return (
     <View style={styles.container}>
-      <Text variant="heading3" accessibilityRole="header">
+      <Text variant="titleLarge" weight="bold" accessibilityRole="header">
         Historial competitivo
       </Text>
       {history.seasons.length === 0 ? (

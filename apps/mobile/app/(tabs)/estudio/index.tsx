@@ -3,51 +3,18 @@ import { FlatList, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { SubjectResponse } from '@axioma/contracts';
 import { listSubjects } from '../../../lib/api/education';
+import { subjectIcon, subjectToneColor, type SubjectTone } from '../../../lib/academic/subject-icon';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
 import { EmptyState } from '../../../components/empty-state';
 import { Text, Card, Icon } from '../../../components/ui';
 import { useTheme, useThemedStyles } from '../../../theme';
 import type { ThemeTokens } from '../../../theme';
-import type { IconName } from '../../../theme';
 
 type ScreenState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'ready'; subjects: SubjectResponse[] };
-
-/**
- * Resuelve icono/color académico por NOMBRE real de materia (nunca por
- * posición/índice -- el backend puede reordenar o añadir materias). Las 4
- * familias reales confirmadas contra el seed (`apps/backend/prisma/seed.ts`):
- * Matemática/Ciencias/Historia/Lenguaje (NO "Competencia Lectora" -- ese es
- * el nombre de un TEMA dentro de Lenguaje, no de la materia).
- *
- * `theme/tokens.ts` no define familias de color académicas propias
- * (azul/verde/ámbar/violeta) -- solo existen los tokens semánticos ya
- * aprobados (accent/state.*). Se reutilizan por semejanza de matiz donde
- * corresponde (Matemática -> accent = azul; Ciencias -> state.success =
- * verde; Historia -> state.warning = ámbar). Para Lenguaje (violeta) NO
- * existe ningún token de esa familia -- en vez de fabricar un hex nuevo
- * fuera de `theme/tokens.ts`, mantiene el mismo tratamiento de color que
- * Matemática (icono real y distinto, color de familia limitado por el
- * token disponible) -- ver "Materia no mapeada" en el UI-3 Implementation
- * Report.
- */
-export function subjectIcon(name: string): { icon: IconName; tone: 'accent' | 'success' | 'warning' | null } {
-  switch (name) {
-    case 'Matemática':
-      return { icon: 'subject-math', tone: 'accent' };
-    case 'Ciencias':
-      return { icon: 'subject-science', tone: 'success' };
-    case 'Historia':
-      return { icon: 'subject-history', tone: 'warning' };
-    case 'Lenguaje':
-      return { icon: 'subject-language', tone: null };
-    default:
-      return { icon: 'subject-math', tone: null };
-  }
-}
 
 /**
  * Grilla de materias -- ver aprobación de alcance de Bloque IV. Renderiza
@@ -112,7 +79,7 @@ export default function EstudioIndexScreen() {
               }
             >
               <View style={toneBadgeStyle(styles, tone)}>
-                <Icon name={icon} size={20} color={toneIconColor(tokens, tone)} />
+                <Icon name={icon} size={20} color={subjectToneColor(tokens, tone)} />
               </View>
               <Text variant="titleMedium">{item.name}</Text>
             </Card>
@@ -123,16 +90,10 @@ export default function EstudioIndexScreen() {
   );
 }
 
-function toneBadgeStyle(styles: ReturnType<typeof createStyles>, tone: 'accent' | 'success' | 'warning' | null) {
+function toneBadgeStyle(styles: ReturnType<typeof createStyles>, tone: SubjectTone) {
   if (tone === 'success') return styles.badgeSuccess;
   if (tone === 'warning') return styles.badgeWarning;
   return styles.badgeAccent;
-}
-
-function toneIconColor(t: ThemeTokens, tone: 'accent' | 'success' | 'warning' | null): string {
-  if (tone === 'success') return t.color.state.success.text;
-  if (tone === 'warning') return t.color.state.warning.text;
-  return t.color.accent.strong;
 }
 
 function createStyles(t: ThemeTokens) {

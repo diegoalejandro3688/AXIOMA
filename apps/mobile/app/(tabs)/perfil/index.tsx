@@ -1,24 +1,25 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
-import type { MyAdvancedProfileResponse } from '@axioma/contracts';
+import { useCallback, useState } from 'react';
+import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useRouter } from 'expo-router';
+import type { MyAdvancedProfileResponse, PublicProfileResponse } from '@axioma/contracts';
 import { useAuth } from '../../../lib/auth/auth-provider';
+import { getMyAdvancedProfile } from '../../../lib/api/advanced-profile';
 import { initializeProfile, updateProfile } from '../../../lib/api/user';
 import { claimPublicProfile, getMyPublicProfile, setPublicProfileVisibility } from '../../../lib/api/public-profile';
-import type { PublicProfileResponse } from '@axioma/contracts';
-import { getMyAdvancedProfile } from '../../../lib/api/advanced-profile';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
-import { CosmeticsSection } from '../../../components/cosmetics-section';
-import { TitlesSection } from '../../../components/profile/titles-section';
 import { CompetitiveProfileSection } from '../../../components/competitive-profile-section';
-import { AcademicSummarySection } from '../../../components/profile/academic-summary-section';
+import { AcademicStatsSection } from '../../../components/profile/academic-stats-section';
+import { SubjectProgressSection } from '../../../components/profile/subject-progress-section';
 import { CompetitiveHistorySection } from '../../../components/profile/competitive-history-section';
-import { Text, Button } from '../../../components/ui';
+import { Text, Button, Dialog } from '../../../components/ui';
 import { useTheme, useThemedStyles, spacing } from '../../../theme';
 import type { ThemeTokens } from '../../../theme';
 
 type ScreenState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; view: MyAdvancedProfileResponse };
+type ProfileTab = 'resumen' | 'estadisticas';
+type PublicProfileState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; profile: PublicProfileResponse | null };
 
 /**
  * Perfil Avanzado -- LEF Bloque V, Incremento 8 (docs/adr/LEF-BLOCK-V-DEFINITION.md
@@ -27,58 +28,58 @@ type ScreenState = { status: 'loading' } | { status: 'error'; message: string } 
  * para encabezado + perfil competitivo propio + resumen académico +
  * historial competitivo -- evita el fetch duplicado que antes hacía
  * `CompetitiveProfileSection` por su cuenta (decisión del Product Owner,
- * Incremento 8). Personalización (cosméticos/títulos) mantiene su propio
- * fetch -- son catálogos grandes, independientes del agregador, con su
- * propia escritura (equipar) y su propia reconciliación tras cada `PUT`/
- * `PATCH`, mismo patrón ya usado por `CosmeticsSection` desde Bloque III.
- * `onEquipped={load}` (ASSET-2) hace que un equipamiento exitoso también
- * recargue el agregador -- sin eso, `CompetitiveProfileSection` en esta
- * misma pantalla quedaba mostrando la identidad anterior hasta reabrir la
- * app, aunque Preview (fetch propio en otra ruta) sí reflejaba el cambio.
+ * Incremento 8).
  *
- * "Ver cómo me ven otros" navega a `/perfil/preview` (Incremento 7) --
- * pantalla separada, sin mezclar su estado con el de esta (el contrato de
- * la preview exige ser una representación fiel de la superficie pública
- * real, nunca una vista derivada de este agregador).
+ * PROFILE-4 (decisión del Product Owner, 2026-08-22) -- selector local
+ * Resumen/Estadísticas (estado local, sin rutas hijas ni tabs globales,
+ * ambos leen el MISMO `view` ya cargado, sin fetch adicional al cambiar).
  *
- * UI-3 (DG UI3-3/DG UI3-4): el editor de `displayName` (mismo `TextInput`,
- * mismos `handleInitialize`/`handleSave`, mismo estado) se sigue
- * construyendo y renderizando AQUÍ -- se coloca inmediatamente ANTES de
- * `CompetitiveProfileSection` para quedar adyacente a
- * `CompetitiveIdentityHeader` (primer elemento de esa sección) por ORDEN
- * de renderizado. `CompetitiveProfileSection` conserva su firma exacta
- * `{ profile }` -- el gate histórico `verify-competitive-profile-gate.ts`
- * fija por regex que ese componente es presentación pura con esa única
- * prop, y esa condición se preserva a propósito (no se le pasa el editor
- * como children/prop). Deliberadamente NO se convierte en un patrón
- * "tap-to-edit" -- el `TextInput` sigue siempre visible, igual que antes.
+ * PROFILE-5B (decisión del Product Owner, 2026-08-22) -- reorganización:
+ * "Personalización" (`personalizacion.tsx`) queda EXCLUSIVAMENTE dedicada a
+ * apariencia (cosméticos + títulos). Toda la configuración de CUENTA
+ * (editar displayName, username/privacidad, cerrar sesión) se traslada a un
+ * panel de Ajustes -- un `Dialog` generalizado montado AQUÍ, abierto desde
+ * el engranaje del hero (antes tres puntos -> Personalización, redundante
+ * con el lápiz; ahora -> Ajustes, sin navegar a ninguna pantalla).
+ *
+ * `displayName` para el editor de Ajustes se siembra directamente desde
+ * `view.profile.displayName` -- el MISMO dato de la única carga canónica
+ * de esta pantalla. Ya NO existe un `getProfile()` independiente para
+ * esto (PROFILE-4 lo necesitaba porque la edición vivía en otra pantalla
+ * desacoplada del agregador; ahora que vive aquí mismo, esa independencia
+ * ya no aporta nada -- es una simplificación real, cero fetches nuevos).
+ * Tras guardar, se llama a `load()` (la MISMA función de carga canónica)
+ * para reconciliar el hero -- no hay navegación de por medio que dispare
+ * `useFocusEffect`, así que la reconciliación es explícita aquí.
+ *
+ * `visibilityStatus` SIGUE sin estar en el agregador (`meCompetitiveProfileResponseSchema`
+ * no lo expone) -- `getMyPublicProfile()` se mantiene como llamada
+ * independiENTE, pero ahora es LAZY: solo se pide la primera vez que el
+ * usuario abre Ajustes en esta sesión de pantalla, nunca en cada foco de
+ * Perfil. Si Ajustes se cierra y se reabre sin haber mutado nada, NO se
+ * vuelve a pedir (se reutiliza el estado ya cargado); tras un reclamo de
+ * username exitoso si se recarga explícitamente (reconciliación real).
  */
 export default function PerfilScreen() {
   const auth = useAuth();
   const router = useRouter();
   const tokens = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
-  const [displayName, setDisplayName] = useState('');
+  const [tab, setTab] = useState<ProfileTab>('resumen');
+
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [publicProfileState, setPublicProfileState] = useState<PublicProfileState | null>(null);
   const [claimUsername, setClaimUsername] = useState('');
   const [claiming, setClaiming] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
-  type VisibilityState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; profile: PublicProfileResponse };
-  const [visibility, setVisibility] = useState<VisibilityState | null>(null);
   const [togglingVisibility, setTogglingVisibility] = useState(false);
   const [toggleVisibilityError, setToggleVisibilityError] = useState<string | null>(null);
-
-  const loadVisibility = useCallback(async () => {
-    setVisibility({ status: 'loading' });
-    const result = await getMyPublicProfile();
-    if (!result.ok) {
-      setVisibility({ status: 'error', message: result.message });
-      return;
-    }
-    setVisibility({ status: 'ready', profile: result.data });
-  }, []);
 
   const load = useCallback(async () => {
     setState({ status: 'loading' });
@@ -87,55 +88,66 @@ export default function PerfilScreen() {
       setState({ status: 'error', message: result.message });
       return;
     }
-    setDisplayName(result.data.profile?.displayName ?? '');
     setState({ status: 'ready', view: result.data });
-    // `visibilityStatus` no viene en el agregador (meCompetitiveProfileResponseSchema
-    // no lo expone) -- se consulta aparte, únicamente si ya existe PublicProfile.
-    if (result.data.publicProfile !== null) {
-      await loadVisibility();
-    } else {
-      setVisibility(null);
+  }, []);
+
+  // PROFILE-2 -- `useFocusEffect` (mismo patrón ya usado en `ia/index.tsx`)
+  // en vez de `useEffect` simple: recarga el agregador cada vez que esta
+  // pantalla vuelve a tener foco, incluida la vuelta desde Personalización
+  // (tras equipar un cosmético ahí).
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+
+  const loadPublicProfile = useCallback(async () => {
+    setPublicProfileState({ status: 'loading' });
+    const result = await getMyPublicProfile();
+    if (result.ok) {
+      setPublicProfileState({ status: 'ready', profile: result.data });
+      return;
     }
-  }, [loadVisibility]);
+    if (result.kind === 'http' && result.status === 404) {
+      // Estado REAL esperado ("username todavía no reclamado"), no un error -- mismo criterio que preview.tsx/[username].tsx.
+      setPublicProfileState({ status: 'ready', profile: null });
+      return;
+    }
+    setPublicProfileState({ status: 'error', message: result.message });
+  }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  function openSettings() {
+    setSettingsVisible(true);
+    // Carga LAZY -- solo la primera vez que se abre Ajustes en esta sesión
+    // de pantalla (`publicProfileState === null`). Reabrir sin haber
+    // mutado nada reutiliza el estado ya cargado, sin pedirlo de nuevo.
+    if (publicProfileState === null) {
+      loadPublicProfile();
+    }
+  }
 
-  async function handleInitialize() {
+  function closeSettings() {
+    setSettingsVisible(false);
+    setEditingName(false);
+    setSaveError(null);
+    setClaimError(null);
+    setToggleVisibilityError(null);
+  }
+
+  async function handleSaveName() {
+    if (state.status !== 'ready') return;
     setSaveError(null);
     setSaving(true);
-    const result = await initializeProfile({ displayName: displayName.trim() });
+    const result = state.view.profile === null ? await initializeProfile({ displayName: displayNameDraft.trim() }) : await updateProfile({ displayName: displayNameDraft.trim() });
     setSaving(false);
     if (result.ok) {
-      // Reconciliación tras la escritura -- recarga el agregador completo (nunca actualización optimista) para que el resto de la pantalla quede consistente con el nuevo `UserProfile`.
+      setEditingName(false);
       await load();
       return;
     }
     setSaveError(result.message);
   }
 
-  async function handleSave() {
-    setSaveError(null);
-    setSaving(true);
-    const result = await updateProfile({ displayName: displayName.trim() });
-    setSaving(false);
-    if (result.ok) {
-      await load();
-      return;
-    }
-    setSaveError(result.message);
-  }
-
-  /**
-   * `PublicProfile.username` -- concepto DISTINTO de `UserProfile.displayName`
-   * (arriba). Sin optimismo: el perfil competitivo se considera creado
-   * únicamente tras la respuesta 200/201 real del servidor, nunca antes --
-   * `load()` recarga el agregador completo para que `CompetitiveProfileSection`
-   * reciba `publicProfile` ya resuelto y deje de mostrar el mensaje de
-   * "configura tu nombre de usuario" por sí sola (no se le pasa ningún prop
-   * nuevo, sigue con su firma exacta `{ profile }`).
-   */
   async function handleClaimUsername() {
     setClaimError(null);
     setClaiming(true);
@@ -143,27 +155,25 @@ export default function PerfilScreen() {
     setClaiming(false);
     if (result.ok) {
       setClaimUsername('');
+      // Reclamar username SÍ cambia lo que el hero muestra (`view.publicProfile`
+      // pasa de null a resuelto) -- reconciliación explícita del agregador,
+      // igual que cualquier otra escritura real en esta pantalla.
       await load();
+      await loadPublicProfile();
       return;
     }
     setClaimError(result.message);
   }
 
-  /**
-   * Opt-in/opt-out explícito -- el default PRIVATE al crear el perfil no se
-   * toca aquí. Sin optimismo: `visibility` solo refleja el resultado
-   * REAL devuelto por el PATCH, nunca el valor que el usuario acaba de
-   * pedir hasta que el servidor lo confirma.
-   */
   async function handleToggleVisibility() {
-    if (visibility?.status !== 'ready') return;
-    const nextVisible = visibility.profile.visibilityStatus !== 'VISIBLE';
+    if (publicProfileState?.status !== 'ready' || publicProfileState.profile === null) return;
+    const nextVisible = publicProfileState.profile.visibilityStatus !== 'VISIBLE';
     setToggleVisibilityError(null);
     setTogglingVisibility(true);
     const result = await setPublicProfileVisibility(nextVisible);
     setTogglingVisibility(false);
     if (result.ok) {
-      setVisibility({ status: 'ready', profile: result.data });
+      setPublicProfileState({ status: 'ready', profile: result.data });
       return;
     }
     setToggleVisibilityError(result.message);
@@ -174,172 +184,256 @@ export default function PerfilScreen() {
 
   const { view } = state;
 
-  const identityEditor = (
-    <View style={styles.editor}>
-      <TextInput
-        accessibilityLabel="Nombre a mostrar"
-        placeholder="Nombre a mostrar"
-        placeholderTextColor={tokens.color.text.muted}
-        selectionColor={tokens.color.accent.default}
-        cursorColor={tokens.color.accent.default}
-        value={displayName}
-        onChangeText={setDisplayName}
-        style={styles.input}
-      />
-      {saveError ? (
-        <Text variant="bodySmall" color="error">
-          {saveError}
-        </Text>
-      ) : null}
-
-      {view.profile === null ? (
-        <Button
-          label="Guardar perfil"
-          accessibilityLabel="Guardar perfil"
-          onPress={handleInitialize}
-          loading={saving}
-          disabled={!displayName.trim()}
-          variant="primary"
-          size="small"
-        />
-      ) : (
-        <>
-          <Text variant="caption" color="secondary">
-            Zona horaria: {view.profile.timezone}
-          </Text>
-          <Button
-            label="Guardar cambios"
-            accessibilityLabel="Guardar cambios"
-            onPress={handleSave}
-            loading={saving}
-            disabled={!displayName.trim() || displayName === view.profile.displayName}
-            variant="primary"
-            size="small"
-          />
-        </>
-      )}
-    </View>
-  );
-
   return (
     <View style={styles.container}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        <Text variant="heading1" accessibilityRole="header">
-          Perfil
-        </Text>
+      <ScrollView style={styles.scroll} contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + spacing.space6 }]}>
+        {/*
+          PROFILE-3/4/5B -- el hero (`CompetitiveProfileSection`) es el
+          inicio visual real de la pantalla. `onPersonalizePress` (lápiz)
+          -> Personalización (apariencia). `onOpenSettings` (engranaje,
+          antes tres puntos) -> abre el panel de Ajustes local, SIN
+          navegar. `CompetitiveProfileSection` conserva su invariante de
+          presentación pura (gate histórico, verify-competitive-profile-gate.ts).
+        */}
+        <CompetitiveProfileSection
+          profile={view.publicProfile}
+          displayName={view.profile?.displayName}
+          onPersonalizePress={() => router.push('/(tabs)/perfil/personalizacion')}
+          onOpenSettings={openSettings}
+        />
 
         <Button
           label="Ver cómo me ven otros"
           accessibilityLabel="Ver cómo me ven otros"
           onPress={() => router.push('/(tabs)/perfil/preview')}
-          variant="secondary"
+          variant="tertiary"
           size="small"
           style={styles.previewButton}
         />
 
         {/*
-          DG UI3-4: `CompetitiveProfileSection` conserva su firma exacta
-          `{ profile }` (gate histórico) -- el editor se renderiza AQUÍ,
-          inmediatamente antes, para quedar adyacente a
-          `CompetitiveIdentityHeader` (primer elemento dentro de la
-          sección) por ORDEN de renderizado, sin ampliar el contrato del
-          componente.
+          PROFILE-4 -- selector interno compacto, estado local únicamente
+          (sin rutas hijas, sin tabs globales de Expo Router, sin fetch
+          adicional al cambiar). Ambas pestañas leen el MISMO `view` ya
+          cargado arriba.
         */}
-        {identityEditor}
-        {view.publicProfile === null ? (
-          <View style={styles.editor}>
-            <Text variant="titleLarge">Reclama tu nombre de usuario</Text>
+        <View style={styles.tabBar}>
+          <Pressable
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === 'resumen' }}
+            accessibilityLabel="Pestaña Resumen"
+            onPress={() => setTab('resumen')}
+            style={[styles.tabItem, tab === 'resumen' && styles.tabItemActive]}
+          >
+            <Text variant="bodySmall" weight="semibold" style={tab === 'resumen' ? { color: tokens.color.accent.default } : undefined} color={tab === 'resumen' ? 'primary' : 'secondary'}>
+              Resumen
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === 'estadisticas' }}
+            accessibilityLabel="Pestaña Estadísticas"
+            onPress={() => setTab('estadisticas')}
+            style={[styles.tabItem, tab === 'estadisticas' && styles.tabItemActive]}
+          >
+            <Text variant="bodySmall" weight="semibold" style={tab === 'estadisticas' ? { color: tokens.color.accent.default } : undefined} color={tab === 'estadisticas' ? 'primary' : 'secondary'}>
+              Estadísticas
+            </Text>
+          </Pressable>
+        </View>
+
+        {tab === 'resumen' ? (
+          <SubjectProgressSection summary={view.academicSummary} />
+        ) : (
+          <>
+            <AcademicStatsSection summary={view.academicSummary} />
+            {/*
+              PROFILE-4 -- `CompetitiveHistorySection` reconectado aquí
+              (Estadísticas), mismo `view.competitiveHistory` del agregador
+              ya cargado -- sin un fetch nuevo. Fue desconectado visualmente
+              de Perfil en PROFILE-3; su componente/contrato nunca se tocó.
+            */}
+            <CompetitiveHistorySection history={view.competitiveHistory} />
+          </>
+        )}
+      </ScrollView>
+
+      {/*
+        PROFILE-5B -- panel de Ajustes: `Dialog` generalizado (shell Modal +
+        overlay + card reutilizado, sin primitivo nuevo). Contenido:
+        editar nombre (expandible inline) -> username/privacidad (mutuamente
+        excluyentes, misma condición que antes: `publicProfile === null`) ->
+        cerrar sesión. Misma lógica exacta que tenía `personalizacion.tsx`
+        antes de PROFILE-5B, solo reubicada.
+      */}
+      <Dialog visible={settingsVisible} title="Ajustes" onRequestClose={closeSettings}>
+        <View style={styles.settingsSection}>
+          {editingName ? (
+            <View style={styles.editor}>
+              <TextInput
+                accessibilityLabel="Nombre a mostrar"
+                placeholder="Nombre a mostrar"
+                placeholderTextColor={tokens.color.text.muted}
+                selectionColor={tokens.color.accent.default}
+                cursorColor={tokens.color.accent.default}
+                value={displayNameDraft}
+                onChangeText={setDisplayNameDraft}
+                style={styles.input}
+                autoFocus
+              />
+              {saveError ? (
+                <Text variant="bodySmall" color="error">
+                  {saveError}
+                </Text>
+              ) : null}
+              <Button
+                label={view.profile === null ? 'Guardar perfil' : 'Guardar cambios'}
+                accessibilityLabel={view.profile === null ? 'Guardar perfil' : 'Guardar cambios'}
+                onPress={handleSaveName}
+                loading={saving}
+                disabled={!displayNameDraft.trim() || displayNameDraft === (view.profile?.displayName ?? '')}
+                variant="primary"
+                size="small"
+              />
+            </View>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Editar nombre"
+              onPress={() => {
+                setDisplayNameDraft(view.profile?.displayName ?? '');
+                setEditingName(true);
+              }}
+              style={styles.settingsRow}
+            >
+              <Text variant="body" weight="semibold">
+                Editar nombre
+              </Text>
+              <Text variant="bodySmall" color="secondary">
+                {view.profile?.displayName ?? 'Sin nombre'}
+              </Text>
+            </Pressable>
+          )}
+          {/*
+            PROFILE-5B -- `timezone` es puramente INFORMATIVO: auditado
+            `personalizacion.tsx` (pre-5B) y confirmado que nunca tuvo un
+            `TextInput`/selector propio -- solo se mostraba como texto de
+            solo lectura junto al editor de nombre. Se conserva aquí, mismo
+            tratamiento exacto (sin inventar edición que nunca existió).
+          */}
+          {view.profile !== null ? (
+            <Text variant="caption" color="secondary">
+              Zona horaria: {view.profile.timezone}
+            </Text>
+          ) : null}
+        </View>
+
+        {publicProfileState === null || publicProfileState.status === 'loading' ? (
+          <Text variant="bodySmall" color="secondary">
+            Cargando identidad pública…
+          </Text>
+        ) : publicProfileState.status === 'error' ? (
+          <Text variant="bodySmall" color="error">
+            {publicProfileState.message}
+          </Text>
+        ) : publicProfileState.profile === null ? (
+          <View style={styles.settingsSection}>
+            <Text variant="body" weight="semibold">
+              Nombre de usuario
+            </Text>
             <Text variant="bodySmall" color="secondary">
               Necesitas un nombre de usuario público para tener perfil competitivo, aparecer en Clasificación y que otros puedan verte.
             </Text>
-            <TextInput
-              accessibilityLabel="Nombre de usuario"
-              placeholder="Nombre de usuario"
-              placeholderTextColor={tokens.color.text.muted}
-              selectionColor={tokens.color.accent.default}
-              cursorColor={tokens.color.accent.default}
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={claimUsername}
-              onChangeText={setClaimUsername}
-              style={styles.input}
-            />
-            {claimError ? (
-              <Text variant="bodySmall" color="error">
-                {claimError}
-              </Text>
-            ) : null}
-            <Button
-              label="Reclamar nombre de usuario"
-              accessibilityLabel="Reclamar nombre de usuario"
-              onPress={handleClaimUsername}
-              loading={claiming}
-              disabled={!claimUsername.trim()}
-              variant="primary"
-              size="small"
-            />
+            <View style={styles.editor}>
+              <TextInput
+                accessibilityLabel="Nombre de usuario"
+                placeholder="Nombre de usuario"
+                placeholderTextColor={tokens.color.text.muted}
+                selectionColor={tokens.color.accent.default}
+                cursorColor={tokens.color.accent.default}
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={claimUsername}
+                onChangeText={setClaimUsername}
+                style={styles.input}
+              />
+              {claimError ? (
+                <Text variant="bodySmall" color="error">
+                  {claimError}
+                </Text>
+              ) : null}
+              <Button
+                label="Reclamar nombre de usuario"
+                accessibilityLabel="Reclamar nombre de usuario"
+                onPress={handleClaimUsername}
+                loading={claiming}
+                disabled={!claimUsername.trim()}
+                variant="primary"
+                size="small"
+              />
+            </View>
           </View>
-        ) : null}
-        {view.publicProfile !== null ? (
-          <View style={styles.editor}>
-            <Text variant="bodySmall" color="secondary">
-              {visibility?.status === 'ready'
-                ? visibility.profile.visibilityStatus === 'VISIBLE'
-                  ? 'Tu perfil es visible públicamente.'
-                  : 'Tu perfil es privado -- no aparece para otros usuarios.'
-                : 'Cargando visibilidad de tu perfil…'}
+        ) : (
+          <View style={styles.settingsSection}>
+            <Text variant="body" weight="semibold">
+              Perfil público
             </Text>
+            <View style={styles.settingsRow}>
+              <Text variant="bodySmall" color="secondary">
+                {publicProfileState.profile.visibilityStatus === 'VISIBLE' ? 'Visible' : 'Privado'}
+              </Text>
+              <Button
+                label={publicProfileState.profile.visibilityStatus === 'VISIBLE' ? 'Hacer privado' : 'Hacer público'}
+                accessibilityLabel={publicProfileState.profile.visibilityStatus === 'VISIBLE' ? 'Hacer perfil privado' : 'Hacer perfil público'}
+                onPress={handleToggleVisibility}
+                loading={togglingVisibility}
+                variant="secondary"
+                size="small"
+              />
+            </View>
             {toggleVisibilityError ? (
               <Text variant="bodySmall" color="error">
                 {toggleVisibilityError}
               </Text>
             ) : null}
-            {visibility?.status === 'error' ? (
-              <Text variant="bodySmall" color="error">
-                {visibility.message}
-              </Text>
-            ) : null}
-            <Button
-              label={visibility?.status === 'ready' && visibility.profile.visibilityStatus === 'VISIBLE' ? 'Hacer privado' : 'Hacer público'}
-              accessibilityLabel={visibility?.status === 'ready' && visibility.profile.visibilityStatus === 'VISIBLE' ? 'Hacer perfil privado' : 'Hacer perfil público'}
-              onPress={handleToggleVisibility}
-              loading={togglingVisibility}
-              disabled={visibility?.status !== 'ready'}
-              variant="secondary"
-              size="small"
-            />
           </View>
-        ) : null}
-        <CompetitiveProfileSection profile={view.publicProfile} />
-        <AcademicSummarySection summary={view.academicSummary} />
-        <CompetitiveHistorySection history={view.competitiveHistory} />
-        <CosmeticsSection onEquipped={load} />
-        <TitlesSection />
-      </ScrollView>
+        )}
 
-      {/*
-        Handoff UI-3 §6: "Ver cómo me ven otros" -> secondary, "Cerrar
-        sesión" -> tertiary -- explícito, no se preserva el rojo que tenía
-        antes (`Button` tampoco tiene una variante "outline destructivo"
-        para reproducirlo).
-      */}
-      <Button
-        label="Cerrar sesión"
-        accessibilityLabel="Cerrar sesión"
-        onPress={auth.logout}
-        variant="tertiary"
-        size="small"
-        style={styles.logoutButton}
-      />
+        <Button
+          label="Cerrar sesión"
+          accessibilityLabel="Cerrar sesión"
+          onPress={auth.logout}
+          variant="tertiary"
+          size="small"
+          style={styles.logoutButton}
+        />
+      </Dialog>
     </View>
   );
 }
 
 function createStyles(t: ThemeTokens) {
   return {
-    container: { flex: 1, paddingHorizontal: spacing.space6, paddingTop: spacing.space6, backgroundColor: t.color.background.default },
+    // `paddingTop` del área segura vive en `scrollContent` (ver JSX, mismo
+    // patrón que Inicio/Competir) -- `container` ya NO lleva su propio
+    // `paddingTop` fijo para no duplicarlo con el de abajo.
+    container: { flex: 1, paddingHorizontal: spacing.space6, backgroundColor: t.color.background.default },
     scroll: { flex: 1 },
     scrollContent: { gap: spacing.space3, paddingBottom: spacing.space4 },
+    // PROFILE-5A.1 -- `scrollContent.gap` (space3/12) aplica el mismo aire
+    // ANTES y DESPUÉS de este botón que entre cualquier otro par de
+    // bloques del Resumen. `Button` conserva su caja táctil de 44px
+    // (invariante del design system, sin tocar el primitive) -- el exceso
+    // percibido era puramente el gap del contenedor sumado a esa altura
+    // mínima. Márgenes negativos recortan SOLO el aire alrededor de este
+    // botón (12 -> ~6 arriba y abajo), sin tocar el gap de ningún otro par
+    // de hermanos ni la geometría del hero/selector.
+    previewButton: { alignSelf: 'flex-start' as const, marginTop: -6, marginBottom: -6 },
+    tabBar: { flexDirection: 'row' as const, gap: spacing.space5, borderBottomWidth: 1, borderBottomColor: t.color.border.default },
+    tabItem: { paddingVertical: spacing.space2, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+    tabItemActive: { borderBottomColor: t.color.accent.default },
+    settingsSection: { gap: spacing.space2 },
+    settingsRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, gap: spacing.space2 },
     editor: { gap: spacing.space2 },
     input: {
       borderWidth: 1,
@@ -351,7 +445,6 @@ function createStyles(t: ThemeTokens) {
       paddingHorizontal: 12,
       fontSize: 15,
     },
-    previewButton: { alignSelf: 'flex-start' as const },
-    logoutButton: { marginTop: spacing.space3, alignSelf: 'center' as const, marginBottom: spacing.space4 },
+    logoutButton: { alignSelf: 'center' as const, marginTop: spacing.space2 },
   };
 }

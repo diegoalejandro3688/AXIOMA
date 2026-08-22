@@ -1,8 +1,6 @@
 import { View } from 'react-native';
 import type { MeCompetitiveProfileResponse } from '@axioma/contracts';
 import { CompetitiveIdentityHeader } from './competitive/identity-header';
-import { CompetitivePositionCard } from './competitive/position-card';
-import { CompetitiveCosmeticsRow } from './competitive/cosmetics-row';
 import { CompetitiveAchievementsList } from './competitive/achievements-list';
 import { useThemedStyles } from '../theme';
 import type { ThemeTokens } from '../theme';
@@ -38,14 +36,68 @@ import { Text } from './ui';
  * CompetitiveProfileSection (ver ese archivo), logrando la adyacencia
  * visual con `CompetitiveIdentityHeader` por ORDEN, sin ampliar el
  * contrato de este componente.
+ *
+ * PROFILE-2 -- `CompetitiveCosmeticsRow` (chips de solo lectura repitiendo
+ * en texto lo que el avatar/marco/banner del hero ya muestran visualmente)
+ * fue retirado del hero, decisión de producto explícita (sin pérdida
+ * funcional: cero interacción, cero navegación, información 100%
+ * redundante). `verify-competitive-profile-gate.ts` fue actualizado en el
+ * mismo cambio para reflejar esta arquitectura como intencional.
+ *
+ * PROFILE-3 (decisión del Product Owner, 2026-08-22) -- firma ampliada de
+ * `{ profile }` a `{ profile, displayName, onPersonalizePress }`, ambos
+ * NUEVOS props OPCIONALES de presentación pura:
+ *
+ * - `displayName`: viene del agregador YA cargado en `perfil/index.tsx`
+ *   (`view.profile?.displayName`) -- este componente NUNCA lo pide ni lo
+ *   deriva, solo lo reenvía a `CompetitiveIdentityHeader`. Sigue sin
+ *   pertenecer a `MeCompetitiveProfileResponse`/`CompetitiveProfileResponse`
+ *   (contrato público, privacidad) -- por eso llega como prop aparte, no
+ *   dentro de `profile`.
+ * - `onPersonalizePress`: única señal de que este hero es el PROPIO --
+ *   controla si `CompetitiveIdentityHeader` muestra el lápiz del avatar
+ *   (-> Personalización).
+ *
+ * PROFILE-5B (decisión del Product Owner, 2026-08-22) -- cuarto prop
+ * OPCIONAL, `onOpenSettings`, mismo criterio de presentación pura que los
+ * anteriores: controla si `CompetitiveIdentityHeader` muestra el
+ * engranaje del banner (antes tres puntos, mismo destino redundante que el
+ * lápiz -- ahora abre el panel de Ajustes en vez de navegar).
+ *
+ * El gate histórico `verify-competitive-profile-gate.ts` protege que este
+ * componente sea presentación pura, sin estado de React propio ni fetch
+ * propio -- esa invariante real NO cambia (ningún prop nuevo introduce
+ * estado ni llamadas a la API aquí); el gate fue actualizado para
+ * reconocer la firma ampliada sin debilitar esa verificación.
+ *
+ * El heading "Perfil competitivo" se retiró (PROFILE-3) -- el hero pasa a
+ * ser el inicio visual real de la pantalla, sin encabezados redundantes.
+ *
+ * PROFILE-4 (decisión del Product Owner, 2026-08-22) -- `CompetitivePositionCard`
+ * (card navy completo) YA NO se renderiza aquí. `profile.competitive` se
+ * reenvía en su lugar a `CompetitiveIdentityHeader`, que lo presenta como
+ * una fila compacta de metadata junto a Nivel (mismo `describeMyPosition`,
+ * sin una segunda interpretación de "sin liga", sin CTA -- la tab bar ya
+ * da acceso permanente a Competir). `PublicProfileView` (terceros/preview)
+ * NO cambia -- sigue usando `CompetitivePositionCard` completo, asimetría
+ * intencional documentada en `verify-competitive-profile-gate.ts`.
  */
-export function CompetitiveProfileSection({ profile }: { profile: MeCompetitiveProfileResponse | null }) {
+export function CompetitiveProfileSection({
+  profile,
+  displayName,
+  onPersonalizePress,
+  onOpenSettings,
+}: {
+  profile: MeCompetitiveProfileResponse | null;
+  displayName?: string | null;
+  onPersonalizePress?: () => void;
+  onOpenSettings?: () => void;
+}) {
   const styles = useThemedStyles(createStyles);
 
   if (profile === null) {
     return (
       <View style={styles.container}>
-        <Text variant="titleLarge">Perfil competitivo</Text>
         <Text variant="bodySmall" color="secondary">
           Configura tu nombre de usuario para tener un perfil competitivo.
         </Text>
@@ -55,7 +107,6 @@ export function CompetitiveProfileSection({ profile }: { profile: MeCompetitiveP
 
   return (
     <View style={styles.container}>
-      <Text variant="titleLarge">Perfil competitivo</Text>
       {profile.lifecycleStatus === 'RETIRED' ? (
         <Text variant="label" style={styles.retiredBadge}>
           Perfil retirado
@@ -63,14 +114,16 @@ export function CompetitiveProfileSection({ profile }: { profile: MeCompetitiveP
       ) : null}
       <CompetitiveIdentityHeader
         username={profile.username}
+        displayName={displayName}
         avatar={profile.avatar}
         banner={profile.banner}
         equippedCosmetics={profile.equippedCosmetics}
         levelNumber={profile.levelNumber}
         equippedTitle={profile.equippedTitle}
+        competitive={profile.competitive}
+        onPersonalizePress={onPersonalizePress}
+        onOpenSettings={onOpenSettings}
       />
-      <CompetitivePositionCard competitive={profile.competitive} variant="own" />
-      <CompetitiveCosmeticsRow equippedCosmetics={profile.equippedCosmetics} />
       <CompetitiveAchievementsList achievements={profile.featuredAchievements} title="Insignias destacadas" />
       <CompetitiveAchievementsList achievements={profile.publicAchievements} />
     </View>

@@ -201,3 +201,57 @@ export function OpenBookIcon({ size = 24, color }: NavIconProps) {
   );
 }
 
+/**
+ * PROFILE-3 -- overflow/"más opciones", único acceso desde el banner del
+ * hero a `/perfil/personalizacion`. Mismo criterio 24x24/trazo 2px que el
+ * resto de este archivo -- tres puntos rellenos, sin dependencia externa.
+ */
+export function MoreHorizontalIcon({ size = 24, color }: NavIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="5" cy="12" r="1.5" fill={color} stroke="none" />
+      <Circle cx="12" cy="12" r="1.5" fill={color} stroke="none" />
+      <Circle cx="19" cy="12" r="1.5" fill={color} stroke="none" />
+    </Svg>
+  );
+}
+
+/**
+ * PROFILE-5B -- ícono de ajustes (engranaje), reemplaza `MoreHorizontalIcon`
+ * en la esquina superior derecha del banner. Abre el panel de Ajustes
+ * (`Dialog` generalizado), NUNCA navega a otra pantalla. Mismo criterio
+ * 24x24/trazo 2px que el resto de este archivo.
+ */
+export function SettingsIcon({ size = 24, color }: NavIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth={2} />
+      <Path
+        d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M17.7 6.3l-1.55 1.55M7.85 16.15 6.3 17.7M17.7 17.7l-1.55-1.55M7.85 7.85 6.3 6.3"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+/**
+ * PROFILE-3 -- lápiz asociado al avatar, mismo destino que `more-horizontal`
+ * (`/perfil/personalizacion`), NUNCA edición de displayName.
+ */
+export function EditIcon({ size = 24, color }: NavIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M15.2 4.8 19.2 8.8 8.5 19.5 4 20l.5-4.5L15.2 4.8Z"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path d="M13.5 6.5l4 4" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+

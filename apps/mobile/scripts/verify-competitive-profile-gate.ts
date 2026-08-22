@@ -61,12 +61,46 @@ function main() {
   const publicProfileViewSource = readSource('components', 'competitive', 'public-profile-view.tsx');
   const otherProfileSource = readSource('app', '(tabs)', 'competir', 'perfil', '[username].tsx');
   const previewSource = readSource('app', '(tabs)', 'perfil', 'preview.tsx');
-  const sharedComponents = ['CompetitiveIdentityHeader', 'CompetitivePositionCard', 'CompetitiveCosmeticsRow', 'CompetitiveAchievementsList'];
+  const sharedComponents = ['CompetitiveIdentityHeader', 'CompetitiveAchievementsList'];
   for (const component of sharedComponents) {
     const inSection = sectionSource.includes(component);
     const inPublicProfileView = publicProfileViewSource.includes(component);
     check(`${component} importado/usado tanto por CompetitiveProfileSection (propio) como por PublicProfileView (terceros/preview) -- sin JSX duplicado`, inSection && inPublicProfileView);
   }
+  // PROFILE-4 (decisión del Product Owner, 2026-08-22): `CompetitivePositionCard`
+  // (card navy completo) fue retirado deliberadamente del hero PROPIO --
+  // `profile.competitive` se reenvía en su lugar a `CompetitiveIdentityHeader`,
+  // que lo presenta como una fila compacta de metadata (mismo
+  // `describeMyPosition`, sin CTA -- la tab bar ya da acceso permanente a
+  // Competir). `PublicProfileView` (terceros/preview) SIGUE usando el card
+  // completo -- ahí no hay hero propio con liga integrada. Misma asimetría
+  // intencional que `CompetitiveCosmeticsRow` en PROFILE-2, documentada
+  // aquí en vez de debilitar el chequeo genérico de "piezas compartidas".
+  check(
+    'CompetitiveProfileSection (hero propio) YA NO importa/renderiza CompetitivePositionCard -- retiro intencional, PROFILE-4 (liga integrada en el hero)',
+    !/from '\.\/competitive\/position-card'/.test(sectionSource) && !/<CompetitivePositionCard/.test(sectionSource),
+  );
+  check('PublicProfileView (terceros/preview) SIGUE usando CompetitivePositionCard -- sin cambio ahí', publicProfileViewSource.includes('CompetitivePositionCard'));
+  check(
+    'CompetitiveIdentityHeader (hero compartido) reenvía `competitive` a describeMyPosition -- misma lógica pura, sin una segunda interpretación de "sin liga"',
+    readSource('components', 'competitive', 'identity-header.tsx').includes('describeMyPosition'),
+  );
+  // PROFILE-2 (decisión del Product Owner, 2026-08-22): `CompetitiveCosmeticsRow`
+  // (chips de solo lectura, 100% redundantes con el avatar/marco/banner ya
+  // visibles en el hero) fue retirado deliberadamente del hero PROPIO
+  // (`CompetitiveProfileSection`) para compactar Perfil -- sin pérdida
+  // funcional (cero interacción, cero navegación). `PublicProfileView`
+  // (terceros/preview) SÍ lo conserva -- ahí no hay controles de
+  // personalización adyacentes que ya comuniquen lo mismo. Esta asimetría es
+  // intencional, no un JSX duplicado ni una regresión de cobertura.
+  // Se busca el IMPORT/JSX real (no la mención en prosa dentro de este mismo
+  // archivo, que documenta legítimamente POR QUÉ ya no se usa) -- mismo
+  // criterio que la verificación de `.lifecycleStatus` más abajo.
+  check(
+    'CompetitiveProfileSection (hero propio) YA NO importa/renderiza CompetitiveCosmeticsRow -- retiro intencional, PROFILE-2',
+    !/from '\.\/competitive\/cosmetics-row'/.test(sectionSource) && !/<CompetitiveCosmeticsRow/.test(sectionSource),
+  );
+  check('PublicProfileView (terceros/preview) SIGUE usando CompetitiveCosmeticsRow -- sin cambio ahí', publicProfileViewSource.includes('CompetitiveCosmeticsRow'));
   // LEF Bloque V, Incremento 8 (docs/adr/LEF-BLOCK-V-DEFINITION.md §16, decisión del Product Owner) --
   // [username].tsx y preview.tsx (Incremento 7) ya NO importan las cuatro piezas directamente:
   // ambas delegan en el MISMO componente de presentación (`PublicProfileView`), evitando que
@@ -86,14 +120,34 @@ function main() {
   // (Incremento 5) ya compone ese mismo dato. La cobertura funcional NO disminuye: se reemplaza
   // "la sección se aísla haciendo su propio fetch" por "la sección se aísla siendo pura función de
   // sus props" -- en ambos casos, un fallo en OTRA sección de la pantalla nunca puede corromper esta.
-  check('CompetitiveProfileSection es un componente de PRESENTACIÓN puro -- recibe `profile` por props, sin useState propio', /export function CompetitiveProfileSection\(\{\s*profile\s*\}/.test(sectionSource) && !sectionSource.includes('useState'));
+  // PROFILE-3 (decisión del Product Owner, 2026-08-22): la firma se amplió
+  // de `{ profile }` a `{ profile, displayName, onPersonalizePress }` --
+  // ambos props NUEVOS son de presentación pura (displayName ya resuelto
+  // por el agregador de perfil/index.tsx, onPersonalizePress un callback de
+  // navegación que decide quien llama). La invariante REAL que este
+  // chequeo protege -- "sin useState/fetch propio" -- se verifica igual que
+  // siempre, ahora contra la firma ampliada.
+  // PROFILE-5B: cuarto prop opcional `onOpenSettings` (misma naturaleza de
+  // presentación pura que `onPersonalizePress` -- controla si el hero
+  // muestra el engranaje del banner, sin introducir estado ni fetch).
+  check(
+    'CompetitiveProfileSection es un componente de PRESENTACIÓN puro -- recibe `profile`/`displayName`/`onPersonalizePress`/`onOpenSettings` por props, sin useState propio',
+    /export function CompetitiveProfileSection\(\{\s*profile,\s*displayName,\s*onPersonalizePress,\s*onOpenSettings,?\s*\}/.test(sectionSource) && !sectionSource.includes('useState'),
+  );
   // Se busca el IMPORT real del cliente de API (no una mención en comentario/documentación --
   // este mismo archivo documenta legítimamente `UserService.getMyCompetitiveProfile` en prosa).
   check('CompetitiveProfileSection NUNCA importa el cliente de API competitivo -- cero fetch propio (evita el fetch duplicado, Incremento 8)', !/^import .*from ['"]\.\.\/lib\/api\/competitive['"]/m.test(sectionSource));
   const perfilIndexSource = readSource('app', '(tabs)', 'perfil', 'index.tsx');
   check('perfil/index.tsx hace LA ÚNICA carga canónica vía getMyAdvancedProfile (Incremento 5) -- fuente única para encabezado/competitivo/académico/historial', perfilIndexSource.includes('getMyAdvancedProfile'));
   check('perfil/index.tsx NUNCA importa getMyCompetitiveProfile por separado -- sin fetch duplicado del mismo dato', !perfilIndexSource.includes('getMyCompetitiveProfile'));
-  check('perfil/index.tsx pasa <CompetitiveProfileSection profile={view.publicProfile} /> -- dato YA resuelto por la única carga, nunca una segunda fuente', /<CompetitiveProfileSection\s+profile=\{view\.publicProfile\}\s*\/>/.test(perfilIndexSource));
+  // PROFILE-3: el JSX ahora incluye también `displayName`/`onPersonalizePress`
+  // (props de presentación pura, ver §3) -- se verifica que `profile` siga
+  // recibiendo EXACTAMENTE `view.publicProfile`, dato ya resuelto por la
+  // única carga, sin exigir ya que sea el único prop de la llamada.
+  check(
+    'perfil/index.tsx pasa <CompetitiveProfileSection profile={view.publicProfile} .../> -- dato YA resuelto por la única carga, nunca una segunda fuente',
+    /<CompetitiveProfileSection\s+profile=\{view\.publicProfile\}/.test(perfilIndexSource),
+  );
   check('perfil/index.tsx sigue manejando su PROPIO ScreenState (displayName/agregado), con loading/error ÚNICOS para toda la pantalla -- sin loading/error states compitiendo entre secciones', perfilIndexSource.includes('useState<ScreenState>'));
 
   console.log('--- 4. Sin navegación en filas redactadas del ranking ---');
@@ -146,7 +200,14 @@ function main() {
     forbiddenWriteSymbols.every((symbol) => !previewSource.includes(symbol)),
   );
   check('preview.tsx importa EXCLUSIVAMENTE getMyProfilePreview de lib/api/preview -- ningún otro cliente de API', previewSource.includes('getMyProfilePreview') && (previewSource.match(/from '\.\.\/\.\.\/\.\.\/lib\/api\//g) ?? []).length === 1);
-  const forbiddenPreviewAugmentationSymbols = ['getMyAdvancedProfile', 'academicSummary', 'competitiveHistory', 'listCosmetics', 'listTitles', 'AcademicSummarySection', 'CompetitiveHistorySection', 'CosmeticsSection', 'TitlesSection'];
+  // PROFILE-FINAL: `AcademicSummarySection` fue dividido en PROFILE-4 en
+  // `AcademicStatsSection`/`SubjectProgressSection` -- esta lista seguía
+  // prohibiendo el nombre VIEJO (que preview.tsx nunca pudo haber
+  // importado desde antes de esa división, así que el check nunca detectó
+  // nada distinto), no los nombres REALES actuales. Corregido para que la
+  // protección real ("preview.tsx nunca combina con secciones académicas
+  // privadas") cubra los componentes que existen hoy.
+  const forbiddenPreviewAugmentationSymbols = ['getMyAdvancedProfile', 'academicSummary', 'competitiveHistory', 'listCosmetics', 'listTitles', 'AcademicStatsSection', 'SubjectProgressSection', 'CompetitiveHistorySection', 'CosmeticsSection', 'TitlesSection'];
   check(
     'preview.tsx NUNCA combina con advanced-profile/académico/historial/inventario -- solo representa el contrato recibido de GET .../me/preview',
     forbiddenPreviewAugmentationSymbols.every((symbol) => !previewSource.includes(symbol)),
@@ -160,7 +221,18 @@ function main() {
   const tabsLayoutSource = readSource('app', '(tabs)', '_layout.tsx');
   check('app/(tabs)/_layout.tsx sigue declarando exactamente 5 <Tabs.Screen> (index/estudio/competir/ia/perfil) -- sin una tab nueva para preview', (tabsLayoutSource.match(/<Tabs\.Screen/g) ?? []).length === 5 && tabsLayoutSource.includes('name="perfil"'));
   const perfilLayoutSource = readSource('app', '(tabs)', 'perfil', '_layout.tsx');
-  check('app/(tabs)/perfil/_layout.tsx declara EXACTAMENTE index + preview como Stack (misma pestaña, sub-navegación interna)', perfilLayoutSource.includes('name="index"') && perfilLayoutSource.includes('name="preview"') && (perfilLayoutSource.match(/<Stack\.Screen/g) ?? []).length === 2);
+  // PROFILE-2 (decisión del Product Owner, 2026-08-22): se agregó
+  // `personalizacion` como TERCERA pantalla de la misma sub-navegación de
+  // Perfil (nunca una tab independiente) -- extensión intencional, no una
+  // regresión de la cobertura original (index + preview siguen presentes sin
+  // cambio).
+  check(
+    'app/(tabs)/perfil/_layout.tsx declara EXACTAMENTE index + preview + personalizacion como Stack (misma pestaña, sub-navegación interna)',
+    perfilLayoutSource.includes('name="index"') &&
+      perfilLayoutSource.includes('name="preview"') &&
+      perfilLayoutSource.includes('name="personalizacion"') &&
+      (perfilLayoutSource.match(/<Stack\.Screen/g) ?? []).length === 3,
+  );
 
   console.log('');
   if (failures > 0) {

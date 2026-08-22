@@ -106,13 +106,36 @@ function main() {
   check('perfil/index.tsx usa getMyAdvancedProfile como única fuente de datos del encabezado/académico/historial', perfilIndexSource.includes('getMyAdvancedProfile'));
   const forbiddenDuplicateFetches = ['getAcademicSummary', 'getCompetitiveHistory', 'getMyCompetitiveProfile'];
   check('perfil/index.tsx NUNCA vuelve a pedir por separado lo que el agregador ya trae', forbiddenDuplicateFetches.every((symbol) => !perfilIndexSource.includes(symbol)));
-  check('perfil/index.tsx renderiza AcademicSummarySection con summary={view.academicSummary} (mismo dato del agregador)', /<AcademicSummarySection\s+summary=\{view\.academicSummary\}\s*\/>/.test(perfilIndexSource));
+  // PROFILE-4 (decisión del Product Owner, 2026-08-22): `AcademicSummarySection`
+  // se dividió en `AcademicStatsSection` (pestaña Estadísticas) y
+  // `SubjectProgressSection` (pestaña Resumen) -- ambas reciben el MISMO
+  // `view.academicSummary` del agregador, sin cálculo ni fetch propio.
+  check('perfil/index.tsx renderiza AcademicStatsSection con summary={view.academicSummary} (mismo dato del agregador)', /<AcademicStatsSection\s+summary=\{view\.academicSummary\}\s*\/>/.test(perfilIndexSource));
+  check('perfil/index.tsx renderiza SubjectProgressSection con summary={view.academicSummary} (mismo dato del agregador)', /<SubjectProgressSection\s+summary=\{view\.academicSummary\}\s*\/>/.test(perfilIndexSource));
+  // PROFILE-4: `CompetitiveHistorySection` -- desconectado visualmente en
+  // PROFILE-3, RECONECTADO aquí en la pestaña Estadísticas, mismo dato del
+  // agregador (`view.competitiveHistory`), cero fetch nuevo.
   check('perfil/index.tsx renderiza CompetitiveHistorySection con history={view.competitiveHistory} (mismo dato del agregador)', /<CompetitiveHistorySection\s+history=\{view\.competitiveHistory\}\s*\/>/.test(perfilIndexSource));
 
+  // PROFILE-5B (decisión del Product Owner, 2026-08-22): `CosmeticsSection`
+  // se dividió en `useCosmeticsController` (fetch/estado, instanciado UNA
+  // vez en personalizacion.tsx para las 4 tabs) + `CosmeticSlotCard`
+  // (presentación pura de un slot) -- el bloque "Bloqueados" que antes
+  // vivía en el `.map` de `CosmeticsSection` ahora vive en
+  // `CosmeticSlotCard`, MISMO archivo (`cosmetics-section.tsx`), misma
+  // lógica exacta. El chequeo sigue apuntando al mismo archivo -- la
+  // invariante real ("bloqueados nunca son equipables, siempre muestran el
+  // requisito real") no cambió, solo el nombre del componente que la
+  // implementa dentro de ese archivo.
   console.log('--- 6. Personalización: ningún elemento locked es equipable (ni cosméticos ni títulos) ---');
   const cosmeticsSectionSource = readSource('components', 'cosmetics-section.tsx');
   const cosmeticsLockedBlockStart = cosmeticsSectionSource.indexOf('lockedForSlot.length > 0');
-  const cosmeticsLockedBlockEnd = cosmeticsSectionSource.indexOf(') : null}\n              </View>', cosmeticsLockedBlockStart);
+  // PROFILE-5B: la indentación cambió al extraer `CosmeticSlotCard` (un
+  // nivel menos de anidamiento que el `.map(COSMETIC_SLOTS)` original) --
+  // se localiza el cierre real por su marcador estructural (`</Card>`, que
+  // ahora cierra el componente en vez de `</View>` del `.map`), no por un
+  // conteo de espacios frágil.
+  const cosmeticsLockedBlockEnd = cosmeticsSectionSource.indexOf('</Card>', cosmeticsLockedBlockStart);
   const cosmeticsLockedBlock = cosmeticsSectionSource.slice(cosmeticsLockedBlockStart, cosmeticsLockedBlockEnd);
   check('bloque "Bloqueados" de CosmeticsSection existe y es localizable', cosmeticsLockedBlockStart > -1 && cosmeticsLockedBlockEnd > cosmeticsLockedBlockStart);
   check('el bloque de cosméticos bloqueados NUNCA usa Pressable/onPress/equipCosmetic -- solo lectura, nunca equipable', !cosmeticsLockedBlock.includes('Pressable') && !cosmeticsLockedBlock.includes('onPress') && !cosmeticsLockedBlock.includes('equipCosmetic'));
@@ -135,13 +158,35 @@ function main() {
   // Símbolos reales de código (imports/uso), no palabras sueltas como "owned"/"locked"
   // -- esas aparecen legítimamente en la prosa del comentario de este mismo archivo
   // explicando qué NO se muestra.
-  const forbiddenPrivateSurfaces = ['academicSummary', 'competitiveHistory', 'AcademicSummarySection', 'CompetitiveHistorySection', 'CosmeticsSection', 'TitlesSection', 'getMyAdvancedProfile', 'listCosmetics', 'listTitles'];
+  const forbiddenPrivateSurfaces = ['academicSummary', 'competitiveHistory', 'AcademicStatsSection', 'SubjectProgressSection', 'CompetitiveHistorySection', 'CosmeticsSection', 'TitlesSection', 'getMyAdvancedProfile', 'listCosmetics', 'listTitles'];
   check('preview.tsx no importa/usa ningún símbolo de código de superficies privadas (académico/historial/inventario/agregador)', forbiddenPrivateSurfaces.every((symbol) => !previewSource.includes(symbol)));
 
-  console.log('--- 9. Regresión de Configuración existente: displayName/timezone/logout se conservan en perfil/index.tsx ---');
+  // PROFILE-5B (decisión del Product Owner, 2026-08-22): la configuración
+  // de CUENTA (editor de displayName, zona horaria, username/privacidad,
+  // "Cerrar sesión") se movió de `personalizacion.tsx` (que PROFILE-4
+  // había dejado dedicada a esto) al panel de Ajustes dentro de
+  // `perfil/index.tsx` -- `personalizacion.tsx` queda EXCLUSIVAMENTE
+  // dedicada a apariencia (cosméticos + títulos). La invariante real
+  // ("estas funciones siguen existiendo, con los mismos endpoints, en
+  // alguna superficie real de la app") se verifica ahora contra la nueva
+  // ubicación. La aserción de PROFILE-4 sobre `getProfile()` independiente
+  // desaparece porque ya no representa la arquitectura correcta: al vivir
+  // Ajustes en la MISMA pantalla que la única carga canónica, ya no hace
+  // falta ningún fetch aparte para displayName -- se reemplaza por una
+  // protección más fuerte (cero fetch nuevo, mismo `view.profile`).
+  console.log('--- 9. Regresión de Configuración existente: displayName/timezone/logout se conservan en el panel de Ajustes (perfil/index.tsx) ---');
+  const personalizacionSource = readSource('app', '(tabs)', 'perfil', 'personalizacion.tsx');
   check('perfil/index.tsx conserva initializeProfile/updateProfile (ADR-0008, sin cambio de dominio)', perfilIndexSource.includes('initializeProfile') && perfilIndexSource.includes('updateProfile'));
   check('perfil/index.tsx conserva auth.logout (cerrar sesión)', perfilIndexSource.includes('auth.logout'));
   check('perfil/index.tsx muestra la zona horaria (timezone) del perfil, mismo criterio que antes', perfilIndexSource.includes('timezone'));
+  check(
+    'perfil/index.tsx siembra el editor de displayName desde view.profile (el MISMO dato de getMyAdvancedProfile) -- CERO fetch nuevo para esto',
+    perfilIndexSource.includes('view.profile?.displayName') || perfilIndexSource.includes('view.profile.displayName'),
+  );
+  check(
+    'personalizacion.tsx queda EXCLUSIVAMENTE dedicada a apariencia -- ya NO monta el editor de configuración de cuenta',
+    !personalizacionSource.includes('initializeProfile') && !personalizacionSource.includes('handleToggleVisibility') && !personalizacionSource.includes('auth.logout'),
+  );
 
   console.log('');
   if (failures > 0) {
