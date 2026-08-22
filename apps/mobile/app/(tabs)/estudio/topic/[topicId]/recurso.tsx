@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { LearningResourceResponse } from '@axioma/contracts';
+import type { LearningResourceResponse, ResourceContentBlockResponse } from '@axioma/contracts';
 import { getPublishedResource, listPublishedQuestions } from '../../../../../lib/api/education';
 import { LoadingState } from '../../../../../components/loading-state';
 import { ErrorState } from '../../../../../components/error-state';
 import { EmptyState } from '../../../../../components/empty-state';
 import { ContentBlockRenderer } from '../../../../../components/content-block-renderer';
-import { IconButton } from '../../../../../components/ui';
-import { useThemedStyles, spacing, radii } from '../../../../../theme';
+import { IconButton, Text, Icon } from '../../../../../components/ui';
+import { useThemedStyles, useTheme, spacing, radii } from '../../../../../theme';
 import type { ThemeTokens } from '../../../../../theme';
+import { subjectIcon, subjectToneColor } from '../../../../../lib/academic/subject-icon';
 
 type ScreenState =
   | { status: 'loading' }
@@ -24,13 +25,28 @@ type ScreenState =
  * la unidad no tiene respuestas registradas). La barra segmentada se deriva
  * del número real de pasos (1 recurso + preguntas publicadas), nunca de un
  * valor fijo.
+ *
+ * STUDY-4 -- rediseño puramente visual/presentacional, genérico para
+ * cualquier `resource`/materia (no exclusivo de "Porcentajes y
+ * proporcionalidad"): eyebrow derivado de datos reales ya disponibles
+ * (`name` + `resource.resourceKey`), deduplicación del título por
+ * ESTRUCTURA (heading redundante con el título ya mostrado, nunca por
+ * coincidencia de este texto en particular), y superficie destacada para
+ * bloques `formula` vía `ContentBlockRenderer({ highlightFormulas: true })`.
+ * Cero contenido académico nuevo -- ver auditoría STUDY-4.
  */
 export default function RecursoScreen() {
   const { topicId, subjectId, name } = useLocalSearchParams<{ topicId: string; subjectId: string; name?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const tokens = useTheme();
   const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
+
+  // Mismo tono de materia que STUDY-2/2A/STUDY-3 (`subjectIcon(name).tone`)
+  // -- continuidad visual, sin token/color nuevo.
+  const { tone } = subjectIcon(name ?? '');
+  const accentColor = subjectToneColor(tokens, tone);
 
   const load = useCallback(async () => {
     setState({ status: 'loading' });
@@ -79,6 +95,9 @@ export default function RecursoScreen() {
     );
   }
 
+  const eyebrow = resourceEyebrow(name, state.resource.resourceKey);
+  const blocks = withoutRedundantTitleHeading(state.resource.contentBlocks, state.resource.title);
+
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
       <View style={styles.header}>
@@ -91,17 +110,55 @@ export default function RecursoScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.resourceTitle} accessibilityRole="header">
+        {eyebrow ? (
+          <Text variant="label" style={[styles.eyebrow, { color: accentColor }]}>
+            {eyebrow}
+          </Text>
+        ) : null}
+        <Text variant="heading1" accessibilityRole="header">
           {state.resource.title}
         </Text>
-        <ContentBlockRenderer blocks={state.resource.contentBlocks} />
+        <View style={[styles.titleAccent, { backgroundColor: accentColor }]} />
+        <ContentBlockRenderer blocks={blocks} highlightFormulas />
       </ScrollView>
 
       <Pressable accessibilityRole="button" style={styles.continueButton} onPress={goToExercise}>
-        <Text style={styles.continueButtonText}>Continuar a las preguntas</Text>
+        <Text variant="titleMedium" weight="semibold" style={styles.continueButtonText}>
+          Continuar a las preguntas
+        </Text>
+        <Icon name="chevron-right" size={18} color="onInverse" />
       </Pressable>
     </View>
   );
+}
+
+/**
+ * STUDY-4 -- eyebrow "MATEMÁTICA · M1" (decisión de Product Owner
+ * aprobada). `name` es la materia real ya recibida por navegación; el
+ * segmento se toma literal del primer bloque de `resourceKey` (identificador
+ * curricular real ya presente en el `resource` fetcheado en esta misma
+ * pantalla -- CERO fetch nuevo, CERO acoplamiento a `unidades.tsx`). No se
+ * interpreta ni se etiqueta como "Módulo": se muestra tal cual viene.
+ */
+function resourceEyebrow(name: string | undefined, resourceKey: string): string | null {
+  const segment = resourceKey.split('.')[0];
+  if (!name && !segment) return null;
+  return [name?.toUpperCase(), segment].filter(Boolean).join(' · ');
+}
+
+/**
+ * STUDY-4 -- corrige la duplicación título/heading de forma GENÉRICA y
+ * estructural: cualquier bloque `heading` cuyo texto coincida exactamente
+ * con `resource.title` ya renderizado arriba se omite (aplica a cualquier
+ * resource, no a "Porcentajes y proporcionalidad" en particular). Un
+ * `heading` con texto DISTINTO del título -- ej. un subtítulo real futuro --
+ * nunca se toca.
+ */
+function withoutRedundantTitleHeading(
+  blocks: ResourceContentBlockResponse[],
+  title: string,
+): ResourceContentBlockResponse[] {
+  return blocks.filter((block) => !(block.type === 'heading' && block.text === title));
 }
 
 function createStyles(t: ThemeTokens) {
@@ -113,14 +170,22 @@ function createStyles(t: ThemeTokens) {
     progressSegmentDone: { backgroundColor: t.color.accent.default },
     progressSegmentPending: { backgroundColor: t.color.border.default },
     content: { gap: 12, paddingBottom: 12 },
-    resourceTitle: { fontSize: 19, fontWeight: '700' as const, color: t.color.text.primary },
+    // STUDY-4 -- eyebrow académico discreto, mismo patrón `label` + tono de
+    // materia que STUDY-2/3.
+    eyebrow: { textTransform: 'uppercase' as const, letterSpacing: 0.5, marginBottom: 2 },
+    // Acento/separador editorial bajo el título -- puramente decorativo,
+    // color de materia, sin token nuevo.
+    titleAccent: { width: 36, height: 3, borderRadius: radii.small, marginTop: 4, marginBottom: 4 },
     continueButton: {
-      backgroundColor: t.color.background.inverse,
-      borderRadius: 10,
-      paddingVertical: 14,
+      flexDirection: 'row' as const,
       alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: spacing.space2,
+      backgroundColor: t.color.background.inverse,
+      borderRadius: radii.medium,
+      paddingVertical: 14,
       marginTop: 8,
     },
-    continueButtonText: { color: t.color.text.onInverse, fontSize: 14, fontWeight: '500' as const },
+    continueButtonText: { color: t.color.text.onInverse },
   };
 }
