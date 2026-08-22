@@ -13,7 +13,7 @@ import { CompetitiveProfileSection } from '../../../components/competitive-profi
 import { AcademicStatsSection } from '../../../components/profile/academic-stats-section';
 import { SubjectProgressSection } from '../../../components/profile/subject-progress-section';
 import { CompetitiveHistorySection } from '../../../components/profile/competitive-history-section';
-import { Text, Button, Dialog } from '../../../components/ui';
+import { Text, Button, Dialog, IconButton } from '../../../components/ui';
 import { useTheme, useThemedStyles, spacing } from '../../../theme';
 import type { ThemeTokens } from '../../../theme';
 
@@ -266,7 +266,22 @@ export default function PerfilScreen() {
         cerrar sesión. Misma lógica exacta que tenía `personalizacion.tsx`
         antes de PROFILE-5B, solo reubicada.
       */}
-      <Dialog visible={settingsVisible} title="Ajustes" onRequestClose={closeSettings}>
+      <Dialog visible={settingsVisible} onRequestClose={closeSettings}>
+        {/*
+          UI-POLISH-1C -- affordance explícita de cierre (X), mismo patrón ya
+          validado en los Dialogs de Tutor IA (AI-1A): se deja de usar el
+          `title` plano de `Dialog` y se construye un header propio con el
+          mismo texto ("Ajustes") + `IconButton` (icono `close` ya
+          existente) que llama EXACTAMENTE a `closeSettings`, la misma
+          función que ya cierra el modal vía Android Back -- ningún
+          controlador nuevo, ningún cambio en `Dialog` compartido.
+        */}
+        <View style={styles.settingsHeader}>
+          <Text variant="heading3" accessibilityRole="header">
+            Ajustes
+          </Text>
+          <IconButton name="close" accessibilityLabel="Cerrar ajustes" onPress={closeSettings} color="secondary" />
+        </View>
         <View style={styles.settingsSection}>
           {editingName ? (
             <View style={styles.editor}>
@@ -432,6 +447,7 @@ function createStyles(t: ThemeTokens) {
     tabBar: { flexDirection: 'row' as const, gap: spacing.space5, borderBottomWidth: 1, borderBottomColor: t.color.border.default },
     tabItem: { paddingVertical: spacing.space2, borderBottomWidth: 2, borderBottomColor: 'transparent' },
     tabItemActive: { borderBottomColor: t.color.accent.default },
+    settingsHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const },
     settingsSection: { gap: spacing.space2 },
     settingsRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, gap: spacing.space2 },
     editor: { gap: spacing.space2 },

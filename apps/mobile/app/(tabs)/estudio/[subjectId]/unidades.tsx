@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList, Pressable, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import type { CurriculumTopicResponse, TopicProgressResponse } from '@axioma/contracts';
@@ -100,6 +100,23 @@ export default function UnidadesScreen() {
       <Text variant="bodySmall" color="secondary">
         Elige una unidad para comenzar a estudiar.
       </Text>
+      {/* UI-POLISH-1D -- escape hatch discreto hacia la lista de materias:
+          `router.dismissTo` (POP_TO) resuelve tanto la entrada normal desde
+          Estudio (hace pop de las pantallas intermedias hasta `estudio/index`
+          si ya existe en el stack) como la entrada directa desde el CTA de
+          Inicio (`estudio/index` no existe en el stack -> reemplaza la
+          pantalla actual por esa ruta), sin flags de origen ni lógica propia. */}
+      <Pressable
+        onPress={() => router.dismissTo('/(tabs)/estudio')}
+        accessibilityRole="button"
+        accessibilityLabel="Volver a Estudio"
+        hitSlop={8}
+        style={styles.backLink}
+      >
+        <Text variant="bodySmall" style={{ color: tokens.color.accent.strong }}>
+          Volver a Estudio
+        </Text>
+      </Pressable>
       <FlatList
         data={state.topics}
         keyExtractor={(topic) => topic.id}
@@ -249,6 +266,7 @@ function UnitMotif({ motif, color, size = 24 }: { motif: UnitMotifKey; color: st
 function createStyles(t: ThemeTokens) {
   return {
     container: { flex: 1, padding: 16, gap: 16, backgroundColor: t.color.background.default },
+    backLink: { alignSelf: 'flex-start' as const, paddingVertical: spacing.space1 },
     // STUDY-3 -- `space2` entre cards (mismo criterio de densidad "editorial"
     // que STUDY-1C), cada unidad conserva su propia `Card` independiente
     // (decisión de producto: unidades son entidades dinámicas, no
