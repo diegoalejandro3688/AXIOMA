@@ -4,6 +4,9 @@ export type { TextProps, TextColorToken } from './text';
 export { Avatar } from './avatar';
 export type { AvatarProps, AvatarSize } from './avatar';
 
+export { LevelBadge } from './level-badge';
+export type { LevelBadgeProps } from './level-badge';
+
 export { AnswerOption } from './answer-option';
 export type { AnswerOptionProps, AnswerOptionState } from './answer-option';
 
