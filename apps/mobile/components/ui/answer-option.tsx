@@ -49,9 +49,17 @@ export function AnswerOption({
       style={[containerStyle(tokens, state), { minHeight: layout.minTouchTarget }]}
     >
       {label ? (
-        <Text variant="label" style={{ color: tokens.color.text.primary }}>
-          {label})
-        </Text>
+        // STUDY-5 -- identificador circular A/B/C/D (antes texto plano "A)").
+        // Rama exclusiva de Ejercicio: Pregunta rápida (Competir) nunca pasa
+        // `label`, así que este cambio no le afecta. Tono `accent` fijo,
+        // independiente de `state`, igual para las 4 alternativas -- el
+        // color de corrección sigue viviendo únicamente en el contenedor
+        // (`containerStyle`), nunca en el identificador.
+        <View style={{ width: 32, height: 32, borderRadius: radii.full, backgroundColor: tokens.color.accent.subtleBg, alignItems: 'center', justifyContent: 'center' }}>
+          <Text variant="label" weight="semibold" style={{ color: tokens.color.accent.strong }}>
+            {label}
+          </Text>
+        </View>
       ) : null}
       <View style={{ flex: 1 }}>{children}</View>
       {isSubmittingThis ? <ActivityIndicator size="small" color={tokens.color.accent.default} /> : null}

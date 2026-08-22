@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Platform, ScrollView, View } from 'react-native';
+import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { QuestionResponse, TopicProgressResponse } from '@axioma/contracts';
+import type { QuestionResponse, ResourceContentBlockResponse, TopicProgressResponse } from '@axioma/contracts';
 import { listPublishedQuestions } from '../../../../../lib/api/education';
 import { getTopicProgress } from '../../../../../lib/api/progress';
 import { submitResponseViaOutbox } from '../../../../../lib/progress/submit-response';
@@ -193,9 +193,12 @@ export default function EjercicioScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         <Text variant="caption" color="secondary" style={styles.questionNumber}>
-          Pregunta {questionIndex + 1}
+          Pregunta {questionIndex + 1} de {state.questions.length}
         </Text>
-        <ContentBlockRenderer blocks={currentQuestion.stemContent} />
+        <StemContent blocks={currentQuestion.stemContent} />
+        <Text variant="bodySmall" color="secondary">
+          Selecciona la alternativa correcta.
+        </Text>
 
         {submitError ? (
           <Text variant="bodySmall" color="error">
@@ -265,8 +268,49 @@ export default function EjercicioScreen() {
       {answered && answered.isCorrect !== null ? (
         <Button variant="primary" label="Continuar" onPress={handleContinue} style={styles.continueButton} />
       ) : null}
+
+      {/*
+        STUDY-5 -- affordance secundaria hacia EXACTAMENTE el mismo
+        controlador que la X (`backToUnidades`, aprobado explícitamente por
+        el Product Owner): mismo destino, sin confirmación nueva, sin
+        cancelar respuestas ni progreso. Segunda affordance visual, no
+        segundo comportamiento.
+      */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Salir de la pregunta"
+        onPress={backToUnidades}
+        style={styles.exitLink}
+      >
+        <Text variant="label" color="secondary">
+          Salir de la pregunta
+        </Text>
+      </Pressable>
     </View>
   );
+}
+
+/**
+ * STUDY-5 -- el enunciado real de una pregunta es, hoy, un único bloque
+ * `paragraph` (`stemContent: resourceContentBlocksSchema.parse([{type:
+ * 'paragraph', ...}])`, ver `apps/backend/prisma/seed.ts`). Para darle la
+ * jerarquía tipográfica grande que pide la referencia sin tocar
+ * `ContentBlockRenderer` (compartido con Competir/Ejercicio, fuera de
+ * alcance de STUDY-5), este caso -- el único real hoy -- se renderiza
+ * directo con `variant="heading3"` sobre el mismo `text` real. Cualquier
+ * forma distinta (heading/formula/imagen, o más de un bloque) NUNCA se
+ * inventa aquí: cae en el `ContentBlockRenderer` genérico ya existente, sin
+ * degradar ni perder contenido.
+ */
+function StemContent({ blocks }: { blocks: ResourceContentBlockResponse[] }) {
+  if (blocks.length === 1 && blocks[0].type === 'paragraph') {
+    return (
+      <Text variant="heading3" accessibilityRole="header">
+        {blocks[0].text}
+      </Text>
+    );
+  }
+  return <ContentBlockRenderer blocks={blocks} />;
 }
 
 function createStyles(t: ThemeTokens) {
@@ -279,7 +323,7 @@ function createStyles(t: ThemeTokens) {
     progressSegmentPending: { backgroundColor: t.color.border.default },
     content: { gap: 14, paddingBottom: 24 },
     questionNumber: { textTransform: 'uppercase' as const, letterSpacing: 0.5 },
-    options: { gap: 10 },
+    options: { gap: spacing.space3 },
     pendingNote: { fontStyle: 'italic' as const },
     feedback: { gap: 8, borderRadius: 12, borderWidth: 1, padding: 14 },
     feedbackCorrect: { backgroundColor: t.color.state.success.background, borderColor: t.color.state.success.border },
@@ -304,5 +348,6 @@ function createStyles(t: ThemeTokens) {
     completedMessage: { textAlign: 'center' as const },
     completedButton: { marginTop: 8, alignSelf: 'stretch' as const },
     continueButton: { marginTop: 8 },
+    exitLink: { alignSelf: 'center' as const, paddingVertical: spacing.space2 },
   };
 }
