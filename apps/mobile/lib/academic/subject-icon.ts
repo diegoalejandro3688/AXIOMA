@@ -1,6 +1,6 @@
 import type { IconName, ThemeTokens } from '../../theme';
 
-export type SubjectTone = 'accent' | 'success' | 'warning' | null;
+export type SubjectTone = 'accent' | 'success' | 'warning' | 'violet' | null;
 
 /**
  * Resuelve icono/color académico por NOMBRE real de materia (nunca por
@@ -9,16 +9,12 @@ export type SubjectTone = 'accent' | 'success' | 'warning' | null;
  * Matemática/Ciencias/Historia/Lenguaje (NO "Competencia Lectora" -- ese es
  * el nombre de un TEMA dentro de Lenguaje, no de la materia).
  *
- * `theme/tokens.ts` no define familias de color académicas propias
- * (azul/verde/ámbar/violeta) -- solo existen los tokens semánticos ya
- * aprobados (accent/state.*). Se reutilizan por semejanza de matiz donde
- * corresponde (Matemática -> accent = azul; Ciencias -> state.success =
- * verde; Historia -> state.warning = ámbar). Para Lenguaje (violeta) NO
- * existe ningún token de esa familia -- en vez de fabricar un hex nuevo
- * fuera de `theme/tokens.ts`, mantiene el mismo tratamiento de color que
- * Matemática (icono real y distinto, color de familia limitado por el
- * token disponible) -- ver "Materia no mapeada" en el UI-3 Implementation
- * Report.
+ * `theme/tokens.ts` reutiliza tokens semánticos ya aprobados donde el matiz
+ * coincide (Matemática -> accent = azul; Ciencias -> state.success = verde;
+ * Historia -> state.warning = ámbar) y, desde STUDY-2A, una familia
+ * académica dedicada `color.academic.violet` para Lenguaje -- antes cubierto
+ * por `null` (caía en accent/azul, el mismo tono que Matemática; ver
+ * "Materia no mapeada" en el UI-3 Implementation Report, ya resuelto).
  *
  * PROFILE-1 -- extraído de `app/(tabs)/estudio/index.tsx` (donde vivía
  * originalmente) a `lib/` para poder reutilizarlo desde
@@ -34,7 +30,7 @@ export function subjectIcon(name: string): { icon: IconName; tone: SubjectTone }
     case 'Historia':
       return { icon: 'subject-history', tone: 'warning' };
     case 'Lenguaje':
-      return { icon: 'subject-language', tone: null };
+      return { icon: 'subject-language', tone: 'violet' };
     default:
       return { icon: 'subject-math', tone: null };
   }
@@ -43,11 +39,13 @@ export function subjectIcon(name: string): { icon: IconName; tone: SubjectTone }
 export function subjectToneColor(t: ThemeTokens, tone: SubjectTone): string {
   if (tone === 'success') return t.color.state.success.text;
   if (tone === 'warning') return t.color.state.warning.text;
+  if (tone === 'violet') return t.color.academic.violet.text;
   return t.color.accent.strong;
 }
 
 export function subjectToneBackground(t: ThemeTokens, tone: SubjectTone): string {
   if (tone === 'success') return t.color.state.success.background;
   if (tone === 'warning') return t.color.state.warning.background;
+  if (tone === 'violet') return t.color.academic.violet.background;
   return t.color.accent.subtleBg;
 }

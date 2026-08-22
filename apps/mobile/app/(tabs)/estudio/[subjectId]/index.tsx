@@ -1,46 +1,106 @@
+import { Fragment } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useThemedStyles, spacing } from '../../../../theme';
-import type { ThemeTokens } from '../../../../theme';
-import { Text, Card, ListRow, Chip, Icon } from '../../../../components/ui';
-import { subjectIcon } from '../../../../lib/academic/subject-icon';
+import { useThemedStyles, useTheme, radii } from '../../../../theme';
+import type { IconName, ThemeTokens } from '../../../../theme';
+import { Text, Card, ListRow, Divider, Icon } from '../../../../components/ui';
+import { subjectIcon, subjectToneBackground, subjectToneColor } from '../../../../lib/academic/subject-icon';
 
 /**
  * Detalle de materia -- 4 accesos del wireframe aprobado (Unidades, Recursos,
  * Práctica libre, Ensayo). Solo Unidades es funcional en Bloque IV; los otros
- * 3 se muestran deshabilitados con "Próximamente", sin navegación ni lógica
- * (aprobación de alcance explícita del usuario -- ver UI-4 Gate 4, no
- * activarlas).
+ * 3 se muestran deshabilitados con un indicador "Próximamente" discreto, sin
+ * navegación ni lógica (aprobación de alcance explícita del usuario -- ver
+ * UI-4 Gate 4, no activarlas; STUDY-2 solo rediseña la presentación).
+ *
+ * STUDY-2 -- el icono de cada fila representa la MODALIDAD (acción dentro de
+ * la materia), no la materia en sí -- antes las 4 filas repetían el mismo
+ * `subjectIcon(name)`. El tono de color sigue viniendo de la materia
+ * (`subjectToneColor`/`subjectToneBackground`, sin tokens nuevos) para dar
+ * continuidad visual Estudio -> Materia, en vez de 4 colores arbitrarios por
+ * modalidad (ver auditoría STUDY-2, punto 5).
  */
+type StudyModeTile = {
+  key: string;
+  label: string;
+  description: string;
+  icon: IconName;
+  enabled: boolean;
+};
+
+const STUDY_MODE_TILES: StudyModeTile[] = [
+  {
+    key: 'unidades',
+    label: 'Unidades',
+    description: 'Contenido organizado por unidades para aprender paso a paso.',
+    icon: 'study-mode-units',
+    enabled: true,
+  },
+  {
+    key: 'recursos',
+    label: 'Recursos',
+    description: 'Material de apoyo para reforzar tus conocimientos.',
+    icon: 'study-mode-resources',
+    enabled: false,
+  },
+  {
+    key: 'practica-libre',
+    label: 'Práctica libre',
+    description: 'Crea tu propia práctica y mejora a tu ritmo.',
+    icon: 'study-mode-practice',
+    enabled: false,
+  },
+  {
+    key: 'ensayo',
+    label: 'Ensayo',
+    description: 'Simulacros y ensayos para medir tu preparación.',
+    icon: 'study-mode-essay',
+    enabled: false,
+  },
+];
+
 export default function SubjectDetailScreen() {
   const { subjectId, name } = useLocalSearchParams<{ subjectId: string; name?: string }>();
   const router = useRouter();
+  const tokens = useTheme();
   const styles = useThemedStyles(createStyles);
 
-  const tiles: { key: string; label: string; enabled: boolean }[] = [
-    { key: 'unidades', label: 'Unidades', enabled: true },
-    { key: 'recursos', label: 'Recursos', enabled: false },
-    { key: 'practica-libre', label: 'Práctica libre', enabled: false },
-    { key: 'ensayo', label: 'Ensayo', enabled: false },
-  ];
-
   // Mismo mapeo por nombre real de materia que Materias (UI-3) -- reutilizado
-  // desde `estudio/index.tsx` (exportado ahí), nunca duplicado.
-  const { icon } = subjectIcon(name ?? '');
+  // desde `lib/academic/subject-icon.ts`, nunca duplicado. Solo se usa el
+  // `tone` (continuidad de color con la materia); el icono de materia en sí
+  // no se repite en las filas de modalidad.
+  const { tone } = subjectIcon(name ?? '');
+  const tileBackground = subjectToneBackground(tokens, tone);
+  const tileIconColor = subjectToneColor(tokens, tone);
 
   return (
     <View style={styles.container}>
       <Text variant="heading2" accessibilityRole="header">
         {name ?? 'Materia'}
       </Text>
-      <View style={styles.list}>
-        {tiles.map((tile) => (
-          <Card key={tile.key} variant="outlined" style={styles.card}>
+      <Text variant="bodySmall" color="secondary">
+        Elige cómo quieres estudiar
+      </Text>
+      <Card variant="outlined" style={styles.card}>
+        {STUDY_MODE_TILES.map((tile, index) => (
+          <Fragment key={tile.key}>
+            {index > 0 ? <Divider /> : null}
             <ListRow
               title={tile.label}
-              leading={<Icon name={icon} size={20} color="secondary" />}
+              description={tile.description}
+              leading={
+                <View style={[styles.iconTile, { backgroundColor: tileBackground }]}>
+                  <Icon name={tile.icon} size={18} color={tileIconColor} />
+                </View>
+              }
               navigable={tile.enabled}
-              trailing={tile.enabled ? undefined : <Chip label="Próximamente" variant="disabled" />}
+              trailing={
+                tile.enabled ? undefined : (
+                  <Text variant="caption" color="muted">
+                    Próximamente
+                  </Text>
+                )
+              }
               disabled={!tile.enabled}
               accessibilityLabel={tile.enabled ? tile.label : `${tile.label}, próximamente`}
               onPress={
@@ -49,9 +109,9 @@ export default function SubjectDetailScreen() {
                   : undefined
               }
             />
-          </Card>
+          </Fragment>
         ))}
-      </View>
+      </Card>
     </View>
   );
 }
@@ -59,7 +119,13 @@ export default function SubjectDetailScreen() {
 function createStyles(t: ThemeTokens) {
   return {
     container: { flex: 1, padding: 16, gap: 16, backgroundColor: t.color.background.default },
-    list: { gap: spacing.space2 },
     card: { padding: 0, overflow: 'hidden' as const },
+    iconTile: {
+      width: 36,
+      height: 36,
+      borderRadius: radii.small,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
   };
 }

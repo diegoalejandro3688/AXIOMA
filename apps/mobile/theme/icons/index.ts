@@ -13,6 +13,7 @@ import {
   ChevronRightIcon,
   ChevronUpIcon,
   ChevronDownIcon,
+  ClipboardIcon,
   CloseIcon,
   ColumnIcon,
   EditIcon,
@@ -26,6 +27,8 @@ import {
   SettingsIcon,
   ShieldIcon,
   SquareRootIcon,
+  StepsIcon,
+  TargetIcon,
   XCircleIcon,
 } from './action-icons';
 
@@ -60,6 +63,11 @@ export const iconRegistry = {
   'subject-science': FlaskIcon,
   'subject-history': ColumnIcon,
   'subject-language': OpenBookIcon,
+  // Modalidades de estudio dentro de una materia (STUDY-2)
+  'study-mode-units': StepsIcon,
+  'study-mode-resources': OpenBookIcon,
+  'study-mode-practice': TargetIcon,
+  'study-mode-essay': ClipboardIcon,
 } satisfies Record<string, ComponentType<NavIconProps>>;
 
 export type IconName = keyof typeof iconRegistry;

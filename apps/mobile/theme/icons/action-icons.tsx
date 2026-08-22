@@ -255,3 +255,66 @@ export function EditIcon({ size = 24, color }: NavIconProps) {
   );
 }
 
+/**
+ * STUDY-2 -- modalidad "Unidades" dentro de una materia (menú de materia,
+ * `estudio/[subjectId]/index.tsx`). Representa contenido estructurado/
+ * progresivo ("paso a paso") con una escalera ascendente -- inspirado
+ * conceptualmente en el compás de la referencia visual, sin copiarlo
+ * literalmente. Mismo lenguaje de trazo que el resto de este archivo.
+ */
+export function StepsIcon({ size = 24, color }: NavIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M4 20v-3h4v-3h4v-3h4v-3h4"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+/**
+ * STUDY-2 -- modalidad "Práctica libre" (diana/target lineal, sin relleno
+ * salvo el punto central).
+ */
+export function TargetIcon({ size = 24, color }: NavIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="8.5" stroke={color} strokeWidth={2} />
+      <Circle cx="12" cy="12" r="5" stroke={color} strokeWidth={2} />
+      <Circle cx="12" cy="12" r="1.4" fill={color} stroke="none" />
+    </Svg>
+  );
+}
+
+/**
+ * STUDY-2 -- modalidad "Ensayo" (portapapeles/documento con lápiz,
+ * evocando un examen/simulacro).
+ */
+export function ClipboardIcon({ size = 24, color }: NavIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M9 4.5h6a1 1 0 0 1 1 1V6H8v-.5a1 1 0 0 1 1-1Z"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M6 6h12a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Line x1="8.5" y1="11" x2="15.5" y2="11" stroke={color} strokeWidth={2} strokeLinecap="round" />
+      <Line x1="8.5" y1="14.5" x2="15.5" y2="14.5" stroke={color} strokeWidth={2} strokeLinecap="round" />
+      <Line x1="8.5" y1="18" x2="12.5" y2="18" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+

@@ -53,6 +53,17 @@ export interface ThemeTokens {
       warning: ColorStateFamily;
       info: ColorStateFamily;
     };
+    /**
+     * Identidad cromática académica (STUDY-2A) -- NO es un estado de UI
+     * (éxito/error/aviso); es la familia violeta/lila usada exclusivamente
+     * para materias que no encajan en accent/success/warning (hoy:
+     * Lenguaje). Misma forma que `ColorStateFamily` para reutilizar el
+     * mismo patrón text/background/border que ya resuelven
+     * `subjectToneColor()`/`subjectToneBackground()`.
+     */
+    academic: {
+      violet: ColorStateFamily;
+    };
   };
 }
 
@@ -84,6 +95,9 @@ export const lightTokens: ThemeTokens = {
       warning: { text: '#854F0B', background: '#FCEFD8', border: '#EAC584' },
       info: { text: '#0C447C', background: '#E6F1FB', border: '#B7D6F2' },
     },
+    academic: {
+      violet: { text: '#6B4E9B', background: '#F0EAF8', border: '#D6C4EC' },
+    },
   },
 };
 
@@ -109,6 +123,9 @@ export const darkTokens: ThemeTokens = {
       error: { text: '#F2A399', background: '#2A0F0C', border: '#4A2620' },
       warning: { text: '#E8C077', background: '#2E2408', border: '#4A3B15' },
       info: { text: '#85B7EB', background: '#0A1D30', border: '#17324D' },
+    },
+    academic: {
+      violet: { text: '#C2A6E8', background: '#241A38', border: '#3E2E5C' },
     },
   },
 };
