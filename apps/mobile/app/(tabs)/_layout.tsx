@@ -1,6 +1,6 @@
 import { Text as RNText, View } from 'react-native';
 import { Tabs } from 'expo-router';
-import { useTheme, typeScale, fontWeight } from '../../theme';
+import { useTheme, typeScale, fontWeight, radii } from '../../theme';
 import { Icon } from '../../components/ui';
 import type { IconName } from '../../theme';
 
@@ -39,17 +39,17 @@ export default function TabsLayout() {
 
   function renderIcon(routeName: string, focused: boolean) {
     const color = focused ? tokens.color.navigation.active : tokens.color.navigation.inactive;
-    const isCenter = routeName === 'index';
-    // Inicio (centro) lleva un tratamiento ligeramente más prominente al
-    // estar activo -- fondo `accent.subtleBg` un poco más grande detrás del
-    // icono, nunca un botón flotante que rompa la altura/posición de la barra.
-    const badgeSize = isCenter ? 40 : 36;
+    // NAV-1 -- mismo sistema visual para las 5 pestañas, sin excepción para
+    // Inicio: superficie tipo squircle (más ancha que alta, esquinas muy
+    // redondeadas vía `radii.large`) en vez del círculo perfecto anterior.
+    // Dimensiones fijas independientemente de `focused` para que no haya
+    // salto de layout al activarse -- solo cambia `backgroundColor`.
     return (
       <View
         style={{
-          width: badgeSize,
-          height: badgeSize,
-          borderRadius: badgeSize / 2,
+          width: 52,
+          height: 36,
+          borderRadius: radii.large,
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: focused ? tokens.color.accent.subtleBg : 'transparent',
