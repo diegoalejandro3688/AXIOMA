@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, View } from 'react-native';
 import type { AiMessageResponse, AiResponseReportType } from '@axioma/contracts';
 import { REPORT_CATEGORY_OPTIONS, REPORT_SENT_MESSAGE } from '../../lib/ai/report-categories';
 import { describeAssistanceMode } from '../../lib/ai/assistance-modes';
+import { AiTutorMark } from './ai-tutor-mark';
 import { Text } from '../ui';
 import { useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
@@ -44,19 +45,37 @@ export function AiMessageBubble({
 
   return (
     <View style={[styles.row, isAssistant ? styles.rowAssistant : styles.rowUser]}>
-      <View style={[styles.bubble, isAssistant ? styles.bubbleAssistant : styles.bubbleUser]}>
-        <Text variant="caption" color="muted" style={styles.author}>
-          {isAssistant ? 'Tutor IA' : 'Tú'}
-        </Text>
-        <Text variant="body" style={styles.content}>
-          {message.content}
-        </Text>
-        {!isAssistant && message.requestedMode ? (
-          <Text variant="caption" color="muted" style={styles.mode}>
-            Modo: {describeAssistanceMode(message.requestedMode)}
+      {isAssistant ? (
+        // AI-2A -- respuesta del Tutor SIN card/burbuja: identidad discreta
+        // (símbolo pequeño real de AI-1J + "Tutor IA", mismo copy real que
+        // ya existía -- nunca "Tutor Zetrynd") seguida del contenido
+        // directamente sobre el fondo, a todo el ancho disponible.
+        <View style={styles.assistantContent}>
+          <View style={styles.identityRow}>
+            <AiTutorMark size={18} />
+            <Text variant="caption" color="muted" style={styles.author}>
+              Tutor IA
+            </Text>
+          </View>
+          <Text variant="body" style={styles.assistantText}>
+            {message.content}
           </Text>
-        ) : null}
-      </View>
+        </View>
+      ) : (
+        <View style={[styles.bubble, styles.bubbleUser]}>
+          <Text variant="caption" color="muted" style={styles.author}>
+            Tú
+          </Text>
+          <Text variant="body" style={styles.content}>
+            {message.content}
+          </Text>
+          {message.requestedMode ? (
+            <Text variant="caption" color="muted" style={styles.mode}>
+              Modo: {describeAssistanceMode(message.requestedMode)}
+            </Text>
+          ) : null}
+        </View>
+      )}
 
       {isAssistant && onReport ? (
         <View style={styles.reportArea}>
@@ -110,11 +129,16 @@ export function AiMessageBubble({
 
 function createStyles(t: ThemeTokens) {
   return {
-    row: { gap: 4, maxWidth: '92%' as const },
-    rowAssistant: { alignSelf: 'flex-start' as const },
-    rowUser: { alignSelf: 'flex-end' as const },
-    bubble: { borderRadius: 12, borderWidth: 1, paddingVertical: 10, paddingHorizontal: 12, gap: 4 },
-    bubbleAssistant: { backgroundColor: t.color.background.surface, borderColor: t.color.border.default },
+    row: { gap: 4 },
+    // AI-2A -- la respuesta del Tutor usa prácticamente todo el ancho
+    // disponible (sin card exterior); solo la burbuja del usuario conserva
+    // un ancho máximo razonable.
+    rowAssistant: { alignSelf: 'stretch' as const, width: '100%' as const },
+    rowUser: { alignSelf: 'flex-end' as const, maxWidth: '85%' as const },
+    assistantContent: { gap: 6 },
+    identityRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
+    assistantText: { color: t.color.text.primary },
+    bubble: { borderRadius: 14, borderWidth: 1, paddingVertical: 10, paddingHorizontal: 12, gap: 4 },
     bubbleUser: { backgroundColor: t.color.accent.subtleBg, borderColor: t.color.accent.default },
     author: { textTransform: 'uppercase' as const, letterSpacing: 0.5 },
     content: { color: t.color.text.primary },

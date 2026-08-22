@@ -8,7 +8,6 @@ import { mapSendMessageResult, resolveSendOperationId, type PendingSendAttempt, 
 import { resolveSendAvailability } from '../../../../lib/ai/conversation-availability';
 import { DEFAULT_ASSISTANCE_MODE } from '../../../../lib/ai/assistance-modes';
 import { AiMessageBubble, type MessageReportState } from '../../../../components/ai/ai-message-bubble';
-import { AiQuotaSummary } from '../../../../components/ai/ai-quota-summary';
 import { AiDisclaimer } from '../../../../components/ai/ai-disclaimer';
 import { AiModeSelector } from '../../../../components/ai/ai-mode-selector';
 import { LoadingState } from '../../../../components/loading-state';
@@ -154,8 +153,14 @@ export default function AiConversationScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {/*
+        AI-2A -- la cuota deja de mostrarse en esta pantalla (ya vive en el
+        Home del Tutor IA); `detail.dailyQuota`/`turnCount`/`maxTurns` siguen
+        leyéndose más abajo para `resolveSendAvailability` (invariante
+        funcional, no solo visual). El disclaimer se conserva, real y
+        textual (`detail.disclaimer`), ahora más discreto en el header.
+      */}
       <View style={styles.header}>
-        <AiQuotaSummary dailyQuota={detail.dailyQuota} turnCount={detail.turnCount} maxTurns={detail.maxTurns} />
         {detail.academicContext ? (
           <Text variant="caption" color="secondary">
             Contexto: {detail.academicContext.subjectName} · {detail.academicContext.topicName}
@@ -236,22 +241,29 @@ export default function AiConversationScreen() {
         </View>
       ) : null}
 
-      <View style={styles.composer}>
-        <AiModeSelector value={mode} onChange={setMode} disabled={inputDisabled} />
+      {/*
+        AI-2A -- composer integrado (mismo patrón visual ya aprobado en
+        Tutor IA Home, AI-1B/1J): TextInput arriba, selector de modo abajo a
+        la izquierda, envío abajo a la derecha, en una sola superficie.
+        `draft`/`submit`/`sending`/`inputDisabled`/`KeyboardAvoidingView` sin
+        ningún cambio de lógica.
+      */}
+      <View style={styles.composerCard}>
+        <TextInput
+          accessibilityLabel="Escribe tu mensaje para el Tutor IA"
+          placeholder={availability.canSend ? 'Pregúntale al tutor…' : 'Envío no disponible'}
+          placeholderTextColor={tokens.color.text.muted}
+          selectionColor={tokens.color.accent.default}
+          cursorColor={tokens.color.accent.default}
+          value={draft}
+          onChangeText={setDraft}
+          editable={!inputDisabled}
+          multiline
+          maxLength={4000}
+          style={[styles.input, inputDisabled && styles.inputDisabled]}
+        />
         <View style={styles.composerRow}>
-          <TextInput
-            accessibilityLabel="Escribe tu mensaje para el Tutor IA"
-            placeholder={availability.canSend ? 'Escribe tu mensaje…' : 'Envío no disponible'}
-            placeholderTextColor={tokens.color.text.muted}
-            selectionColor={tokens.color.accent.default}
-            cursorColor={tokens.color.accent.default}
-            value={draft}
-            onChangeText={setDraft}
-            editable={!inputDisabled}
-            multiline
-            maxLength={4000}
-            style={[styles.input, inputDisabled && styles.inputDisabled]}
-          />
+          <AiModeSelector value={mode} onChange={setMode} disabled={inputDisabled} />
           <Button
             variant="primary"
             label="Enviar"
@@ -299,30 +311,27 @@ function createStyles(t: ThemeTokens) {
       padding: 10,
     },
     blockedText: { color: t.color.state.warning.text },
-    composer: {
+    // AI-2A -- una sola superficie (mismo patrón que el composer de Home):
+    // borde sutil, radio del design system, sin sombra fuerte.
+    composerCard: {
+      margin: 16,
+      marginTop: 8,
       gap: 8,
-      paddingHorizontal: 16,
-      paddingTop: 8,
-      paddingBottom: 16,
-      borderTopWidth: 1,
-      borderTopColor: t.color.border.default,
-      backgroundColor: t.color.background.surface,
-    },
-    composerRow: { flexDirection: 'row' as const, alignItems: 'flex-end' as const, gap: 8 },
-    input: {
-      flex: 1,
-      minHeight: 44,
-      maxHeight: 120,
       borderWidth: 1,
       borderColor: t.color.border.default,
-      backgroundColor: t.color.background.default,
+      backgroundColor: t.color.background.surface,
+      borderRadius: 16,
+      padding: 14,
+    },
+    composerRow: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const },
+    input: {
+      minHeight: 44,
+      maxHeight: 120,
       color: t.color.text.primary,
-      borderRadius: 10,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
+      paddingVertical: 4,
       fontSize: 15,
     },
-    inputDisabled: { backgroundColor: t.color.action.disabledBackground, color: t.color.action.disabledText },
+    inputDisabled: { color: t.color.action.disabledText },
     sendButton: { minWidth: 88 },
   };
 }
