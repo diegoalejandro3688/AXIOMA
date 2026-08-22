@@ -22,6 +22,8 @@ import {
   FlameIcon,
   FlaskIcon,
   InfoIcon,
+  LockIcon,
+  MailIcon,
   MenuIcon,
   MoreHorizontalIcon,
   OpenBookIcon,
@@ -58,6 +60,8 @@ export const iconRegistry = {
   edit: EditIcon,
   settings: SettingsIcon,
   menu: MenuIcon,
+  mail: MailIcon,
+  lock: LockIcon,
   // Estado/académicos (UI-3)
   flame: FlameIcon,
   shield: ShieldIcon,

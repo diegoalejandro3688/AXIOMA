@@ -256,6 +256,47 @@ export function EditIcon({ size = 24, color }: NavIconProps) {
 }
 
 /**
+ * AUTH-1A -- ícono de correo para el campo "Correo electrónico" en
+ * Login/Registro (`leadingIcon` de `TextField`, prop ya existente, no se
+ * modifica el componente). Mismo patrón 24x24/trazo 2px que el resto de
+ * este archivo.
+ */
+export function MailIcon({ size = 24, color }: NavIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
+      <Path d="M4 7.5l8 5.5 8-5.5" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+/**
+ * AUTH-1A -- ícono de candado para el campo "Contraseña" en Login/Registro
+ * (`leadingIcon` de `TextField`). El control de mostrar/ocultar contraseña
+ * ya existe dentro de `TextField` (icono `eye`/`eye-off`, sin tocar); este
+ * ícono es solo el `leadingIcon`, distinto y complementario.
+ */
+export function LockIcon({ size = 24, color }: NavIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M7 10.5V7.5a5 5 0 0 1 10 0v3" stroke={color} strokeWidth={2} strokeLinecap="round" />
+      <Path
+        d="M5.5 10.5h13a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1Z"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
+      <Circle cx="12" cy="15" r="1.3" fill={color} stroke="none" />
+    </Svg>
+  );
+}
+
+/**
  * AI-1 -- disparador del historial de conversaciones del Tutor IA (icono
  * hamburguesa, tres líneas horizontales). Excepción aprobada explícitamente
  * por el Product Owner a la regla de no crear capacidades nuevas: es
