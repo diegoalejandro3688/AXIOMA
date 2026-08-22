@@ -12,6 +12,7 @@ import { pickContinueTarget, type ContinueTarget } from '../../lib/progress/pick
 import { LoadingState } from '../../components/loading-state';
 import { ErrorState } from '../../components/error-state';
 import { Text, Icon, Card, Progress, LevelBadge } from '../../components/ui';
+import { HomeMathIllustration } from '../../components/home/home-math-illustration';
 import { useTheme, useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
@@ -151,6 +152,7 @@ export default function InicioScreen() {
       )}
 
       <Card variant="brand" style={styles.goalCard}>
+        <HomeMathIllustration />
         <Text variant="label" color="onInverse" style={styles.goalLabel}>
           {goalLabel(state.target)}
         </Text>
@@ -298,7 +300,10 @@ function createStyles(t: ThemeTokens) {
       paddingHorizontal: 12,
       alignSelf: 'flex-start' as const,
     },
-    goalCard: { gap: 4 },
+    // `paddingVertical` (base del Card ya trae `padding: spacing.space4`=16 -- esto
+    // SOLO sube/baja el borde, el horizontal sigue en 16) añade ~22px de alto total
+    // (11px arriba + 11px abajo), repartido parejo -- validación física HOME-ASSET-2.
+    goalCard: { gap: 4, overflow: 'hidden' as const, paddingVertical: 27 },
     // Ambos usan `text.onInverse` (texto pensado para esta superficie fija),
     // nunca `accent.default`/`text.primary` -- ese fue el bug real de
     // contraste en oscuro (ver hallazgo de validación Android).
