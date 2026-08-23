@@ -69,6 +69,15 @@ export interface ThemeTokens {
 
 export type ColorSchemeName = 'light' | 'dark';
 
+/**
+ * THEME-1 -- preferencia de apariencia elegida por el usuario en
+ * Perfil -> Ajustes (`'system'` sigue `useColorScheme()` del dispositivo;
+ * `'light'`/`'dark'` la fijan sin importar el sistema). Distinta de
+ * `ColorSchemeName`: esta es la ELECCIÓN persistida, esa es el esquema
+ * EFECTIVO ya resuelto que consumen tokens/componentes.
+ */
+export type AppearancePreference = 'system' | 'light' | 'dark';
+
 /** Superficie de marca fija -- misma tarjeta navy en ambos temas (ver nota de contraste arriba). */
 const brandInverseBackground = '#04203D';
 const brandOnInverseText = '#F5F6F8';

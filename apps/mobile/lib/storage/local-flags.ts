@@ -14,7 +14,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const KEYS = {
   hasCompletedOnboarding: 'axioma.v1.hasCompletedOnboarding',
+  appearancePreference: 'axioma.v1.appearancePreference',
 } as const;
+
+const APPEARANCE_PREFERENCE_VALUES = ['system', 'light', 'dark'] as const;
+type AppearancePreference = (typeof APPEARANCE_PREFERENCE_VALUES)[number];
 
 async function readBoolean(key: string): Promise<boolean> {
   try {
@@ -39,7 +43,32 @@ async function writeBoolean(key: string, value: boolean): Promise<void> {
   }
 }
 
+async function readAppearancePreference(): Promise<AppearancePreference> {
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.appearancePreference);
+    if (raw !== null && (APPEARANCE_PREFERENCE_VALUES as readonly string[]).includes(raw)) {
+      return raw as AppearancePreference;
+    }
+    // Sin valor guardado (primera vez) o dato irreconocible (versión futura
+    // desconocida) -- default seguro: 'system' (decisión de producto THEME-1).
+    return 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+async function writeAppearancePreference(value: AppearancePreference): Promise<void> {
+  try {
+    await AsyncStorage.setItem(KEYS.appearancePreference, value);
+  } catch {
+    // No bloquea el flujo de la app si falla la escritura -- el tema ya
+    // cambió en memoria para esta sesión, solo no sobrevive a un reinicio.
+  }
+}
+
 export const localFlags = {
   getHasCompletedOnboarding: (): Promise<boolean> => readBoolean(KEYS.hasCompletedOnboarding),
   setHasCompletedOnboarding: (value: boolean): Promise<void> => writeBoolean(KEYS.hasCompletedOnboarding, value),
+  getAppearancePreference: (): Promise<AppearancePreference> => readAppearancePreference(),
+  setAppearancePreference: (value: AppearancePreference): Promise<void> => writeAppearancePreference(value),
 };

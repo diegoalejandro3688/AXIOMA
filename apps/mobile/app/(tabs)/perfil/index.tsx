@@ -13,9 +13,15 @@ import { CompetitiveProfileSection } from '../../../components/competitive-profi
 import { AcademicStatsSection } from '../../../components/profile/academic-stats-section';
 import { SubjectProgressSection } from '../../../components/profile/subject-progress-section';
 import { CompetitiveHistorySection } from '../../../components/profile/competitive-history-section';
-import { Text, Button, Dialog, IconButton } from '../../../components/ui';
-import { useTheme, useThemedStyles, spacing } from '../../../theme';
-import type { ThemeTokens } from '../../../theme';
+import { Text, Button, Chip, Dialog, IconButton } from '../../../components/ui';
+import { useAppearancePreference, useTheme, useThemedStyles, spacing } from '../../../theme';
+import type { AppearancePreference, ThemeTokens } from '../../../theme';
+
+const APPEARANCE_OPTIONS: { value: AppearancePreference; label: string }[] = [
+  { value: 'system', label: 'Sistema' },
+  { value: 'light', label: 'Claro' },
+  { value: 'dark', label: 'Oscuro' },
+];
 
 type ScreenState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; view: MyAdvancedProfileResponse };
 type ProfileTab = 'resumen' | 'estadisticas';
@@ -64,6 +70,7 @@ export default function PerfilScreen() {
   const auth = useAuth();
   const router = useRouter();
   const tokens = useTheme();
+  const { preference: appearancePreference, setPreference: setAppearancePreference } = useAppearancePreference();
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
@@ -343,6 +350,34 @@ export default function PerfilScreen() {
           ) : null}
         </View>
 
+        {/*
+          THEME-1 -- selector de apariencia (Sistema/Claro/Oscuro), entre
+          "Editar nombre"/"Zona horaria" y "Perfil público" (ubicación
+          aprobada). Reutiliza `Chip` (variante `selected` ya existente)
+          envuelto en `Pressable`, mismo patrón de opción-con-check ya usado
+          en `AiModeSelector` -- sin Dialog anidado ni componente nuevo:
+          cambia inmediatamente la preferencia en memoria (propagada por
+          `ThemeProvider` a toda la app) y la persiste vía `localFlags`.
+        */}
+        <View style={styles.settingsSection}>
+          <Text variant="body" weight="semibold">
+            Apariencia
+          </Text>
+          <View style={styles.appearanceRow}>
+            {APPEARANCE_OPTIONS.map((option) => (
+              <Pressable
+                key={option.value}
+                accessibilityRole="button"
+                accessibilityState={{ selected: appearancePreference === option.value }}
+                accessibilityLabel={`Apariencia: ${option.label}`}
+                onPress={() => setAppearancePreference(option.value)}
+              >
+                <Chip label={option.label} variant={appearancePreference === option.value ? 'selected' : 'neutral'} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
         {publicProfileState === null || publicProfileState.status === 'loading' ? (
           <Text variant="bodySmall" color="secondary">
             Cargando identidad pública…
@@ -449,6 +484,7 @@ function createStyles(t: ThemeTokens) {
     tabItemActive: { borderBottomColor: t.color.accent.default },
     settingsHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const },
     settingsSection: { gap: spacing.space2 },
+    appearanceRow: { flexDirection: 'row' as const, gap: spacing.space2 },
     settingsRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, gap: spacing.space2 },
     editor: { gap: spacing.space2 },
     input: {

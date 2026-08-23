@@ -1,7 +1,7 @@
-export { ThemeProvider, useTheme, useColorSchemeName } from './theme-provider';
+export { ThemeProvider, useTheme, useColorSchemeName, useAppearancePreference } from './theme-provider';
 export { useThemedStyles } from './use-themed-styles';
 export { lightTokens, darkTokens } from './tokens';
-export type { ThemeTokens, ColorSchemeName } from './tokens';
+export type { ThemeTokens, ColorSchemeName, AppearancePreference } from './tokens';
 
 export { typography, fontWeight, family, typeScale } from './typography';
 export type { TypographyVariant, TypographyScaleEntry, FontWeightToken } from './typography';
