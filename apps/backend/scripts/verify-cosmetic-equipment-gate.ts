@@ -125,7 +125,17 @@ async function main() {
   console.log('--- 1. Gates 64/65: GET sin perfil público -- owned poblado, equipped con las 4 claves en null ---');
   const listBeforeProfile = await req('GET', '/gamification/me/cosmetics', alice.headers);
   check('GET -> 200 incluso sin perfil', listBeforeProfile.status === 200);
-  check('owned incluye los 3 cosméticos de Alice', listBeforeProfile.body.owned.length === 3);
+  // COSMETICS-STARTER-1 -- `GET` ahora también autootorga el Starter Kit
+  // (idempotente, ver `ensureStarterCosmetics`), así que `owned` puede
+  // incluir MÁS que los 3 fixtures de este gate si el catálogo starter
+  // existe en esta base -- se verifica que los 3 fixtures estén presentes
+  // por id, no un conteo exacto (ese conteo exacto era una asunción previa
+  // a este bloque, nunca una invariante real del endpoint).
+  const ownedIds = new Set(listBeforeProfile.body.owned.map((item: { inventoryItemId: string }) => item.inventoryItemId));
+  check(
+    'owned incluye los 3 cosméticos de Alice',
+    [aliceFrame1.id, aliceFrame2.id, aliceBadge.id].every((id) => ownedIds.has(id)),
+  );
   check(
     'equipped tiene las 4 claves, todas null',
     ['AVATAR', 'AVATAR_FRAME', 'PROFILE_BANNER', 'BADGE'].every((slot) => Object.prototype.hasOwnProperty.call(listBeforeProfile.body.equipped, slot) && listBeforeProfile.body.equipped[slot] === null),

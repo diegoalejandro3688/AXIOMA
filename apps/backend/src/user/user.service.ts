@@ -337,6 +337,12 @@ export class UserService {
   async getCosmetics(
     accountId: string,
   ): Promise<{ owned: InventoryItemWithCosmeticItem[]; equipped: EquippedCosmeticWithDetails[]; locked: LockedCosmeticView[] }> {
+    // COSMETICS-STARTER-1 -- autocuración lazy: garantiza el Starter Kit
+    // ANTES de leer `owned`/`locked`, así una cuenta nueva/existente ve sus
+    // starter en la MISMA respuesta, sin una segunda consulta. Idempotente
+    // (ver `CosmeticEquipmentService.ensureStarterCosmetics`) -- nunca toca
+    // equipamiento ni inventario ya existente.
+    await this.cosmeticEquipmentService.ensureStarterCosmetics(accountId);
     const [owned, profile, locked] = await Promise.all([
       this.cosmeticEquipmentService.getOwnedByAccountId(accountId),
       this.publicProfileRepo.findByAccountId(accountId),

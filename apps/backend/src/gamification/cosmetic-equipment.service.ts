@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InventoryItemRepository, type InventoryItemWithCosmeticItem } from './inventory-item.repository';
 import { CosmeticItemRepository } from './cosmetic-item.repository';
 import { EquippedCosmeticRepository, type EquippedCosmeticWithDetails } from './equipped-cosmetic.repository';
@@ -9,6 +9,29 @@ export interface LockedCosmeticView {
   cosmeticItem: CosmeticItem;
   unlockRequirements: UnlockRequirementView[];
 }
+
+/**
+ * COSMETICS-STARTER-1 -- ÚNICO punto autoritativo de los `itemKey` que
+ * forman el Starter Kit (decisión del Product Owner, 2026-08-22). Excluye
+ * deliberadamente `asset1-frame-madera-nivel5`: su nombre expresa una
+ * intención de producto de desbloqueo por nivel 5, aunque hoy no esté
+ * conectado a ningún `reward_bundle` real -- no debe regalarse por una vía
+ * distinta a la que eventualmente lo desbloquee. Ninguna otra capa (mobile,
+ * seeds, controllers) debe declarar esta lista de forma independiente.
+ */
+const STARTER_COSMETIC_ITEM_KEYS: readonly string[] = [
+  'asset1-avatar-buho',
+  'asset1-banner-templo-conocimiento',
+  'asset2-avatar-pi',
+  'asset2-avatar-astrolabio',
+  'asset2-avatar-humano-lentes',
+  'asset2-frame-plata',
+  'asset2-frame-bronce',
+  'asset2-banner-observatorio-horizonte',
+];
+
+/** Constante, no ligada a ninguna cuenta -- el Starter Kit no es un evento por-cuenta, es la misma política para todas. */
+const STARTER_KIT_ACQUISITION_SOURCE_ID = 'starter-kit';
 
 /**
  * Bloque III, Incremento 5, sub-incremento 5.b ("Equipamiento de
@@ -26,6 +49,8 @@ export interface LockedCosmeticView {
  */
 @Injectable()
 export class CosmeticEquipmentService {
+  private readonly logger = new Logger(CosmeticEquipmentService.name);
+
   constructor(
     private readonly inventoryItemRepo: InventoryItemRepository,
     private readonly cosmeticItemRepo: CosmeticItemRepository,
@@ -71,6 +96,45 @@ export class CosmeticEquipmentService {
    */
   getOwnedByAccountId(accountId: string): Promise<InventoryItemWithCosmeticItem[]> {
     return this.inventoryItemRepo.findActiveByAccountIdWithCosmeticItem(accountId);
+  }
+
+  /**
+   * COSMETICS-STARTER-1 -- garantiza `STARTER_COSMETIC_ITEM_KEYS ⊆
+   * inventario(accountId)`, sin tocar nada más. Autocuración LAZY: se llama
+   * en cada `GET /gamification/me/cosmetics` (vía `UserService.getCosmetics`),
+   * así que cubre por igual cuentas nuevas (inventario vacío) y cuentas
+   * existentes (reciben únicamente lo que les falte) -- sin job/backfill
+   * dedicado, sin migración de datos.
+   *
+   * Idempotencia real: `InventoryItemRepository.createIdempotent` se apoya
+   * en el `UNIQUE(accountId, cosmeticItemId)` de la base de datos (P2002 ->
+   * relee la fila existente tal cual) -- ejecutar esto 1, 5 o 100 veces
+   * produce el mismo inventario final, sin duplicados. Nunca toca
+   * `equipped_cosmetic` (equipamiento es una decisión del usuario, no de
+   * este mecanismo) ni ninguna fila de `inventory_item` ya existente
+   * (`createIdempotent` jamás actualiza una fila preexistente).
+   *
+   * Si un `itemKey` del Starter Kit no existe en el catálogo de este
+   * entorno (ej. seeds no corridos), se omite explícitamente con un
+   * `warn` -- nunca se fabrica un `CosmeticItem` nuevo aquí (eso es
+   * responsabilidad exclusiva de los scripts de seed de catálogo).
+   */
+  async ensureStarterCosmetics(accountId: string): Promise<void> {
+    const now = new Date();
+    for (const itemKey of STARTER_COSMETIC_ITEM_KEYS) {
+      const cosmeticItem = await this.cosmeticItemRepo.findByItemKey(itemKey);
+      if (!cosmeticItem) {
+        this.logger.warn(`Starter Kit: CosmeticItem con itemKey "${itemKey}" no existe en este entorno -- omitido.`);
+        continue;
+      }
+      await this.inventoryItemRepo.createIdempotent({
+        accountId,
+        cosmeticItemId: cosmeticItem.id,
+        acquisitionSourceType: 'SYSTEM_STARTER',
+        acquisitionSourceId: STARTER_KIT_ACQUISITION_SOURCE_ID,
+        acquiredAt: now,
+      });
+    }
   }
 
   /**
