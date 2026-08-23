@@ -56,7 +56,15 @@ async function main() {
     `SELECT id FROM question_version WHERE curriculum_topic_id = $1 AND editorial_status = 'PUBLISHED' ORDER BY published_at ASC`,
     [topicId],
   );
-  const [qv1, qv2] = questionVersions.rows.map((r) => r.id);
+  // Deliberadamente NO se asume un tamaño fijo de catálogo -- el topic
+  // sembrado (M1.NUMEROS.PORCENTAJES) es contenido educativo real y su
+  // cantidad de preguntas publicadas puede crecer legítimamente (ver
+  // TEST-CONTENT-1). qv1/qv2 siguen usándose tal cual para los escenarios que
+  // solo necesitan DOS preguntas cualesquiera (concurrencia, idempotencia,
+  // rechazo de alternativa ajena); el invariante de COMPLETED (10/11/12) se
+  // verifica respondiendo dinámicamente TODAS las publicadas.
+  const questionVersionIds: string[] = questionVersions.rows.map((r) => r.id);
+  const [qv1, qv2] = questionVersionIds;
   const opt1Correct = (
     await pg.query(`SELECT id FROM answer_option WHERE question_version_id = $1 AND is_correct = true`, [qv1])
   ).rows[0].id;
@@ -77,7 +85,7 @@ async function main() {
   });
   check('respuesta correcta -> 201', r1.status === 201);
   check('isCorrect: true', r1.body?.isCorrect === true);
-  check('topicStatus IN_PROGRESS (falta una pregunta)', r1.body?.topicStatus === 'IN_PROGRESS');
+  check('topicStatus IN_PROGRESS (aún quedan preguntas publicadas sin responder)', r1.body?.topicStatus === 'IN_PROGRESS');
 
   const opA2 = randomUUID();
   const r2 = await req('POST', `/progress/topics/${topicId}/responses`, a.authHeaders, {
@@ -87,7 +95,27 @@ async function main() {
   });
   check('respuesta incorrecta -> 201', r2.status === 201);
   check('isCorrect: false', r2.body?.isCorrect === false);
-  check('10. topicStatus COMPLETED tras responder todas las preguntas publicadas', r2.body?.topicStatus === 'COMPLETED');
+
+  // Responde dinámicamente el RESTO de las QuestionVersion PUBLISHED del
+  // topic (más allá de qv1/qv2) -- el invariante de COMPLETED es "todas las
+  // publicadas respondidas", no "exactamente 2". La corrección de cada
+  // respuesta es irrelevante para COMPLETED (comportamiento ya aprobado);
+  // se usa la alternativa correcta solo por conveniencia de fixture.
+  let lastCompletionResponse = r2;
+  for (const remainingVersionId of questionVersionIds.slice(2)) {
+    const remainingCorrectOption = (
+      await pg.query(`SELECT id FROM answer_option WHERE question_version_id = $1 AND is_correct = true`, [remainingVersionId])
+    ).rows[0].id;
+    lastCompletionResponse = await req('POST', `/progress/topics/${topicId}/responses`, a.authHeaders, {
+      questionVersionId: remainingVersionId,
+      answerOptionId: remainingCorrectOption,
+      operationId: randomUUID(),
+    });
+  }
+  check(
+    `10. topicStatus COMPLETED tras responder las ${questionVersionIds.length} preguntas publicadas`,
+    lastCompletionResponse.body?.topicStatus === 'COMPLETED',
+  );
 
   // ============================================================
   // 3. isCorrect nunca en EDUCATION / 13. separación de dominio
@@ -212,9 +240,10 @@ async function main() {
   // cuelgan de temas PROPIOS y ÚNICOS por corrida (mismo criterio que
   // verify-academic-summary-gate y verify-advanced-profile-gate, que nunca
   // borraron los suyos) y simplemente persisten, igual que persiste el
-  // contenido de `prisma/seed.ts`. El tema SEMBRADO queda intacto: sigue
-  // teniendo exactamente sus 2 preguntas publicadas, que es de lo que dependen
-  // las aserciones 1-2/10/12 de este mismo gate.
+  // contenido de `prisma/seed.ts`. El tema SEMBRADO queda intacto: conserva
+  // el catálogo de preguntas publicadas que traiga `prisma/seed.ts` en cada
+  // momento (su tamaño exacto no se asume en ningún punto de este gate), que
+  // es de lo que dependen las aserciones 1-2/10/12 de este mismo gate.
   //
   // Son DOS temas aislados, no uno, porque la fixture de pregunta RETIRADA es
   // publicada y no respondible: dejarla junto a la del check 11 impediría para
@@ -353,7 +382,10 @@ async function main() {
   console.log('--- 12. Continuidad: GET refleja exactamente lo respondido ---');
   const rContinuity = await req('GET', `/progress/topics/${topicId}`, a.authHeaders);
   check('12. status COMPLETED', rContinuity.body?.status === 'COMPLETED');
-  check('12. 2 respuestas registradas', rContinuity.body?.responses?.length === 2);
+  check(
+    `12. ${questionVersionIds.length} respuestas registradas (una por cada QuestionVersion PUBLISHED del topic)`,
+    rContinuity.body?.responses?.length === questionVersionIds.length,
+  );
   const respQ1 = rContinuity.body.responses.find((r: { questionVersionId: string }) => r.questionVersionId === qv1);
   check('12. alternativa de Q1 coincide', respQ1?.answerOptionId === opt1Correct);
   check('12. isCorrect de Q1 coincide', respQ1?.isCorrect === true);

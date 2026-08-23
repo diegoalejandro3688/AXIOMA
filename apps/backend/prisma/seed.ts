@@ -6,7 +6,6 @@ import {
   answerOptionContentSchema,
 } from '@axioma/contracts';
 import { PrismaClient } from '../src/generated/prisma/client';
-import { renderLatexToSvg } from '../src/education/formula-rendering';
 
 /**
  * Seed idempotente: correr este script N veces produce el mismo estado final,
@@ -14,8 +13,12 @@ import { renderLatexToSvg } from '../src/education/formula-rendering';
  *
  * Datos: la primera unidad de la Vertical M1 ya aprobada -- "Porcentajes y
  * proporcionalidad" (eje Números) y sus 3 subtemas -- más, desde el Bloque I
- * (ADR-0012), la materia Matemática, un recurso publicado y dos preguntas
- * reales sobre esa misma unidad. No es el catálogo PAES completo.
+ * (ADR-0012), la materia Matemática, un recurso publicado y doce preguntas
+ * reales sobre esa misma unidad (TEST-CONTENT-1 amplió el recurso y agregó
+ * las preguntas Q3-Q12 a las Q1/Q2 originales). No es el catálogo PAES
+ * completo. Los 3 subtemas hijos siguen sin contenido propio: todo el
+ * contenido cuelga del topic padre (decisión de alcance de TEST-CONTENT-1,
+ * no hay soporte de navegación mobile a subtemas hoy).
  */
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -34,8 +37,33 @@ async function upsertTopic(input: { code: string; name: string; order: number; s
 }
 
 /**
+ * Comparación estructural que ignora el reordenamiento de claves que Postgres
+ * aplica a `jsonb` (alfabético) -- necesaria para que la detección de "el
+ * contenido ya es el vigente" sea idempotente entre corridas del seed, sin
+ * depender del orden de inserción de claves que Zod produjo originalmente.
+ */
+function canonicalize(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.keys(value as Record<string, unknown>).sort();
+    return `{${entries.map((key) => `${JSON.stringify(key)}:${canonicalize((value as Record<string, unknown>)[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/**
  * Validado con Zod ANTES de persistir -- ver ADR-0012, punto 4: Postgres no
  * conoce la forma interna de `content_blocks`/`stem_content`/etc.
+ *
+ * TEST-CONTENT-1: la primera versión publicada de este recurso ya existía
+ * (identidad `M1.NUMEROS.PORCENTAJES.LECCION`) y una `learning_resource_version`
+ * publicada es inmutable (migración
+ * `20260815120000_lef_vii_i1_published_immutability_uniqueness`). Corregir su
+ * contenido exige crear una versión NUEVA en DRAFT y, para respetar el índice
+ * único parcial "una PUBLISHED por recurso" (§8.6 de esa misma migración), la
+ * transacción debe escribir primero `PUBLISHED -> DEPRECATED` sobre la versión
+ * anterior y DESPUÉS `DRAFT -> PUBLISHED` sobre la nueva -- en ese orden
+ * exacto, tal como exige el índice único inmediato (no diferible).
  */
 async function seedResource(input: { unidadId: string; subjectId: string }) {
   const resource = await prisma.learningResource.upsert({
@@ -48,43 +76,141 @@ async function seedResource(input: { unidadId: string; subjectId: string }) {
     },
   });
 
-  const existingVersion = await prisma.learningResourceVersion.findFirst({
-    where: { learningResourceId: resource.id, editorialStatus: 'PUBLISHED' },
-  });
-  if (existingVersion) return { resource, version: existingVersion };
-
+  const title = 'Porcentajes y proporcionalidad';
   const contentBlocks = resourceContentBlocksSchema.parse([
     { type: 'heading', order: 0, text: 'Porcentajes y proporcionalidad', level: 1 },
+
+    { type: 'heading', order: 1, text: 'Porcentajes', level: 2 },
     {
       type: 'paragraph',
-      order: 1,
-      text: 'Un porcentaje expresa una cantidad como parte de 100. Para calcular el p% de un valor v, se multiplica v por p y se divide por 100.',
-    },
-    {
-      type: 'formula',
       order: 2,
-      latex: '\\text{porcentaje} = \\frac{v \\times p}{100}',
-      // Generado UNA vez, en este mismo momento de "publicación" (ver ADR-0002 y
-      // ADR-0013) -- nunca se regenera en cada lectura ni en el dispositivo.
-      svg: renderLatexToSvg('\\text{porcentaje} = \\frac{v \\times p}{100}', true),
+      text: 'Un porcentaje representa una cantidad como una parte de 100. Por ejemplo, 25% significa 25 de cada 100.',
     },
     {
       type: 'paragraph',
       order: 3,
-      text: 'La proporcionalidad directa mantiene constante el cociente entre dos cantidades; la inversa mantiene constante su producto.',
+      text: 'Para calcular un porcentaje de una cantidad, puedes multiplicar la cantidad por el porcentaje dividido por 100.',
+    },
+    {
+      type: 'paragraph',
+      order: 4,
+      text: 'Ejemplo: 20% de 150: 20 / 100 × 150 = 30. Por lo tanto, el 20% de 150 es 30.',
+    },
+    {
+      type: 'paragraph',
+      order: 5,
+      text: 'También puedes convertir el porcentaje a decimal. Por ejemplo, 20% = 0,20, por lo que 0,20 × 150 = 30.',
+    },
+
+    { type: 'heading', order: 6, text: 'Aumentos y descuentos', level: 2 },
+    {
+      type: 'paragraph',
+      order: 7,
+      text: 'Los porcentajes también permiten representar cambios en una cantidad.',
+    },
+    {
+      type: 'paragraph',
+      order: 8,
+      text: 'Si una cantidad aumenta, primero calculamos el porcentaje correspondiente y luego lo sumamos al valor inicial.',
+    },
+    {
+      type: 'paragraph',
+      order: 9,
+      text: 'Ejemplo: un producto cuesta $2.000 y aumenta un 15%. 15% de 2.000 = 300. 2.000 + 300 = 2.300. El nuevo precio es $2.300.',
+    },
+    {
+      type: 'paragraph',
+      order: 10,
+      text: 'Si una cantidad disminuye o recibe un descuento, calculamos el porcentaje y lo restamos.',
+    },
+    {
+      type: 'paragraph',
+      order: 11,
+      text: 'Ejemplo: un producto cuesta $30.000 y tiene un descuento del 10%. 10% de 30.000 = 3.000. 30.000 - 3.000 = 27.000. El precio final es $27.000.',
+    },
+    {
+      type: 'paragraph',
+      order: 12,
+      text: 'Idea clave: un aumento y un descuento del mismo porcentaje no siempre se anulan, porque el segundo porcentaje puede calcularse sobre una cantidad diferente.',
+    },
+
+    { type: 'heading', order: 13, text: 'Proporcionalidad directa', level: 2 },
+    {
+      type: 'paragraph',
+      order: 14,
+      text: 'Dos cantidades son directamente proporcionales cuando aumentan o disminuyen manteniendo la misma relación.',
+    },
+    {
+      type: 'paragraph',
+      order: 15,
+      text: 'Ejemplo: si 3 cuadernos cuestan $4.500, cada cuaderno cuesta 4.500 / 3 = 1.500. Entonces, 5 cuadernos cuestan 5 × 1.500 = 7.500.',
+    },
+    {
+      type: 'paragraph',
+      order: 16,
+      text: 'Si aumenta la cantidad de cuadernos, también aumenta el precio en la misma proporción.',
+    },
+
+    { type: 'heading', order: 17, text: 'Proporcionalidad inversa', level: 2 },
+    {
+      type: 'paragraph',
+      order: 18,
+      text: 'Dos cantidades son inversamente proporcionales cuando al aumentar una, la otra disminuye en la misma proporción.',
+    },
+    {
+      type: 'paragraph',
+      order: 19,
+      text: 'Ejemplo: si 4 personas realizan un trabajo en 6 horas y todas trabajan al mismo ritmo, al duplicar el número de personas a 8, el tiempo necesario se reduce a la mitad: 6 / 2 = 3 horas. Esto ocurre porque hay más personas realizando el mismo trabajo.',
+    },
+    {
+      type: 'paragraph',
+      order: 20,
+      text: 'Idea clave: en una proporcionalidad directa, ambas cantidades cambian en el mismo sentido. En una proporcionalidad inversa, cuando una aumenta, la otra disminuye proporcionalmente.',
     },
   ]);
 
-  const version = await prisma.learningResourceVersion.create({
+  const existingVersion = await prisma.learningResourceVersion.findFirst({
+    where: { learningResourceId: resource.id, editorialStatus: 'PUBLISHED' },
+  });
+
+  if (existingVersion && canonicalize(existingVersion.contentBlocks) === canonicalize(contentBlocks)) {
+    return { resource, version: existingVersion };
+  }
+
+  if (!existingVersion) {
+    const version = await prisma.learningResourceVersion.create({
+      data: {
+        learningResourceId: resource.id,
+        curriculumTopicId: input.unidadId,
+        title,
+        contentBlocks,
+        editorialStatus: 'PUBLISHED',
+        publishedAt: new Date(),
+      },
+    });
+    return { resource, version };
+  }
+
+  const draftVersion = await prisma.learningResourceVersion.create({
     data: {
       learningResourceId: resource.id,
       curriculumTopicId: input.unidadId,
-      title: 'Porcentajes y proporcionalidad',
+      title,
       contentBlocks,
-      editorialStatus: 'PUBLISHED',
-      publishedAt: new Date(),
+      editorialStatus: 'DRAFT',
     },
   });
+
+  const [, version] = await prisma.$transaction([
+    prisma.learningResourceVersion.update({
+      where: { id: existingVersion.id },
+      data: { editorialStatus: 'DEPRECATED' },
+    }),
+    prisma.learningResourceVersion.update({
+      where: { id: draftVersion.id },
+      data: { editorialStatus: 'PUBLISHED', publishedAt: new Date() },
+    }),
+  ]);
 
   return { resource, version };
 }
@@ -347,6 +473,147 @@ async function main() {
       { text: '$2.500', correct: false },
     ],
     explanation: 'Aumento = 2.000 × 15 / 100 = 300. Nuevo precio = 2.000 + 300 = 2.300.',
+  });
+
+  await seedQuestion({
+    questionKey: 'M1.NUMEROS.PORCENTAJES.Q3',
+    subjectId: subject.id,
+    topicId: unidad.id,
+    stem: 'Una polera cuesta $24.000 y tiene un descuento del 25%. ¿Cuánto dinero se descuenta?',
+    options: [
+      { text: '$4.800', correct: false },
+      { text: '$6.000', correct: true },
+      { text: '$8.000', correct: false },
+      { text: '$18.000', correct: false },
+    ],
+    explanation: '25% de 24.000 = 24.000 × 25 / 100 = 6.000.',
+  });
+
+  await seedQuestion({
+    questionKey: 'M1.NUMEROS.PORCENTAJES.Q4',
+    subjectId: subject.id,
+    topicId: unidad.id,
+    stem: 'En un curso de 40 estudiantes, 10 eligieron participar en una actividad. ¿Qué porcentaje del curso representan?',
+    options: [
+      { text: '20%', correct: false },
+      { text: '25%', correct: true },
+      { text: '30%', correct: false },
+      { text: '40%', correct: false },
+    ],
+    explanation: '10 / 40 = 0,25. Al multiplicar por 100 obtenemos 25%.',
+  });
+
+  await seedQuestion({
+    questionKey: 'M1.NUMEROS.PORCENTAJES.Q5',
+    subjectId: subject.id,
+    topicId: unidad.id,
+    stem: 'Después de aplicar un descuento del 20%, un producto cuesta $16.000. ¿Cuál era su precio original?',
+    options: [
+      { text: '$18.000', correct: false },
+      { text: '$19.200', correct: false },
+      { text: '$20.000', correct: true },
+      { text: '$21.000', correct: false },
+    ],
+    explanation: 'Después de descontar 20% queda el 80% del precio original. Entonces: 16.000 / 0,8 = 20.000.',
+  });
+
+  await seedQuestion({
+    questionKey: 'M1.NUMEROS.PORCENTAJES.Q6',
+    subjectId: subject.id,
+    topicId: unidad.id,
+    stem: 'Un libro cuesta $30.000 y tiene un descuento del 10%. ¿Cuál es su precio final?',
+    options: [
+      { text: '$3.000', correct: false },
+      { text: '$27.000', correct: true },
+      { text: '$29.000', correct: false },
+      { text: '$33.000', correct: false },
+    ],
+    explanation: '10% de 30.000 = 3.000. 30.000 - 3.000 = 27.000.',
+  });
+
+  await seedQuestion({
+    questionKey: 'M1.NUMEROS.PORCENTAJES.Q7',
+    subjectId: subject.id,
+    topicId: unidad.id,
+    stem: 'Una cantidad aumenta de 80 a 100. ¿Cuál fue el porcentaje de aumento?',
+    options: [
+      { text: '20%', correct: false },
+      { text: '25%', correct: true },
+      { text: '40%', correct: false },
+      { text: '80%', correct: false },
+    ],
+    explanation: 'El aumento fue 20. 20 / 80 × 100 = 25%.',
+  });
+
+  await seedQuestion({
+    questionKey: 'M1.NUMEROS.PORCENTAJES.Q8',
+    subjectId: subject.id,
+    topicId: unidad.id,
+    stem: 'Un producto de $10.000 aumenta un 20% y luego recibe un descuento del 20%. ¿Cuál es su precio final?',
+    options: [
+      { text: '$9.600', correct: true },
+      { text: '$10.000', correct: false },
+      { text: '$10.400', correct: false },
+      { text: '$12.000', correct: false },
+    ],
+    explanation:
+      'Primero: 10.000 × 1,20 = 12.000. Después: 12.000 × 0,80 = 9.600. Los porcentajes se aplican sobre cantidades diferentes, por eso el precio no vuelve a $10.000.',
+  });
+
+  await seedQuestion({
+    questionKey: 'M1.NUMEROS.PORCENTAJES.Q9',
+    subjectId: subject.id,
+    topicId: unidad.id,
+    stem: 'Si 3 cuadernos cuestan $4.500, ¿cuánto costarán 5 cuadernos al mismo precio por unidad?',
+    options: [
+      { text: '$6.000', correct: false },
+      { text: '$7.000', correct: false },
+      { text: '$7.500', correct: true },
+      { text: '$9.000', correct: false },
+    ],
+    explanation: 'Cada cuaderno cuesta: 4.500 / 3 = 1.500. Entonces: 5 × 1.500 = 7.500.',
+  });
+
+  await seedQuestion({
+    questionKey: 'M1.NUMEROS.PORCENTAJES.Q10',
+    subjectId: subject.id,
+    topicId: unidad.id,
+    stem: 'Para preparar 4 porciones de una receta se necesitan 300 g de harina. ¿Cuánta harina se necesita para 10 porciones?',
+    options: [
+      { text: '600 g', correct: false },
+      { text: '650 g', correct: false },
+      { text: '750 g', correct: true },
+      { text: '1.200 g', correct: false },
+    ],
+    explanation: '300 / 4 = 75 g por porción. 75 × 10 = 750 g.',
+  });
+
+  await seedQuestion({
+    questionKey: 'M1.NUMEROS.PORCENTAJES.Q11',
+    subjectId: subject.id,
+    topicId: unidad.id,
+    stem: 'Si 4 personas realizan un trabajo en 6 horas, ¿cuánto tardarían 8 personas trabajando al mismo ritmo?',
+    options: [
+      { text: '2 horas', correct: false },
+      { text: '3 horas', correct: true },
+      { text: '8 horas', correct: false },
+      { text: '12 horas', correct: false },
+    ],
+    explanation: 'Al duplicar el número de personas, el tiempo se reduce a la mitad: 6 / 2 = 3 horas.',
+  });
+
+  await seedQuestion({
+    questionKey: 'M1.NUMEROS.PORCENTAJES.Q12',
+    subjectId: subject.id,
+    topicId: unidad.id,
+    stem: 'Un viaje tarda 6 horas a una velocidad constante de 60 km/h. Si el mismo trayecto se realiza a 90 km/h, ¿cuánto tiempo tarda?',
+    options: [
+      { text: '3 horas', correct: false },
+      { text: '4 horas', correct: true },
+      { text: '5 horas', correct: false },
+      { text: '9 horas', correct: false },
+    ],
+    explanation: 'La distancia del viaje es: 60 × 6 = 360 km. Luego: 360 / 90 = 4 horas.',
   });
 
   await seedCienciasFixture();

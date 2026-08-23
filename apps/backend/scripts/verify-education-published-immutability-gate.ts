@@ -800,16 +800,33 @@ async function main() {
   // 13. `prisma/seed.ts` sigue siendo idempotente (§13.1 punto 7).
   // ==========================================================================
   console.log('--- 13. prisma/seed.ts sigue siendo idempotente bajo los nuevos triggers e índices ---');
+  const backendDir = join(__dirname, '..');
+  // Reconciliación previa: esta base de gates puede traer un estado sembrado
+  // por una versión ANTERIOR de seed.ts (p.ej. el catálogo previo a
+  // TEST-CONTENT-1). Esa transición legítima -- crear las filas que faltan
+  // para alcanzar el catálogo actual -- no es una falla de idempotencia; el
+  // invariante real es que, una vez el estado YA coincide con lo que produce
+  // el seed vigente, volver a correrlo no debe tocar ni una fila. Por eso se
+  // corre una vez ANTES del snapshot (llevar la base al estado esperado por
+  // el seed actual, cualquiera sea) y solo entonces se mide la idempotencia
+  // entre dos corridas consecutivas ya reconciliadas.
+  const reconcileRun = spawnSync('npx', ['tsx', 'prisma/seed.ts'], {
+    cwd: backendDir,
+    shell: process.platform === 'win32',
+    encoding: 'utf8',
+  });
+  check('corrida de reconciliación previa (lleva la base al estado del seed actual) -> exit 0', reconcileRun.status === 0);
+  if (reconcileRun.status !== 0) console.error(reconcileRun.stderr ?? reconcileRun.stdout);
+
   const countsBefore = await pg.query(
     `SELECT (SELECT count(*)::int FROM question) AS q, (SELECT count(*)::int FROM question_version) AS qv,
             (SELECT count(*)::int FROM answer_option) AS ao, (SELECT count(*)::int FROM learning_resource_version) AS lrv,
             (SELECT count(*)::int FROM curriculum_topic) AS ct`,
   );
-  const backendDir = join(__dirname, '..');
   const seedRuns = [1, 2].map(() =>
     spawnSync('npx', ['tsx', 'prisma/seed.ts'], { cwd: backendDir, shell: process.platform === 'win32', encoding: 'utf8' }),
   );
-  check('primera reejecución del seed sobre una base ya sembrada -> exit 0', seedRuns[0].status === 0);
+  check('primera reejecución del seed sobre una base ya reconciliada -> exit 0', seedRuns[0].status === 0);
   if (seedRuns[0].status !== 0) console.error(seedRuns[0].stderr ?? seedRuns[0].stdout);
   check('segunda reejecución consecutiva del seed -> exit 0', seedRuns[1].status === 0);
   if (seedRuns[1].status !== 0) console.error(seedRuns[1].stderr ?? seedRuns[1].stdout);

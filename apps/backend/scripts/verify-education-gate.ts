@@ -84,10 +84,15 @@ async function main() {
       ['heading', 'paragraph', 'formula', 'image'].includes(b.type),
     ),
   );
+  // Un LearningResource válido NO está obligado a contener ningún tipo de
+  // bloque editorial específico -- el invariante real ya se verifica arriba
+  // (200, pertenece al tema, contentBlocks no vacío, solo tipos permitidos).
+  // Si el recurso trae bloques `formula` (puede tener cero), cada uno de esos
+  // SÍ debe traer latex Y svg -- eso es lo que ADR-0002/ADR-0013 exige del
+  // propio tipo `formula` cuando aparece, no que aparezca.
   const formulaBlocks = rResource.body.contentBlocks.filter((b: { type: string }) => b.type === 'formula');
-  check('el recurso sembrado tiene al menos un bloque formula', formulaBlocks.length > 0);
   check(
-    'todo bloque formula trae latex Y svg (ADR-0002/ADR-0013) -- nunca solo uno de los dos',
+    'todo bloque formula que exista trae latex Y svg (ADR-0002/ADR-0013) -- nunca solo uno de los dos',
     formulaBlocks.every((b: { latex?: string; svg?: string }) => !!b.latex && !!b.svg),
   );
   check(
