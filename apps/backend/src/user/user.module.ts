@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { GamificationModule } from '../gamification/gamification.module';
 import { ProgressModule } from '../progress/progress.module';
+import { ObjectStorageModule } from '../platform/object-storage/object-storage.module';
 import { UserController } from './user.controller';
 import { UserProfileRepository } from './user-profile.repository';
 import { PublicProfileRepository } from './public-profile.repository';
@@ -44,7 +45,7 @@ import { AdvancedProfileController } from './advanced-profile.controller';
  * dirección (USER -> PROGRESS) no crea ciclo.
  */
 @Module({
-  imports: [AuthModule, GamificationModule, ProgressModule],
+  imports: [AuthModule, GamificationModule, ProgressModule, ObjectStorageModule],
   controllers: [UserController, PublicProfileController, CosmeticEquipmentController, TitleCatalogController, AdvancedProfileController],
   providers: [
     UserProfileRepository,

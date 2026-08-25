@@ -77,6 +77,19 @@ export class ObjectStorageService {
     });
   }
 
+  /**
+   * `reference` estable (ej. `CosmeticItem.assetReference`, ADR-0010) ->
+   * URL utilizable por el cliente. Compatibilidad con legacy: si ya es una
+   * URL HTTP/HTTPS absoluta, se devuelve tal cual (nunca se re-firma ni se
+   * interpreta como object key); en cualquier otro caso se trata como
+   * object key opaco y se firma bajo demanda -- nunca se persiste (ver
+   * `getSignedReadUrl`).
+   */
+  async resolveAssetUrl(reference: string, ttlSeconds: number): Promise<string> {
+    if (/^https?:\/\//i.test(reference)) return reference;
+    return this.getSignedReadUrl(reference, ttlSeconds);
+  }
+
   async deleteObject(key: string): Promise<void> {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }

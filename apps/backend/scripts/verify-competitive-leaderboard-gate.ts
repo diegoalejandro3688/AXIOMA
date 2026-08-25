@@ -6,8 +6,10 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
+import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
+import { ObjectStorageService } from '../src/platform/object-storage/object-storage.service';
 import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identity.provider';
 import { GameSeasonRepository } from '../src/gamification/game-season.repository';
 import { LeagueDefinitionRepository } from '../src/gamification/league-definition.repository';
@@ -40,6 +42,17 @@ function check(label: string, condition: boolean) {
   } else {
     console.error(`FALLO  ${label}`);
     failures++;
+  }
+}
+
+/** Decodifica una URL firmada y confirma que su pathname termina exactamente en la object key esperada -- no depende de cómo el presigner codifique/genere la URL. */
+function expectSignedUrlForKey(url: string | null, expectedKey: string): boolean {
+  if (!url) return false;
+  try {
+    const decodedPath = decodeURIComponent(new URL(url).pathname);
+    return decodedPath.endsWith(expectedKey);
+  } catch {
+    return false;
   }
 }
 
@@ -222,7 +235,10 @@ async function main() {
   const visibleRow = rows.find((r) => r.username === `cple-visible-${suffix}`.toLowerCase());
   check('tercero VISIBLE -> presentable=true', visibleRow?.presentable === true);
   check('tercero VISIBLE -> isCurrentUser=false', visibleRow?.isCurrentUser === false);
-  check('LEF V, Incremento 1: fila COMPLETA de ranking expone el banner equipado', visibleRow?.banner === bannerCosmetic.assetReference);
+  check(
+    'LEF V, Incremento 1: fila COMPLETA de ranking expone el banner equipado (URL firmada de su assetReference)',
+    expectSignedUrlForKey((visibleRow?.banner as string | null) ?? null, bannerCosmetic.assetReference),
+  );
 
   console.log('--- 5. Filas de terceros NO presentables (PRIVATE/RETIRED/ANONYMIZED/sin perfil) -> redactadas EXACTAMENTE ---');
   const redactedRows = rows.filter((r) => r.presentable === false);
@@ -294,6 +310,7 @@ async function main() {
   const achievementUnlockRepoDirect = new AchievementUnlockRepository(prisma);
   const featuredAchievementRepoDirect = new FeaturedAchievementRepository(prisma);
   const leagueGroupRepoDirect = new LeagueGroupRepository(prisma);
+  const objectStorageDirect = new ObjectStorageService(new ConfigService());
   const identityServiceDirect = new CompetitiveProfileIdentityService(
     publicProfileRepoDirect,
     equippedTitleRepoDirect,
@@ -302,6 +319,7 @@ async function main() {
     levelDefinitionRepoDirect,
     achievementUnlockRepoDirect,
     featuredAchievementRepoDirect,
+    objectStorageDirect,
   );
   const contextServiceDirect = new CompetitiveContextService(participationRepo, entryRepo, leaderboardDefinitionRepo, leagueGroupRepoDirect, leagueDefinitionRepo);
   const leaderboardServiceDirect = new CompetitiveLeaderboardService(participationRepo, entryRepo, leaderboardDefinitionRepo, identityServiceDirect, contextServiceDirect);

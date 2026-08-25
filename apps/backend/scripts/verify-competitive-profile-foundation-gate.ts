@@ -8,8 +8,10 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
+import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
+import { ObjectStorageService } from '../src/platform/object-storage/object-storage.service';
 import { PublicProfileRepository } from '../src/user/public-profile.repository';
 import { EquippedTitleRepository } from '../src/gamification/equipped-title.repository';
 import { EquippedCosmeticRepository } from '../src/gamification/equipped-cosmetic.repository';
@@ -33,6 +35,17 @@ function check(label: string, condition: boolean) {
   } else {
     console.error(`FALLO  ${label}`);
     failures++;
+  }
+}
+
+/** Decodifica una URL firmada y confirma que su pathname termina exactamente en la object key esperada -- no depende de cómo el presigner codifique/genere la URL. */
+function expectSignedUrlForKey(url: string | null, expectedKey: string): boolean {
+  if (!url) return false;
+  try {
+    const decodedPath = decodeURIComponent(new URL(url).pathname);
+    return decodedPath.endsWith(expectedKey);
+  } catch {
+    return false;
   }
 }
 
@@ -62,6 +75,7 @@ async function main() {
   const achievementDefinitionRepo = new AchievementDefinitionRepository(prisma);
   const achievementVersionRepo = new AchievementVersionRepository(prisma);
   const featuredAchievementRepo = new FeaturedAchievementRepository(prisma);
+  const objectStorage = new ObjectStorageService(new ConfigService());
 
   const service = new CompetitiveProfileIdentityService(
     publicProfileRepo,
@@ -71,6 +85,7 @@ async function main() {
     levelDefinitionRepo,
     achievementUnlockRepo,
     featuredAchievementRepo,
+    objectStorage,
   );
 
   const suffix = Date.now();
@@ -219,8 +234,8 @@ async function main() {
     const identity = resolvedFull.identity;
     check('username correcto', identity.username === `full-${suffix}`.toLowerCase());
     check(
-      'avatar resuelve desde el cosmético AVATAR equipado, NO desde public_profile.avatar_reference (AVATAR-RECON)',
-      identity.avatar === avatarCosmetic.assetReference && identity.avatar !== `avatar-full`,
+      'avatar resuelve desde el cosmético AVATAR equipado (URL firmada de su assetReference), NO desde public_profile.avatar_reference (AVATAR-RECON)',
+      expectSignedUrlForKey(identity.avatar, avatarCosmetic.assetReference) && identity.avatar !== `avatar-full`,
     );
     check('equippedTitle presente con los campos esperados', identity.equippedTitle?.titleKey === title.titleKey && identity.equippedTitle?.displayText === title.displayText);
     check(

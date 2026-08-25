@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ObjectStorageService } from '../platform/object-storage/object-storage.service';
 import { PublicProfileRepository } from './public-profile.repository';
 import { EquippedTitleRepository } from '../gamification/equipped-title.repository';
 import { EquippedCosmeticRepository } from '../gamification/equipped-cosmetic.repository';
@@ -41,6 +42,9 @@ export interface CompetitiveProfileIdentity {
 }
 
 export type PresentableProfile = { presentable: true; identity: CompetitiveProfileIdentity } | { presentable: false };
+
+/** URL de lectura de corta duración -- ver ADR-0010: nunca se persiste, se resuelve bajo demanda al servir cada superficie. */
+const COSMETIC_ASSET_URL_TTL_SECONDS = 300;
 
 function isPresentable(profile: PublicProfile): boolean {
   return profile.lifecycleStatus === 'ACTIVE' && profile.visibilityStatus === 'VISIBLE';
@@ -94,6 +98,7 @@ export class CompetitiveProfileIdentityService {
     private readonly levelDefinitionRepo: LevelDefinitionRepository,
     private readonly achievementUnlockRepo: AchievementUnlockRepository,
     private readonly featuredAchievementRepo: FeaturedAchievementRepository,
+    private readonly objectStorage: ObjectStorageService,
   ) {}
 
   /** Resolución individual -- delega en la versión de lote para no duplicar la lógica de ensamblado. */
@@ -190,7 +195,7 @@ export class CompetitiveProfileIdentityService {
       featuredByProfileId.set(row.publicProfileId, list);
     }
 
-    for (const profile of profiles) {
+    const identityEntries = await Promise.all(profiles.map(async (profile) => {
       const equippedTitle = titleByProfileId.get(profile.id);
       const lifetimeXp = balanceByAccountId.get(profile.accountId)?.lifetimeXp ?? 0;
       const profileCosmetics = cosmeticsByProfileId.get(profile.id) ?? [];
@@ -208,11 +213,30 @@ export class CompetitiveProfileIdentityService {
       // campo legacy. `avatarReference` permanece físicamente en el schema
       // pero deja de ser fuente de lectura para la identidad visible.
       const avatarCosmetic = profileCosmetics.find((c) => c.cosmeticSlot === 'AVATAR');
+      const [avatarUrl, bannerUrl, equippedCosmetics] = await Promise.all([
+        avatarCosmetic
+          ? this.objectStorage.resolveAssetUrl(avatarCosmetic.inventoryItem.cosmeticItem.assetReference, COSMETIC_ASSET_URL_TTL_SECONDS)
+          : Promise.resolve(null),
+        bannerCosmetic
+          ? this.objectStorage.resolveAssetUrl(bannerCosmetic.inventoryItem.cosmeticItem.assetReference, COSMETIC_ASSET_URL_TTL_SECONDS)
+          : Promise.resolve(null),
+        Promise.all(
+          profileCosmetics.map(async (c) => ({
+            cosmeticSlot: c.cosmeticSlot,
+            itemKey: c.inventoryItem.cosmeticItem.itemKey,
+            name: c.inventoryItem.cosmeticItem.name,
+            assetReference: await this.objectStorage.resolveAssetUrl(
+              c.inventoryItem.cosmeticItem.assetReference,
+              COSMETIC_ASSET_URL_TTL_SECONDS,
+            ),
+          })),
+        ),
+      ]);
       const identity: CompetitiveProfileIdentity = {
         accountId: profile.accountId,
         username: profile.usernameNormalized,
-        avatar: avatarCosmetic?.inventoryItem.cosmeticItem.assetReference ?? null,
-        banner: bannerCosmetic?.inventoryItem.cosmeticItem.assetReference ?? null,
+        avatar: avatarUrl,
+        banner: bannerUrl,
         equippedTitle: equippedTitle
           ? {
               titleKey: equippedTitle.accountTitle.titleDefinition.titleKey,
@@ -220,12 +244,7 @@ export class CompetitiveProfileIdentityService {
               rarityClass: equippedTitle.accountTitle.titleDefinition.rarityClass,
             }
           : null,
-        equippedCosmetics: profileCosmetics.map((c) => ({
-          cosmeticSlot: c.cosmeticSlot,
-          itemKey: c.inventoryItem.cosmeticItem.itemKey,
-          name: c.inventoryItem.cosmeticItem.name,
-          assetReference: c.inventoryItem.cosmeticItem.assetReference,
-        })),
+        equippedCosmetics,
         levelNumber: resolveLevelNumber(lifetimeXp, levels),
         publicAchievements: (achievementsByAccountId.get(profile.accountId) ?? []).map((u) => ({
           achievementKey: u.achievementDefinition.achievementKey,
@@ -240,7 +259,11 @@ export class CompetitiveProfileIdentityService {
           unlockedAt: f.achievementUnlock.unlockedAt,
         })),
       };
-      result.set(profile.accountId, identity);
+      return [profile.accountId, identity] as const;
+    }));
+
+    for (const [accountId, identity] of identityEntries) {
+      result.set(accountId, identity);
     }
 
     return result;

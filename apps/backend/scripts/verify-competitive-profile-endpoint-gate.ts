@@ -35,6 +35,17 @@ function check(label: string, condition: boolean) {
   }
 }
 
+/** Decodifica una URL firmada y confirma que su pathname termina exactamente en la object key esperada -- no depende de cómo el presigner codifique/genere la URL. */
+function expectSignedUrlForKey(url: unknown, expectedKey: string): boolean {
+  if (typeof url !== 'string') return false;
+  try {
+    const decodedPath = decodeURIComponent(new URL(url).pathname);
+    return decodedPath.endsWith(expectedKey);
+  } catch {
+    return false;
+  }
+}
+
 async function req(method: string, path: string, headers: Record<string, string> = {}, body?: unknown) {
   const res = await fetch(base + path, {
     method,
@@ -231,7 +242,10 @@ async function main() {
   check('competitive.rankPosition == 1 (única participante del grupo)', meVisible.body?.competitive?.rankPosition === 1);
   check('competitive.metricValue == 42 (el LP otorgado)', meVisible.body?.competitive?.metricValue === 42);
   check('competitive.calculatedAt/snapshotVersion presentes', typeof meVisible.body?.competitive?.calculatedAt === 'string' && typeof meVisible.body?.competitive?.snapshotVersion === 'number');
-  check('LEF V, Incremento 1: /me con PROFILE_BANNER equipado -> banner devuelve EXACTAMENTE el assetReference del equipado', meVisible.body?.banner === bannerCosmeticEquipped.assetReference);
+  check(
+    'LEF V, Incremento 1: /me con PROFILE_BANNER equipado -> banner devuelve la URL firmada del assetReference equipado',
+    expectSignedUrlForKey(meVisible.body?.banner, bannerCosmeticEquipped.assetReference),
+  );
 
   console.log('--- 5. /me: RETIRED -> 200 para el dueño, MOSTRANDO su estado ---');
   const meRetired = await req('GET', '/user/public-profile/me/competitive-profile', accountRetiredHeaders);
@@ -269,7 +283,10 @@ async function main() {
   check('username en forma canónica (minúsculas), no la forma con mayúsculas enviada en la URL', publicVisible.body?.username === visibleUsername.toLowerCase());
   check('competitive presente con los mismos datos que /me', publicVisible.body?.competitive?.rankPosition === 1 && publicVisible.body?.competitive?.metricValue === 42);
   check('la respuesta pública NUNCA incluye lifecycleStatus (solo /me lo expone)', !('lifecycleStatus' in (publicVisible.body ?? {})));
-  check('LEF V, Incremento 1: superficie pública cross-cuenta también expone EXACTAMENTE el banner equipado', publicVisible.body?.banner === bannerCosmeticEquipped.assetReference);
+  check(
+    'LEF V, Incremento 1: superficie pública cross-cuenta también expone la URL firmada del banner equipado',
+    expectSignedUrlForKey(publicVisible.body?.banner, bannerCosmeticEquipped.assetReference),
+  );
 
   console.log('--- 8.1 LEF Bloque V, Incremento 1: banner poseído pero NO equipado nunca se filtra ---');
   const publicAllResponses = [meActive.raw, meVisible.raw, meRetired.raw, publicVisible.raw];

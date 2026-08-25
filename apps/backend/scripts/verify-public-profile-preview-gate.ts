@@ -38,6 +38,40 @@ function check(label: string, condition: boolean) {
   }
 }
 
+/** Decodifica una URL firmada y confirma que su pathname termina exactamente en la object key esperada -- no depende de cómo el presigner codifique/genere la URL. */
+function expectSignedUrlForKey(url: unknown, expectedKey: string): boolean {
+  if (typeof url !== 'string') return false;
+  try {
+    const decodedPath = decodeURIComponent(new URL(url).pathname);
+    return decodedPath.endsWith(expectedKey);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reemplaza cualquier URL firmada (string parseable como URL absoluta) por
+ * su pathname decodificado -- neutraliza componentes de la firma que varían
+ * con el instante exacto de emisión (X-Amz-Date/Signature), preservando la
+ * comparación de que ambas respuestas apuntan al MISMO objeto. Necesario
+ * porque `preview` y la consulta pública se firman en llamadas HTTP
+ * separadas y pueden caer en segundos distintos.
+ */
+function normalizeSignedUrls(value: unknown): unknown {
+  if (typeof value === 'string') {
+    try {
+      return decodeURIComponent(new URL(value).pathname);
+    } catch {
+      return value;
+    }
+  }
+  if (Array.isArray(value)) return value.map(normalizeSignedUrls);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, normalizeSignedUrls(v)]));
+  }
+  return value;
+}
+
 async function req(method: string, path: string, headers: Record<string, string> = {}, body?: unknown) {
   const res = await fetch(base + path, {
     method,
@@ -190,9 +224,18 @@ async function main() {
   const publicByStranger = await req('GET', `/user/public-profile/${ownerUsername}/competitive-profile`, stranger.headers);
   check('preview -> 200', preview.status === 200);
   check('endpoint público (consultado por un extraño) -> 200', publicByStranger.status === 200);
-  check('BYTE-IDÉNTICO: preview.raw === publicByStranger.raw (mismas claves, mismo orden, mismos valores)', preview.raw === publicByStranger.raw);
-  check('banner idéntico y correcto', preview.body?.banner === bannerCosmetic.assetReference && publicByStranger.body?.banner === bannerCosmetic.assetReference);
-  check('equippedCosmetics idénticos (deep-equal vía JSON)', JSON.stringify(preview.body?.equippedCosmetics) === JSON.stringify(publicByStranger.body?.equippedCosmetics));
+  check(
+    'IDÉNTICO tras normalizar URLs firmadas (mismas claves, mismo orden, mismos valores -- las URLs firmadas pueden variar por timestamp de firma entre llamadas separadas)',
+    JSON.stringify(normalizeSignedUrls(preview.body)) === JSON.stringify(normalizeSignedUrls(publicByStranger.body)),
+  );
+  check(
+    'banner idéntico y correcto (URL firmada del assetReference equipado)',
+    expectSignedUrlForKey(preview.body?.banner, bannerCosmetic.assetReference) && expectSignedUrlForKey(publicByStranger.body?.banner, bannerCosmetic.assetReference),
+  );
+  check(
+    'equippedCosmetics idénticos tras normalizar URLs firmadas (deep-equal vía JSON)',
+    JSON.stringify(normalizeSignedUrls(preview.body?.equippedCosmetics)) === JSON.stringify(normalizeSignedUrls(publicByStranger.body?.equippedCosmetics)),
+  );
   check('featuredAchievements idénticas, mismo orden, mismos valores', JSON.stringify(preview.body?.featuredAchievements) === JSON.stringify(publicByStranger.body?.featuredAchievements));
   check('featuredAchievements contiene exactamente el logro destacado', preview.body?.featuredAchievements?.length === 1 && preview.body?.featuredAchievements?.[0]?.achievementKey === `ppp-gate-ach-${suffix}`);
   check('nivel/liga/rank idénticos', preview.body?.levelNumber === publicByStranger.body?.levelNumber && JSON.stringify(preview.body?.competitive) === JSON.stringify(publicByStranger.body?.competitive));

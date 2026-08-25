@@ -13,6 +13,7 @@ import {
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { parseRequestBody } from '../platform/validation/parse-request-body';
 import { UserService } from './user.service';
+import { ObjectStorageService } from '../platform/object-storage/object-storage.service';
 import type { EquippedCosmeticWithDetails } from '../gamification/equipped-cosmetic.repository';
 import type { InventoryItemWithCosmeticItem } from '../gamification/inventory-item.repository';
 import type { LockedCosmeticView } from '../gamification/cosmetic-equipment.service';
@@ -20,7 +21,10 @@ import type { CosmeticSlot } from '../generated/prisma/client';
 
 const ALL_SLOTS: CosmeticSlot[] = ['AVATAR', 'AVATAR_FRAME', 'PROFILE_BANNER', 'BADGE'];
 
-function toOwnedCosmetic(item: InventoryItemWithCosmeticItem): OwnedCosmetic {
+/** URL de lectura de corta duración -- ver ADR-0010: nunca se persiste, se resuelve bajo demanda al servir cada superficie. */
+const COSMETIC_ASSET_URL_TTL_SECONDS = 300;
+
+async function toOwnedCosmetic(objectStorage: ObjectStorageService, item: InventoryItemWithCosmeticItem): Promise<OwnedCosmetic> {
   return {
     inventoryItemId: item.id,
     cosmeticItemId: item.cosmeticItem.id,
@@ -29,12 +33,12 @@ function toOwnedCosmetic(item: InventoryItemWithCosmeticItem): OwnedCosmetic {
     name: item.cosmeticItem.name,
     description: item.cosmeticItem.description,
     rarityClass: item.cosmeticItem.rarityClass,
-    assetReference: item.cosmeticItem.assetReference,
+    assetReference: await objectStorage.resolveAssetUrl(item.cosmeticItem.assetReference, COSMETIC_ASSET_URL_TTL_SECONDS),
     acquiredAt: item.acquiredAt.toISOString(),
   };
 }
 
-function toLockedCosmetic(locked: LockedCosmeticView): LockedCosmetic {
+async function toLockedCosmetic(objectStorage: ObjectStorageService, locked: LockedCosmeticView): Promise<LockedCosmetic> {
   return {
     cosmeticItemId: locked.cosmeticItem.id,
     itemKey: locked.cosmeticItem.itemKey,
@@ -42,12 +46,12 @@ function toLockedCosmetic(locked: LockedCosmeticView): LockedCosmetic {
     name: locked.cosmeticItem.name,
     description: locked.cosmeticItem.description,
     rarityClass: locked.cosmeticItem.rarityClass,
-    assetReference: locked.cosmeticItem.assetReference,
+    assetReference: await objectStorage.resolveAssetUrl(locked.cosmeticItem.assetReference, COSMETIC_ASSET_URL_TTL_SECONDS),
     unlockRequirements: locked.unlockRequirements,
   };
 }
 
-function toCosmeticSummary(equipped: EquippedCosmeticWithDetails): CosmeticSummary {
+async function toCosmeticSummary(objectStorage: ObjectStorageService, equipped: EquippedCosmeticWithDetails): Promise<CosmeticSummary> {
   return {
     inventoryItemId: equipped.inventoryItem.id,
     cosmeticItemId: equipped.inventoryItem.cosmeticItem.id,
@@ -56,7 +60,10 @@ function toCosmeticSummary(equipped: EquippedCosmeticWithDetails): CosmeticSumma
     name: equipped.inventoryItem.cosmeticItem.name,
     description: equipped.inventoryItem.cosmeticItem.description,
     rarityClass: equipped.inventoryItem.cosmeticItem.rarityClass,
-    assetReference: equipped.inventoryItem.cosmeticItem.assetReference,
+    assetReference: await objectStorage.resolveAssetUrl(
+      equipped.inventoryItem.cosmeticItem.assetReference,
+      COSMETIC_ASSET_URL_TTL_SECONDS,
+    ),
     equippedAt: equipped.equippedAt.toISOString(),
   };
 }
@@ -74,7 +81,10 @@ function toCosmeticSummary(equipped: EquippedCosmeticWithDetails): CosmeticSumma
 @Controller('gamification/me/cosmetics')
 @UseGuards(AuthGuard)
 export class CosmeticEquipmentController {
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly objectStorage: ObjectStorageService,
+  ) {}
 
   @Get()
   async list(@Req() request: AuthenticatedRequest): Promise<ListCosmeticsResponse> {
@@ -82,15 +92,19 @@ export class CosmeticEquipmentController {
     const equippedBySlot = new Map(equipped.map((row) => [row.cosmeticSlot, row]));
 
     // Gate 65: las cuatro claves de `equipped` existen siempre, incluso sin perfil / sin nada equipado.
-    const equippedResponse = Object.fromEntries(
-      ALL_SLOTS.map((slot) => [slot, equippedBySlot.has(slot) ? toCosmeticSummary(equippedBySlot.get(slot)!) : null]),
-    ) as ListCosmeticsResponse['equipped'];
+    const equippedEntries = await Promise.all(
+      ALL_SLOTS.map(async (slot) => {
+        const row = equippedBySlot.get(slot);
+        return [slot, row ? await toCosmeticSummary(this.objectStorage, row) : null] as const;
+      }),
+    );
+    const equippedResponse = Object.fromEntries(equippedEntries) as ListCosmeticsResponse['equipped'];
 
     return listCosmeticsResponseSchema.parse({
-      owned: owned.map(toOwnedCosmetic),
+      owned: await Promise.all(owned.map((item) => toOwnedCosmetic(this.objectStorage, item))),
       equipped: equippedResponse,
       // LEF Bloque V, Incremento 6 -- catálogo visible no poseído, con requisito real.
-      locked: locked.map(toLockedCosmetic),
+      locked: await Promise.all(locked.map((item) => toLockedCosmetic(this.objectStorage, item))),
     });
   }
 
@@ -107,6 +121,6 @@ export class CosmeticEquipmentController {
     const slot = slotResult.data;
     const input = parseRequestBody(equipCosmeticRequestSchema, body);
     const equipped = await this.userService.equipCosmetic(request.accountId, slot, input.inventoryItemId);
-    return equipCosmeticResponseSchema.parse(toCosmeticSummary(equipped));
+    return equipCosmeticResponseSchema.parse(await toCosmeticSummary(this.objectStorage, equipped));
   }
 }

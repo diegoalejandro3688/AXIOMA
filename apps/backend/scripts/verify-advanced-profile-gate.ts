@@ -43,6 +43,38 @@ function check(label: string, condition: boolean) {
   }
 }
 
+/** Decodifica una URL firmada y confirma que su pathname termina exactamente en la object key esperada -- no depende de cómo el presigner codifique/genere la URL. */
+function expectSignedUrlForKey(url: unknown, expectedKey: string): boolean {
+  if (typeof url !== 'string') return false;
+  try {
+    const decodedPath = decodeURIComponent(new URL(url).pathname);
+    return decodedPath.endsWith(expectedKey);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reemplaza cualquier URL firmada (string parseable como URL absoluta) por
+ * su pathname decodificado -- neutraliza componentes de la firma que varían
+ * con el instante exacto de emisión (X-Amz-Date/Signature) entre llamadas
+ * HTTP separadas, preservando la comparación byte-a-byte del resto.
+ */
+function normalizeSignedUrls(value: unknown): unknown {
+  if (typeof value === 'string') {
+    try {
+      return decodeURIComponent(new URL(value).pathname);
+    } catch {
+      return value;
+    }
+  }
+  if (Array.isArray(value)) return value.map(normalizeSignedUrls);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, normalizeSignedUrls(v)]));
+  }
+  return value;
+}
+
 async function req(method: string, path: string, headers: Record<string, string> = {}, body?: unknown) {
   const res = await fetch(base + path, {
     method,
@@ -320,12 +352,15 @@ async function main() {
   check('GET /user/me/advanced-profile -> 200', advResp.status === 200);
 
   check('profile == GET /user/profile (byte a byte)', JSON.stringify(advResp.body?.profile) === JSON.stringify(profileResp.body));
-  check('publicProfile == GET /user/public-profile/me/competitive-profile (byte a byte)', JSON.stringify(advResp.body?.publicProfile) === JSON.stringify(competitiveResp.body));
+  check(
+    'publicProfile == GET /user/public-profile/me/competitive-profile (byte a byte tras normalizar URLs firmadas -- pueden variar por timestamp de firma entre llamadas separadas)',
+    JSON.stringify(normalizeSignedUrls(advResp.body?.publicProfile)) === JSON.stringify(normalizeSignedUrls(competitiveResp.body)),
+  );
   check('academicSummary == GET /progress/me/summary (byte a byte)', JSON.stringify(advResp.body?.academicSummary) === JSON.stringify(summaryResp.body));
   check('competitiveHistory == GET /gamification/me/league/history (byte a byte)', JSON.stringify(advResp.body?.competitiveHistory) === JSON.stringify(historyResp.body));
 
   console.log('--- 3. Banner/avatar/marco/título corresponden ÚNICAMENTE al equipamiento real ---');
-  check('publicProfile.banner == assetReference del banner EQUIPADO', advResp.body?.publicProfile?.banner === banner.assetReference);
+  check('publicProfile.banner == URL firmada del assetReference del banner EQUIPADO', expectSignedUrlForKey(advResp.body?.publicProfile?.banner, banner.assetReference));
   const equippedFrame = (advResp.body?.publicProfile?.equippedCosmetics ?? []).find((c: { cosmeticSlot: string }) => c.cosmeticSlot === 'AVATAR_FRAME');
   check('publicProfile.equippedCosmetics contiene el marco EQUIPADO', equippedFrame?.itemKey === frame.itemKey);
   check('publicProfile.equippedTitle == título EQUIPADO', advResp.body?.publicProfile?.equippedTitle?.titleKey === title.titleKey);
