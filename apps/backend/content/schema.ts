@@ -71,14 +71,29 @@ export type QuestionDifficulty = z.infer<typeof questionDifficultySchema>;
  * Distingue catálogo V1 real de contenido de prueba -- TIPADO, no solo por
  * convención de carpeta (`_fixture/`). `'catalog'` es el default: cualquier
  * módulo de recurso que no declare `kind` explícitamente se asume catálogo
- * real, así que un fixture SIEMPRE debe marcarse a mano -- no hay forma de
- * "olvidarlo" en el sentido peligroso (omitir el campo nunca oculta
- * contenido real de los totales). El futuro importer de CONTENT-4.2 debe
+ * real, así que `fixture`/`validation` SIEMPRE deben marcarse a mano -- no
+ * hay forma de "olvidarlo" en el sentido peligroso (omitir el campo nunca
+ * oculta contenido real de los totales). El importer de CONTENT-4.2 debe
  * filtrar por `kind === 'catalog'` antes de escribir nada en la API
- * editorial -- este campo es el contrato que se lo permite sin depender de
- * inspeccionar rutas de archivo.
+ * editorial en su modo normal -- este campo es el contrato que se lo permite
+ * sin depender de inspeccionar rutas de archivo.
+ *
+ * SEMÁNTICA CONGELADA (CONTENT-4.2B, punto 7) -- la AUTORIDAD es `kind`,
+ * nunca el nombre de la carpeta:
+ *   - `catalog`:    contenido V1 real. Cuenta en coverage/totales oficiales.
+ *                    Importable normalmente. Incluido por `--all`.
+ *   - `fixture`:    contenido puramente de test ESTRUCTURAL (schema/gate de
+ *                    forma). NO cuenta en V1. NUNCA importable -- el
+ *                    importer lo salta siempre (`SKIP_FIXTURE`), sin flag
+ *                    que lo habilite.
+ *   - `validation`: contenido técnico E2E para probar EL IMPORTER mismo
+ *                    (CONTENT-4.2, recurso `zztest`). NO cuenta en V1. NO se
+ *                    importa por defecto NI con `--unit`/`--all` -- solo
+ *                    mediante `--resource <key> --allow-validation`
+ *                    explícito (nunca por `--all`, ni con el flag presente:
+ *                    preferencia congelada, `--all` = únicamente `catalog`).
  */
-export const contentKindSchema = z.enum(['catalog', 'fixture']);
+export const contentKindSchema = z.enum(['catalog', 'fixture', 'validation']);
 export type ContentKind = z.infer<typeof contentKindSchema>;
 
 /**
@@ -123,11 +138,24 @@ export type SourceQuestion = z.infer<typeof sourceQuestionSchema>;
  * (= Unidad) al que pertenece -- ambos deben existir ya sea en el propio
  * lote de archivos o en el manifest (verificado por el gate).
  */
+/**
+ * CONTENT-4.2 -- los DOS valores reales del enum `LearningResourceType`
+ * (`schema.prisma`, mismo criterio ya documentado ahí: "acotado a 2 valores
+ * para M1, no los 12 del Data Model"). Necesario para que el importer pueda
+ * construir el payload de `POST /administration/editorial/learning-resources`
+ * (`editorialCreateLearningResourceRequestSchema` lo exige) sin inventar un
+ * valor por defecto.
+ */
+export const learningResourceTypeSchema = z.enum(['LESSON', 'CONCEPT_EXPLANATION']);
+export type SourceLearningResourceType = z.infer<typeof learningResourceTypeSchema>;
+
 export const resourceContentModuleSchema = z.object({
   /** 'catalog' (default) = catálogo V1 real; 'fixture' = SOLO prueba, nunca elegible para el importer de CONTENT-4.2. */
   kind: contentKindSchema.default('catalog'),
   /** Código del `LearningResource.resourceKey`, ej. "M1.NUMEROS.PORCENTAJES.CALCULO.LECCION". */
   resourceKey: curriculumCodeSchema,
+  /** CONTENT-4.2 -- necesario para el payload editorial de creación (ver arriba). */
+  resourceType: learningResourceTypeSchema,
   /** Código del `CurriculumTopic` hijo (Recurso). */
   topicCode: curriculumCodeSchema,
   /** Código del `CurriculumTopic` raíz (Unidad) padre. */

@@ -52,6 +52,8 @@ export const manifestUnitSchema = z.object({
   /** Código del `CurriculumTopic` raíz (Unidad). */
   unitCode: z.string().min(1),
   name: z.string().min(1),
+  /** CONTENT-4.2 -- `CurriculumTopic.order` de la propia unidad (raíz). Necesario para que el importer pueda resolver/crear la unidad vía la Taxonomy API (CONTENT-4.2A) sin inventar un valor. */
+  order: z.number().int().positive(),
   resources: z.array(manifestResourceSchema).min(1),
 });
 export type ManifestUnit = z.infer<typeof manifestUnitSchema>;
@@ -59,7 +61,10 @@ export type ManifestUnit = z.infer<typeof manifestUnitSchema>;
 export const manifestSubjectSchema = z.object({
   subjectKey: z.string().min(1),
   name: z.string().min(1),
-  /** 'catalog' (default) = cuenta para los totales oficiales V1; 'fixture' = excluida (ver CONTENT-4.1, ajuste 1). */
+  /** CONTENT-4.2 -- `Subject.shortName`/`Subject.displayOrder`, exigidos por `POST /administration/editorial/subjects` (CONTENT-4.2A). */
+  shortName: z.string().trim().min(1).max(20),
+  displayOrder: z.number().int().positive(),
+  /** 'catalog' (default) = cuenta para los totales oficiales V1; 'fixture'/'validation' = excluidas (ver CONTENT-4.1 ajuste 1, CONTENT-4.2B punto 9). */
   kind: contentKindSchema.default('catalog'),
   units: z.array(manifestUnitSchema),
 });
@@ -79,11 +84,14 @@ export const CONTENT_MANIFEST: ContentManifest = [
   {
     subjectKey: 'fixture',
     name: '[FIXTURE] Materia de prueba (no es catálogo real)',
+    shortName: 'FIXT',
+    displayOrder: 999,
     kind: 'fixture',
     units: [
       {
         unitCode: 'FIXTURE.UNIDAD_DEMO',
         name: '[FIXTURE] Unidad demo',
+        order: 1,
         resources: [
           {
             topicCode: 'FIXTURE.UNIDAD_DEMO.RECURSO_DEMO',
@@ -91,6 +99,42 @@ export const CONTENT_MANIFEST: ContentManifest = [
             // Ejercita la comprobación de distribución de dificultad del gate (CONTENT-4.1, ajuste 2)
             // -- coincide con el fixture real: Q1 FACIL, Q2 MEDIA.
             expectedDifficulty: { FACIL: 1, MEDIA: 1, DIFICIL: 0 },
+          },
+        ],
+      },
+    ],
+  },
+  /**
+   * CONTENT-4.2B -- namespace TÉCNICO/TEMPORAL para validar
+   * `import-content.ts` end-to-end (CREATE/NO-OP/NEW VERSION), sin tocar ni
+   * reutilizar ninguna unidad DEMRE real (nunca M1.NUMEROS.PORCENTAJES ni
+   * similar). `kind: 'validation'` (CONTENT-4.2B, punto 9 -- antes
+   * 'catalog', ajuste obligatorio: 'catalog' contribuía a coverage/totales
+   * oficiales V1, mezclando datos técnicos con contenido académico).
+   * `validation` NO cuenta en coverage, NO se importa por defecto ni con
+   * `--unit`/`--all` -- solo con `--resource <key> --allow-validation`
+   * explícito. Aislado en su PROPIA materia `zztest`, imposible de confundir
+   * con M1/M2/Lenguaje/Ciencias/Historia. Pensado para ejecutarse
+   * EXCLUSIVAMENTE contra la base de gates (`axioma_gates_dev`), nunca
+   * contra producción -- ver `verify-content-import-gate.ts` y la entrega de
+   * CONTENT-4.2 (riesgos/deuda).
+   */
+  {
+    subjectKey: 'zztest',
+    name: '[ZZTEST] Materia técnica de validación de importer (CONTENT-4.2, NO es catálogo académico)',
+    shortName: 'ZZTEST',
+    displayOrder: 9999,
+    kind: 'validation',
+    units: [
+      {
+        unitCode: 'ZZTEST.IMPORT_VALIDATION',
+        name: '[ZZTEST] Unidad técnica de validación',
+        order: 1,
+        resources: [
+          {
+            topicCode: 'ZZTEST.IMPORT_VALIDATION.PIPELINE_CHECK',
+            expectedQuestions: 3,
+            expectedDifficulty: { FACIL: 1, MEDIA: 1, DIFICIL: 1 },
           },
         ],
       },

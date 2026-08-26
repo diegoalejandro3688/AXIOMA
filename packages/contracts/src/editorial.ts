@@ -474,3 +474,50 @@ export type EditorialUpdateLearningResourceVersionRequest = z.infer<
   typeof editorialUpdateLearningResourceVersionRequestSchema
 >;
 export type EditorialAuthoringResponse = z.infer<typeof editorialAuthoringResponseSchema>;
+
+// ============================================================================
+// LECTURA ADMINISTRATIVA COMPLETA -- CONTENT-4.2B.
+//
+// A diferencia de `editorialAuthoringResponseSchema` (que deliberadamente NO
+// expone contenido, invariante 8) y de los lectores de ESTUDIANTE en
+// `education.ts` (que deliberadamente NO exponen `isCorrect`), estos dos
+// esquemas son la lectura de la versión PUBLISHED actual con TODO el
+// contenido editorial, `isCorrect` incluido -- necesaria para que una
+// pipeline de importación (CONTENT-4.2) pueda decidir CREATE/NO-OP/NEW
+// VERSION comparando la fuente contra lo publicado sin usar el endpoint de
+// estudiante. Solo alcanzable con `x-admin-token` + rol AUTHOR o PUBLISHER
+// (mismo guard que el resto de `administration/editorial`, nunca `AuthGuard`
+// de estudiante). Se reutilizan los bloques de AUTORÍA (`authoring*Schema`)
+// en vez de duplicar una tercera familia de esquemas de contenido.
+// ============================================================================
+
+export const editorialQuestionReadResponseSchema = z.object({
+  questionId: z.string().uuid(),
+  questionKey: z.string(),
+  /** `null` si la identidad no tiene ninguna versión PUBLISHED todavía. */
+  publishedVersion: z
+    .object({
+      versionId: z.string().uuid(),
+      editorialStatus: z.literal('PUBLISHED'),
+      stemContent: authoringResourceContentBlocksSchema,
+      explanationContent: authoringExplanationContentSchema,
+      answerOptions: z.array(authoringAnswerOptionSchema).min(1),
+    })
+    .nullable(),
+});
+export type EditorialQuestionReadResponse = z.infer<typeof editorialQuestionReadResponseSchema>;
+
+export const editorialLearningResourceReadResponseSchema = z.object({
+  resourceId: z.string().uuid(),
+  resourceKey: z.string(),
+  resourceType: z.enum(['LESSON', 'CONCEPT_EXPLANATION']),
+  publishedVersion: z
+    .object({
+      versionId: z.string().uuid(),
+      editorialStatus: z.literal('PUBLISHED'),
+      title: z.string(),
+      contentBlocks: authoringResourceContentBlocksSchema,
+    })
+    .nullable(),
+});
+export type EditorialLearningResourceReadResponse = z.infer<typeof editorialLearningResourceReadResponseSchema>;

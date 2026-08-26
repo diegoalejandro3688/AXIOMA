@@ -14,11 +14,15 @@ import {
   editorialSubjectResponseSchema,
   editorialResolveCurriculumTopicRequestSchema,
   editorialCurriculumTopicResponseSchema,
+  editorialQuestionReadResponseSchema,
+  editorialLearningResourceReadResponseSchema,
   type AdminActionListResponse,
   type EditorialAuthoringResponse,
   type EditorialTransitionResponse,
   type EditorialSubjectResponse,
   type EditorialCurriculumTopicResponse,
+  type EditorialQuestionReadResponse,
+  type EditorialLearningResourceReadResponse,
 } from '@axioma/contracts';
 import { AdminAuthGuard, type AdminAuthenticatedRequest } from '../administration/admin-auth.guard';
 import { AdminRoleGuard } from '../administration/admin-role.guard';
@@ -192,6 +196,41 @@ export class EditorialController {
     const input = parseRequestBody(editorialCreateLearningResourceVersionRequestSchema, body);
     const result = await this.authoring.createLearningResourceVersion(request.adminActor, resourceId, input);
     return editorialAuthoringResponseSchema.parse(result);
+  }
+
+  // ==========================================================================
+  // Lectura administrativa COMPLETA por clave -- CONTENT-4.2B.
+  //
+  // Cierra un hueco real: `import-content.ts` necesitaba decidir CREATE/
+  // NO-OP/NEW VERSION comparando la fuente contra la versión PUBLISHED
+  // actual, pero el único lector disponible hasta ahora era
+  // `GET /education/topics/:topicId/questions` -- de ESTUDIANTE, que omite
+  // `isCorrect` a propósito. Sin `isCorrect`, un cambio que solo modifica cuál
+  // alternativa es correcta (mismos textos) era indistinguible de un NO-OP.
+  //
+  // `@RequireAdminRole('AUTHOR', 'PUBLISHER')` -- mismo criterio que
+  // `GET actions`/`GET cms018-exception-uses`: es lectura, no autoría ni
+  // publicación, así que cualquiera de los dos roles administrativos basta.
+  // Nunca `AuthGuard` de estudiante. `GET /education/topics/:topicId/questions`
+  // NO se toca (invariante 19, byte-idéntico).
+  // ==========================================================================
+
+  /** Lectura administrativa completa de una pregunta por `questionKey`, `isCorrect` incluido. */
+  @Get('questions/by-key/:questionKey')
+  @RequireAdminRole('AUTHOR', 'PUBLISHER')
+  async findQuestionByKey(@Param('questionKey') questionKey: string): Promise<EditorialQuestionReadResponse> {
+    const result = await this.authoring.findQuestionByKey(questionKey);
+    return editorialQuestionReadResponseSchema.parse(result);
+  }
+
+  /** Lectura administrativa completa de un recurso de aprendizaje por `resourceKey`. */
+  @Get('learning-resources/by-key/:resourceKey')
+  @RequireAdminRole('AUTHOR', 'PUBLISHER')
+  async findLearningResourceByKey(
+    @Param('resourceKey') resourceKey: string,
+  ): Promise<EditorialLearningResourceReadResponse> {
+    const result = await this.authoring.findLearningResourceByKey(resourceKey);
+    return editorialLearningResourceReadResponseSchema.parse(result);
   }
 
   // ==========================================================================

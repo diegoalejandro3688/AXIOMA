@@ -16,6 +16,8 @@ import { EditorialTransitionService } from './editorial-transition.service';
 // LEF Bloque VII, Incremento 4 -- autoría (T1 crear borrador, T2 editar en DRAFT).
 import { EditorialAuthoringRepository } from './editorial-authoring.repository';
 import { EditorialAuthoringService } from './editorial-authoring.service';
+// CONTENT-4.2B -- lectura administrativa completa por clave (isCorrect incluido).
+import { EditorialReadRepository } from './editorial-read.repository';
 // CONTENT-4.2A -- resolución/creación idempotente de taxonomía (Subject/CurriculumTopic).
 import { EditorialTaxonomyRepository } from './editorial-taxonomy.repository';
 import { EditorialTaxonomyService } from './editorial-taxonomy.service';
@@ -47,6 +49,7 @@ import { ContentCoverageService } from './content-coverage.service';
     EditorialTransitionService,
     EditorialAuthoringRepository,
     EditorialAuthoringService,
+    EditorialReadRepository,
     EditorialTaxonomyRepository,
     EditorialTaxonomyService,
     ContentCoverageRepository,

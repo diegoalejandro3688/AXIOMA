@@ -10,15 +10,9 @@
 // `CONTENT_MANIFEST` para las reglas de negocio (unicidad, orden,
 // cobertura esperada, fórmulas LaTeX). `content/ensayo/**` se recorre con
 // el mismo criterio si llega a tener contenido -- hoy está vacío.
-import { readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import {
-  resourceContentModuleSchema,
-  type ResourceContentModule,
-  type SourceContentBlock,
-  type SourceQuestion,
-} from '../content/schema';
+import { type ResourceContentModule, type SourceContentBlock, type SourceQuestion } from '../content/schema';
+import { loadResourceModules as loadResourceModulesShared, type LoadedResource } from '../content/load';
 import {
   CONTENT_MANIFEST,
   findManifestResource,
@@ -44,43 +38,12 @@ function check(label: string, condition: boolean) {
   }
 }
 
-/** Recorre recursivamente `dir` y devuelve todos los `.ts` (nunca `schema.ts`/`manifest.ts`, que no son módulos de Recurso). */
-function findContentFiles(dir: string): string[] {
-  const entries = readdirSync(dir);
-  const files: string[] = [];
-  for (const entry of entries) {
-    const full = join(dir, entry);
-    const stat = statSync(full);
-    if (stat.isDirectory()) {
-      files.push(...findContentFiles(full));
-    } else if (entry.endsWith('.ts') && entry !== 'schema.ts' && entry !== 'manifest.ts') {
-      files.push(full);
-    }
-  }
-  return files;
-}
-
-interface LoadedResource {
-  file: string;
-  module: ResourceContentModule;
-}
-
+/** Wrapper delgado sobre el loader compartido (`content/load.ts`) -- reporta cada `issue` con `check()`, mismo criterio que antes de la extracción (CONTENT-4.2, punto 2: evitar dos recorridos divergentes). */
 async function loadResourceModules(dir: string): Promise<LoadedResource[]> {
-  const files = findContentFiles(dir);
-  const loaded: LoadedResource[] = [];
-  for (const file of files) {
-    const imported = (await import(pathToFileURL(file).href)) as { default?: unknown };
-    if (imported.default === undefined) {
-      check(`${relative(CONTENT_ROOT, file)}: exporta un default`, false);
-      continue;
-    }
-    const result = resourceContentModuleSchema.safeParse(imported.default);
-    if (!result.success) {
-      check(`${relative(CONTENT_ROOT, file)}: cumple resourceContentModuleSchema`, false);
-      console.error(`       ${result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join(' | ')}`);
-      continue;
-    }
-    loaded.push({ file, module: result.data });
+  const { loaded, issues } = await loadResourceModulesShared(dir);
+  for (const issue of issues) {
+    check(`${relative(CONTENT_ROOT, issue.file)}: cumple resourceContentModuleSchema`, false);
+    console.error(`       ${issue.message}`);
   }
   return loaded;
 }
@@ -137,22 +100,28 @@ function printSubjectCoverage(subject: ContentManifest[number], foundQuestionsBy
 }
 
 /**
- * Materias `kind: 'fixture'` se imprimen APARTE y nunca entran en "Total
- * catálogo" -- ver CONTENT-4.1, ajuste 1: un fixture puede seguir
- * probándose y mostrándose, pero jamás contribuye a la cobertura oficial V1.
+ * Materias `kind: 'fixture'`/`'validation'` se imprimen APARTE y nunca
+ * entran en "Total catálogo" -- ver CONTENT-4.1 ajuste 1 (fixture) y
+ * CONTENT-4.2B punto 9 (validation): ninguna de las dos contribuye jamás a
+ * la cobertura oficial V1, aunque ambas sigan probándose/mostrándose.
  */
 function printCoverageSummary(manifest: ContentManifest, foundQuestionsByTopic: Map<string, number>, foundResourceTopics: Set<string>) {
   const catalog = catalogSubjects(manifest);
   const fixtures = manifest.filter((s) => s.kind === 'fixture');
+  const validation = manifest.filter((s) => s.kind === 'validation');
 
   console.log('\n--- Resumen de cobertura esperada -- CATÁLOGO V1 (manifest vs. contenido fuente encontrado) ---');
   if (catalog.length === 0) console.log('  (sin materias de catálogo real en el manifest todavía)');
   for (const subject of catalog) printSubjectCoverage(subject, foundQuestionsByTopic, foundResourceTopics);
-  console.log(`\nTotal catálogo V1 (manifest, EXCLUYE fixtures): ${totalExpectedResources(manifest)} recursos, ${totalExpectedQuestions(manifest)} preguntas esperadas.`);
+  console.log(`\nTotal catálogo V1 (manifest, EXCLUYE fixtures y validation): ${totalExpectedResources(manifest)} recursos, ${totalExpectedQuestions(manifest)} preguntas esperadas.`);
 
   if (fixtures.length > 0) {
     console.log('\n--- Materias de PRUEBA (kind: fixture -- excluidas de los totales oficiales de arriba) ---');
     for (const subject of fixtures) printSubjectCoverage(subject, foundQuestionsByTopic, foundResourceTopics);
+  }
+  if (validation.length > 0) {
+    console.log('\n--- Materias TÉCNICAS de validación del importer (kind: validation -- excluidas de los totales oficiales de arriba) ---');
+    for (const subject of validation) printSubjectCoverage(subject, foundQuestionsByTopic, foundResourceTopics);
   }
 }
 

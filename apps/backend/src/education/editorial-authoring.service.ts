@@ -15,6 +15,7 @@ import { PrismaService } from '../platform/prisma/prisma.service';
 import { AdminActionRepository } from '../administration/admin-action.repository';
 import type { AuthenticatedAdminActor } from '../administration/admin-identity.service';
 import { EditorialAuthoringRepository } from './editorial-authoring.repository';
+import { EditorialReadRepository } from './editorial-read.repository';
 import { renderLatexToSvg } from './formula-rendering';
 import type { EditorialObjectType } from './editorial-version.repository';
 import type { AdminActionType, Prisma } from '../generated/prisma/client';
@@ -85,6 +86,8 @@ export class EditorialAuthoringService {
     private readonly prisma: PrismaService,
     private readonly repo: EditorialAuthoringRepository,
     private readonly actionRepo: AdminActionRepository,
+    /** CONTENT-4.2B -- lectura administrativa completa por clave (`isCorrect` incluido). */
+    private readonly readRepo: EditorialReadRepository,
   ) {}
 
   // ==========================================================================
@@ -294,6 +297,26 @@ export class EditorialAuthoringService {
     });
 
     return this.project(outcome, false);
+  }
+
+  // ==========================================================================
+  // Lectura administrativa completa por clave -- CONTENT-4.2B. A diferencia
+  // de `project()` (que nunca expone contenido, invariante 8), este método
+  // SÍ devuelve el contenido editorial completo de la versión PUBLISHED
+  // actual, `isCorrect` incluido -- es una capacidad de LECTURA nueva y
+  // aditiva, gateada por el mismo rol administrativo, no una relajación de
+  // lo que las respuestas de ESCRITURA (T1/T2) exponen.
+  // ==========================================================================
+  async findQuestionByKey(questionKey: string) {
+    const found = await this.readRepo.findQuestionByKeyWithPublishedVersion(questionKey);
+    if (!found) throw new NotFoundException(`No existe ninguna pregunta con la clave editorial "${questionKey}".`);
+    return found;
+  }
+
+  async findLearningResourceByKey(resourceKey: string) {
+    const found = await this.readRepo.findLearningResourceByKeyWithPublishedVersion(resourceKey);
+    if (!found) throw new NotFoundException(`No existe ningún recurso con la clave editorial "${resourceKey}".`);
+    return found;
   }
 
   async updateLearningResourceVersion(

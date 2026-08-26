@@ -17,6 +17,8 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "verify:curriculum-topic-count": "tsx scripts/verify-curriculum-topic-count.ts",
     "verify:content-source-gate": "tsx scripts/verify-content-source-gate.ts",
+    "content:import": "tsx scripts/import-content.ts",
+    "verify:content-import-gate": "tsx scripts/run-gate.ts verify-content-import-gate.ts",
     "verify:auth-gate": "tsx scripts/run-gate.ts verify-auth-gate.ts",
     "verify:outbox-delivery-filter-gate": "tsx scripts/run-gate.ts verify-outbox-delivery-filter-gate.ts",
     "verify:privacy-gate": "tsx scripts/run-gate.ts verify-privacy-gate.ts",

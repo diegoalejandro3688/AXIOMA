@@ -7,6 +7,7 @@ import type { ResourceContentModule } from '../../../schema';
 const recursoDemo: ResourceContentModule = {
   kind: 'fixture',
   resourceKey: 'FIXTURE.UNIDAD_DEMO.RECURSO_DEMO.LECCION',
+  resourceType: 'LESSON',
   topicCode: 'FIXTURE.UNIDAD_DEMO.RECURSO_DEMO',
   unitCode: 'FIXTURE.UNIDAD_DEMO',
   subjectKey: 'fixture',
