@@ -709,6 +709,11 @@ async function main() {
     'learning-resources/:resourceId/versions',
     'question-versions/:versionId',
     'learning-resource-versions/:versionId',
+    // CONTENT-4.2A -- taxonomía (Subject/CurriculumTopic), mismo controller,
+    // mismos guards -- ver la misma actualización en
+    // verify-education-published-immutability-gate.ts.
+    'subjects',
+    'curriculum-topics',
   ];
   // (b) Los dos guards siguen teniendo UNA definición única, y vive en
   // `src/administration`. Fuera de ahí solo pueden aparecer como importación/uso.

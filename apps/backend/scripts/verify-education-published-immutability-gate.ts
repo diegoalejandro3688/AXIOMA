@@ -771,6 +771,15 @@ async function main() {
     'learning-resources/:resourceId/versions',
     'question-versions/:versionId',
     'learning-resource-versions/:versionId',
+    // CONTENT-4.2A -- resolución/creación IDEMPOTENTE de taxonomía (Subject/
+    // CurriculumTopic), autorizada explícitamente para cerrar la dependencia
+    // bloqueante que la auditoría de CONTENT-4.2 detectó en la API editorial
+    // (T1 exige primarySubjectId/curriculumTopicId ya existentes). Mismo
+    // controller, mismos guards (@RequireAdminRole('AUTHOR')), misma
+    // semántica de no-sobrescritura silenciosa (CONFLICT explícito) que el
+    // resto de esta lista -- ver EditorialTaxonomyService.
+    'subjects',
+    'curriculum-topics',
   ];
   // Módulo de la Content Coverage Matrix (Incremento 5): existe, y su única
   // capacidad autorizada es LEER. Se mide su código real, no su nombre.
@@ -787,7 +796,7 @@ async function main() {
     !/\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(coverageModuleCode) &&
     !/\$executeRaw|\$transaction/.test(coverageModuleCode);
   check(
-    'las capacidades que SIGUEN fuera de alcance continúan ausentes (sin importación masiva); la Content Coverage Matrix del Incremento 5 existe pero es ESTRICTAMENTE de solo lectura (cero verbos de escritura, cero escrituras de Prisma); y la superficie administrativa/editorial declara EXACTAMENTE las 8 rutas de escritura autorizadas (2 transiciones del Incremento 3 + 6 de autoría del Incremento 4) y ninguna más',
+    'las capacidades que SIGUEN fuera de alcance continúan ausentes (sin importación masiva); la Content Coverage Matrix del Incremento 5 existe pero es ESTRICTAMENTE de solo lectura (cero verbos de escritura, cero escrituras de Prisma); y la superficie administrativa/editorial declara EXACTAMENTE las 10 rutas de escritura autorizadas (2 transiciones del Incremento 3 + 6 de autoría del Incremento 4 + 2 de taxonomía de CONTENT-4.2A) y ninguna más',
     coverageIsReadOnly &&
       !/bulk[_-]?import|importjob|import[_-]?batch|importcontent|content[_-]?import/i.test(allSrcCode) &&
       bareWriteDecorators === 0 &&

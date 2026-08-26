@@ -16,6 +16,9 @@ import { EditorialTransitionService } from './editorial-transition.service';
 // LEF Bloque VII, Incremento 4 -- autoría (T1 crear borrador, T2 editar en DRAFT).
 import { EditorialAuthoringRepository } from './editorial-authoring.repository';
 import { EditorialAuthoringService } from './editorial-authoring.service';
+// CONTENT-4.2A -- resolución/creación idempotente de taxonomía (Subject/CurriculumTopic).
+import { EditorialTaxonomyRepository } from './editorial-taxonomy.repository';
+import { EditorialTaxonomyService } from './editorial-taxonomy.service';
 // LEF Bloque VII, Incremento 5 -- Content Coverage Matrix (SOLO LECTURA).
 import { ContentCoverageRepository } from './content-coverage.repository';
 import { ContentCoverageService } from './content-coverage.service';
@@ -44,6 +47,8 @@ import { ContentCoverageService } from './content-coverage.service';
     EditorialTransitionService,
     EditorialAuthoringRepository,
     EditorialAuthoringService,
+    EditorialTaxonomyRepository,
+    EditorialTaxonomyService,
     ContentCoverageRepository,
     ContentCoverageService,
   ],
@@ -63,6 +68,10 @@ import { ContentCoverageService } from './content-coverage.service';
     // SOLICITA la creación/edición a través de este servicio de EDUCATION y
     // nunca escribe en sus repositorios por su cuenta.
     EditorialAuthoringService,
+    // CONTENT-4.2A: mismo criterio -- la capa administrativa SOLICITA la
+    // resolución/creación de taxonomía a través de este servicio y nunca
+    // escribe en `subject`/`curriculum_topic` por su cuenta.
+    EditorialTaxonomyService,
     // Incremento 5: misma razón (MC §6.17, "Administration no deberá escribir
     // directamente en tablas autoritativas"; aquí ni siquiera LEE por su
     // cuenta). La fachada HTTP de la matriz consume este servicio y NO el

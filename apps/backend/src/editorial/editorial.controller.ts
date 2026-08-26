@@ -10,9 +10,15 @@ import {
   editorialTransitionResponseSchema,
   editorialUpdateLearningResourceVersionRequestSchema,
   editorialUpdateQuestionVersionRequestSchema,
+  editorialResolveSubjectRequestSchema,
+  editorialSubjectResponseSchema,
+  editorialResolveCurriculumTopicRequestSchema,
+  editorialCurriculumTopicResponseSchema,
   type AdminActionListResponse,
   type EditorialAuthoringResponse,
   type EditorialTransitionResponse,
+  type EditorialSubjectResponse,
+  type EditorialCurriculumTopicResponse,
 } from '@axioma/contracts';
 import { AdminAuthGuard, type AdminAuthenticatedRequest } from '../administration/admin-auth.guard';
 import { AdminRoleGuard } from '../administration/admin-role.guard';
@@ -20,6 +26,7 @@ import { RequireAdminRole } from '../administration/require-admin-role.decorator
 import { AdminActionRepository, type AdminActionWithActors } from '../administration/admin-action.repository';
 import { EditorialTransitionService } from '../education/editorial-transition.service';
 import { EditorialAuthoringService } from '../education/editorial-authoring.service';
+import { EditorialTaxonomyService } from '../education/editorial-taxonomy.service';
 import { parseRequestBody } from '../platform/validation/parse-request-body';
 import type { AdminActionObjectType } from '../generated/prisma/client';
 
@@ -68,7 +75,53 @@ export class EditorialController {
     private readonly actionRepo: AdminActionRepository,
     /** Incremento 4 -- T1 y T2. Autoridad de dominio en EDUCATION (invariante 15). */
     private readonly authoring: EditorialAuthoringService,
+    /** CONTENT-4.2A -- resolución/creación idempotente de Subject/CurriculumTopic. */
+    private readonly taxonomy: EditorialTaxonomyService,
   ) {}
+
+  // ==========================================================================
+  // CONTENT-4.2A -- TAXONOMÍA (Subject / CurriculumTopic). Cierra la
+  // dependencia bloqueante de CONTENT-4.2: T1 exige `primarySubjectId`/
+  // `curriculumTopicId` ya existentes; estos dos endpoints son la única
+  // forma autorizada de resolverlos/crearlos sin Prisma directo.
+  //
+  // `@RequireAdminRole('AUTHOR')` -- mismo criterio que T1: crear taxonomía
+  // es autoría, nunca publicación. Semántica idempotente (CREATED/NO-OP),
+  // nunca upsert destructivo -- una contradicción estructural es 409
+  // (`ConflictException`, ver `EditorialTaxonomyService`), no una
+  // sobrescritura silenciosa.
+  // ==========================================================================
+
+  @Post('subjects')
+  @RequireAdminRole('AUTHOR')
+  async resolveSubject(@Body() body: unknown): Promise<EditorialSubjectResponse> {
+    const input = parseRequestBody(editorialResolveSubjectRequestSchema, body);
+    const { subject, created } = await this.taxonomy.resolveOrCreateSubject(input);
+    return editorialSubjectResponseSchema.parse({
+      id: subject.id,
+      subjectKey: subject.subjectKey,
+      name: subject.name,
+      shortName: subject.shortName,
+      displayOrder: subject.displayOrder,
+      created,
+    });
+  }
+
+  @Post('curriculum-topics')
+  @RequireAdminRole('AUTHOR')
+  async resolveCurriculumTopic(@Body() body: unknown): Promise<EditorialCurriculumTopicResponse> {
+    const input = parseRequestBody(editorialResolveCurriculumTopicRequestSchema, body);
+    const { topic, created } = await this.taxonomy.resolveOrCreateCurriculumTopic(input);
+    return editorialCurriculumTopicResponseSchema.parse({
+      id: topic.id,
+      code: topic.code,
+      name: topic.name,
+      order: topic.order,
+      subjectId: topic.subjectId,
+      parentId: topic.parentId,
+      created,
+    });
+  }
 
   // ==========================================================================
   // T1 -- CREAR BORRADOR. LEF Bloque VII, Incremento 4 (§8.2 fila T1, §12.4).

@@ -588,8 +588,12 @@ async function main() {
     'learning-resources/:resourceId/versions',
     'question-versions/:versionId',
     'learning-resource-versions/:versionId',
+    // CONTENT-4.2A -- taxonomía (Subject/CurriculumTopic), autorizada
+    // explícitamente después del cierre de I5; mismo controller/guards.
+    'subjects',
+    'curriculum-topics',
   ];
-  check('la superficie administrativa/editorial sigue declarando EXACTAMENTE las 8 rutas de escritura de I3+I4, ni una más',
+  check('la superficie administrativa/editorial sigue declarando EXACTAMENTE las 10 rutas de escritura de I3+I4+CONTENT-4.2A, ni una más',
     [...adminEditorialCode.matchAll(/@(?:Post|Put|Patch|Delete)\(\s*\)/g)].length === 0 &&
       writeRoutes.length === authorizedWriteRoutes.length &&
       writeRoutes.every((r) => authorizedWriteRoutes.includes(r)),

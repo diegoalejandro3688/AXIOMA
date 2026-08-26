@@ -870,7 +870,11 @@ async function main() {
   // `actorId` y `roleExercised` son legítimos: son la ATRIBUCIÓN auditada).
   const editorialContract = stripComments(readFileSync(join(repoRoot, 'packages', 'contracts', 'src', 'editorial.ts'), 'utf8'));
   const requestBlocks = [...editorialContract.matchAll(/editorial[A-Za-z]*RequestSchema\s*=\s*z[\s\S]*?\.strict\(\)/g)].map((m) => m[0]);
-  check('se localizaron los esquemas de PETICIÓN editorial (transición + las 6 de autoría de I4)', requestBlocks.length === 7, String(requestBlocks.length));
+  // CONTENT-4.2A añade 2 esquemas de petición más (resolución/creación
+  // idempotente de Subject/CurriculumTopic) al MISMO archivo -- 7 (I3+I4) + 2
+  // = 9. Las dos comprobaciones de abajo (invariante 22, sin editorialStatus/
+  // publishedAt/id) siguen aplicándose sobre el conjunto ampliado, sin relajarse.
+  check('se localizaron los esquemas de PETICIÓN editorial (transición + las 6 de autoría de I4 + las 2 de taxonomía de CONTENT-4.2A)', requestBlocks.length === 9, String(requestBlocks.length));
   check('invariante 22: NINGÚN contrato de petición editorial declara un campo de rol o de actor',
     requestBlocks.length > 0 && !requestBlocks.some((b) => /\brole\b|\broles\b|\bactorId\b|\badminActorId\b/.test(b)));
   check('ningún contrato de petición de autoría declara `editorialStatus`, `publishedAt` ni `id` (el estado y los identificadores no son negociables)',

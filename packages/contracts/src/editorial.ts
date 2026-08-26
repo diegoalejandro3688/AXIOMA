@@ -380,6 +380,70 @@ export const editorialUpdateLearningResourceVersionRequestSchema = z
   })
   .strict();
 
+// ============================================================================
+// CONTENT-4.2A -- Taxonomía editorial (Subject / CurriculumTopic).
+// Cierra la dependencia bloqueante detectada por la auditoría de
+// CONTENT-4.2: `editorialCreateQuestionRequestSchema`/
+// `editorialCreateLearningResourceRequestSchema` (arriba) exigen
+// `primarySubjectId`/`curriculumTopicId` YA EXISTENTES -- estos dos
+// endpoints son la única forma autorizada de resolver/crear esos UUIDs sin
+// Prisma directo ni seed.ts. Semántica idempotente por clave estable
+// (`subjectKey`/`code`), nunca un upsert que oculte una contradicción --
+// ver `EditorialTaxonomyService`. `created` distingue CREATED (true) de
+// NO-OP (false); una contradicción estructural es un 409, nunca una
+// escritura silenciosa.
+// ============================================================================
+
+export const editorialResolveSubjectRequestSchema = z
+  .object({
+    subjectKey: z.string().trim().min(1).max(100),
+    name: z.string().trim().min(1).max(200),
+    shortName: z.string().trim().min(1).max(20),
+    displayOrder: z.number().int().positive(),
+  })
+  .strict();
+export type EditorialResolveSubjectRequest = z.infer<typeof editorialResolveSubjectRequestSchema>;
+
+export const editorialSubjectResponseSchema = z.object({
+  id: z.string().uuid(),
+  subjectKey: z.string(),
+  name: z.string(),
+  shortName: z.string(),
+  displayOrder: z.number().int(),
+  /** `true` si esta petición creó el Subject; `false` si ya existía idéntico (NO-OP). */
+  created: z.boolean(),
+});
+export type EditorialSubjectResponse = z.infer<typeof editorialSubjectResponseSchema>;
+
+/**
+ * `parentId` ausente/`null` = raíz (Unidad, CONTENT-2). `parentId` presente
+ * = hijo (Recurso). Sin límite de profundidad declarado aquí -- lo permite
+ * el propio modelo `CurriculumTopic` (auto-relación); CONTENT-2 solo usa 2
+ * niveles hoy, pero este contrato no lo asume.
+ */
+export const editorialResolveCurriculumTopicRequestSchema = z
+  .object({
+    code: z.string().trim().min(1).max(200),
+    name: z.string().trim().min(1).max(300),
+    order: z.number().int().positive(),
+    subjectId: z.string().uuid(),
+    parentId: z.string().uuid().nullable().optional(),
+  })
+  .strict();
+export type EditorialResolveCurriculumTopicRequest = z.infer<typeof editorialResolveCurriculumTopicRequestSchema>;
+
+export const editorialCurriculumTopicResponseSchema = z.object({
+  id: z.string().uuid(),
+  code: z.string(),
+  name: z.string(),
+  order: z.number().int(),
+  subjectId: z.string().uuid(),
+  parentId: z.string().uuid().nullable(),
+  /** `true` si esta petición creó el CurriculumTopic; `false` si ya existía idéntico (NO-OP). */
+  created: z.boolean(),
+});
+export type EditorialCurriculumTopicResponse = z.infer<typeof editorialCurriculumTopicResponseSchema>;
+
 /**
  * Respuesta de T1/T2. Devuelve REFERENCIAS, nunca contenido académico: este
  * controller no es un lector de contenido (§11.1, invariante 8) y en
