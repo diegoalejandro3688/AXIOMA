@@ -81,6 +81,62 @@ export type ContentManifest = z.infer<typeof contentManifestSchema>;
  * llena aquí a propósito.
  */
 export const CONTENT_MANIFEST: ContentManifest = [
+  /**
+   * CONTENT-4.3A -- Golden Unit real M1 / Eje Números (PAES M1, Admisión
+   * 2027, DEMRE). `subjectKey: 'matematica'` reutiliza EXACTAMENTE los
+   * mismos valores que `prisma/seed.ts` ya usa para el Subject real
+   * (`name: 'Matemática'`, `shortName: 'Mate'`, `displayOrder: 1`) -- no se
+   * inventa una materia paralela.
+   *
+   * Los 3 recursos (`ENTEROS_RACIONALES`/`PORCENTAJE`/`POTENCIAS_RAICES`)
+   * están declarados aquí con su `expectedQuestions`/`expectedDifficulty`
+   * oficiales, pero TODAVÍA NO tienen módulo `.ts` en `content/estudio/`:
+   * CONTENT-4.3A entrega solo las Resource Specs (documentación fuente en
+   * `content/specs/m1-numeros/*.md`), no los módulos importables -- ver
+   * `resourceContentModuleSchema.questions` (mínimo 1 pregunta real) y el
+   * reporte de entrega de CONTENT-4.3A, sección de riesgos. El gate no falla
+   * por esto: `resourcesPresent`/`foundQuestionsByTopic` son puramente
+   * informativos (0/3 recursos presentes hasta CONTENT-4.3C).
+   *
+   * NOTA DE AUDITORÍA -- código no colisiona pero se solapa académicamente:
+   * `prisma/seed.ts` ya crea `M1.NUMEROS.PORCENTAJES` (PLURAL, contenido de
+   * prueba `TEST-CONTENT-1`, no es catálogo PAES real). El código de este
+   * recurso, `M1.NUMEROS.PORCENTAJE` (SINGULAR), es una fila DISTINTA -- sin
+   * conflicto de unicidad -- pero la superposición temática debe resolverse
+   * antes de importar en CONTENT-4.3B/C (seed.ts está fuera de alcance de
+   * este incremento).
+   */
+  {
+    subjectKey: 'matematica',
+    name: 'Matemática',
+    shortName: 'Mate',
+    displayOrder: 1,
+    kind: 'catalog',
+    units: [
+      {
+        unitCode: 'M1.NUMEROS',
+        name: 'Números',
+        order: 1,
+        resources: [
+          {
+            topicCode: 'M1.NUMEROS.ENTEROS_RACIONALES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'M1.NUMEROS.PORCENTAJE',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'M1.NUMEROS.POTENCIAS_RAICES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+        ],
+      },
+    ],
+  },
   {
     subjectKey: 'fixture',
     name: '[FIXTURE] Materia de prueba (no es catálogo real)',
