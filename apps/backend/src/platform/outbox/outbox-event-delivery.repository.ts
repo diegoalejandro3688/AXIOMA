@@ -20,10 +20,20 @@ export class OutboxEventDeliveryRepository {
    * Eventos pendientes para UN consumidor: sin fila de entrega todavía, o
    * con una fila FAILED que no agotó sus reintentos. "Pendiente" nunca es un
    * valor persistido -- ver comentario del enum en schema.prisma.
+   *
+   * `applicableEventKeys` -- lista de `eventKey` que ESTE consumidor sabe
+   * procesar (la misma que ya usa su propio `isKnownEventKey`, ej.
+   * `GAMIFICATION_EVENT_KEYS`/`ANALYTICS_EVENT_KEYS` de `@axioma/contracts`).
+   * Filtra en el origen los eventos que este consumidor nunca podría
+   * procesar -- evita que cada relay intente (y falle, agotando `attempts`)
+   * contra eventos de dominios ajenos que nunca le corresponden. Este
+   * repositorio compartido no conoce nombres de consumidor concretos ni
+   * reglas por dominio -- solo aplica la lista que cada llamador le pasa.
    */
-  findPendingFor(consumerName: string, limit: number, maxAttempts: number): Promise<OutboxEvent[]> {
+  findPendingFor(consumerName: string, applicableEventKeys: readonly string[], limit: number, maxAttempts: number): Promise<OutboxEvent[]> {
     return this.prisma.outboxEvent.findMany({
       where: {
+        eventKey: { in: applicableEventKeys as string[] },
         OR: [
           { deliveries: { none: { consumerName } } },
           {

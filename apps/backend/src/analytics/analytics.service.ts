@@ -49,7 +49,7 @@ export class AnalyticsService {
    * detiene el resto del lote (ver gate de aceptación, punto 3).
    */
   async ingestPending(): Promise<{ processed: number; failed: number }> {
-    const pending = await this.deliveryRepo.findPendingFor(CONSUMER_NAME, RELAY_BATCH_SIZE, MAX_DELIVERY_ATTEMPTS);
+    const pending = await this.deliveryRepo.findPendingFor(CONSUMER_NAME, ANALYTICS_EVENT_KEYS, RELAY_BATCH_SIZE, MAX_DELIVERY_ATTEMPTS);
 
     let processed = 0;
     let failed = 0;

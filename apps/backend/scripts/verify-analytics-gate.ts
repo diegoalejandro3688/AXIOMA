@@ -182,11 +182,18 @@ async function main() {
   // mismo lote antes de llamar al relay una sola vez -- así se prueba
   // realmente "un fallo no detiene al resto del MISMO lote", sin depender
   // de en qué lote exacto caiga un evento creado vía HTTP.
+  //
+  // `event_key` DEBE ser uno aplicable a ANALYTICS (ver ANALYTICS_EVENT_KEYS)
+  // -- desde el filtrado de `findPendingFor` por consumidor (ver
+  // OutboxEventDeliveryRepository), un eventKey ajeno ya ni siquiera se
+  // selecciona como pendiente, así que ya no sirve para simular "una fila
+  // rota dentro del lote". El fallo real que SÍ sigue vivo dentro del
+  // dominio aplicable es una `schemaVersion` no soportada.
   const brokenOutboxId = randomUUID();
   const brokenAccountId = randomUUID();
   await pg.query(
     `INSERT INTO outbox_event (id, event_key, schema_version, source_domain, aggregate_id, occurred_at, payload, status)
-     VALUES ($1, 'evento_inexistente', 'v1', 'AUTH', $2, now(), $3::jsonb, 'PENDING')`,
+     VALUES ($1, 'account_registered', 'v999-no-soportada', 'AUTH', $2, now(), $3::jsonb, 'PENDING')`,
     [brokenOutboxId, brokenAccountId, JSON.stringify({ accountId: brokenAccountId })],
   );
 
@@ -206,7 +213,7 @@ async function main() {
     "SELECT status, attempts, last_error FROM outbox_event_delivery WHERE outbox_event_id = $1 AND consumer_name = 'ANALYTICS'",
     [brokenOutboxId],
   );
-  check('fila con eventKey desconocido queda FAILED en outbox_event_delivery', brokenDeliveryAfter.rows[0]?.status === 'FAILED');
+  check('fila con schemaVersion no soportada queda FAILED en outbox_event_delivery', brokenDeliveryAfter.rows[0]?.status === 'FAILED');
   check('attempts incrementado (por consumidor)', Number(brokenDeliveryAfter.rows[0]?.attempts) >= 1);
   check('last_error registrado (por consumidor)', Boolean(brokenDeliveryAfter.rows[0]?.last_error));
 
