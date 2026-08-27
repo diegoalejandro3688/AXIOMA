@@ -260,6 +260,86 @@ export const CONTENT_MANIFEST: ContentManifest = [
       },
     ],
   },
+  /**
+   * CONTENT-L2 -- Golden Unit real Lenguaje / PAES Competencia Lectora, U1
+   * Localizar + U2 Interpretar. Mismo patrón exacto que `matematica`: cada
+   * recurso tiene módulo `.ts` completo en `content/estudio/lenguaje-localizar/`
+   * y `content/estudio/lenguaje-interpretar/`,
+   * contenido editorial ya cerrado/APPROVED (ver
+   * ZETRYND-LENGUAJE-U1-U2-EDITORIAL-APPROVED.md) -- solo implementación
+   * técnica (contentBlocks/keys), cero cambios de contenido. `subjectKey`
+   * `'lenguaje'` es la clave estable de esta materia -- no existía antes de
+   * este incremento. U3 (Evaluar) queda explícitamente FUERA de alcance de
+   * CONTENT-L2 y no se declara aquí.
+   */
+  {
+    subjectKey: 'lenguaje',
+    name: 'Lenguaje',
+    shortName: 'Leng',
+    displayOrder: 2,
+    kind: 'catalog',
+    units: [
+      {
+        unitCode: 'LENGUAJE.LOCALIZAR',
+        name: 'Localizar',
+        order: 1,
+        resources: [
+          {
+            topicCode: 'LENGUAJE.LOCALIZAR.INFORMACION_EXPLICITA_RELEVANTE',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'LENGUAJE.LOCALIZAR.RELACIONES_REFERENCIA',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'LENGUAJE.LOCALIZAR.TEXTOS_DISCONTINUOS_MULTIMODALES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+        ],
+      },
+      {
+        unitCode: 'LENGUAJE.INTERPRETAR',
+        name: 'Interpretar',
+        order: 2,
+        resources: [
+          {
+            topicCode: 'LENGUAJE.INTERPRETAR.IDEA_PRINCIPAL_JERARQUIA',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'LENGUAJE.INTERPRETAR.RELACIONES_ENTRE_IDEAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'LENGUAJE.INTERPRETAR.INFERENCIAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'LENGUAJE.INTERPRETAR.SINTESIS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'LENGUAJE.INTERPRETAR.SIGNIFICADO_CONTEXTO',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'LENGUAJE.INTERPRETAR.FUNCION_RECURSOS_TEXTO',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+        ],
+      },
+    ],
+  },
   {
     subjectKey: 'fixture',
     name: '[FIXTURE] Materia de prueba (no es catálogo real)',
