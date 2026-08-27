@@ -391,6 +391,61 @@ export const CONTENT_MANIFEST: ContentManifest = [
       },
     ],
   },
+  /**
+   * CONTENT-H1A -- Golden Unit real Historia / U1 "Historia: Mundo, América
+   * y Chile", BLOQUE 1 (3 primeros recursos oficiales de la unidad: R1/R2/
+   * R3, de un total posterior mayor). Mismo patrón exacto que
+   * `lenguaje`/`matematica`: cada recurso tiene módulo `.ts` completo en
+   * `content/estudio/historia-mundo-america-chile/`, contenido editorial ya
+   * cerrado/APPROVED en este incremento -- solo implementación técnica,
+   * cero cambios de contenido.
+   *
+   * `subjectKey: 'historia'`, `name`, `shortName` y `displayOrder: 4` NO son
+   * inventados: coinciden EXACTAMENTE con el Subject `historia` que ya
+   * existe en el seed real de `axioma_dev` (auditado directamente en DB
+   * antes de escribir este manifest, lección aprendida de CONTENT-L2A.1
+   * donde un `displayOrder` inventado para `lenguaje` produjo un 409 real en
+   * import). El seed también contiene contenido legacy bajo el mismo
+   * Subject (`H1.CHILE.SIGLO20.ISI`, convención de código `H1.*` distinta),
+   * que este incremento NO toca -- mismo patrón de coexistencia ya usado
+   * con `M1.NUMEROS.PORCENTAJES` y `L1.LECTURA.INFERENCIA`.
+   *
+   * Unidad declarada INCOMPLETA A PROPÓSITO (mismo criterio que
+   * `LENGUAJE.EVALUAR` en CONTENT-L3A): `manifestUnitSchema.resources` solo
+   * exige `.min(1)`. R4+ y las unidades U2 (Formación ciudadana) / U3
+   * (Sistema económico) se agregarán en incrementos futuros.
+   */
+  {
+    subjectKey: 'historia',
+    name: 'Historia',
+    shortName: 'Hist',
+    displayOrder: 4,
+    kind: 'catalog',
+    units: [
+      {
+        unitCode: 'HISTORIA.MUNDO_AMERICA_CHILE',
+        name: 'Historia: Mundo, América y Chile',
+        order: 1,
+        resources: [
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.IDEAS_REPUBLICANAS_LIBERALES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.ESTADO_NACION',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.FORMACION_REPUBLICA_CHILE',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+        ],
+      },
+    ],
+  },
   {
     subjectKey: 'fixture',
     name: '[FIXTURE] Materia de prueba (no es catálogo real)',
