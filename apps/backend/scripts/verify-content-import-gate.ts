@@ -21,7 +21,9 @@
 //   E. selector        -- sin --resource/--unit/--all -> falla, sin escrituras.
 //   F. dry-run         -- --dry-run nunca escribe.
 //   G. validation guard -- --resource <validation-key> SIN --allow-validation -> falla, sin escrituras.
-//   H. --all           -- nunca incluye kind:'validation', incluso si --allow-validation estuviera presente.
+//   H. --all           -- selecciona EXACTAMENTE los módulos kind:'catalog' reales actuales
+//                         (derivado dinámicamente del loader -- CONTENT-4.4A, ya no hardcodea "0"),
+//                         y nunca incluye kind:'validation' ni kind:'fixture', incluso con --allow-validation.
 //   I. coverage        -- 'validation' NUNCA cuenta en los totales oficiales V1 del manifest.
 //   J. isCorrect-only  -- cambio EXCLUSIVO de qué alternativa es correcta -> NEW VERSION (CONTENT-4.2B, punto 6).
 import 'dotenv/config';
@@ -30,6 +32,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
 import { CONTENT_MANIFEST, catalogSubjects } from '../content/manifest';
+import { loadResourceModules } from '../content/load';
 
 const base = process.argv[2] ?? 'http://127.0.0.1:3000';
 const backendDir = join(__dirname, '..');
@@ -165,18 +168,86 @@ async function main() {
   check('validation sin flag: CERO CurriculumTopic nuevos (delta 0)', topicsAfterG.rows[0].n === topicsBeforeG.rows[0].n);
 
   // ==========================================================================
-  // Caso H -- CONTENT-4.2B, punto 8: --all NUNCA incluye kind:'validation',
-  // incluso con --allow-validation presente (preferencia congelada). El
-  // manifest hoy no declara ningún Subject kind:'catalog' real (solo
-  // 'fixture' y 'validation'), así que --all debe seleccionar CERO módulos.
+  // Caso H -- CONTENT-4.2B punto 8 + CONTENT-4.4A (mantenimiento).
+  //
+  // ORIGEN DEL AJUSTE: este caso se escribió cuando el manifest NO declaraba
+  // ningún Subject kind:'catalog' real -- en ese momento, "--all selecciona
+  // CERO módulos" era la única forma observable de comprobar la exclusión de
+  // validation/fixture. Desde CONTENT-4.3, `M1.NUMEROS` (3 recursos
+  // kind:'catalog') es contenido real: --all ahora SÍ selecciona esos 3
+  // módulos -- ese es el comportamiento CORRECTO del importer (§CONTENT-4.2B
+  // punto 8: "--all = únicamente catalog"), no una regresión. La aserción
+  // "0 módulos" quedó obsoleta por el propio éxito de CONTENT-4.3/4.4, no
+  // por ningún cambio en este incremento.
+  //
+  // DISEÑO NUEVO (no hardcodea el conteo): se cargan los módulos reales con
+  // el MISMO loader que usa `import-content.ts` (`content/load.ts`,
+  // extracción de CONTENT-4.2) y se deriva el conjunto de `resourceKey`
+  // esperado filtrando `kind === 'catalog'` -- exactamente el mismo criterio
+  // que `selectEntries('--all', ...)` aplica dentro del importer. La
+  // comparación es un IGUAL DE CONJUNTOS contra lo que `--all --dry-run`
+  // reportó seleccionar, así que el gate sigue siendo válido sin tocarlo
+  // cuando se agreguen M1 Álgebra y Funciones, Geometría, Probabilidad y
+  // Estadística u otras materias -- el número esperado crece solo con el
+  // contenido real, nunca con una constante en este archivo.
+  //
+  // `--dry-run`: Caso H verifica SELECCIÓN, no escritura (eso ya lo cubren
+  // los Casos A-D/F) -- correr en dry-run evita sembrar el catálogo M1.NUMEROS
+  // real dentro de `axioma_gates_dev` en cada ejecución del gate, sin perder
+  // fuerza de verificación (el header `=== CONTENT IMPORT: <resourceKey> ===`
+  // se imprime igual en dry-run, por cada módulo seleccionado).
   // ==========================================================================
-  console.log("\n--- Caso H: --all NUNCA importa validation (ni con --allow-validation) ---");
+  console.log("\n--- Caso H: --all selecciona EXACTAMENTE el catálogo real (catalog) y excluye validation/fixture ---");
+
+  const { loaded: estudioForH } = await loadResourceModules(join(backendDir, 'content', 'estudio'));
+  const { loaded: ensayoForH } = await loadResourceModules(join(backendDir, 'content', 'ensayo'));
+  const allLoadedForH = [...estudioForH, ...ensayoForH];
+  const expectedCatalogKeys = allLoadedForH
+    .filter((e) => e.module.kind === 'catalog')
+    .map((e) => e.module.resourceKey)
+    .sort();
+  const validationKeysForH = allLoadedForH.filter((e) => e.module.kind === 'validation').map((e) => e.module.resourceKey);
+  const fixtureKeysForH = allLoadedForH.filter((e) => e.module.kind === 'fixture').map((e) => e.module.resourceKey);
+  check(
+    'Caso H, precondición: el content fuente declara al menos un módulo catalog real (M1.NUMEROS) -- si esto falla, el caso no es significativo',
+    expectedCatalogKeys.length > 0,
+    'expectedCatalogKeys vacío',
+  );
+
   const subjectBeforeH = await pg.query('SELECT count(*)::int AS n FROM subject WHERE subject_key = $1', [SUBJECT_KEY]);
-  const allRun = runImporter(['--all', '--allow-validation'], actor.token, publisher.token);
-  check('--all: status 0 (cero módulos seleccionados no es un error)', allRun.status === 0, allRun.stderr || allRun.stdout.slice(-500));
-  check('--all: reporta 0 módulos seleccionados (manifest sin ningún catalog real todavía)', /Módulos seleccionados: 0/.test(allRun.stdout));
+  const topicsBeforeH = await pg.query("SELECT count(*)::int AS n FROM curriculum_topic WHERE code LIKE 'M1.NUMEROS%'");
+  const allRun = runImporter(['--all', '--allow-validation', '--dry-run'], actor.token);
+  check('--all --dry-run: status 0', allRun.status === 0, allRun.stderr || allRun.stdout.slice(-500));
+  check('--all --dry-run: NUNCA imprime un token', !allRun.stdout.includes(actor.token) && !allRun.stderr.includes(actor.token));
+
+  const selectedKeys = [...allRun.stdout.matchAll(/=== CONTENT IMPORT: (\S+) /g)].map((m) => m[1]).sort();
+  check(
+    `--all: selecciona EXACTAMENTE los ${expectedCatalogKeys.length} módulo(s) catalog reales actuales, ni más ni menos`,
+    JSON.stringify(selectedKeys) === JSON.stringify(expectedCatalogKeys),
+    `esperado=[${expectedCatalogKeys.join(', ')}] obtenido=[${selectedKeys.join(', ')}]`,
+  );
+  check(
+    '--all: incluye los 3 recursos catalog de M1.NUMEROS (regresión específica, CONTENT-4.4A punto 8.1)',
+    ['M1.NUMEROS.ENTEROS_RACIONALES.LECCION', 'M1.NUMEROS.PORCENTAJE.LECCION', 'M1.NUMEROS.POTENCIAS_RAICES.LECCION'].every((k) =>
+      selectedKeys.includes(k),
+    ),
+  );
+  check(
+    '--all: NINGÚN módulo kind:"validation" (ej. ZZTEST.*) aparece seleccionado (CONTENT-4.4A punto 8.2)',
+    validationKeysForH.every((k) => !selectedKeys.includes(k)),
+  );
+  check(
+    '--all: NINGÚN módulo kind:"fixture" aparece seleccionado (CONTENT-4.4A punto 8.3)',
+    fixtureKeysForH.every((k) => !selectedKeys.includes(k)),
+  );
+
   const subjectAfterH = await pg.query('SELECT count(*)::int AS n FROM subject WHERE subject_key = $1', [SUBJECT_KEY]);
-  check('--all: CERO Subject "zztest" nuevos (delta 0 -- validation no se coló)', subjectAfterH.rows[0].n === subjectBeforeH.rows[0].n);
+  check('--all --dry-run: CERO Subject "zztest" nuevos (delta 0 -- validation no se coló, ni siquiera vía escritura)', subjectAfterH.rows[0].n === subjectBeforeH.rows[0].n);
+  const topicsAfterH = await pg.query("SELECT count(*)::int AS n FROM curriculum_topic WHERE code LIKE 'M1.NUMEROS%'");
+  check(
+    '--all --dry-run: CERO CurriculumTopic M1.NUMEROS nuevos (dry-run real, no siembra el catálogo real en axioma_gates_dev)',
+    topicsAfterH.rows[0].n === topicsBeforeH.rows[0].n,
+  );
 
   // ==========================================================================
   // Caso I -- CONTENT-4.2B, punto 9: 'validation' NUNCA cuenta en los
