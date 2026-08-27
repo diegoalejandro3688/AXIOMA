@@ -224,6 +224,40 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
         ],
       },
+      /**
+       * CONTENT-4.8 -- Golden Unit real M1 / Eje Probabilidad y estadística
+       * (PAES M1). Mismo patrón exacto que `M1.NUMEROS` (CONTENT-4.3),
+       * `M1.ALGEBRA_FUNCIONES` (CONTENT-4.5) y `M1.GEOMETRIA` (CONTENT-4.7):
+       * 3 recursos reales con módulo `.ts` completo en
+       * `content/estudio/m1-probabilidad-estadistica/`, contenido editorial
+       * ya cerrado/APPROVED en este incremento -- solo implementación
+       * técnica (contentBlocks/LaTeX/keys), cero cambios de contenido. Con
+       * esta unidad, M1 queda COMPLETA en source (16 recursos / 160
+       * preguntas) -- no se agrega ninguna otra materia ni unidad M2 en
+       * este incremento.
+       */
+      {
+        unitCode: 'M1.PROBABILIDAD_ESTADISTICA',
+        name: 'Probabilidad y estadística',
+        order: 4,
+        resources: [
+          {
+            topicCode: 'M1.PROBABILIDAD_ESTADISTICA.REPRESENTACION_DATOS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'M1.PROBABILIDAD_ESTADISTICA.MEDIDAS_POSICION',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'M1.PROBABILIDAD_ESTADISTICA.REGLAS_PROBABILIDADES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+        ],
+      },
     ],
   },
   {
