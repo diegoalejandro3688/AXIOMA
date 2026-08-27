@@ -187,6 +187,43 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
         ],
       },
+      /**
+       * CONTENT-4.7 -- Golden Unit real M1 / Eje Geometría (PAES M1). Mismo
+       * patrón exacto que `M1.NUMEROS` (CONTENT-4.3) y
+       * `M1.ALGEBRA_FUNCIONES` (CONTENT-4.5): 4 recursos reales con módulo
+       * `.ts` completo en `content/estudio/m1-geometria/`, contenido
+       * editorial ya cerrado/APPROVED en este incremento -- solo
+       * implementación técnica (contentBlocks/LaTeX/keys), cero cambios de
+       * contenido. NO se agrega aquí `M1.PROBABILIDAD_ESTADISTICA` (M1 U4,
+       * reservado para CONTENT-4.8).
+       */
+      {
+        unitCode: 'M1.GEOMETRIA',
+        name: 'Geometría',
+        order: 3,
+        resources: [
+          {
+            topicCode: 'M1.GEOMETRIA.FIGURAS_GEOMETRICAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'M1.GEOMETRIA.CUERPOS_GEOMETRICOS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'M1.GEOMETRIA.TRANSFORMACIONES_ISOMETRICAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'M1.GEOMETRIA.SEMEJANZA_PROPORCIONALIDAD_FIGURAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+        ],
+      },
     ],
   },
   {
