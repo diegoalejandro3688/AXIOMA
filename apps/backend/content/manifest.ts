@@ -338,6 +338,49 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
         ],
       },
+      /**
+       * CONTENT-L3A -- Golden Unit real Lenguaje / U3 Evaluar, PARTE A (3 de
+       * los 5 recursos oficiales de la unidad: E1/E2/E3). Mismo patrón
+       * exacto que `LENGUAJE.LOCALIZAR`/`LENGUAJE.INTERPRETAR`: cada recurso
+       * tiene módulo `.ts` completo en `content/estudio/lenguaje-evaluar/`,
+       * contenido editorial ya cerrado/APPROVED en este incremento -- solo
+       * implementación técnica, cero cambios de contenido.
+       *
+       * Unidad declarada INCOMPLETA A PROPÓSITO: `manifestUnitSchema.
+       * resources` solo exige `.min(1)`, sin invariante de "unidad completa"
+       * -- una unidad con 3 de sus 5 recursos finales es una forma
+       * perfectamente válida, igual que `M1.NUMEROS` convivió con
+       * `M1.ALGEBRA_FUNCIONES` antes de existir en incrementos separados.
+       * E4 (Contraargumentación y refutación) y E5 (Coherencia y consistencia
+       * argumentativa) se agregarán en CONTENT-L3B -- NO se declaran aquí
+       * como placeholders ni con expectedQuestions ficticio: el gate exige
+       * que cada resource declarado tenga su módulo fuente real presente
+       * (ver `resourcesPresent`/`foundQuestionsByTopic`), así que inventar
+       * una entrada sin módulo real rompería la comparación fuente↔manifest
+       * en lugar de dejarla simplemente incompleta.
+       */
+      {
+        unitCode: 'LENGUAJE.EVALUAR',
+        name: 'Evaluar',
+        order: 3,
+        resources: [
+          {
+            topicCode: 'LENGUAJE.EVALUAR.PROPOSITO_INTENCION_ACTITUD',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'LENGUAJE.EVALUAR.PERSPECTIVA_PUNTO_VISTA',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'LENGUAJE.EVALUAR.ARGUMENTOS_EVIDENCIAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+        ],
+      },
     ],
   },
   {
