@@ -135,6 +135,58 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
         ],
       },
+      /**
+       * CONTENT-4.5 -- Golden Unit real M1 / Eje Álgebra y funciones (PAES
+       * M1). Mismo patrón exacto que `M1.NUMEROS` (CONTENT-4.3): 6 recursos
+       * reales con módulo `.ts` completo en `content/estudio/`, sin Resource
+       * Specs adicionales (el contenido editorial ya llegó cerrado en este
+       * incremento).
+       *
+       * `PROPORCIONALIDAD` reutiliza editorialmente 4 de las 12 preguntas
+       * legacy de `M1.NUMEROS.PORCENTAJES` (antiguas Q9/Q10/Q11/Q12, ya
+       * identificadas en auditoría de CONTENT-4.3/4.4 como Proporcionalidad,
+       * no Porcentaje) -- pero como identities NUEVAS bajo
+       * `M1.ALGEBRA_FUNCIONES.PROPORCIONALIDAD.Q3/Q4/Q7/Q8`. Las filas
+       * legacy PUBLISHED no se tocan (no se reparentan, editan, deprecan ni
+       * migran) -- CONTENT-4.5 no importa nada, ver reporte de entrega.
+       */
+      {
+        unitCode: 'M1.ALGEBRA_FUNCIONES',
+        name: 'Álgebra y funciones',
+        order: 2,
+        resources: [
+          {
+            topicCode: 'M1.ALGEBRA_FUNCIONES.EXPRESIONES_ALGEBRAICAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'M1.ALGEBRA_FUNCIONES.PROPORCIONALIDAD',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'M1.ALGEBRA_FUNCIONES.ECUACIONES_INECUACIONES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'M1.ALGEBRA_FUNCIONES.SISTEMAS_2X2',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'M1.ALGEBRA_FUNCIONES.FUNCION_LINEAL_AFIN',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'M1.ALGEBRA_FUNCIONES.FUNCION_CUADRATICA',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+        ],
+      },
     ],
   },
   {
