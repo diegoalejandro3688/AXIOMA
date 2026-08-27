@@ -410,10 +410,14 @@ export const CONTENT_MANIFEST: ContentManifest = [
    * que este incremento NO toca -- mismo patrón de coexistencia ya usado
    * con `M1.NUMEROS.PORCENTAJES` y `L1.LECTURA.INFERENCIA`.
    *
-   * Unidad declarada INCOMPLETA A PROPÓSITO (mismo criterio que
-   * `LENGUAJE.EVALUAR` en CONTENT-L3A): `manifestUnitSchema.resources` solo
-   * exige `.min(1)`. R4+ y las unidades U2 (Formación ciudadana) / U3
-   * (Sistema económico) se agregarán en incrementos futuros.
+   * CONTENT-H3A agrega R7-R9 (Bloque 3: Nuevo orden mundial de posguerra y
+   * descolonización, Guerra Fría, Movilización política y social en América
+   * Latina), completando `HISTORIA.MUNDO_AMERICA_CHILE` con 9 recursos.
+   * Unidad aún declarada INCOMPLETA A PROPÓSITO respecto del catálogo total
+   * de la asignatura (mismo criterio que `LENGUAJE.EVALUAR` en
+   * CONTENT-L3A): `manifestUnitSchema.resources` solo exige `.min(1)`. Las
+   * unidades U2 (Formación ciudadana) / U3 (Sistema económico) se agregarán
+   * en incrementos futuros.
    */
   {
     subjectKey: 'historia',
@@ -454,6 +458,21 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
           {
             topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.CRISIS_ESTADO_LIBERAL',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.POSGUERRA_DESCOLONIZACION',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.GUERRA_FRIA',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.MOVILIZACION_AMERICA_LATINA',
             expectedQuestions: 10,
             expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
           },
