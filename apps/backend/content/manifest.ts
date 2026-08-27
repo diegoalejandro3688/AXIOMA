@@ -442,6 +442,21 @@ export const CONTENT_MANIFEST: ContentManifest = [
             expectedQuestions: 10,
             expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
           },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.ECONOMIA_MERCADOS_INTERNACIONALES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.TRANSFORMACIONES_SOCIEDAD_CHILENA',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.CRISIS_ESTADO_LIBERAL',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
         ],
       },
     ],
