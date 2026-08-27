@@ -339,25 +339,23 @@ export const CONTENT_MANIFEST: ContentManifest = [
         ],
       },
       /**
-       * CONTENT-L3A -- Golden Unit real Lenguaje / U3 Evaluar, PARTE A (3 de
-       * los 5 recursos oficiales de la unidad: E1/E2/E3). Mismo patrón
-       * exacto que `LENGUAJE.LOCALIZAR`/`LENGUAJE.INTERPRETAR`: cada recurso
-       * tiene módulo `.ts` completo en `content/estudio/lenguaje-evaluar/`,
-       * contenido editorial ya cerrado/APPROVED en este incremento -- solo
+       * CONTENT-L3A + CONTENT-L3B -- Golden Unit real Lenguaje / U3 Evaluar,
+       * COMPLETA (5 de 5 recursos oficiales: E1/E2/E3 de CONTENT-L3A, E4/E5
+       * de CONTENT-L3B). Mismo patrón exacto que
+       * `LENGUAJE.LOCALIZAR`/`LENGUAJE.INTERPRETAR`: cada recurso tiene
+       * módulo `.ts` completo en `content/estudio/lenguaje-evaluar/`,
+       * contenido editorial ya cerrado/APPROVED en cada incremento -- solo
        * implementación técnica, cero cambios de contenido.
        *
-       * Unidad declarada INCOMPLETA A PROPÓSITO: `manifestUnitSchema.
-       * resources` solo exige `.min(1)`, sin invariante de "unidad completa"
-       * -- una unidad con 3 de sus 5 recursos finales es una forma
-       * perfectamente válida, igual que `M1.NUMEROS` convivió con
-       * `M1.ALGEBRA_FUNCIONES` antes de existir en incrementos separados.
-       * E4 (Contraargumentación y refutación) y E5 (Coherencia y consistencia
-       * argumentativa) se agregarán en CONTENT-L3B -- NO se declaran aquí
-       * como placeholders ni con expectedQuestions ficticio: el gate exige
-       * que cada resource declarado tenga su módulo fuente real presente
-       * (ver `resourcesPresent`/`foundQuestionsByTopic`), así que inventar
-       * una entrada sin módulo real rompería la comparación fuente↔manifest
-       * en lugar de dejarla simplemente incompleta.
+       * NOTA DE CORRECCIÓN (CONTENT-L3B, punto 0) -- el comentario original
+       * de CONTENT-L3A nombraba incorrectamente E4/E5 como
+       * "Contraargumentación y refutación" / "Coherencia y consistencia
+       * argumentativa". Esos nombres fueron una alucinación de un reporte
+       * anterior y NUNCA fueron los recursos editoriales reales. Los
+       * nombres correctos, APPROVED y ya implementados, son:
+       * `CALIDAD_CONFIABILIDAD_INFORMACION` ("Calidad y confiabilidad de la
+       * información") y `RECURSOS_PERSUASIVOS_EFECTOS` ("Recursos
+       * persuasivos y efectos en el lector").
        */
       {
         unitCode: 'LENGUAJE.EVALUAR',
@@ -376,6 +374,16 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
           {
             topicCode: 'LENGUAJE.EVALUAR.ARGUMENTOS_EVIDENCIAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'LENGUAJE.EVALUAR.CALIDAD_CONFIABILIDAD_INFORMACION',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'LENGUAJE.EVALUAR.RECURSOS_PERSUASIVOS_EFECTOS',
             expectedQuestions: 10,
             expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
           },
