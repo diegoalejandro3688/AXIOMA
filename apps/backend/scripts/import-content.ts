@@ -30,6 +30,30 @@
  * rol AUTHOR/PUBLISHER), que SÍ incluye `isCorrect`. Ya no se abre ninguna
  * sesión de estudiante `stub`; el importer solo depende de los dos tokens
  * administrativos que ya usa para escribir.
+ *
+ * CONTENT-4.6A -- RECUPERACIÓN SEGURA DE IMPORTS INTERRUMPIDOS. Un 429 (rate
+ * limit) o una caída de red a mitad de workflow puede dejar una identidad
+ * recién creada con su última versión en DRAFT/IN_REVIEW/APPROVED (nunca
+ * llegó a T7). Antes de este incremento, esa identidad era invisible para el
+ * importer (solo se leía `publishedVersion`) y un rerun chocaba con 409
+ * CONFLICT al intentar un CREATE fresco, sin poder recuperarse (hallazgo real
+ * de CONTENT-4.6). Ahora la lectura administrativa expone también
+ * `latestVersion` (la versión más reciente, sea cual sea su estado), y
+ * `upsertLearningResource`/`upsertQuestion` la usan así:
+ *   - ABSENTE                                -> CREATE (sin cambios).
+ *   - PUBLISHED, contenido igual             -> NO-OP (sin cambios).
+ *   - PUBLISHED, contenido distinto          -> NEW VERSION (sin cambios).
+ *   - DRAFT/IN_REVIEW/APPROVED, SOLO SI el contenido coincide con el source
+ *     -> RESUMED: reanuda el workflow desde su estado actual (nunca repite
+ *     una transición ya aplicada) hasta PUBLISHED. NUNCA crea una identidad
+ *     ni una versión nueva sobre esta rama.
+ *   - DRAFT/IN_REVIEW/APPROVED, contenido DISTINTO del source -> conflicto
+ *     explícito (excepción, cuenta como FAILURE): nunca sobrescribe ni
+ *     publica contenido distinto sobre una versión huérfana sin decisión
+ *     editorial manual.
+ *   - DEPRECATED/ARCHIVED como versión más reciente (sin PUBLISHED vigente)
+ *     -> conflicto explícito: no es un estado seguro para reanudar (ninguna
+ *     transición de §8.2 sale de ahí hacia PUBLISHED).
  */
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
@@ -241,24 +265,36 @@ function canonicalizeQuestionForComparison(
 // Resultado por acción -- para el resumen final.
 // ============================================================================
 
-type Action = 'CREATE' | 'NO-OP' | 'NEW_VERSION' | 'SKIP_FIXTURE' | 'FAILURE';
+/**
+ * `RESUMED` (CONTENT-4.6A) -- la identidad YA existía con una versión no
+ * publicada (DRAFT/IN_REVIEW/APPROVED, típicamente por una interrupción de
+ * red o un 429 a mitad de workflow en una corrida anterior) y su contenido
+ * coincide con el source: el importer NO creó una versión nueva, reanudó el
+ * workflow de la EXISTENTE hasta PUBLISHED. Distinto de `CREATE` (que sí
+ * ejecuta el POST inicial) y de `NEW_VERSION` (que crea una fila de versión
+ * nueva sobre una identidad ya PUBLISHED) -- `RESUMED` no hace ninguna de las
+ * dos cosas, solo continúa una transición que ya estaba a mitad de camino.
+ */
+type Action = 'CREATE' | 'NO-OP' | 'NEW_VERSION' | 'RESUMED' | 'SKIP_FIXTURE' | 'FAILURE';
 
 interface Summary {
   created: number;
   unchanged: number;
   newVersions: number;
+  resumed: number;
   skipped: number;
   failures: number;
 }
 
 function emptySummary(): Summary {
-  return { created: 0, unchanged: 0, newVersions: 0, skipped: 0, failures: 0 };
+  return { created: 0, unchanged: 0, newVersions: 0, resumed: 0, skipped: 0, failures: 0 };
 }
 
 function record(summary: Summary, action: Action) {
   if (action === 'CREATE') summary.created++;
   else if (action === 'NO-OP') summary.unchanged++;
   else if (action === 'NEW_VERSION') summary.newVersions++;
+  else if (action === 'RESUMED') summary.resumed++;
   else if (action === 'SKIP_FIXTURE') summary.skipped++;
   else summary.failures++;
 }
@@ -275,6 +311,19 @@ function record(summary: Summary, action: Action) {
  * (invariante 24) rechaza con 403 si el mismo actor que creó/editó la
  * versión intenta aprobarla, incluso con ambos roles. Ver HELP.
  */
+/**
+ * Secuencia completa de la máquina de estados hasta PUBLISHED (§8.2: DRAFT ->
+ * IN_REVIEW -> APPROVED -> PUBLISHED). `fromStatus` (CONTENT-4.6A) permite
+ * REANUDAR desde cualquier punto intermedio -- una versión recién creada
+ * reanuda desde 'DRAFT' (recorre las 3 transiciones, comportamiento idéntico
+ * al de antes de CONTENT-4.6A); una versión huérfana que quedó en IN_REVIEW o
+ * APPROVED tras una interrupción (429, caída de red) reanuda SOLO los pasos
+ * que le faltan -- nunca repite una transición ya aplicada, nunca salta
+ * ninguna, nunca hace "force publish".
+ */
+const WORKFLOW_SEQUENCE = ['DRAFT', 'IN_REVIEW', 'APPROVED', 'PUBLISHED'] as const;
+type ResumableStatus = 'DRAFT' | 'IN_REVIEW' | 'APPROVED';
+
 async function runTransitionsToPublished(
   apiUrl: string,
   authorToken: string,
@@ -282,10 +331,13 @@ async function runTransitionsToPublished(
   objectSegment: 'question-versions' | 'learning-resource-versions',
   versionId: string,
   dryRun: boolean,
+  fromStatus: ResumableStatus = 'DRAFT',
 ): Promise<void> {
   if (dryRun) return; // el llamador nunca invoca esto en dry-run; defensa en profundidad.
   const tokenFor = { IN_REVIEW: authorToken, APPROVED: publisherToken, PUBLISHED: publisherToken } as const;
-  for (const targetStatus of ['IN_REVIEW', 'APPROVED', 'PUBLISHED'] as const) {
+  const startAt = WORKFLOW_SEQUENCE.indexOf(fromStatus) + 1;
+  const remaining = WORKFLOW_SEQUENCE.slice(startAt) as ReadonlyArray<'IN_REVIEW' | 'APPROVED' | 'PUBLISHED'>;
+  for (const targetStatus of remaining) {
     await sleep(WRITE_REQUEST_PACING_MS);
     // T7 (APPROVED -> PUBLISHED) exige clave de idempotencia (§8.2, invariante
     // 11): la propone el cliente, el UNIQUE de Postgres es la autoridad. Un
@@ -332,28 +384,48 @@ async function resolveTopic(
 // LearningResource -- CREATE / NO-OP / NEW VERSION.
 // ============================================================================
 
-interface PublishedResourceView {
+/** Estados desde los que `runTransitionsToPublished` puede reanudar con seguridad. */
+const RESUMABLE_STATUSES: ReadonlySet<string> = new Set<ResumableStatus>(['DRAFT', 'IN_REVIEW', 'APPROVED']);
+
+interface LatestResourceVersionView {
   id: string; // identidad (learning_resource.id)
   versionId: string;
+  status: string; // EditorialTargetStatus completo -- DRAFT/IN_REVIEW/APPROVED/PUBLISHED/DEPRECATED/ARCHIVED
   title: string;
   contentBlocks: unknown;
 }
 
 /**
- * Lectura ADMINISTRATIVA completa por `resourceKey` (CONTENT-4.2B) --
- * `GET /administration/editorial/learning-resources/by-key/:resourceKey`,
- * bajo `x-admin-token` (AUTHOR o PUBLISHER, cualquiera de los dos sirve para
- * leer). Ya NO usa el lector de estudiante: esa ruta nunca se tocó
- * (invariante 19) y sigue existiendo para su propio propósito, pero dejó de
- * ser la fuente de comparación de este importer.
+ * Lectura ADMINISTRATIVA completa por `resourceKey` (CONTENT-4.2B, extendida
+ * en CONTENT-4.6A) -- `GET /administration/editorial/learning-resources/
+ * by-key/:resourceKey`, bajo `x-admin-token` (AUTHOR o PUBLISHER, cualquiera
+ * de los dos sirve para leer). Ya NO usa el lector de estudiante: esa ruta
+ * nunca se tocó (invariante 19) y sigue existiendo para su propio propósito,
+ * pero dejó de ser la fuente de comparación de este importer.
+ *
+ * Devuelve la versión MÁS RECIENTE (`latestVersion`), sea cual sea su
+ * estado -- CONTENT-4.6A, cierre del hallazgo de CONTENT-4.6: antes solo se
+ * leía `publishedVersion`, así que una identidad interrumpida a mitad de
+ * workflow (DRAFT/IN_REVIEW/APPROVED, nunca llegó a PUBLISHED) era
+ * indistinguible de "no existe" -- el importer reintentaba un CREATE fresco y
+ * chocaba con 409 CONFLICT sin poder recuperarse.
  */
-async function readPublishedResource(apiUrl: string, token: string, resourceKey: string): Promise<PublishedResourceView | null> {
+async function readLatestResource(apiUrl: string, token: string, resourceKey: string): Promise<LatestResourceVersionView | null> {
   const res = await adminRequest(apiUrl, token, 'GET', `/administration/editorial/learning-resources/by-key/${encodeURIComponent(resourceKey)}`);
   if (res.status === 404) return null;
   if (res.status !== 200) throw new Error(`lectura administrativa de recurso "${resourceKey}" falló (status ${res.status}): ${JSON.stringify(res.body)}`);
-  const body = res.body as { resourceId: string; publishedVersion: { versionId: string; title: string; contentBlocks: unknown } | null };
-  if (!body.publishedVersion) return null; // identidad existe pero sin versión PUBLISHED todavía -- tratado como "sin publicado" para efectos de comparación.
-  return { id: body.resourceId, versionId: body.publishedVersion.versionId, title: body.publishedVersion.title, contentBlocks: body.publishedVersion.contentBlocks };
+  const body = res.body as {
+    resourceId: string;
+    latestVersion: { versionId: string; editorialStatus: string; title: string; contentBlocks: unknown } | null;
+  };
+  if (!body.latestVersion) return null; // identidad sin ninguna versión -- no debería ocurrir (T1 siempre crea versión), tratado como ausente por seguridad.
+  return {
+    id: body.resourceId,
+    versionId: body.latestVersion.versionId,
+    status: body.latestVersion.editorialStatus,
+    title: body.latestVersion.title,
+    contentBlocks: body.latestVersion.contentBlocks,
+  };
 }
 
 async function upsertLearningResource(
@@ -363,8 +435,9 @@ async function upsertLearningResource(
   input: { resourceKey: string; resourceType: string; primarySubjectId: string; curriculumTopicId: string; title: string; contentBlocks: SourceContentBlock[] },
   dryRun: boolean,
 ): Promise<{ action: Action; identityId: string | null; publishedVersionId: string | null }> {
-  const existing = await readPublishedResource(apiUrl, token, input.resourceKey);
+  const existing = await readLatestResource(apiUrl, token, input.resourceKey);
 
+  // ABSENT -> CREATE (comportamiento sin cambios respecto de CONTENT-4.2).
   if (!existing) {
     if (dryRun) return { action: 'CREATE', identityId: null, publishedVersionId: null };
     await sleep(WRITE_REQUEST_PACING_MS);
@@ -384,30 +457,56 @@ async function upsertLearningResource(
 
   const sourceCanon = canonicalizeResourceForComparison(input.title, input.contentBlocks);
   const existingCanon = canonicalizeResourceForComparison(existing.title, existing.contentBlocks);
-  if (sourceCanon === existingCanon) {
-    return { action: 'NO-OP', identityId: existing.id, publishedVersionId: existing.versionId };
+
+  // PUBLISHED -> comportamiento sin cambios: NO-OP si coincide, NEW VERSION si no.
+  if (existing.status === 'PUBLISHED') {
+    if (sourceCanon === existingCanon) return { action: 'NO-OP', identityId: existing.id, publishedVersionId: existing.versionId };
+
+    if (dryRun) return { action: 'NEW_VERSION', identityId: existing.id, publishedVersionId: existing.versionId };
+    await sleep(WRITE_REQUEST_PACING_MS);
+    const res = await adminRequest(apiUrl, token, 'POST', `/administration/editorial/learning-resources/${existing.id}/versions`, {
+      curriculumTopicId: input.curriculumTopicId,
+      title: input.title,
+      contentBlocks: input.contentBlocks,
+    });
+    if (res.status < 200 || res.status >= 300) throw new Error(`nueva versión de LearningResource "${input.resourceKey}" falló (status ${res.status}): ${JSON.stringify(res.body)}`);
+    const body = res.body as { identityId: string; versionId: string };
+    await runTransitionsToPublished(apiUrl, token, publisherToken, 'learning-resource-versions', body.versionId, dryRun);
+    return { action: 'NEW_VERSION', identityId: body.identityId, publishedVersionId: body.versionId };
   }
 
-  if (dryRun) return { action: 'NEW_VERSION', identityId: existing.id, publishedVersionId: existing.versionId };
-  await sleep(WRITE_REQUEST_PACING_MS);
-  const res = await adminRequest(apiUrl, token, 'POST', `/administration/editorial/learning-resources/${existing.id}/versions`, {
-    curriculumTopicId: input.curriculumTopicId,
-    title: input.title,
-    contentBlocks: input.contentBlocks,
-  });
-  if (res.status < 200 || res.status >= 300) throw new Error(`nueva versión de LearningResource "${input.resourceKey}" falló (status ${res.status}): ${JSON.stringify(res.body)}`);
-  const body = res.body as { identityId: string; versionId: string };
-  await runTransitionsToPublished(apiUrl, token, publisherToken, 'learning-resource-versions', body.versionId, dryRun);
-  return { action: 'NEW_VERSION', identityId: body.identityId, publishedVersionId: body.versionId };
+  // EXISTING IDENTITY, latest DRAFT/IN_REVIEW/APPROVED (CONTENT-4.6A) --
+  // recuperación segura: SOLO si el contenido coincide con el source. Nunca
+  // sobrescribe, nunca publica algo distinto de lo que el source pide.
+  if (RESUMABLE_STATUSES.has(existing.status)) {
+    if (sourceCanon !== existingCanon) {
+      throw new Error(
+        `conflicto: LearningResource "${input.resourceKey}" tiene una versión ${existing.status} (id ${existing.versionId}) cuyo contenido NO coincide con el source actual -- ` +
+          'requiere resolución editorial manual; el importer nunca sobrescribe ni publica contenido distinto sobre una versión huérfana.',
+      );
+    }
+    if (dryRun) return { action: 'RESUMED', identityId: existing.id, publishedVersionId: existing.versionId };
+    await runTransitionsToPublished(apiUrl, token, publisherToken, 'learning-resource-versions', existing.versionId, dryRun, existing.status as ResumableStatus);
+    return { action: 'RESUMED', identityId: existing.id, publishedVersionId: existing.versionId };
+  }
+
+  // DEPRECATED/ARCHIVED como versión MÁS RECIENTE sin PUBLISHED vigente --
+  // estado terminal desde el que NO es seguro reanudar automáticamente
+  // (§8.2: ninguna transición sale de DEPRECATED/ARCHIVED hacia PUBLISHED).
+  throw new Error(
+    `conflicto: LearningResource "${input.resourceKey}" -- su versión más reciente está en estado ${existing.status}, sin ninguna PUBLISHED vigente. ` +
+      'No es seguro reanudar automáticamente: requiere decisión editorial manual.',
+  );
 }
 
 // ============================================================================
 // Questions -- CREATE / NO-OP / NEW VERSION, mismo criterio que LearningResource.
 // ============================================================================
 
-interface PublishedQuestionView {
+interface LatestQuestionVersionView {
   id: string;
   versionId: string;
+  status: string; // EditorialTargetStatus completo -- ver LatestResourceVersionView.
   questionKey: string;
   stemContent: unknown;
   explanationContent: unknown;
@@ -415,30 +514,37 @@ interface PublishedQuestionView {
 }
 
 /**
- * Lectura ADMINISTRATIVA completa por `questionKey` (CONTENT-4.2B) --
- * `GET /administration/editorial/questions/by-key/:questionKey`, con
- * `isCorrect` incluido. Reemplaza el antiguo `readPublishedQuestions` (que
- * leía TODAS las preguntas de un topic vía el lector de estudiante); ahora
- * se resuelve una a una por su clave estable, que es como el resto del
- * importer ya identifica cada pregunta.
+ * Lectura ADMINISTRATIVA completa por `questionKey` (CONTENT-4.2B, extendida
+ * en CONTENT-4.6A) -- `GET /administration/editorial/questions/by-key/
+ * :questionKey`, con `isCorrect` incluido. Reemplaza el antiguo
+ * `readPublishedQuestions` (que leía TODAS las preguntas de un topic vía el
+ * lector de estudiante); se resuelve una a una por su clave estable.
+ *
+ * Devuelve la versión MÁS RECIENTE (`latestVersion`), sea cual sea su
+ * estado -- mismo criterio y misma razón que `readLatestResource` (ver su
+ * docstring): cierra el hallazgo de CONTENT-4.6 (identidad huérfana en
+ * DRAFT/IN_REVIEW/APPROVED indistinguible de "no existe").
  */
-async function readPublishedQuestion(apiUrl: string, token: string, questionKey: string): Promise<PublishedQuestionView | null> {
+async function readLatestQuestion(apiUrl: string, token: string, questionKey: string): Promise<LatestQuestionVersionView | null> {
   const res = await adminRequest(apiUrl, token, 'GET', `/administration/editorial/questions/by-key/${encodeURIComponent(questionKey)}`);
   if (res.status === 404) return null;
   if (res.status !== 200) throw new Error(`lectura administrativa de pregunta "${questionKey}" falló (status ${res.status}): ${JSON.stringify(res.body)}`);
   const body = res.body as {
     questionId: string;
     questionKey: string;
-    publishedVersion: { versionId: string; stemContent: unknown; explanationContent: unknown; answerOptions: { content: unknown; isCorrect: boolean }[] } | null;
+    latestVersion:
+      | { versionId: string; editorialStatus: string; stemContent: unknown; explanationContent: unknown; answerOptions: { content: unknown; isCorrect: boolean }[] }
+      | null;
   };
-  if (!body.publishedVersion) return null;
+  if (!body.latestVersion) return null; // identidad sin ninguna versión -- no debería ocurrir, tratado como ausente por seguridad.
   return {
     id: body.questionId,
-    versionId: body.publishedVersion.versionId,
+    versionId: body.latestVersion.versionId,
+    status: body.latestVersion.editorialStatus,
     questionKey: body.questionKey,
-    stemContent: body.publishedVersion.stemContent,
-    explanationContent: body.publishedVersion.explanationContent,
-    answerOptions: body.publishedVersion.answerOptions,
+    stemContent: body.latestVersion.stemContent,
+    explanationContent: body.latestVersion.explanationContent,
+    answerOptions: body.latestVersion.answerOptions,
   };
 }
 
@@ -446,12 +552,13 @@ async function upsertQuestion(
   apiUrl: string,
   token: string,
   publisherToken: string,
-  existing: PublishedQuestionView | null,
+  existing: LatestQuestionVersionView | null,
   input: { questionKey: string; primarySubjectId: string; curriculumTopicId: string; stemContent: SourceContentBlock[]; explanationContent: unknown; options: SourceQuestion['options'] },
   dryRun: boolean,
 ): Promise<Action> {
   const answerOptions = input.options.map((o) => ({ content: o.content, isCorrect: o.correct }));
 
+  // ABSENT -> CREATE (comportamiento sin cambios respecto de CONTENT-4.2/4.2B).
   if (!existing) {
     if (dryRun) return 'CREATE';
     await sleep(WRITE_REQUEST_PACING_MS);
@@ -471,20 +578,48 @@ async function upsertQuestion(
 
   const sourceCanon = canonicalizeQuestionForComparison(input.stemContent, input.explanationContent, answerOptions);
   const existingCanon = canonicalizeQuestionForComparison(existing.stemContent, existing.explanationContent, existing.answerOptions);
-  if (sourceCanon === existingCanon) return 'NO-OP';
 
-  if (dryRun) return 'NEW_VERSION';
-  await sleep(WRITE_REQUEST_PACING_MS);
-  const res = await adminRequest(apiUrl, token, 'POST', `/administration/editorial/questions/${existing.id}/versions`, {
-    curriculumTopicId: input.curriculumTopicId,
-    stemContent: input.stemContent,
-    explanationContent: input.explanationContent,
-    answerOptions,
-  });
-  if (res.status < 200 || res.status >= 300) throw new Error(`nueva versión de Question "${input.questionKey}" falló (status ${res.status}): ${JSON.stringify(res.body)}`);
-  const body = res.body as { versionId: string };
-  await runTransitionsToPublished(apiUrl, token, publisherToken, 'question-versions', body.versionId, dryRun);
-  return 'NEW_VERSION';
+  // PUBLISHED -> comportamiento sin cambios: NO-OP si coincide (isCorrect
+  // incluido, CONTENT-4.2B), NEW VERSION si no.
+  if (existing.status === 'PUBLISHED') {
+    if (sourceCanon === existingCanon) return 'NO-OP';
+
+    if (dryRun) return 'NEW_VERSION';
+    await sleep(WRITE_REQUEST_PACING_MS);
+    const res = await adminRequest(apiUrl, token, 'POST', `/administration/editorial/questions/${existing.id}/versions`, {
+      curriculumTopicId: input.curriculumTopicId,
+      stemContent: input.stemContent,
+      explanationContent: input.explanationContent,
+      answerOptions,
+    });
+    if (res.status < 200 || res.status >= 300) throw new Error(`nueva versión de Question "${input.questionKey}" falló (status ${res.status}): ${JSON.stringify(res.body)}`);
+    const body = res.body as { versionId: string };
+    await runTransitionsToPublished(apiUrl, token, publisherToken, 'question-versions', body.versionId, dryRun);
+    return 'NEW_VERSION';
+  }
+
+  // EXISTING IDENTITY, latest DRAFT/IN_REVIEW/APPROVED (CONTENT-4.6A) --
+  // recuperación segura: SOLO si el contenido (stem + options + isCorrect +
+  // explanation) coincide con el source. Nunca sobrescribe, nunca publica
+  // contenido distinto sobre una versión huérfana.
+  if (RESUMABLE_STATUSES.has(existing.status)) {
+    if (sourceCanon !== existingCanon) {
+      throw new Error(
+        `conflicto: Question "${input.questionKey}" tiene una versión ${existing.status} (id ${existing.versionId}) cuyo contenido NO coincide con el source actual -- ` +
+          'requiere resolución editorial manual; el importer nunca sobrescribe ni publica contenido distinto sobre una versión huérfana.',
+      );
+    }
+    if (dryRun) return 'RESUMED';
+    await runTransitionsToPublished(apiUrl, token, publisherToken, 'question-versions', existing.versionId, dryRun, existing.status as ResumableStatus);
+    return 'RESUMED';
+  }
+
+  // DEPRECATED/ARCHIVED como versión MÁS RECIENTE sin PUBLISHED vigente --
+  // estado terminal, no seguro para reanudar automáticamente.
+  throw new Error(
+    `conflicto: Question "${input.questionKey}" -- su versión más reciente está en estado ${existing.status}, sin ninguna PUBLISHED vigente. ` +
+      'No es seguro reanudar automáticamente: requiere decisión editorial manual.',
+  );
 }
 
 // ============================================================================
@@ -576,29 +711,49 @@ async function importResource(
     console.log(`  LearningResource:\n    identity: ${resourceResult.identityId ?? '(NO-OP, sin cambios)'}\n    action: ${resourceResult.action}\n    final: PUBLISHED`);
 
     // --- Questions --- (lectura administrativa completa por clave, CONTENT-4.2B -- isCorrect incluido)
+    //
+    // CONTENT-4.6A -- try/catch POR PREGUNTA, no solo por recurso: un
+    // conflicto de recuperación en UNA pregunta (§3, versión huérfana con
+    // contenido distinto del source) NUNCA debe impedir que las DEMÁS
+    // preguntas del mismo recurso se procesen. Antes de este ajuste, una
+    // excepción de cualquier pregunta escapaba del `for` y abortaba el resto
+    // del lote silenciosamente (ni CREATE, ni NO-OP, ni FAILURE -- ni
+    // siquiera se intentaban). Ahora cada pregunta es independiente: su
+    // fallo se registra como FAILURE y el lote continúa.
     console.log('  Questions:');
+    let anyQuestionFailed = false;
     for (const q of module.questions) {
-      const existingQuestion = await readPublishedQuestion(apiUrl, token, q.questionKey);
-      const action = await upsertQuestion(
-        apiUrl,
-        token,
-        publisherToken,
-        existingQuestion,
-        {
-          questionKey: q.questionKey,
-          primarySubjectId: subjectResolved.id,
-          curriculumTopicId: topicResolved.id,
-          stemContent: q.stemContent,
-          explanationContent: q.explanationContent,
-          options: q.options,
-        },
-        dryRun,
-      );
-      console.log(`    ${q.questionKey}: ${action}`);
-      record(summary, action);
+      try {
+        const existingQuestion = await readLatestQuestion(apiUrl, token, q.questionKey);
+        const action = await upsertQuestion(
+          apiUrl,
+          token,
+          publisherToken,
+          existingQuestion,
+          {
+            questionKey: q.questionKey,
+            primarySubjectId: subjectResolved.id,
+            curriculumTopicId: topicResolved.id,
+            stemContent: q.stemContent,
+            explanationContent: q.explanationContent,
+            options: q.options,
+          },
+          dryRun,
+        );
+        console.log(`    ${q.questionKey}: ${action}`);
+        record(summary, action);
+      } catch (error) {
+        anyQuestionFailed = true;
+        console.error(`    ${q.questionKey}: FALLO -- ${error instanceof Error ? error.message : String(error)}`);
+        record(summary, 'FAILURE');
+      }
     }
 
-    console.log('  transitions: PUBLISHED | result: PASS');
+    if (anyQuestionFailed) {
+      console.log('  transitions: PARCIAL | result: FAIL (al menos una pregunta en conflicto -- ver detalle arriba)');
+    } else {
+      console.log('  transitions: PUBLISHED | result: PASS');
+    }
   } catch (error) {
     console.error(`  FALLO: ${error instanceof Error ? error.message : String(error)}`);
     record(summary, 'FAILURE');
@@ -713,6 +868,7 @@ async function main() {
   console.log(`  created: ${summary.created}`);
   console.log(`  unchanged: ${summary.unchanged}`);
   console.log(`  newVersions: ${summary.newVersions}`);
+  console.log(`  resumed: ${summary.resumed}`);
   console.log(`  skipped: ${summary.skipped}`);
   console.log(`  failures: ${summary.failures}`);
 

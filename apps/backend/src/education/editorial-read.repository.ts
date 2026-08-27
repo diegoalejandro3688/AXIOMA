@@ -18,27 +18,39 @@ import { PrismaService } from '../platform/prisma/prisma.service';
  * `findLearningResourceVersionForAuthoring` (que resuelven por `versionId` y
  * sirven a T2/CMS-013, y a las que les falta `stemContent`/`title` porque no
  * los necesitan): estos dos métodos resuelven por CLAVE ESTABLE y devuelven
- * la versión PUBLISHED actual (si existe) con TODO su contenido editorial,
- * `isCorrect` incluido -- necesario para que `import-content.ts`
- * (CONTENT-4.2) pueda decidir CREATE/NO-OP/NEW VERSION sin usar el lector de
- * ESTUDIANTE (que omite `isCorrect` a propósito, ADR-0012).
+ * TODO el contenido editorial, `isCorrect` incluido -- necesario para que
+ * `import-content.ts` (CONTENT-4.2) pueda decidir CREATE/NO-OP/NEW VERSION
+ * sin usar el lector de ESTUDIANTE (que omite `isCorrect` a propósito,
+ * ADR-0012).
+ *
+ * `latestVersion` (CONTENT-4.6A) -- además de `publishedVersion` (que sigue
+ * existiendo, sin cambio de comportamiento), se devuelve la versión con
+ * `createdAt` más reciente SEA CUAL SEA su `editorialStatus`. Cierra el hueco
+ * de CONTENT-4.6: una identidad cuya única versión quedó en DRAFT/IN_REVIEW/
+ * APPROVED (interrupción de red/429 a mitad de workflow) antes era
+ * INDISTINGUIBLE de "no existe" -- ahora `latestVersion` la hace visible para
+ * que el importer pueda comparar su contenido y decidir si reanudar el
+ * workflow con seguridad. Ver `packages/contracts/src/editorial.ts` para el
+ * razonamiento completo.
  *
  * Al menos 0 y a lo sumo 1 fila PUBLISHED por identidad -- lo garantiza el
  * índice único parcial del Incremento 1 (invariante 2), no una suposición de
- * esta consulta.
+ * esta consulta. `latestVersion` no depende de esa garantía: es simplemente
+ * `ORDER BY created_at DESC LIMIT 1` sobre todas las versiones de la
+ * identidad, ninguna fila especial.
  */
 @Injectable()
 export class EditorialReadRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findQuestionByKeyWithPublishedVersion(questionKey: string) {
+  async findQuestionByKeyWithVersions(questionKey: string) {
     const row = await this.prisma.question.findUnique({
       where: { questionKey },
       select: {
         id: true,
         questionKey: true,
         versions: {
-          where: { editorialStatus: 'PUBLISHED' },
+          orderBy: { createdAt: 'desc' },
           select: {
             id: true,
             editorialStatus: true,
@@ -50,23 +62,27 @@ export class EditorialReadRepository {
       },
     });
     if (!row) return null;
-    const published = row.versions[0] ?? null;
+    const project = (v: (typeof row.versions)[number] | undefined) =>
+      v
+        ? {
+            versionId: v.id,
+            editorialStatus: v.editorialStatus,
+            stemContent: v.stemContent,
+            explanationContent: v.explanationContent,
+            answerOptions: v.answerOptions,
+          }
+        : null;
+    const latest = row.versions[0];
+    const published = row.versions.find((v) => v.editorialStatus === 'PUBLISHED');
     return {
       questionId: row.id,
       questionKey: row.questionKey,
-      publishedVersion: published
-        ? {
-            versionId: published.id,
-            editorialStatus: published.editorialStatus,
-            stemContent: published.stemContent,
-            explanationContent: published.explanationContent,
-            answerOptions: published.answerOptions,
-          }
-        : null,
+      publishedVersion: project(published),
+      latestVersion: project(latest),
     };
   }
 
-  async findLearningResourceByKeyWithPublishedVersion(resourceKey: string) {
+  async findLearningResourceByKeyWithVersions(resourceKey: string) {
     const row = await this.prisma.learningResource.findUnique({
       where: { resourceKey },
       select: {
@@ -74,20 +90,22 @@ export class EditorialReadRepository {
         resourceKey: true,
         resourceType: true,
         versions: {
-          where: { editorialStatus: 'PUBLISHED' },
+          orderBy: { createdAt: 'desc' },
           select: { id: true, editorialStatus: true, title: true, contentBlocks: true },
         },
       },
     });
     if (!row) return null;
-    const published = row.versions[0] ?? null;
+    const project = (v: (typeof row.versions)[number] | undefined) =>
+      v ? { versionId: v.id, editorialStatus: v.editorialStatus, title: v.title, contentBlocks: v.contentBlocks } : null;
+    const latest = row.versions[0];
+    const published = row.versions.find((v) => v.editorialStatus === 'PUBLISHED');
     return {
       resourceId: row.id,
       resourceKey: row.resourceKey,
       resourceType: row.resourceType,
-      publishedVersion: published
-        ? { versionId: published.id, editorialStatus: published.editorialStatus, title: published.title, contentBlocks: published.contentBlocks }
-        : null,
+      publishedVersion: project(published),
+      latestVersion: project(latest),
     };
   }
 }

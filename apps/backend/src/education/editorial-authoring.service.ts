@@ -308,13 +308,13 @@ export class EditorialAuthoringService {
   // lo que las respuestas de ESCRITURA (T1/T2) exponen.
   // ==========================================================================
   async findQuestionByKey(questionKey: string) {
-    const found = await this.readRepo.findQuestionByKeyWithPublishedVersion(questionKey);
+    const found = await this.readRepo.findQuestionByKeyWithVersions(questionKey);
     if (!found) throw new NotFoundException(`No existe ninguna pregunta con la clave editorial "${questionKey}".`);
     return found;
   }
 
   async findLearningResourceByKey(resourceKey: string) {
-    const found = await this.readRepo.findLearningResourceByKeyWithPublishedVersion(resourceKey);
+    const found = await this.readRepo.findLearningResourceByKeyWithVersions(resourceKey);
     if (!found) throw new NotFoundException(`No existe ningún recurso con la clave editorial "${resourceKey}".`);
     return found;
   }

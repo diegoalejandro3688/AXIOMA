@@ -476,48 +476,66 @@ export type EditorialUpdateLearningResourceVersionRequest = z.infer<
 export type EditorialAuthoringResponse = z.infer<typeof editorialAuthoringResponseSchema>;
 
 // ============================================================================
-// LECTURA ADMINISTRATIVA COMPLETA -- CONTENT-4.2B.
+// LECTURA ADMINISTRATIVA COMPLETA -- CONTENT-4.2B, extendida en CONTENT-4.6A.
 //
 // A diferencia de `editorialAuthoringResponseSchema` (que deliberadamente NO
 // expone contenido, invariante 8) y de los lectores de ESTUDIANTE en
 // `education.ts` (que deliberadamente NO exponen `isCorrect`), estos dos
-// esquemas son la lectura de la versión PUBLISHED actual con TODO el
-// contenido editorial, `isCorrect` incluido -- necesaria para que una
-// pipeline de importación (CONTENT-4.2) pueda decidir CREATE/NO-OP/NEW
-// VERSION comparando la fuente contra lo publicado sin usar el endpoint de
-// estudiante. Solo alcanzable con `x-admin-token` + rol AUTHOR o PUBLISHER
-// (mismo guard que el resto de `administration/editorial`, nunca `AuthGuard`
-// de estudiante). Se reutilizan los bloques de AUTORÍA (`authoring*Schema`)
-// en vez de duplicar una tercera familia de esquemas de contenido.
+// esquemas son la lectura administrativa completa, `isCorrect` incluido --
+// necesaria para que una pipeline de importación (CONTENT-4.2) pueda decidir
+// CREATE/NO-OP/NEW VERSION comparando la fuente contra lo publicado sin usar
+// el endpoint de estudiante. Solo alcanzable con `x-admin-token` + rol AUTHOR
+// o PUBLISHER (mismo guard que el resto de `administration/editorial`, nunca
+// `AuthGuard` de estudiante). Se reutilizan los bloques de AUTORÍA
+// (`authoring*Schema`) en vez de duplicar una tercera familia de esquemas de
+// contenido.
+//
+// `latestVersion` (CONTENT-4.6A) -- la versión más reciente por fecha de
+// creación, SEA CUAL SEA su `editorialStatus` (DRAFT/IN_REVIEW/APPROVED/
+// PUBLISHED/DEPRECATED/ARCHIVED). Cierra un hueco real: `publishedVersion`
+// por sí solo hace que una identidad cuya única versión quedó en DRAFT/
+// IN_REVIEW/APPROVED (p. ej. por una interrupción de red o un 429 a mitad de
+// workflow) sea INDISTINGUIBLE de una identidad que nunca existió -- el
+// importer, al no ver nada PUBLISHED, reintentaba un CREATE fresco y chocaba
+// con 409 CONFLICT sin poder recuperarse (CONTENT-4.6, hallazgo). Con
+// `latestVersion` el importer puede resolver identity/status/contenido de
+// una versión no publicada y decidir con seguridad si reanudar su workflow
+// (comparando contenido antes, nunca a ciegas) o reportar un conflicto
+// explícito. En el camino sano (nada interrumpido), `latestVersion` y
+// `publishedVersion` son la MISMA fila -- este campo no cambia ningún
+// comportamiento existente, solo añade visibilidad.
 // ============================================================================
+
+const editorialQuestionVersionReadSchema = z.object({
+  versionId: z.string().uuid(),
+  editorialStatus: editorialTargetStatusSchema,
+  stemContent: authoringResourceContentBlocksSchema,
+  explanationContent: authoringExplanationContentSchema,
+  answerOptions: z.array(authoringAnswerOptionSchema).min(1),
+});
 
 export const editorialQuestionReadResponseSchema = z.object({
   questionId: z.string().uuid(),
   questionKey: z.string(),
-  /** `null` si la identidad no tiene ninguna versión PUBLISHED todavía. */
-  publishedVersion: z
-    .object({
-      versionId: z.string().uuid(),
-      editorialStatus: z.literal('PUBLISHED'),
-      stemContent: authoringResourceContentBlocksSchema,
-      explanationContent: authoringExplanationContentSchema,
-      answerOptions: z.array(authoringAnswerOptionSchema).min(1),
-    })
-    .nullable(),
+  /** `null` si la identidad no tiene ninguna versión PUBLISHED todavía (puede seguir teniendo `latestVersion` no nulo). */
+  publishedVersion: editorialQuestionVersionReadSchema.extend({ editorialStatus: z.literal('PUBLISHED') }).nullable(),
+  /** `null` únicamente si la identidad no existe -- en ese caso toda la respuesta 404 antes de llegar aquí. Ver docstring de la sección. */
+  latestVersion: editorialQuestionVersionReadSchema.nullable(),
 });
 export type EditorialQuestionReadResponse = z.infer<typeof editorialQuestionReadResponseSchema>;
+
+const editorialLearningResourceVersionReadSchema = z.object({
+  versionId: z.string().uuid(),
+  editorialStatus: editorialTargetStatusSchema,
+  title: z.string(),
+  contentBlocks: authoringResourceContentBlocksSchema,
+});
 
 export const editorialLearningResourceReadResponseSchema = z.object({
   resourceId: z.string().uuid(),
   resourceKey: z.string(),
   resourceType: z.enum(['LESSON', 'CONCEPT_EXPLANATION']),
-  publishedVersion: z
-    .object({
-      versionId: z.string().uuid(),
-      editorialStatus: z.literal('PUBLISHED'),
-      title: z.string(),
-      contentBlocks: authoringResourceContentBlocksSchema,
-    })
-    .nullable(),
+  publishedVersion: editorialLearningResourceVersionReadSchema.extend({ editorialStatus: z.literal('PUBLISHED') }).nullable(),
+  latestVersion: editorialLearningResourceVersionReadSchema.nullable(),
 });
 export type EditorialLearningResourceReadResponse = z.infer<typeof editorialLearningResourceReadResponseSchema>;

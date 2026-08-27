@@ -26,12 +26,17 @@
 //                         y nunca incluye kind:'validation' ni kind:'fixture', incluso con --allow-validation.
 //   I. coverage        -- 'validation' NUNCA cuenta en los totales oficiales V1 del manifest.
 //   J. isCorrect-only  -- cambio EXCLUSIVO de qué alternativa es correcta -> NEW VERSION (CONTENT-4.2B, punto 6).
+//   K. recuperación    -- CONTENT-4.6A: una identidad interrumpida a mitad de workflow (DRAFT/
+//                         IN_REVIEW/APPROVED, nunca llegó a PUBLISHED) se reanuda con seguridad
+//                         en el siguiente run, sin crear una identidad/versión duplicada; y un
+//                         contenido huérfano que NO coincide con el source produce un conflicto
+//                         explícito, nunca una publicación silenciosa.
 import 'dotenv/config';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
-import { CONTENT_MANIFEST, catalogSubjects } from '../content/manifest';
+import { CONTENT_MANIFEST, catalogSubjects, findManifestResource } from '../content/manifest';
 import { loadResourceModules } from '../content/load';
 
 const base = process.argv[2] ?? 'http://127.0.0.1:3000';
@@ -83,6 +88,30 @@ function runImporter(args: string[], authorToken?: string, publisherToken?: stri
   return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }
 
+/**
+ * Petición administrativa DIRECTA (sin pasar por el importer) -- SOLO para
+ * el Caso K, que necesita fabricar deliberadamente una identidad "a mitad de
+ * workflow" (DRAFT/IN_REVIEW/APPROVED) para poder probar que el importer la
+ * recupera. Usa exclusivamente los mismos endpoints reales que el propio
+ * importer ya usa (nunca SQL para escribir contenido editorial -- mismo
+ * invariante del resto de este gate).
+ */
+async function adminHttp(token: string, method: string, path: string, body?: unknown): Promise<{ status: number; body: unknown }> {
+  const response = await fetch(`${base}${path}`, {
+    method,
+    headers: { 'x-admin-token': token, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const text = await response.text();
+  let parsed: unknown = text;
+  try {
+    parsed = text.length > 0 ? JSON.parse(text) : null;
+  } catch {
+    /* respuesta no-JSON */
+  }
+  return { status: response.status, body: parsed };
+}
+
 async function main() {
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
@@ -105,6 +134,208 @@ async function main() {
     process.exit(1);
   }
   const actor = { token: author.token }; // alias -- el resto del gate ya usaba `actor.token` para el flujo de autoría/selector/fixture.
+
+  // ==========================================================================
+  // Caso K -- CONTENT-4.6A: recuperación segura de imports interrumpidos.
+  //
+  // Corre ANTES que cualquier otro caso (namespace ZZTEST todavía virgen o
+  // reconciliado, ver Caso 0): fabrica DELIBERADAMENTE, vía los mismos
+  // endpoints reales que usa el importer (NUNCA SQL), tres identidades de
+  // Question a mitad de workflow -- una en DRAFT, una en IN_REVIEW, una en
+  // APPROVED -- y una LearningResource en DRAFT, TODAS con contenido
+  // IDÉNTICO al source real (`content/estudio/_content42-test/
+  // pipeline-check.ts`, cargado con el MISMO loader que usa `import-content.ts`,
+  // nunca duplicado a mano). Después corre el importer real UNA vez y
+  // confirma que resume las 4 hasta PUBLISHED sin crear ninguna identidad ni
+  // versión duplicada. Finalmente fabrica un 5to caso: una versión DRAFT
+  // huérfana de Q1 cuyo contenido NO coincide con el source, y confirma que
+  // el importer la rechaza con un conflicto explícito, sin tocar la versión
+  // PUBLISHED ya vigente.
+  // ==========================================================================
+  console.log('\n--- Caso K: recuperación segura de identidades interrumpidas a mitad de workflow ---');
+
+  const { loaded: kLoaded } = await loadResourceModules(join(backendDir, 'content', 'estudio'));
+  const kEntry = kLoaded.find((e) => e.module.resourceKey === RESOURCE_KEY);
+  check('Caso K, precondición: el módulo fuente de ZZTEST carga correctamente', kEntry !== undefined);
+  if (!kEntry) {
+    console.error('Sin el módulo fuente no se puede fabricar el escenario de recuperación -- abortando Caso K.');
+    process.exit(1);
+  }
+  const kModule = kEntry.module;
+  const kManifestEntry = findManifestResource(CONTENT_MANIFEST, kModule.topicCode);
+  check('Caso K, precondición: el recurso existe en el manifest', kManifestEntry !== null);
+  if (!kManifestEntry) {
+    console.error('Sin entrada de manifest no se puede resolver la taxonomía -- abortando Caso K.');
+    process.exit(1);
+  }
+
+  // --- Taxonomía real (idempotente, mismos endpoints que usa el importer) ---
+  const kSubjectRes = await adminHttp(actor.token, 'POST', '/administration/editorial/subjects', {
+    subjectKey: kManifestEntry.subject.subjectKey,
+    name: kManifestEntry.subject.name,
+    shortName: kManifestEntry.subject.shortName,
+    displayOrder: kManifestEntry.subject.displayOrder,
+  });
+  const kSubjectId = (kSubjectRes.body as { id: string }).id;
+  const kUnitRes = await adminHttp(actor.token, 'POST', '/administration/editorial/curriculum-topics', {
+    code: kModule.unitCode,
+    name: kManifestEntry.unit.name,
+    order: kManifestEntry.unit.order,
+    subjectId: kSubjectId,
+    parentId: null,
+  });
+  const kUnitId = (kUnitRes.body as { id: string }).id;
+  const kTopicRes = await adminHttp(actor.token, 'POST', '/administration/editorial/curriculum-topics', {
+    code: kModule.topicCode,
+    name: kModule.title,
+    order: kModule.order,
+    subjectId: kSubjectId,
+    parentId: kUnitId,
+  });
+  const kTopicId = (kTopicRes.body as { id: string }).id;
+  check('Caso K: taxonomía real resuelta (subject/unit/topic)', Boolean(kSubjectId && kUnitId && kTopicId));
+
+  const kAnswerOptions = (q: (typeof kModule.questions)[number]) => q.options.map((o) => ({ content: o.content, isCorrect: o.correct }));
+  // Declaradas aquí (no dentro del bloque `if (kNamespaceVirgin)` de abajo)
+  // porque Caso K5, al final del archivo, las necesita SIEMPRE -- independiente
+  // de si el namespace era virgen al arrancar esta corrida.
+  const kQ1 = kModule.questions[0]!;
+  const kQ2 = kModule.questions[1]!;
+  const kQ3 = kModule.questions[2]!;
+
+  // La fabricación K1-K4 (crear identities DESDE CERO en DRAFT/IN_REVIEW/
+  // APPROVED) solo es posible con el namespace VIRGEN: los endpoints de
+  // autoría (T1) son CREATE puro, sin semántica idempotente -- un segundo
+  // intento de crear `RESOURCE_KEY` ya PUBLISHED (de una corrida anterior de
+  // ESTE MISMO gate, en la misma base de gates) devolvería 409 antes de
+  // poder fabricar nada. En una corrida repetida, este bloque se salta
+  // (informativo, no es un FALLO) y el resto del gate sigue probando
+  // recuperación real vía Caso K5 más abajo, que sí es independiente del
+  // estado de arranque.
+  const kLrAlreadyPublished = await pg.query(
+    `SELECT 1 FROM learning_resource lr JOIN learning_resource_version lrv ON lrv.learning_resource_id = lr.id WHERE lr.resource_key = $1 AND lrv.editorial_status = 'PUBLISHED'`,
+    [kModule.resourceKey],
+  );
+  const kNamespaceVirgin = kLrAlreadyPublished.rowCount === 0;
+
+  if (!kNamespaceVirgin) {
+    console.log(
+      '  (namespace ZZTEST ya tiene PUBLISHED de una corrida anterior de este gate -- se omite la fabricación K1-K4; ' +
+        'Caso K5 más abajo sigue probando recuperación de forma independiente)',
+    );
+  }
+
+  if (kNamespaceVirgin) {
+  // --- K1: LearningResource en DRAFT (identity creada, NUNCA transicionada) ---
+  const kLrCreate = await adminHttp(actor.token, 'POST', '/administration/editorial/learning-resources', {
+    resourceKey: kModule.resourceKey,
+    primarySubjectId: kSubjectId,
+    resourceType: kModule.resourceType,
+    curriculumTopicId: kTopicId,
+    title: kModule.title,
+    contentBlocks: kModule.contentBlocks,
+  });
+  check('Caso K1 (setup): LearningResource creado en DRAFT', kLrCreate.status >= 200 && kLrCreate.status < 300, JSON.stringify(kLrCreate.body));
+  const kLrVersionIdBefore = (kLrCreate.body as { versionId: string }).versionId;
+
+  // --- K2: Q1 en DRAFT (identity creada, NUNCA transicionada) ---
+  const kQ1Create = await adminHttp(actor.token, 'POST', '/administration/editorial/questions', {
+    questionKey: kQ1.questionKey,
+    primarySubjectId: kSubjectId,
+    curriculumTopicId: kTopicId,
+    stemContent: kQ1.stemContent,
+    explanationContent: kQ1.explanationContent,
+    answerOptions: kAnswerOptions(kQ1),
+  });
+  check('Caso K2 (setup): Q1 creado en DRAFT', kQ1Create.status >= 200 && kQ1Create.status < 300, JSON.stringify(kQ1Create.body));
+  const kQ1VersionIdBefore = (kQ1Create.body as { versionId: string }).versionId;
+
+  // --- K3: Q2 en IN_REVIEW (T3 con AUTHOR, nunca T5/T7) ---
+  const kQ2Create = await adminHttp(actor.token, 'POST', '/administration/editorial/questions', {
+    questionKey: kQ2.questionKey,
+    primarySubjectId: kSubjectId,
+    curriculumTopicId: kTopicId,
+    stemContent: kQ2.stemContent,
+    explanationContent: kQ2.explanationContent,
+    answerOptions: kAnswerOptions(kQ2),
+  });
+  const kQ2VersionIdBefore = (kQ2Create.body as { versionId: string }).versionId;
+  const kQ2ToInReview = await adminHttp(actor.token, 'POST', `/administration/editorial/question-versions/${kQ2VersionIdBefore}/transitions`, {
+    targetStatus: 'IN_REVIEW',
+  });
+  check(
+    'Caso K3 (setup): Q2 creado y avanzado a IN_REVIEW (T3), nunca más allá',
+    kQ2Create.status >= 200 && kQ2Create.status < 300 && kQ2ToInReview.status >= 200 && kQ2ToInReview.status < 300,
+    JSON.stringify({ create: kQ2Create.body, transition: kQ2ToInReview.body }),
+  );
+
+  // --- K4: Q3 en APPROVED (T3 con AUTHOR + T5 con PUBLISHER, nunca T7) ---
+  const kQ3Create = await adminHttp(actor.token, 'POST', '/administration/editorial/questions', {
+    questionKey: kQ3.questionKey,
+    primarySubjectId: kSubjectId,
+    curriculumTopicId: kTopicId,
+    stemContent: kQ3.stemContent,
+    explanationContent: kQ3.explanationContent,
+    answerOptions: kAnswerOptions(kQ3),
+  });
+  const kQ3VersionIdBefore = (kQ3Create.body as { versionId: string }).versionId;
+  const kQ3ToInReview = await adminHttp(actor.token, 'POST', `/administration/editorial/question-versions/${kQ3VersionIdBefore}/transitions`, {
+    targetStatus: 'IN_REVIEW',
+  });
+  const kQ3ToApproved = await adminHttp(publisher.token, 'POST', `/administration/editorial/question-versions/${kQ3VersionIdBefore}/transitions`, {
+    targetStatus: 'APPROVED',
+  });
+  check(
+    'Caso K4 (setup): Q3 creado y avanzado a APPROVED (T3+T5), nunca más allá',
+    kQ3Create.status >= 200 && kQ3ToInReview.status >= 200 && kQ3ToInReview.status < 300 && kQ3ToApproved.status >= 200 && kQ3ToApproved.status < 300,
+    JSON.stringify({ create: kQ3Create.body, t3: kQ3ToInReview.body, t5: kQ3ToApproved.body }),
+  );
+
+  // --- Corrida real del importer: debe RESUMIR las 4 identidades huérfanas ---
+  const kRun1 = runImporter(['--resource', RESOURCE_KEY, '--allow-validation'], actor.token, publisher.token);
+  check('Caso K (recuperación): importer sale con status 0', kRun1.status === 0, kRun1.stderr || kRun1.stdout.slice(-1000));
+  check('Caso K (recuperación): LearningResource reporta RESUMED', /action: RESUMED/.test(kRun1.stdout));
+  check(`Caso K (recuperación): ${kQ1.questionKey} reporta RESUMED (recuperado desde DRAFT)`, new RegExp(`${kQ1.questionKey}: RESUMED`).test(kRun1.stdout));
+  check(`Caso K (recuperación): ${kQ2.questionKey} reporta RESUMED (recuperado desde IN_REVIEW)`, new RegExp(`${kQ2.questionKey}: RESUMED`).test(kRun1.stdout));
+  check(`Caso K (recuperación): ${kQ3.questionKey} reporta RESUMED (recuperado desde APPROVED)`, new RegExp(`${kQ3.questionKey}: RESUMED`).test(kRun1.stdout));
+
+  const kLrAfter = await pg.query(
+    `SELECT lrv.id, lrv.editorial_status FROM learning_resource_version lrv JOIN learning_resource lr ON lr.id = lrv.learning_resource_id WHERE lr.resource_key = $1`,
+    [kModule.resourceKey],
+  );
+  check('Caso K: la LearningResourceVersion recuperada es la MISMA fila (mismo id, sin duplicar)', kLrAfter.rows.length === 1 && kLrAfter.rows[0].id === kLrVersionIdBefore);
+  check('Caso K: esa versión terminó PUBLISHED', kLrAfter.rows[0]?.editorial_status === 'PUBLISHED');
+
+  for (const [q, versionIdBefore] of [
+    [kQ1, kQ1VersionIdBefore],
+    [kQ2, kQ2VersionIdBefore],
+    [kQ3, kQ3VersionIdBefore],
+  ] as const) {
+    const qAfter = await pg.query(
+      `SELECT qv.id, qv.editorial_status FROM question_version qv JOIN question q ON q.id = qv.question_id WHERE q.question_key = $1`,
+      [q.questionKey],
+    );
+    check(`Caso K: ${q.questionKey} sigue teniendo EXACTAMENTE 1 versión (la misma, sin duplicar)`, qAfter.rows.length === 1 && qAfter.rows[0].id === versionIdBefore);
+    check(`Caso K: ${q.questionKey} terminó PUBLISHED`, qAfter.rows[0]?.editorial_status === 'PUBLISHED');
+  }
+
+  // --- Reejecución: ahora todo está PUBLISHED -> debe ser NO-OP total ---
+  const kRun2 = runImporter(['--resource', RESOURCE_KEY, '--allow-validation'], actor.token, publisher.token);
+  check('Caso K.2 (post-recuperación): reejecución sale con status 0', kRun2.status === 0, kRun2.stderr);
+  check('Caso K.2: LearningResource ahora NO-OP', /action: NO-OP/.test(kRun2.stdout));
+  check(`Caso K.2: ${kQ1.questionKey} ahora NO-OP`, new RegExp(`${kQ1.questionKey}: NO-OP`).test(kRun2.stdout));
+  check(`Caso K.2: ${kQ2.questionKey} ahora NO-OP`, new RegExp(`${kQ2.questionKey}: NO-OP`).test(kRun2.stdout));
+  check(`Caso K.2: ${kQ3.questionKey} ahora NO-OP`, new RegExp(`${kQ3.questionKey}: NO-OP`).test(kRun2.stdout));
+  } // fin del bloque condicionado a kNamespaceVirgin
+
+  // Caso K5 (contenido huérfano DISTINTO del source -> conflicto) se ejecuta
+  // al FINAL de este archivo, después de todos los demás casos: fabrica una
+  // segunda versión DRAFT de Q1 con contenido que NO coincide con el source,
+  // y esa fila queda deliberadamente en la base al terminar el gate (nunca
+  // se toca por SQL, ver invariante del archivo) -- si corriera aquí,
+  // contaminaría la comparación canónica de Q1 para TODOS los casos A-J que
+  // vienen después (el importer siempre compara contra la versión MÁS
+  // RECIENTE, y esa fila sería más reciente que la original).
 
   // ==========================================================================
   // Caso F -- dry-run NUNCA escribe (se corre ANTES del CREATE real, para
@@ -502,6 +733,74 @@ async function main() {
     const restoredJ = readFileSync(CONTENT_FILE, 'utf8');
     check('archivo fuente restaurado exactamente al estado original tras el caso J', restoredJ === sourceBeforeJ);
   }
+
+  // ==========================================================================
+  // Caso K5 -- CONTENT-4.6A: contenido huérfano que NO coincide con el
+  // source: DEBE rechazarse con un conflicto explícito, NUNCA publicarse
+  // silenciosamente, NUNCA tocar la versión PUBLISHED ya vigente de la misma
+  // identidad. Corre AL FINAL (después de A-J) a propósito -- ver nota junto
+  // a Caso K.2: la fila DRAFT que fabrica quedaría "más reciente" que
+  // cualquier versión PUBLISHED de Q1 y rompería la comparación canónica de
+  // los casos que siguen si corriera antes.
+  // ==========================================================================
+  console.log('\n--- Caso K5: versión huérfana con contenido DISTINTO del source -> conflicto, sin mutación destructiva ---');
+  const kQ1IdentityRow = await pg.query('SELECT id FROM question WHERE question_key = $1', [kQ1.questionKey]);
+  const kQ1IdentityId = kQ1IdentityRow.rows[0].id as string;
+  // La versión PUBLISHED ACTUAL de Q1 a esta altura -- NO necesariamente
+  // `kQ1VersionIdBefore` (el Caso C y el Caso J, ejecutados entre medio, ya
+  // la reemplazaron cada uno por una NEW_VERSION legítima). Se resuelve
+  // fresca, por lectura, nunca asumida.
+  const kQ1PublishedNow = await pg.query(
+    `SELECT qv.id FROM question_version qv JOIN question q ON q.id = qv.question_id WHERE q.question_key = $1 AND qv.editorial_status = 'PUBLISHED'`,
+    [kQ1.questionKey],
+  );
+  const kQ1PublishedIdBeforeMismatch = kQ1PublishedNow.rows[0].id as string;
+  const kMismatchStem = [{ type: 'paragraph' as const, order: 0, text: `${(kQ1.stemContent[0] as { text: string }).text} [CONTENT-4.6A MISMATCH TEST]` }];
+  const kMismatchVersion = await adminHttp(actor.token, 'POST', `/administration/editorial/questions/${kQ1IdentityId}/versions`, {
+    curriculumTopicId: kTopicId,
+    stemContent: kMismatchStem,
+    explanationContent: kQ1.explanationContent,
+    answerOptions: kAnswerOptions(kQ1),
+  });
+  check('Caso K5 (setup): nueva versión DRAFT de Q1 creada con contenido DISTINTO del source', kMismatchVersion.status >= 200 && kMismatchVersion.status < 300, JSON.stringify(kMismatchVersion.body));
+  const kMismatchVersionId = (kMismatchVersion.body as { versionId: string }).versionId;
+
+  const kRun3 = runImporter(['--resource', RESOURCE_KEY, '--allow-validation'], actor.token, publisher.token);
+  check('Caso K5: el importer NO sale con status 0 (conflicto explícito, no publicación silenciosa)', kRun3.status !== 0);
+  check(`Caso K5: ${kQ1.questionKey} NO reporta NO-OP ni RESUMED (debe fallar, no resolverse solo)`, !new RegExp(`${kQ1.questionKey}: (NO-OP|RESUMED)`).test(kRun3.stdout));
+  check(
+    'Caso K5: Q2/Q3 siguen NO-OP (el conflicto de Q1 no contamina a las demás)',
+    new RegExp(`${kQ2.questionKey}: NO-OP`).test(kRun3.stdout) && new RegExp(`${kQ3.questionKey}: NO-OP`).test(kRun3.stdout),
+  );
+
+  const kMismatchAfter = await pg.query('SELECT editorial_status FROM question_version WHERE id = $1', [kMismatchVersionId]);
+  check('Caso K5: la versión huérfana mismatch sigue en DRAFT (no fue publicada ni tocada)', kMismatchAfter.rows[0]?.editorial_status === 'DRAFT');
+  const kOriginalPublishedAfter = await pg.query('SELECT editorial_status, stem_content FROM question_version WHERE id = $1', [kQ1PublishedIdBeforeMismatch]);
+  check('Caso K5: la versión PUBLISHED vigente de Q1 sigue PUBLISHED, sin tocar', kOriginalPublishedAfter.rows[0]?.editorial_status === 'PUBLISHED');
+  check(
+    'Caso K5: el CONTENIDO de la versión PUBLISHED vigente no cambió (sin mutación destructiva)',
+    !JSON.stringify(kOriginalPublishedAfter.rows[0]?.stem_content).includes('MISMATCH TEST'),
+  );
+  const kQ1PublishedCount = await pg.query(
+    `SELECT count(*)::int AS n FROM question_version qv JOIN question q ON q.id = qv.question_id WHERE q.question_key = $1 AND qv.editorial_status = 'PUBLISHED'`,
+    [kQ1.questionKey],
+  );
+  check('Caso K5: sigue existiendo EXACTAMENTE 1 versión PUBLISHED de Q1 (la vigente, ninguna nueva)', kQ1PublishedCount.rows[0].n === 1);
+
+  // --- Reconciliación final: corrige (T2, versión aún DRAFT) el contenido
+  // de la fila mismatch para que vuelva a coincidir con el source, y deja
+  // que el importer la RESUMA a PUBLISHED. Sin esto, la fila mismatch
+  // quedaría como la versión MÁS RECIENTE de Q1 para siempre, y una FUTURA
+  // corrida de este mismo gate fallaría en el Caso A de reconciliación
+  // (encontraría Q1 en conflicto desde el primer momento). Usa solo
+  // endpoints reales (T2 + el importer) -- ninguna escritura de contenido
+  // editorial por SQL, mismo invariante del archivo.
+  const kMismatchFix = await adminHttp(actor.token, 'PATCH', `/administration/editorial/question-versions/${kMismatchVersionId}`, {
+    stemContent: kQ1.stemContent,
+  });
+  check('Caso K5 (reconciliación): la versión mismatch se corrige (T2) para volver a coincidir con el source', kMismatchFix.status >= 200 && kMismatchFix.status < 300, JSON.stringify(kMismatchFix.body));
+  const kRun4 = runImporter(['--resource', RESOURCE_KEY, '--allow-validation'], actor.token, publisher.token);
+  check('Caso K5 (reconciliación): tras corregir el contenido, el importer RESUME la versión y publica -- namespace queda sano para una futura corrida', kRun4.status === 0 && new RegExp(`${kQ1.questionKey}: RESUMED`).test(kRun4.stdout));
 
   await pg.end();
 
