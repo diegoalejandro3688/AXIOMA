@@ -276,7 +276,7 @@ export const CONTENT_MANIFEST: ContentManifest = [
     subjectKey: 'lenguaje',
     name: 'Lenguaje',
     shortName: 'Leng',
-    displayOrder: 2,
+    displayOrder: 3,
     kind: 'catalog',
     units: [
       {
