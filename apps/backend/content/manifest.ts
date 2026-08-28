@@ -413,6 +413,15 @@ export const CONTENT_MANIFEST: ContentManifest = [
    * CONTENT-H3A agrega R7-R9 (Bloque 3: Nuevo orden mundial de posguerra y
    * descolonización, Guerra Fría, Movilización política y social en América
    * Latina), completando `HISTORIA.MUNDO_AMERICA_CHILE` con 9 recursos.
+   * (R8/R9 fueron corregidos editorialmente en CONTENT-H3A.1 tras detectarse
+   * una divergencia frente a la fuente APPROVED -- ver comentarios de esos
+   * módulos fuente.)
+   *
+   * CONTENT-H4A agrega R10-R12 (Bloque 4: Fin de la Guerra Fría y
+   * globalización, Sociedad chilena de mediados del siglo XX,
+   * Democratización de la sociedad chilena), completando
+   * `HISTORIA.MUNDO_AMERICA_CHILE` con 12 recursos.
+   *
    * Unidad aún declarada INCOMPLETA A PROPÓSITO respecto del catálogo total
    * de la asignatura (mismo criterio que `LENGUAJE.EVALUAR` en
    * CONTENT-L3A): `manifestUnitSchema.resources` solo exige `.min(1)`. Las
@@ -473,6 +482,21 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
           {
             topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.MOVILIZACION_AMERICA_LATINA',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.FIN_GUERRA_FRIA_GLOBALIZACION',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.SOCIEDAD_CHILENA_MEDIADOS_SIGLO_XX',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.DEMOCRATIZACION_SOCIEDAD_CHILENA',
             expectedQuestions: 10,
             expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
           },
