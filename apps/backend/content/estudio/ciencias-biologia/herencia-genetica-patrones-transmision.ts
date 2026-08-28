@@ -127,10 +127,10 @@ const herenciaGeneticaPatronesTransmision: ResourceContentModule = {
       difficulty: 'FACIL',
       stemContent: toBlocks([...situacionA, { type: 'paragraph', text: '¿Qué genotipo corresponde a una planta heterocigota?' }]),
       options: [
-        { content: { type: 'paragraph', order: 0, text: 'PP.' }, correct: false },
-        { content: { type: 'paragraph', order: 0, text: 'pp.' }, correct: false },
-        { content: { type: 'paragraph', order: 0, text: 'P.' }, correct: false },
-        { content: { type: 'paragraph', order: 0, text: 'Pp.' }, correct: true },
+        { content: { type: 'paragraph', order: 0, text: 'Homocigoto dominante (PP).' }, correct: false },
+        { content: { type: 'paragraph', order: 0, text: 'Homocigoto recesivo (pp).' }, correct: false },
+        { content: { type: 'paragraph', order: 0, text: 'Un solo alelo dominante (P).' }, correct: false },
+        { content: { type: 'paragraph', order: 0, text: 'Heterocigoto (Pp).' }, correct: true },
       ],
       explanationContent: [
         { type: 'paragraph', order: 0, text: 'Un individuo heterocigoto posee dos alelos diferentes para el gen, en este caso Pp.' },
@@ -142,10 +142,10 @@ const herenciaGeneticaPatronesTransmision: ResourceContentModule = {
       difficulty: 'FACIL',
       stemContent: toBlocks([...situacionA, { type: 'paragraph', text: '¿Qué genotipo produce el fenotipo blanco?' }]),
       options: [
-        { content: { type: 'paragraph', order: 0, text: 'pp.' }, correct: true },
-        { content: { type: 'paragraph', order: 0, text: 'PP.' }, correct: false },
-        { content: { type: 'paragraph', order: 0, text: 'Pp.' }, correct: false },
-        { content: { type: 'paragraph', order: 0, text: 'PP o Pp.' }, correct: false },
+        { content: { type: 'paragraph', order: 0, text: 'Homocigoto recesivo (pp).' }, correct: true },
+        { content: { type: 'paragraph', order: 0, text: 'Homocigoto dominante (PP).' }, correct: false },
+        { content: { type: 'paragraph', order: 0, text: 'Heterocigoto (Pp).' }, correct: false },
+        { content: { type: 'paragraph', order: 0, text: 'Homocigoto dominante (PP) o heterocigoto (Pp).' }, correct: false },
       ],
       explanationContent: [
         {
