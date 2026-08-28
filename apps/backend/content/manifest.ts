@@ -705,6 +705,26 @@ export const CONTENT_MANIFEST: ContentManifest = [
             expectedQuestions: 10,
             expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
           },
+          {
+            topicCode: 'CIENCIAS.BIOLOGIA.EVOLUCION_EVIDENCIAS_EVOLUTIVAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.BIOLOGIA.MECANISMOS_EVOLUTIVOS_FORMACION_ESPECIES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.BIOLOGIA.FLUJO_MATERIA_ENERGIA_ECOSISTEMAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.BIOLOGIA.POBLACIONES_COMUNIDADES_BIODIVERSIDAD_IMPACTO_HUMANO',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
         ],
       },
     ],
