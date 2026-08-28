@@ -628,6 +628,65 @@ export const CONTENT_MANIFEST: ContentManifest = [
       },
     ],
   },
+  /**
+   * CONTENT-C1A -- Golden Unit real Ciencias / U1 Biología, BLOQUE 1 (4
+   * primeros recursos oficiales de la unidad: R1-R4, de un total posterior
+   * mayor -- Science Master Plan V1: 12 recursos / 120 preguntas para
+   * Biología). Mismo patrón exacto que `matematica`/`lenguaje`/`historia`:
+   * cada recurso con módulo `.ts` completo en
+   * `content/estudio/ciencias-biologia/`, contenido editorial ya
+   * cerrado/APPROVED en este incremento -- solo implementación técnica, cero
+   * cambios de contenido.
+   *
+   * `subjectKey: 'ciencias'`, `name: 'Ciencias'`, `shortName: 'Cien'` y
+   * `displayOrder: 2` NO son inventados: coinciden EXACTAMENTE con el Subject
+   * `ciencias` que ya existe en el seed real de `axioma_dev`
+   * (`prisma/seed.ts`, `seedCienciasFixture`). Ese seed también contiene
+   * contenido legacy bajo el mismo Subject (`C1.BIOLOGIA.CELULA`, convención
+   * de código `C1.*` distinta), que este incremento NO toca -- mismo patrón
+   * de coexistencia ya usado con `H1.*` / `L1.*` / `M1.NUMEROS.PORCENTAJES`.
+   *
+   * Unidad declarada INCOMPLETA A PROPÓSITO (mismo criterio que
+   * `LENGUAJE.EVALUAR` en CONTENT-L3A / Historia U1 en CONTENT-H1A):
+   * `manifestUnitSchema.resources` solo exige `.min(1)`. R5-R12 y las
+   * unidades U2 (Física) / U3 (Química) se agregarán en incrementos futuros.
+   */
+  {
+    subjectKey: 'ciencias',
+    name: 'Ciencias',
+    shortName: 'Cien',
+    displayOrder: 2,
+    kind: 'catalog',
+    units: [
+      {
+        unitCode: 'CIENCIAS.BIOLOGIA',
+        name: 'Biología',
+        order: 1,
+        resources: [
+          {
+            topicCode: 'CIENCIAS.BIOLOGIA.ORGANIZACION_CELULAR_TIPOS_CELULAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.BIOLOGIA.ORGANELOS_ESPECIALIZACION_CELULAR',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.BIOLOGIA.MEMBRANA_TRANSPORTE_CELULAR',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.BIOLOGIA.CICLO_CELULAR_MITOSIS_MEIOSIS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+        ],
+      },
+    ],
+  },
   {
     subjectKey: 'fixture',
     name: '[FIXTURE] Materia de prueba (no es catálogo real)',
