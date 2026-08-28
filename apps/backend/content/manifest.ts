@@ -839,6 +839,31 @@ export const CONTENT_MANIFEST: ContentManifest = [
             expectedQuestions: 10,
             expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
           },
+          {
+            topicCode: 'CIENCIAS.QUIMICA.HIDROCARBUROS_ESTRUCTURA_COMPUESTOS_ORGANICOS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.QUIMICA.GRUPOS_FUNCIONALES_PROPIEDADES_COMPUESTOS_ORGANICOS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.QUIMICA.REACCIONES_QUIMICAS_ECUACIONES_QUIMICAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.QUIMICA.MOL_MASA_MOLAR_RELACIONES_ESTEQUIOMETRICAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.QUIMICA.REACTIVO_LIMITANTE_RENDIMIENTO_ANALISIS_CUANTITATIVO_REACCIONES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
         ],
       },
     ],
