@@ -799,6 +799,48 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
         ],
       },
+      /**
+       * CHEMISTRY-C1A -- Ciencias / U3 "Química", primer bloque (5 de 10 recursos
+       * editoriales: R24 Materia, sustancias y mezclas; R25 Separación de mezclas
+       * y propiedades físicas; R26 Cambios físicos, cambios químicos y evidencias
+       * experimentales; R27 Modelos atómicos, partículas subatómicas e iones;
+       * R28 El carbono, enlaces y representación de moléculas orgánicas). Tercera
+       * unidad de Ciencias, `order: 3`; Biología queda en `order: 1` y Física en
+       * `order: 2`. Cada recurso con módulo `.ts` completo en
+       * `content/estudio/ciencias-quimica/`, contenido editorial APPROVED.
+       */
+      {
+        unitCode: 'CIENCIAS.QUIMICA',
+        name: 'Química',
+        order: 3,
+        resources: [
+          {
+            topicCode: 'CIENCIAS.QUIMICA.MATERIA_SUSTANCIAS_MEZCLAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.QUIMICA.SEPARACION_MEZCLAS_PROPIEDADES_FISICAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.QUIMICA.CAMBIOS_FISICOS_CAMBIOS_QUIMICOS_EVIDENCIAS_EXPERIMENTALES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.QUIMICA.MODELOS_ATOMICOS_PARTICULAS_SUBATOMICAS_IONES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.QUIMICA.CARBONO_ENLACES_REPRESENTACION_MOLECULAS_ORGANICAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+        ],
+      },
     ],
   },
   {
