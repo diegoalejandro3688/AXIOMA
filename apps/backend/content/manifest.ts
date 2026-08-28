@@ -629,10 +629,12 @@ export const CONTENT_MANIFEST: ContentManifest = [
     ],
   },
   /**
-   * CONTENT-C1A -- Golden Unit real Ciencias / U1 Biología, BLOQUE 1 (4
-   * primeros recursos oficiales de la unidad: R1-R4, de un total posterior
-   * mayor -- Science Master Plan V1: 12 recursos / 120 preguntas para
-   * Biología). Mismo patrón exacto que `matematica`/`lenguaje`/`historia`:
+   * CONTENT-C1A -- Golden Unit real Ciencias / U1 Biología, BLOQUE 1 (R1-R4).
+   * CONTENT-C2A -- BLOQUE 2 (R5-R8: ADN/genes/síntesis de proteínas;
+   * regulación y comunicación en el organismo; reproducción humana y
+   * regulación hormonal; herencia genética y patrones de transmisión).
+   * Del total posterior mayor -- Science Master Plan V1: 12 recursos / 120
+   * preguntas para Biología. Mismo patrón exacto que `matematica`/`lenguaje`/`historia`:
    * cada recurso con módulo `.ts` completo en
    * `content/estudio/ciencias-biologia/`, contenido editorial ya
    * cerrado/APPROVED en este incremento -- solo implementación técnica, cero
@@ -648,7 +650,7 @@ export const CONTENT_MANIFEST: ContentManifest = [
    *
    * Unidad declarada INCOMPLETA A PROPÓSITO (mismo criterio que
    * `LENGUAJE.EVALUAR` en CONTENT-L3A / Historia U1 en CONTENT-H1A):
-   * `manifestUnitSchema.resources` solo exige `.min(1)`. R5-R12 y las
+   * `manifestUnitSchema.resources` solo exige `.min(1)`. R9-R12 y las
    * unidades U2 (Física) / U3 (Química) se agregarán en incrementos futuros.
    */
   {
@@ -680,6 +682,26 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
           {
             topicCode: 'CIENCIAS.BIOLOGIA.CICLO_CELULAR_MITOSIS_MEIOSIS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.BIOLOGIA.ADN_GENES_SINTESIS_PROTEINAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.BIOLOGIA.REGULACION_COMUNICACION_ORGANISMO',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.BIOLOGIA.REPRODUCCION_HUMANA_REGULACION_HORMONAL',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.BIOLOGIA.HERENCIA_GENETICA_PATRONES_TRANSMISION',
             expectedQuestions: 10,
             expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
           },
