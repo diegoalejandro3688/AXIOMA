@@ -727,6 +727,53 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
         ],
       },
+      /**
+       * PHYSICS-C1A -- Ciencias / U2 "Física", primer bloque (6 de 11 recursos
+       * editoriales: R13 Ondas electromagnéticas y sus propiedades; R14
+       * Comportamiento y fenómenos de la luz; R15 Espejos, lentes y tecnologías
+       * basadas en ondas; R16 Fuerzas, movimiento y leyes de Newton; R17
+       * Fuerzas de contacto, peso, roce y elasticidad; R18 Presión en sólidos,
+       * líquidos y gases). Segunda unidad de Ciencias, `order: 2`; Biología
+       * queda en `order: 1`. Cada recurso con módulo `.ts` completo en
+       * `content/estudio/ciencias-fisica/`, contenido editorial APPROVED.
+       */
+      {
+        unitCode: 'CIENCIAS.FISICA',
+        name: 'Física',
+        order: 2,
+        resources: [
+          {
+            topicCode: 'CIENCIAS.FISICA.ONDAS_ELECTROMAGNETICAS_PROPIEDADES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.FISICA.COMPORTAMIENTO_FENOMENOS_LUZ',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.FISICA.ESPEJOS_LENTES_TECNOLOGIAS_ONDAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.FISICA.FUERZAS_MOVIMIENTO_LEYES_NEWTON',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.FISICA.FUERZAS_CONTACTO_PESO_ROCE_ELASTICIDAD',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.FISICA.PRESION_SOLIDOS_LIQUIDOS_GASES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+        ],
+      },
     ],
   },
   {
