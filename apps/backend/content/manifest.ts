@@ -422,6 +422,11 @@ export const CONTENT_MANIFEST: ContentManifest = [
    * Democratización de la sociedad chilena), completando
    * `HISTORIA.MUNDO_AMERICA_CHILE` con 12 recursos.
    *
+   * CONTENT-H5A agrega R13-R15 (Bloque 5: Golpe de Estado de 1973 y quiebre
+   * de la democracia, Modelo económico neoliberal durante la Dictadura
+   * Militar, Violaciones a los Derechos Humanos y supresión del Estado de
+   * derecho), completando `HISTORIA.MUNDO_AMERICA_CHILE` con 15 recursos.
+   *
    * Unidad aún declarada INCOMPLETA A PROPÓSITO respecto del catálogo total
    * de la asignatura (mismo criterio que `LENGUAJE.EVALUAR` en
    * CONTENT-L3A): `manifestUnitSchema.resources` solo exige `.min(1)`. Las
@@ -497,6 +502,21 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
           {
             topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.DEMOCRATIZACION_SOCIEDAD_CHILENA',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.GOLPE_1973_QUIEBRE_DEMOCRACIA',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.MODELO_ECONOMICO_NEOLIBERAL_DICTADURA',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.DDHH_ESTADO_DERECHO_DICTADURA',
             expectedQuestions: 10,
             expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
           },
