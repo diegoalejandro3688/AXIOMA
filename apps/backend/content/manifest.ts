@@ -430,14 +430,14 @@ export const CONTENT_MANIFEST: ContentManifest = [
    * CONTENT-H6A agrega R16-R17 (Bloque 6: Recuperación de la democracia
    * durante la década de 1980, Transición a la democracia iniciada en 1988) y
    * CIERRA la U1 `HISTORIA.MUNDO_AMERICA_CHILE` con 17 recursos / 170
-   * preguntas. U2 (Formación ciudadana) / U3 (Sistema económico) siguen fuera
-   * de alcance.
+   * preguntas.
    *
-   * Unidad aún declarada INCOMPLETA A PROPÓSITO respecto del catálogo total
-   * de la asignatura (mismo criterio que `LENGUAJE.EVALUAR` en
-   * CONTENT-L3A): `manifestUnitSchema.resources` solo exige `.min(1)`. Las
-   * unidades U2 (Formación ciudadana) / U3 (Sistema económico) se agregarán
-   * en incrementos futuros.
+   * CONTENT-H7A agrega la U2 `HISTORIA.FORMACION_CIUDADANA` (Formación
+   * ciudadana, R18-R21, 4 recursos / 40 preguntas).
+   *
+   * CONTENT-H8A agrega la U3 `HISTORIA.SISTEMA_ECONOMICO` (Sistema económico,
+   * R22-R27, 6 recursos / 60 preguntas) y COMPLETA la asignatura Historia en
+   * source: 3 unidades / 27 recursos / 270 preguntas.
    */
   {
     subjectKey: 'historia',
@@ -571,6 +571,56 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
           {
             topicCode: 'HISTORIA.FORMACION_CIUDADANA.SISTEMA_JUDICIAL_ACCESO_JUSTICIA_CHILE',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+        ],
+      },
+      /**
+       * CONTENT-H8A -- Historia / U3 "Sistema económico", COMPLETA (6 de 6
+       * recursos: R22 Funcionamiento del mercado y factores que pueden
+       * alterarlo; R23 Relaciones entre el Estado y el mercado; R24 Modelos
+       * de desarrollo: impactos sociales y medioambientales; R25 Derechos
+       * laborales y mecanismos institucionales de protección; R26 Movimientos
+       * y organizaciones sociales en la defensa de los derechos laborales;
+       * R27 Transformaciones del mundo del trabajo y derechos laborales).
+       * Mismo patrón exacto que U1/U2: cada recurso con módulo `.ts` completo
+       * en `content/estudio/historia-sistema-economico/`, contenido editorial
+       * ya cerrado/APPROVED en este incremento. `order: 3` = tercera y ÚLTIMA
+       * unidad editorial de la asignatura Historia.
+       */
+      {
+        unitCode: 'HISTORIA.SISTEMA_ECONOMICO',
+        name: 'Sistema económico',
+        order: 3,
+        resources: [
+          {
+            topicCode: 'HISTORIA.SISTEMA_ECONOMICO.FUNCIONAMIENTO_MERCADO_FACTORES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.SISTEMA_ECONOMICO.ESTADO_Y_MERCADO',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.SISTEMA_ECONOMICO.MODELOS_DESARROLLO_IMPACTOS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.SISTEMA_ECONOMICO.DERECHOS_LABORALES_PROTECCION',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.SISTEMA_ECONOMICO.MOVIMIENTOS_ORGANIZACIONES_DERECHOS_LABORALES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.SISTEMA_ECONOMICO.TRANSFORMACIONES_MUNDO_TRABAJO',
             expectedQuestions: 10,
             expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
           },
