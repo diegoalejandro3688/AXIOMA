@@ -258,6 +258,51 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
         ],
       },
+      /**
+       * M2-C1A -- Golden Unit real M2 / Ejes Números y Álgebra y funciones
+       * (PAES M2). Mismo patrón exacto que las unidades M1: recursos reales
+       * con módulo `.ts` completo en `content/estudio/m2-numeros/` y
+       * `content/estudio/m2-algebra-funciones/`, contenido editorial ya
+       * cerrado/APPROVED en este incremento -- solo implementación técnica
+       * (contentBlocks/LaTeX/keys), cero cambios de contenido. Reutiliza el
+       * subject `matematica`. La distribución de dificultad M2 es 2/4/4
+       * (FACIL/MEDIA/DIFICIL), distinta del 3/5/2 de M1. Este incremento NO
+       * importa a DB (M2-C1B).
+       */
+      {
+        unitCode: 'M2.NUMEROS',
+        name: 'Números',
+        order: 5,
+        resources: [
+          {
+            topicCode: 'M2.NUMEROS.NUMEROS_REALES_LOGARITMOS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 2, MEDIA: 4, DIFICIL: 4 },
+          },
+          {
+            topicCode: 'M2.NUMEROS.MATEMATICA_FINANCIERA_MODELOS_CRECIMIENTO',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 2, MEDIA: 4, DIFICIL: 4 },
+          },
+        ],
+      },
+      {
+        unitCode: 'M2.ALGEBRA_FUNCIONES',
+        name: 'Álgebra y funciones',
+        order: 6,
+        resources: [
+          {
+            topicCode: 'M2.ALGEBRA_FUNCIONES.SISTEMAS_ECUACIONES_ECUACIONES_CUADRATICAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 2, MEDIA: 4, DIFICIL: 4 },
+          },
+          {
+            topicCode: 'M2.ALGEBRA_FUNCIONES.FUNCION_POTENCIA_MODELAMIENTO_ALGEBRAICO',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 2, MEDIA: 4, DIFICIL: 4 },
+          },
+        ],
+      },
     ],
   },
   /**
