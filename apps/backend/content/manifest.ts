@@ -303,6 +303,49 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
         ],
       },
+      /**
+       * M2-C2A -- Golden Unit real M2 / Ejes Geometría y Probabilidad y
+       * estadística (PAES M2). Cierra M2 V1 (8 recursos / 80 preguntas).
+       * Mismo patrón técnico que M2-C1A: módulos `.ts` en
+       * `content/estudio/m2-geometria/` y
+       * `content/estudio/m2-probabilidad-estadistica/`, contenido editorial
+       * APPROVED transcrito verbatim, distribución 2/4/4. Sin import a DB
+       * (M2-C2B).
+       */
+      {
+        unitCode: 'M2.GEOMETRIA',
+        name: 'Geometría',
+        order: 7,
+        resources: [
+          {
+            topicCode: 'M2.GEOMETRIA.HOMOTECIA_RELACIONES_GEOMETRICAS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 2, MEDIA: 4, DIFICIL: 4 },
+          },
+          {
+            topicCode: 'M2.GEOMETRIA.TRIGONOMETRIA_TRIANGULOS_RECTANGULOS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 2, MEDIA: 4, DIFICIL: 4 },
+          },
+        ],
+      },
+      {
+        unitCode: 'M2.PROBABILIDAD_ESTADISTICA',
+        name: 'Probabilidad y estadística',
+        order: 8,
+        resources: [
+          {
+            topicCode: 'M2.PROBABILIDAD_ESTADISTICA.MEDIDAS_DISPERSION_PROBABILIDAD_CONDICIONAL',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 2, MEDIA: 4, DIFICIL: 4 },
+          },
+          {
+            topicCode: 'M2.PROBABILIDAD_ESTADISTICA.COMBINATORIA_MODELO_BINOMIAL',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 2, MEDIA: 4, DIFICIL: 4 },
+          },
+        ],
+      },
     ],
   },
   /**
