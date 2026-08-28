@@ -772,6 +772,31 @@ export const CONTENT_MANIFEST: ContentManifest = [
             expectedQuestions: 10,
             expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
           },
+          {
+            topicCode: 'CIENCIAS.FISICA.TIERRA_DINAMICA_TECTONICA_PLACAS_ESTRUCTURA_TERRESTRE',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.FISICA.ATMOSFERA_CLIMA_CAMBIO_CLIMATICO',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.FISICA.CORRIENTE_ELECTRICA_VOLTAJE_RESISTENCIA',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.FISICA.CIRCUITOS_ELECTRICOS_SERIE_PARALELO_MIXTOS',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'CIENCIAS.FISICA.POTENCIA_ENERGIA_CONSUMO_ELECTRICO',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
         ],
       },
     ],
