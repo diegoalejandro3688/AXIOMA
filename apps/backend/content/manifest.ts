@@ -427,6 +427,12 @@ export const CONTENT_MANIFEST: ContentManifest = [
    * Militar, Violaciones a los Derechos Humanos y supresión del Estado de
    * derecho), completando `HISTORIA.MUNDO_AMERICA_CHILE` con 15 recursos.
    *
+   * CONTENT-H6A agrega R16-R17 (Bloque 6: Recuperación de la democracia
+   * durante la década de 1980, Transición a la democracia iniciada en 1988) y
+   * CIERRA la U1 `HISTORIA.MUNDO_AMERICA_CHILE` con 17 recursos / 170
+   * preguntas. U2 (Formación ciudadana) / U3 (Sistema económico) siguen fuera
+   * de alcance.
+   *
    * Unidad aún declarada INCOMPLETA A PROPÓSITO respecto del catálogo total
    * de la asignatura (mismo criterio que `LENGUAJE.EVALUAR` en
    * CONTENT-L3A): `manifestUnitSchema.resources` solo exige `.min(1)`. Las
@@ -517,6 +523,16 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
           {
             topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.DDHH_ESTADO_DERECHO_DICTADURA',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.RECUPERACION_DEMOCRACIA_DECADA_1980',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.MUNDO_AMERICA_CHILE.TRANSICION_DEMOCRACIA_1988',
             expectedQuestions: 10,
             expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
           },
