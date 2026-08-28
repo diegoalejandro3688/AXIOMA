@@ -538,6 +538,44 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
         ],
       },
+      /**
+       * CONTENT-H7A -- Historia / U2 "Formación ciudadana", COMPLETA (4 de 4
+       * recursos: R18 Democracia: fundamentos, atributos y dimensiones; R19
+       * Institucionalidad democrática en Chile; R20 Democracia en la sociedad
+       * de la información; R21 Sistema judicial y acceso a la justicia en
+       * Chile). Mismo patrón exacto que U1 `HISTORIA.MUNDO_AMERICA_CHILE`:
+       * cada recurso con módulo `.ts` completo en
+       * `content/estudio/historia-formacion-ciudadana/`, contenido editorial
+       * ya cerrado/APPROVED en este incremento. `order: 2` = segunda unidad
+       * de la asignatura. U3 (Sistema económico) sigue fuera de alcance.
+       */
+      {
+        unitCode: 'HISTORIA.FORMACION_CIUDADANA',
+        name: 'Formación ciudadana',
+        order: 2,
+        resources: [
+          {
+            topicCode: 'HISTORIA.FORMACION_CIUDADANA.DEMOCRACIA_FUNDAMENTOS_ATRIBUTOS_DIMENSIONES',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.FORMACION_CIUDADANA.INSTITUCIONALIDAD_DEMOCRATICA_CHILE',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.FORMACION_CIUDADANA.DEMOCRACIA_SOCIEDAD_INFORMACION',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+          {
+            topicCode: 'HISTORIA.FORMACION_CIUDADANA.SISTEMA_JUDICIAL_ACCESO_JUSTICIA_CHILE',
+            expectedQuestions: 10,
+            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+          },
+        ],
+      },
     ],
   },
   {
