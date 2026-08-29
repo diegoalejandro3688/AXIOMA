@@ -19,6 +19,8 @@ import {
 } from '../lib/exams/timer';
 import {
   selectionsFromQuestions,
+  sortByDisplayOrder,
+  reindexCurrentQuestion,
   withSelection,
   countProgress,
   routeForAttemptStatus,
@@ -244,12 +246,12 @@ function main() {
   check('no se envuelve a Q1 ni se inventa Q66: clamp Math.min(64, 64+1) = 64', Math.min(total65 - 1, 64 + 1) === 64);
   check('la pantalla de intento deshabilita "Siguiente" solo en la última (safeIndex === total - 1)', /disabled=\{safeIndex === total - 1\}/.test(attemptScreen));
   check('la pantalla de intento deshabilita "Anterior" solo en la primera (safeIndex === 0)', /disabled=\{safeIndex === 0\}/.test(attemptScreen));
-  check('la pantalla de intento hace clamp del índice (Math.min/Math.max), no reinicia ni inventa preguntas', /Math\.min\(total - 1, safeIndex \+ 1\)/.test(attemptScreen) && /Math\.max\(0, safeIndex - 1\)/.test(attemptScreen));
-  check('la pantalla de intento indexa la pregunta con safeIndex = Math.min(currentIndex, total - 1)', /const safeIndex = Math\.min\(currentIndex, total - 1\)/.test(attemptScreen));
+  check('"Siguiente"/"Anterior" avanzan con updater funcional acotado (no un valor stale), sin inventar preguntas', /setCurrentIndex\(\(i\) => Math\.min\(total - 1, Math\.max\(i, 0\) \+ 1\)\)/.test(attemptScreen) && /setCurrentIndex\(\(i\) => Math\.max\(0, Math\.min\(i, total - 1\) - 1\)\)/.test(attemptScreen));
+  check('la pantalla de intento acota safeIndex a [0, total-1]', /const safeIndex = Math\.min\(Math\.max\(currentIndex, 0\), total - 1\)/.test(attemptScreen));
 
   console.log('--- 16. ENSAYOS-M1-D: layout del intento (alternativas alcanzables sobre el footer) + tamaño contextual de fórmulas ---');
-  check('la pantalla de intento acota el ScrollView de la pregunta con flex:1 (alternativas desplazables sobre el footer)', /<ScrollView style=\{styles\.scroll\}/.test(attemptScreen) && /scroll: \{ flex: 1 \}/.test(attemptScreen));
-  check('la revisión acota su ScrollView con flex:1 igual', /<ScrollView style=\{styles\.scroll\}/.test(reviewScreen) && /scroll: \{ flex: 1 \}/.test(reviewScreen));
+  check('la pantalla de intento acota el ScrollView de la pregunta con flex:1 (alternativas desplazables sobre el footer)', /<ScrollView[^>]*\bstyle=\{styles\.scroll\}/.test(attemptScreen) && /scroll: \{ flex: 1 \}/.test(attemptScreen));
+  check('la revisión acota su ScrollView con flex:1 igual', /<ScrollView[^>]*\bstyle=\{styles\.scroll\}/.test(reviewScreen) && /scroll: \{ flex: 1 \}/.test(reviewScreen));
   check('el footer del intento NO es position:absolute (no tapa las alternativas)', !/footer:\s*\{[^}]*position:\s*['"]absolute/.test(attemptScreen));
   check('el contentContainer del intento reserva aire bajo la última alternativa (paddingBottom >= 24)', /content: \{ gap: \d+, paddingBottom: (?:2[4-9]|[3-9]\d) \}/.test(attemptScreen));
   const renderer = read('components/content-block-renderer.tsx');
@@ -262,6 +264,81 @@ function main() {
   check('la pantalla de intento pasa formulaContext="option" al renderer de alternativas', /blocks=\{\[option\.content\]\} formulaContext="option"/.test(attemptScreen));
   check('la revisión pasa formulaContext="option" al renderer de alternativas', /blocks=\{\[option\.content\]\} formulaContext="option"/.test(reviewScreen));
   check('el stem y la explicación NO fuerzan formulaContext="option" (quedan en "block")', !/blocks=\{question\.stemContent\} formulaContext/.test(attemptScreen) && !/blocks=\{question\.explanationContent\} formulaContext/.test(reviewScreen));
+
+  console.log('--- 17. ENSAYOS-M1-D2: index/displayOrder sincronizados -- header === currentQuestion.displayOrder en todo paso ---');
+  type FixtureQ = {
+    questionVersionId: string;
+    displayOrder: number;
+    stemContent: { type: 'paragraph'; order: number; text: string }[];
+    answerOptions: { id: string; content: { type: 'paragraph'; order: number; text: string }; displayOrder: number }[];
+    selectedAnswerOptionId: string | null;
+  };
+  // 65 preguntas con enunciado ÚNICO e identificable ("Question N") -- no un
+  // límite sintético con stems idénticos.
+  const makeExam = (n: number, backendShuffled: boolean): FixtureQ[] => {
+    const qs: FixtureQ[] = Array.from({ length: n }, (_, k) => ({
+      questionVersionId: `qv-${k + 1}`,
+      displayOrder: k + 1,
+      stemContent: [{ type: 'paragraph', order: 0, text: `Question ${k + 1}` }],
+      answerOptions: [{ id: `qv-${k + 1}-a`, content: { type: 'paragraph', order: 0, text: 'a' }, displayOrder: 0 }],
+      selectedAnswerOptionId: null,
+    }));
+    return backendShuffled ? [...qs].reverse() : qs;
+  };
+  const stemN = (q: FixtureQ) => q.stemContent[0].text;
+
+  // sortByDisplayOrder repara incluso un backend que entregara desordenado.
+  const sorted = sortByDisplayOrder(makeExam(65, true));
+  check('sortByDisplayOrder -> displayOrder 1..65 contiguo', JSON.stringify(sorted.map((q) => q.displayOrder)) === JSON.stringify(Array.from({ length: 65 }, (_, i) => i + 1)));
+  check('sortByDisplayOrder -> questions[i].displayOrder === i + 1 (identidad posicional)', sorted.every((q, i) => q.displayOrder === i + 1));
+  check('sortByDisplayOrder -> stem del índice i es "Question i+1"', sorted.every((q, i) => stemN(q) === `Question ${i + 1}`));
+  check('sortByDisplayOrder no muta la entrada', (() => { const src = makeExam(3, true); const before = src.map((q) => q.displayOrder); sortByDisplayOrder(src); return JSON.stringify(src.map((q) => q.displayOrder)) === JSON.stringify(before); })());
+
+  // Simulación del reducer de la pantalla (misma semántica que attempt screen).
+  const total17 = sorted.length;
+  const clamp = (i: number) => Math.min(Math.max(i, 0), total17 - 1);
+  const step = (i: number) => {
+    const safe = clamp(i);
+    const cq = sorted[safe];
+    return { safe, cq, header: cq.displayOrder, nextDisabled: safe === total17 - 1, prevDisabled: safe === 0 };
+  };
+  // Secuencial Q60 -> Q65 vía "Siguiente".
+  let idx17 = 59; // currentIndex apuntando a Q60
+  for (let expected = 60; expected <= 65; expected++) {
+    const s = step(idx17);
+    check(`paso secuencial: currentIndex=${idx17} -> header ${s.header}, stem "${stemN(s.cq)}" (esperado Q${expected})`, s.header === expected && stemN(s.cq) === `Question ${expected}` && s.cq.displayOrder === expected);
+    idx17 = Math.min(total17 - 1, Math.max(idx17, 0) + 1);
+  }
+  check('Q65: "Siguiente" deshabilitado, header 65, stem "Question 65"', (() => { const s = step(64); return s.nextDisabled && !s.prevDisabled && s.header === 65 && stemN(s.cq) === 'Question 65'; })());
+  check('Q65 + "Siguiente" NO avanza (no hay Q66, no wrap): min(64, 64+1) = 64', Math.min(total17 - 1, Math.max(64, 0) + 1) === 64);
+
+  // Saltos del navegador: tap N -> pregunta con displayOrder N (índice N-1).
+  for (const jump of [61, 65, 63, 1]) {
+    const s = step(jump - 1);
+    check(`navegador: tap ${jump} -> header ${s.header}, stem "${stemN(s.cq)}"`, s.header === jump && stemN(s.cq) === `Question ${jump}`);
+  }
+
+  // §10 -- refetch mientras el usuario está en Q61: refs nuevas, mismos
+  // displayOrder; el usuario NO se mueve; "Siguiente" -> Q62.
+  const onQ61Index = sorted.findIndex((q) => q.displayOrder === 61);
+  const prevId = sorted[onQ61Index].questionVersionId;
+  const refetched = sortByDisplayOrder(makeExam(65, true)); // objetos nuevos
+  check('refetch: objetos realmente distintos (no misma referencia)', refetched[onQ61Index] !== sorted[onQ61Index]);
+  const reindexed = reindexCurrentQuestion(refetched, prevId);
+  check('refetch: reindexCurrentQuestion reancla por identidad -> sigue en Q61', reindexed === onQ61Index && refetched[reindexed].displayOrder === 61 && stemN(refetched[reindexed]) === 'Question 61');
+  const afterNext = Math.min(64, Math.max(reindexed, 0) + 1);
+  check('refetch + "Siguiente" -> Q62 sincronizado (header y stem)', refetched[afterNext].displayOrder === 62 && stemN(refetched[afterNext]) === 'Question 62');
+  check('reindexCurrentQuestion: sin previa -> 0', reindexCurrentQuestion(refetched, null) === 0);
+  check('reindexCurrentQuestion: id inexistente -> 0 (clamp seguro, nunca desalinea)', reindexCurrentQuestion(refetched, 'qv-nope') === 0);
+  check('reindexCurrentQuestion: arreglo vacío -> 0', reindexCurrentQuestion([], prevId) === 0);
+
+  // Estático: la pantalla usa UNA sola selección mutable y deriva todo de ella.
+  check('la pantalla de intento deriva el header de currentQuestion.displayOrder (no de safeIndex + 1)', /Pregunta \{currentQuestion\.displayOrder\} de \{total\}/.test(attemptScreen) && !/Pregunta \{safeIndex \+ 1\}/.test(attemptScreen));
+  check('la pantalla de intento ordena por displayOrder y reancla en el refetch', /sortByDisplayOrder\(qResult\.data\.questions\)/.test(attemptScreen) && /reindexCurrentQuestion\(questions, currentQuestionIdRef\.current\)/.test(attemptScreen));
+  check('la pantalla de intento remonta el subárbol de la pregunta por identidad (key)', /<ScrollView key=\{currentQuestion\.questionVersionId\}/.test(attemptScreen));
+  check('la pantalla de intento NO guarda un currentDisplayOrder aparte de currentIndex (una sola fuente)', !/currentDisplayOrder|setCurrentDisplayOrder/.test(attemptScreen) && (attemptScreen.match(/useState\(/g) ?? []).length <= 7);
+  check('currentQuestionIdRef es copia derivada refrescada en render (no segunda fuente de verdad)', /currentQuestionIdRef\.current = currentQuestion\.questionVersionId/.test(attemptScreen));
+  check('la revisión también ordena por displayOrder, header por displayOrder y remonta con key', /sortByDisplayOrder\(state\.review\.questions\)/.test(reviewScreen) && /Pregunta \{question\.displayOrder\} de \{total\}/.test(reviewScreen) && /<ScrollView key=\{question\.questionVersionId\}/.test(reviewScreen));
 
   console.log('');
   if (failures > 0) {

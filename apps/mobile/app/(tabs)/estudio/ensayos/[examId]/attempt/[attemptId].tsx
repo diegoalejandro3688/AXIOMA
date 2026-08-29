@@ -12,6 +12,8 @@ import {
 import { forgetActiveAttempt } from '../../../../../../lib/exams/attempt-cache';
 import {
   selectionsFromQuestions,
+  sortByDisplayOrder,
+  reindexCurrentQuestion,
   withSelection,
   countProgress,
   liveOptionState,
@@ -72,6 +74,18 @@ export default function EnsayoAttemptScreen() {
   const [confirmSubmit, setConfirmSubmit] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const mounted = useRef(true);
+  /**
+   * `questionVersionId` de la pregunta que el usuario está viendo AHORA --
+   * ENSAYOS-M1-D2. Es una copia derivada (se refresca en cada render), nunca
+   * una segunda fuente de verdad: `currentIndex` sigue siendo la única
+   * selección mutable. Solo sirve para reanclar por identidad tras un refetch
+   * (ver `reindexCurrentQuestion`) sin meter `currentIndex` en las deps de
+   * `load` (lo que recrearía el efecto en cada navegación).
+   */
+  const currentQuestionIdRef = useRef<string | null>(null);
+  /** Params más recientes para el redirect terminal -- mantiene `goToResult`/`load` estables (deps solo `attemptId`). */
+  const redirectParamsRef = useRef({ examId, name });
+  redirectParamsRef.current = { examId, name };
 
   useEffect(() => {
     mounted.current = true;
@@ -81,21 +95,27 @@ export default function EnsayoAttemptScreen() {
   }, []);
 
   const goToResult = useCallback(() => {
+    const { examId: exId, name: nm } = redirectParamsRef.current;
     router.replace({
       pathname: '/(tabs)/estudio/ensayos/[examId]/result/[attemptId]',
-      params: { examId, attemptId, name: name ?? '' },
+      params: { examId: exId, attemptId, name: nm ?? '' },
     });
-  }, [router, examId, attemptId, name]);
+  }, [router, attemptId]);
 
   const load = useCallback(async () => {
     setState({ status: 'loading' });
     const qResult = await getExamAttemptQuestions(attemptId);
     if (!mounted.current) return;
     if (qResult.ok) {
+      // Orden explícito y estable por displayOrder (el índice de arreglo ES la
+      // identidad de "pregunta N"). Tras un refetch, reanclar al usuario en la
+      // MISMA pregunta por identidad -- no moverlo porque cambiaron las refs.
+      const questions = sortByDisplayOrder(qResult.data.questions);
+      setCurrentIndex(reindexCurrentQuestion(questions, currentQuestionIdRef.current));
       setState({
         status: 'ready',
-        questions: qResult.data.questions,
-        selections: selectionsFromQuestions(qResult.data.questions),
+        questions,
+        selections: selectionsFromQuestions(questions),
         timing: { expiresAt: qResult.data.expiresAt, serverTime: qResult.data.serverTime },
       });
       return;
@@ -191,9 +211,13 @@ export default function EnsayoAttemptScreen() {
   }
 
   const total = state.questions.length;
-  const safeIndex = Math.min(currentIndex, total - 1);
+  const safeIndex = Math.min(Math.max(currentIndex, 0), total - 1);
   const question = state.questions[safeIndex];
-  const selectedOptionId = state.selections[question.questionVersionId];
+  // Fuente única: TODO lo de "la pregunta actual" (header, stem, alternativas,
+  // selección, celda del navegador, Prev/Next) se deriva de este mismo objeto.
+  const currentQuestion = question;
+  currentQuestionIdRef.current = currentQuestion.questionVersionId;
+  const selectedOptionId = state.selections[currentQuestion.questionVersionId];
   const { answered, unanswered } = countProgress(state.questions, state.selections);
 
   const navigatorStates: NavigatorCellState[] = state.questions.map((q, index) =>
@@ -205,7 +229,7 @@ export default function EnsayoAttemptScreen() {
       <View style={styles.header}>
         <IconButton name="close" accessibilityLabel="Salir del ensayo" onPress={() => router.back()} color="secondary" />
         <Text variant="label" color="secondary" style={styles.progressLabel}>
-          Pregunta {safeIndex + 1} de {total}
+          Pregunta {currentQuestion.displayOrder} de {total}
         </Text>
         <ExamCountdown expiresAt={state.timing.expiresAt} serverTime={state.timing.serverTime} onExpire={refreshAttemptState} />
       </View>
@@ -233,8 +257,13 @@ export default function EnsayoAttemptScreen() {
         </View>
       ) : null}
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        <ContentBlockRenderer blocks={question.stemContent} />
+      {/* `key` por identidad de pregunta -- ENSAYOS-M1-D2: al cambiar de
+          pregunta React desmonta y remonta este subárbol en vez de reconciliar
+          en sitio, así ningún estado interno (tamaño de fórmula, parseo de SVG,
+          posición de scroll) del enunciado anterior sobrevive al cambio de
+          índice. Elimina la clase de bug "header en Q65 / contenido en Q61". */}
+      <ScrollView key={currentQuestion.questionVersionId} style={styles.scroll} contentContainerStyle={styles.content}>
+        <ContentBlockRenderer blocks={currentQuestion.stemContent} />
         <Text variant="bodySmall" color="secondary">
           Selecciona una alternativa. Puedes cambiarla mientras el ensayo siga abierto.
         </Text>
@@ -246,7 +275,7 @@ export default function EnsayoAttemptScreen() {
         ) : null}
 
         <View style={styles.options}>
-          {question.answerOptions.map((option, optionIndex) => {
+          {currentQuestion.answerOptions.map((option, optionIndex) => {
             const live = liveOptionState({ optionId: option.id, selectedOptionId, pendingOptionId });
             const optionState: AnswerOptionState = live === 'submitting' ? 'submitting' : live === 'selected' ? 'selected' : 'default';
             return (
@@ -257,7 +286,7 @@ export default function EnsayoAttemptScreen() {
                 disabled={pendingOptionId !== null}
                 accessibilityRole="radio"
                 accessibilityLabel={`Alternativa ${String.fromCharCode(65 + optionIndex)}`}
-                onPress={() => handleSelect(question, option.id)}
+                onPress={() => handleSelect(currentQuestion, option.id)}
               >
                 <ContentBlockRenderer blocks={[option.content]} formulaContext="option" />
               </AnswerOption>
@@ -273,14 +302,14 @@ export default function EnsayoAttemptScreen() {
             size="small"
             label="Anterior"
             disabled={safeIndex === 0}
-            onPress={() => setCurrentIndex(Math.max(0, safeIndex - 1))}
+            onPress={() => setCurrentIndex((i) => Math.max(0, Math.min(i, total - 1) - 1))}
           />
           <Button
             variant="secondary"
             size="small"
             label="Siguiente"
             disabled={safeIndex === total - 1}
-            onPress={() => setCurrentIndex(Math.min(total - 1, safeIndex + 1))}
+            onPress={() => setCurrentIndex((i) => Math.min(total - 1, Math.max(i, 0) + 1))}
           />
         </View>
         <Button

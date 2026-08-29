@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ExamAttemptReviewResponse } from '@axioma/contracts';
 import { getExamReview } from '../../../../../../lib/api/exams';
-import { reviewOptionState, reviewNavCellState } from '../../../../../../lib/exams/attempt-state';
+import { reviewOptionState, reviewNavCellState, sortByDisplayOrder } from '../../../../../../lib/exams/attempt-state';
 import { LoadingState } from '../../../../../../components/loading-state';
 import { ErrorState } from '../../../../../../components/error-state';
 import { ContentBlockRenderer } from '../../../../../../components/content-block-renderer';
@@ -56,9 +56,9 @@ export default function EnsayoReviewScreen() {
   if (state.status === 'loading') return <LoadingState message="Cargando la revisión…" />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
 
-  const questions = state.review.questions;
+  const questions = sortByDisplayOrder(state.review.questions);
   const total = questions.length;
-  const safeIndex = Math.min(currentIndex, total - 1);
+  const safeIndex = Math.min(Math.max(currentIndex, 0), total - 1);
   const question = questions[safeIndex];
   const unanswered = question.selectedAnswerOptionId === null;
 
@@ -75,7 +75,7 @@ export default function EnsayoReviewScreen() {
       <View style={styles.header}>
         <IconButton name="close" accessibilityLabel="Cerrar la revisión" onPress={() => router.back()} color="secondary" />
         <Text variant="label" color="secondary" style={styles.progressLabel}>
-          Pregunta {safeIndex + 1} de {total}
+          Pregunta {question.displayOrder} de {total}
         </Text>
         <Text variant="label" color={statusColor} weight="semibold">
           {statusLabel}
@@ -105,7 +105,7 @@ export default function EnsayoReviewScreen() {
         </View>
       ) : null}
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      <ScrollView key={question.questionVersionId} style={styles.scroll} contentContainerStyle={styles.content}>
         <ContentBlockRenderer blocks={question.stemContent} />
 
         <View style={styles.options}>
@@ -152,14 +152,14 @@ export default function EnsayoReviewScreen() {
           size="small"
           label="Anterior"
           disabled={safeIndex === 0}
-          onPress={() => setCurrentIndex(Math.max(0, safeIndex - 1))}
+          onPress={() => setCurrentIndex((i) => Math.max(0, Math.min(i, total - 1) - 1))}
         />
         <Button
           variant="secondary"
           size="small"
           label="Siguiente"
           disabled={safeIndex === total - 1}
-          onPress={() => setCurrentIndex(Math.min(total - 1, safeIndex + 1))}
+          onPress={() => setCurrentIndex((i) => Math.min(total - 1, Math.max(i, 0) + 1))}
         />
       </View>
     </View>
