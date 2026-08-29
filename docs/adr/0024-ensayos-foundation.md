@@ -20,7 +20,8 @@ DOMINIO EXAMS / ENSAYOS V1 — AXIOMA
 Módulo backend:  apps/backend/src/exams  (ExamsModule, top-level en app.module)
 Contratos:       packages/contracts/src/exams.ts
 Tablas:          exam, exam_question, exam_attempt, exam_attempt_answer
-Migración:       20260828120000_exams_foundation
+Migraciones:     20260828120000_exams_foundation
+                 20260828130000_exams_answer_frozen_trigger_hardening  (forward-only: BEFORE INSERT OR UPDATE, sin DELETE)
 Gate:            verify:exam-foundation-gate  (axioma_gates_dev)
 ```
 

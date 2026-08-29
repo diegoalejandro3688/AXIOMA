@@ -195,36 +195,44 @@ BEFORE INSERT OR UPDATE ON "exam_question"
 FOR EACH ROW EXECUTE FUNCTION enforce_exam_question_version_published();
 
 -- ---------------------------------------------------------------------------
--- Las respuestas de un intento son INMUTABLES una vez que el intento deja de
--- estar ACTIVE (COMPLETED/EXPIRED): ningún INSERT ni UPDATE (cambio de
--- alternativa) después del cierre. Además, nunca se acepta una respuesta
--- pasada la expiración aunque el status siga ACTIVE porque la transición
--- perezosa no corrió aún. DELETE no se bloquea -- la retención/borrado de un
--- intento histórico es otra preocupación (no hay cascade destructivo hacia
--- estas filas). Respaldo de base de datos -- la capa de servicio ya lo valida
--- antes de llegar aquí. Mismo criterio que
--- enforce_quick_question_attempt_session_active / enforce_student_response_immutable.
+-- Las respuestas de un intento son inmutables una vez que el intento deja de
+-- estar ACTIVE (COMPLETED/EXPIRED). Bloquea INSERT, UPDATE y DELETE directos.
+-- Respaldo de base de datos -- la capa de servicio ya lo valida antes de
+-- llegar aquí. Mismo criterio que enforce_quick_question_attempt_session_active
+-- y enforce_student_response_immutable.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION enforce_exam_attempt_answer_frozen_after_close()
 RETURNS TRIGGER AS $$
 DECLARE
   attempt_row "exam_attempt"%ROWTYPE;
+  target_attempt_id UUID;
 BEGIN
-  SELECT * INTO attempt_row FROM "exam_attempt" WHERE "id" = NEW."attempt_id";
+  IF TG_OP = 'DELETE' THEN
+    target_attempt_id := OLD."attempt_id";
+  ELSE
+    target_attempt_id := NEW."attempt_id";
+  END IF;
+
+  SELECT * INTO attempt_row FROM "exam_attempt" WHERE "id" = target_attempt_id;
 
   IF attempt_row."status" <> 'ACTIVE' THEN
     RAISE EXCEPTION 'exam_attempt_answer: el intento % ya no está ACTIVE (status=%) -- las respuestas son inmutables tras la entrega/expiración',
-      NEW."attempt_id", attempt_row."status";
+      target_attempt_id, attempt_row."status";
   END IF;
 
-  IF now() >= attempt_row."expires_at" THEN
-    RAISE EXCEPTION 'exam_attempt_answer: el intento % ya expiró (expires_at=%)', NEW."attempt_id", attempt_row."expires_at";
+  -- Defensa adicional: nunca aceptar una respuesta pasada la expiración,
+  -- aunque el status siga ACTIVE porque la transición perezosa no corrió aún.
+  IF TG_OP <> 'DELETE' AND now() >= attempt_row."expires_at" THEN
+    RAISE EXCEPTION 'exam_attempt_answer: el intento % ya expiró (expires_at=%)', target_attempt_id, attempt_row."expires_at";
   END IF;
 
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_exam_attempt_answer_frozen_after_close
-BEFORE INSERT OR UPDATE ON "exam_attempt_answer"
+BEFORE INSERT OR UPDATE OR DELETE ON "exam_attempt_answer"
 FOR EACH ROW EXECUTE FUNCTION enforce_exam_attempt_answer_frozen_after_close();
