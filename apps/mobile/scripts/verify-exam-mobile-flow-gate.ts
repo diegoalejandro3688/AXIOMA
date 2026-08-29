@@ -189,19 +189,79 @@ function main() {
   check("los tiles 'recursos' y 'practica-libre' siguen deshabilitados", /key: 'recursos',[\s\S]{0,160}enabled: false/.test(tile) && /key: 'practica-libre',[\s\S]{0,160}enabled: false/.test(tile));
 
   console.log('--- 14. Regresión Study: pantallas del recorrido de Study sin cambios ---');
+  // ENSAYOS-M1-D toca a propósito `content-block-renderer.tsx` (tamaño
+  // contextual de fórmulas) -> sale de esta lista y se cubre por assertions
+  // de comportamiento en la sección 16 + los gates de lógica de Study.
   const studyReaders = [
     'apps/mobile/app/(tabs)/estudio/topic/[topicId]/ejercicio.tsx',
     'apps/mobile/app/(tabs)/estudio/topic/[topicId]/recurso.tsx',
     'apps/mobile/app/(tabs)/estudio/[subjectId]/unidades.tsx',
     'apps/mobile/app/(tabs)/estudio/index.tsx',
     'apps/mobile/lib/api/education.ts',
-    'apps/mobile/components/content-block-renderer.tsx',
     'apps/mobile/components/ui/answer-option.tsx',
   ];
   for (const rel of studyReaders) {
     const out = execFileSync('git', ['diff', '--stat', 'HEAD', '--', rel.replace(/\\/g, '/')], { cwd: repoRoot, encoding: 'utf8' });
     check(`${rel}: sin cambios en el árbol de trabajo`, out.trim() === '', out.trim());
   }
+
+  console.log('--- 15. ENSAYOS-M1-D: fixture de 65 preguntas -- Q63 -> Q64 -> Q65 respondibles, 65/65, submit sin sin-responder ---');
+  const mk65 = (i: number): ExamAttemptQuestion => ({
+    questionVersionId: `qv-${i}`,
+    displayOrder: i,
+    stemContent: [{ type: 'paragraph', order: 0, text: `Pregunta ${i}` }],
+    answerOptions: [
+      { id: `qv-${i}-a`, content: { type: 'paragraph', order: 0, text: 'a' }, displayOrder: 0 },
+      {
+        id: `qv-${i}-b`,
+        // Q64/Q65 reales tienen alternativas "solo fórmula" (fracciones) --
+        // el fixture las incluye para no probar solo un límite sintético.
+        content: { type: 'formula', order: 0, latex: '\\frac{13}{20}', svg: '<svg width="2.595ex" height="2.789ex" viewBox="0 -872 1147 1232"></svg>' },
+        displayOrder: 1,
+      },
+    ],
+    selectedAnswerOptionId: null,
+  });
+  const exam65 = Array.from({ length: 65 }, (_, k) => mk65(k + 1));
+  check('el fixture tiene exactamente 65 preguntas', exam65.length === 65);
+  let sel65 = selectionsFromQuestions(exam65);
+  check('al inicio 0/65 respondidas', countProgress(exam65, sel65).answered === 0);
+  for (let k = 0; k < 63; k++) sel65 = withSelection(sel65, exam65[k].questionVersionId, `qv-${k + 1}-a`);
+  check('tras responder 1..63 -> 63/65 respondidas, 2 sin responder', countProgress(exam65, sel65).answered === 63 && countProgress(exam65, sel65).unanswered === 2);
+  // El bug real de Issue A: el conteo se quedaba en 63 porque Q64/Q65 no se
+  // podían seleccionar. Aquí se verifica que ambas SÍ aceptan selección.
+  sel65 = withSelection(sel65, exam65[63].questionVersionId, 'qv-64-b');
+  check('Q64 acepta respuesta -> 64/65', countProgress(exam65, sel65).answered === 64);
+  sel65 = withSelection(sel65, exam65[64].questionVersionId, 'qv-65-b');
+  check('Q65 acepta respuesta -> 65/65', countProgress(exam65, sel65).answered === 65);
+  check('con 65 selecciones -> unanswered = 0 (submit no marca ninguna como incorrecta por omisión)', countProgress(exam65, sel65).unanswered === 0);
+  const total65 = exam65.length;
+  const nextDisabled = (idx: number) => idx === total65 - 1;
+  const prevDisabled = (idx: number) => idx === 0;
+  check('Q63 (idx 62): "Siguiente" habilitado', !nextDisabled(62));
+  check('Q64 (idx 63): "Siguiente" y "Anterior" habilitados', !nextDisabled(63) && !prevDisabled(63));
+  check('Q65 (idx 64): "Siguiente" DESHABILITADO (no hay Q66), "Anterior" habilitado', nextDisabled(64) && !prevDisabled(64));
+  check('no se envuelve a Q1 ni se inventa Q66: clamp Math.min(64, 64+1) = 64', Math.min(total65 - 1, 64 + 1) === 64);
+  check('la pantalla de intento deshabilita "Siguiente" solo en la última (safeIndex === total - 1)', /disabled=\{safeIndex === total - 1\}/.test(attemptScreen));
+  check('la pantalla de intento deshabilita "Anterior" solo en la primera (safeIndex === 0)', /disabled=\{safeIndex === 0\}/.test(attemptScreen));
+  check('la pantalla de intento hace clamp del índice (Math.min/Math.max), no reinicia ni inventa preguntas', /Math\.min\(total - 1, safeIndex \+ 1\)/.test(attemptScreen) && /Math\.max\(0, safeIndex - 1\)/.test(attemptScreen));
+  check('la pantalla de intento indexa la pregunta con safeIndex = Math.min(currentIndex, total - 1)', /const safeIndex = Math\.min\(currentIndex, total - 1\)/.test(attemptScreen));
+
+  console.log('--- 16. ENSAYOS-M1-D: layout del intento (alternativas alcanzables sobre el footer) + tamaño contextual de fórmulas ---');
+  check('la pantalla de intento acota el ScrollView de la pregunta con flex:1 (alternativas desplazables sobre el footer)', /<ScrollView style=\{styles\.scroll\}/.test(attemptScreen) && /scroll: \{ flex: 1 \}/.test(attemptScreen));
+  check('la revisión acota su ScrollView con flex:1 igual', /<ScrollView style=\{styles\.scroll\}/.test(reviewScreen) && /scroll: \{ flex: 1 \}/.test(reviewScreen));
+  check('el footer del intento NO es position:absolute (no tapa las alternativas)', !/footer:\s*\{[^}]*position:\s*['"]absolute/.test(attemptScreen));
+  check('el contentContainer del intento reserva aire bajo la última alternativa (paddingBottom >= 24)', /content: \{ gap: \d+, paddingBottom: (?:2[4-9]|[3-9]\d) \}/.test(attemptScreen));
+  const renderer = read('components/content-block-renderer.tsx');
+  check('ContentBlockRenderer acepta formulaContext', /formulaContext\?: FormulaContext/.test(renderer));
+  check('FormulaBlock deriva el tamaño intrínseco del SVG (unidad ex), no un height global fijo', /parseSvgIntrinsicSize/.test(renderer) && /ex"/.test(renderer) && /exWidth/.test(renderer));
+  check('FormulaBlock ya no fuerza height={40} de forma incondicional', !/\bheight=\{40\}/.test(stripComments(renderer)));
+  check('FormulaBlock escala px por ex distinto para alternativa vs bloque', /EX_PX[\s\S]{0,400}option:\s*\d+[\s\S]{0,400}block:\s*\d+/.test(renderer));
+  check('FormulaBlock reduce a lo ancho del contenedor si la ecuación es más ancha (sin recorte)', /naturalWidth > maxWidth/.test(renderer));
+  check('el renderer NO interpreta LaTeX ni regenera el svg (sigue usando el svg del servidor)', !/katex|mathjax|renderLatex/i.test(stripComments(renderer)) && /SvgXml/.test(renderer));
+  check('la pantalla de intento pasa formulaContext="option" al renderer de alternativas', /blocks=\{\[option\.content\]\} formulaContext="option"/.test(attemptScreen));
+  check('la revisión pasa formulaContext="option" al renderer de alternativas', /blocks=\{\[option\.content\]\} formulaContext="option"/.test(reviewScreen));
+  check('el stem y la explicación NO fuerzan formulaContext="option" (quedan en "block")', !/blocks=\{question\.stemContent\} formulaContext/.test(attemptScreen) && !/blocks=\{question\.explanationContent\} formulaContext/.test(reviewScreen));
 
   console.log('');
   if (failures > 0) {

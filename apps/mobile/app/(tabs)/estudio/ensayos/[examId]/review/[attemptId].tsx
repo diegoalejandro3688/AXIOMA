@@ -105,7 +105,7 @@ export default function EnsayoReviewScreen() {
         </View>
       ) : null}
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <ContentBlockRenderer blocks={question.stemContent} />
 
         <View style={styles.options}>
@@ -124,7 +124,7 @@ export default function EnsayoReviewScreen() {
                 }${option.id === question.selectedAnswerOptionId ? ', tu respuesta' : ''}`}
                 onPress={() => undefined}
               >
-                <ContentBlockRenderer blocks={[option.content]} />
+                <ContentBlockRenderer blocks={[option.content]} formulaContext="option" />
               </AnswerOption>
             );
           })}
@@ -186,7 +186,10 @@ function createStyles(t: ThemeTokens) {
       backgroundColor: t.color.background.surface,
       marginBottom: spacing.space2,
     },
-    content: { gap: 14, paddingBottom: 20 },
+    // ENSAYOS-M1-D -- mismo motivo que la pantalla de intento: el ScrollView
+    // debe quedar acotado entre el header y la fila de navegación.
+    scroll: { flex: 1 },
+    content: { gap: 14, paddingBottom: 32 },
     options: { gap: spacing.space3 },
     explanation: {
       gap: spacing.space2,

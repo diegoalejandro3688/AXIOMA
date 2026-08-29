@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { Image, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import type { ResourceContentBlockResponse } from '@axioma/contracts';
@@ -19,20 +20,37 @@ import type { ThemeTokens } from '../theme';
  * envuelve CUALQUIER bloque `formula` -- de cualquier resource, no solo el
  * de esta materia -- en una superficie destacada. Es una decisión de
  * PRESENTACIÓN aplicada por `type`, nunca por contenido/texto específico.
+ *
+ * `formulaContext` (ENSAYOS-M1-D) -- escala de PRESENTACIÓN del SVG de
+ * fórmula, nunca toca el LaTeX ni el `svg`. `'block'` (por defecto) es el
+ * tamaño de un bloque de fórmula suelto (stems, explicaciones, "Fórmula
+ * clave" de Study). `'option'` lo compacta al tamaño del texto de una
+ * alternativa: una alternativa "solo fórmula" (`8`, `\frac{13}{20}`) debe
+ * parecerse a una alternativa de texto normal, no ocupar toda la tarjeta.
  */
+export type FormulaContext = 'block' | 'option';
+
 export function ContentBlockRenderer({
   blocks,
   highlightFormulas = false,
+  formulaContext = 'block',
 }: {
   blocks: ResourceContentBlockResponse[];
   highlightFormulas?: boolean;
+  formulaContext?: FormulaContext;
 }) {
   const sorted = [...blocks].sort((a, b) => a.order - b.order);
   const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.container}>
       {sorted.map((block, index) => (
-        <ContentBlock key={index} block={block} styles={styles} highlightFormulas={highlightFormulas} />
+        <ContentBlock
+          key={index}
+          block={block}
+          styles={styles}
+          highlightFormulas={highlightFormulas}
+          formulaContext={formulaContext}
+        />
       ))}
     </View>
   );
@@ -42,10 +60,12 @@ function ContentBlock({
   block,
   styles,
   highlightFormulas,
+  formulaContext,
 }: {
   block: ResourceContentBlockResponse;
   styles: ReturnType<typeof createStyles>;
   highlightFormulas: boolean;
+  formulaContext: FormulaContext;
 }) {
   switch (block.type) {
     case 'heading':
@@ -57,7 +77,15 @@ function ContentBlock({
     case 'paragraph':
       return <Text variant="body">{block.text}</Text>;
     case 'formula':
-      return <FormulaBlock latex={block.latex} svg={block.svg} styles={styles} highlight={highlightFormulas} />;
+      return (
+        <FormulaBlock
+          latex={block.latex}
+          svg={block.svg}
+          styles={styles}
+          highlight={highlightFormulas}
+          context={formulaContext}
+        />
+      );
     case 'image':
       return (
         <Image
@@ -77,38 +105,79 @@ function ContentBlock({
  * regenerar nada en el servidor: `SvgXml` (react-native-svg) resuelve
  * `currentColor` a partir de su prop `color`, igual que `color` en CSS.
  *
- * STUDY-4 -- causa raíz del espacio en blanco: el `<svg>` que devuelve
- * MathJax trae `width="19.265ex"` (unidad `ex`, típica de su output SVG) en
- * el nodo raíz. Antes solo se sobreescribía `height` (`height={40}`);
- * `width` quedaba en manos del propio atributo del XML, y `react-native-svg`
- * NO sabe interpretar la unidad `ex` (solo número/`%`) -- resuelve a un
- * ancho de 0, así que la fórmula ocupaba la altura reservada pero pintaba 0
- * píxeles de ancho: el hueco en blanco de la captura real. El fix es
- * sobreescribir también `width` (aquí `"100%"`, igual que ya se hace con
- * `height`) para que `react-native-svg` ignore el atributo `ex` y escale
- * dentro del contenedor usando el `viewBox` (ya presente en el SVG real, sin
- * tocar el pipeline MathJax/servidor). `preserveAspectRatio="xMinYMid meet"`
- * alinea la fórmula a la izquierda igual que el texto circundante, en vez
- * del centrado por defecto de SVG.
+ * TAMAÑO (STUDY-4 + ENSAYOS-M1-D) -- el `<svg>` de MathJax trae
+ * `width="20.4ex"` / `height="2.26ex"` (unidad `ex`) y un `viewBox`.
+ * `react-native-svg` NO sabe interpretar `ex` (solo número/`%`). El primer
+ * fix (STUDY-4) forzaba `width="100%" height={40}`: correcto para el hueco
+ * en blanco, pero en Android estiraba una fórmula minúscula (`8`) a todo el
+ * ancho y la fijaba en 40px de alto -> ocupaba casi toda la tarjeta de
+ * alternativa. Ahora derivamos el tamaño intrínseco de los propios atributos
+ * `ex` del SVG y lo escalamos a píxeles relativos al texto circundante
+ * (`EX_PX`), preservando el aspect ratio vía `viewBox`. Si la fórmula es más
+ * ancha que el contenedor (ecuaciones largas), se reduce a lo ancho
+ * disponible manteniendo la proporción (sin recorte ni overflow). Si el SVG
+ * no trae dimensiones en `ex` (forma inesperada), se cae al comportamiento
+ * anterior (`100%` / alto fijo). NUNCA se toca el LaTeX ni el `svg`.
  */
+const EX_PX: Record<FormulaContext, number> = {
+  // ~1ex de texto `body` (16px) ≈ 8px -> una alternativa "solo fórmula"
+  // queda del tamaño del texto de las demás alternativas.
+  option: 8,
+  // Un bloque de fórmula suelto se muestra algo más grande que el cuerpo,
+  // como venía viéndose en Study, pero proporcional a su complejidad real.
+  block: 13,
+};
+const FALLBACK_HEIGHT: Record<FormulaContext, number> = { option: 22, block: 40 };
+
 function FormulaBlock({
   latex,
   svg,
   styles,
   highlight,
+  context,
 }: {
   latex: string;
   svg: string;
   styles: ReturnType<typeof createStyles>;
   highlight: boolean;
+  context: FormulaContext;
 }) {
   const tokens = useTheme();
+  const [maxWidth, setMaxWidth] = useState<number | null>(null);
+  const intrinsic = useMemo(() => parseSvgIntrinsicSize(svg), [svg]);
+
+  let width: number | string;
+  let height: number;
+  if (intrinsic) {
+    const naturalWidth = intrinsic.exWidth * EX_PX[context];
+    const naturalHeight = intrinsic.exHeight * EX_PX[context];
+    if (maxWidth != null && naturalWidth > maxWidth) {
+      // Ecuación más ancha que el contenedor: reducir a lo disponible,
+      // mismo aspect ratio (nada de recorte ni scroll horizontal).
+      width = Math.floor(maxWidth);
+      height = Math.max(1, Math.round(naturalHeight * (maxWidth / naturalWidth)));
+    } else {
+      width = Math.round(naturalWidth);
+      height = Math.round(naturalHeight);
+    }
+  } else {
+    width = '100%';
+    height = FALLBACK_HEIGHT[context];
+  }
+
   const content = (
-    <View style={styles.formulaContainer} accessibilityLabel={`Fórmula: ${latex}`}>
+    <View
+      style={styles.formulaContainer}
+      accessibilityLabel={`Fórmula: ${latex}`}
+      onLayout={(e) => {
+        const w = e.nativeEvent.layout.width;
+        setMaxWidth((prev) => (prev != null && Math.abs(prev - w) < 1 ? prev : w));
+      }}
+    >
       <SvgXml
         xml={extractSvgElement(svg)}
-        width="100%"
-        height={40}
+        width={width}
+        height={height}
         preserveAspectRatio="xMinYMid meet"
         color={tokens.color.text.primary}
       />
@@ -125,6 +194,26 @@ function FormulaBlock({
       {content}
     </Card>
   );
+}
+
+/**
+ * MathJax emite el `<svg>` raíz con `width="N.NNNex"` y `height="M.MMMex"`
+ * (unidad `ex`, ver `formula-rendering.ts` del backend). Extrae ese par para
+ * poder dimensionar el SVG a un tamaño relativo al texto. Devuelve `null` si
+ * la forma no es la esperada -> el llamador cae al comportamiento previo.
+ */
+function parseSvgIntrinsicSize(svg: string): { exWidth: number; exHeight: number } | null {
+  const openTag = /<svg[^>]*>/i.exec(svg);
+  if (!openTag) return null;
+  const widthMatch = /\bwidth="([\d.]+)ex"/i.exec(openTag[0]);
+  const heightMatch = /\bheight="([\d.]+)ex"/i.exec(openTag[0]);
+  if (!widthMatch || !heightMatch) return null;
+  const exWidth = Number(widthMatch[1]);
+  const exHeight = Number(heightMatch[1]);
+  if (!Number.isFinite(exWidth) || !Number.isFinite(exHeight) || exWidth <= 0 || exHeight <= 0) {
+    return null;
+  }
+  return { exWidth, exHeight };
 }
 
 /**
@@ -150,7 +239,7 @@ function extractSvgElement(mjxOutput: string): string {
 function createStyles(_t: ThemeTokens) {
   return {
     container: { gap: 12 },
-    formulaContainer: { paddingVertical: 4 },
+    formulaContainer: { paddingVertical: 4, alignItems: 'flex-start' as const },
     // STUDY-4 -- superficie destacada opcional (`highlightFormulas`), mismo
     // `Card variant="subtle"` ya usado por otras pantallas, sin token nuevo.
     formulaCard: { gap: 4 },

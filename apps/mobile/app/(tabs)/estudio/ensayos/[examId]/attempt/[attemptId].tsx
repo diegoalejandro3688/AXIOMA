@@ -233,7 +233,7 @@ export default function EnsayoAttemptScreen() {
         </View>
       ) : null}
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <ContentBlockRenderer blocks={question.stemContent} />
         <Text variant="bodySmall" color="secondary">
           Selecciona una alternativa. Puedes cambiarla mientras el ensayo siga abierto.
@@ -259,7 +259,7 @@ export default function EnsayoAttemptScreen() {
                 accessibilityLabel={`Alternativa ${String.fromCharCode(65 + optionIndex)}`}
                 onPress={() => handleSelect(question, option.id)}
               >
-                <ContentBlockRenderer blocks={[option.content]} />
+                <ContentBlockRenderer blocks={[option.content]} formulaContext="option" />
               </AnswerOption>
             );
           })}
@@ -331,7 +331,15 @@ function createStyles(t: ThemeTokens) {
       backgroundColor: t.color.background.surface,
       marginBottom: spacing.space2,
     },
-    content: { gap: 14, paddingBottom: 20 },
+    // ENSAYOS-M1-D -- el ScrollView necesita `flex: 1` para quedar acotado
+    // entre el header y el footer (hermanos de altura fija en la columna
+    // `screen`). Sin esto tomaba su altura natural y, con preguntas largas
+    // (fórmulas incluidas), las últimas alternativas y/o el footer quedaban
+    // fuera de pantalla sin poder desplazarse -> no se podían responder Q64
+    // y Q65 y el conteo se quedaba en 63. `paddingBottom` deja aire bajo la
+    // última alternativa para que se despegue del footer al hacer scroll.
+    scroll: { flex: 1 },
+    content: { gap: 14, paddingBottom: 32 },
     options: { gap: spacing.space3 },
     footer: { gap: spacing.space2, paddingTop: spacing.space2 },
     navRow: { flexDirection: 'row' as const, gap: spacing.space2 },
