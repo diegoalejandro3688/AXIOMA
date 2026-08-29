@@ -8,6 +8,7 @@ import { reviewOptionState, reviewNavCellState, sortByDisplayOrder } from '../..
 import { LoadingState } from '../../../../../../components/loading-state';
 import { ErrorState } from '../../../../../../components/error-state';
 import { ContentBlockRenderer } from '../../../../../../components/content-block-renderer';
+import { PassageCard } from '../../../../../../components/exams/passage-card';
 import { ExamQuestionNavigator, type NavigatorCellState } from '../../../../../../components/exams/exam-question-navigator';
 import { IconButton, Text, Button, AnswerOption } from '../../../../../../components/ui';
 import type { AnswerOptionState } from '../../../../../../components/ui';
@@ -33,6 +34,8 @@ export default function EnsayoReviewScreen() {
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
   const [currentIndex, setCurrentIndex] = useState(0);
   const [navigatorOpen, setNavigatorOpen] = useState(false);
+  // ENSAYOS-F2 -- plegado por passageId (solo presentación), ver pantalla de intento.
+  const [collapsedPassages, setCollapsedPassages] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     setState({ status: 'loading' });
@@ -61,6 +64,9 @@ export default function EnsayoReviewScreen() {
   const safeIndex = Math.min(Math.max(currentIndex, 0), total - 1);
   const question = questions[safeIndex];
   const unanswered = question.selectedAnswerOptionId === null;
+  const currentPassage = question.passageId
+    ? state.review.passages.find((p) => p.id === question.passageId) ?? null
+    : null;
 
   const navigatorStates: NavigatorCellState[] = questions.map((q, index) => {
     const cell = reviewNavCellState({ isCurrent: index === safeIndex, question: q });
@@ -106,6 +112,15 @@ export default function EnsayoReviewScreen() {
       ) : null}
 
       <ScrollView key={question.questionVersionId} style={styles.scroll} contentContainerStyle={styles.content}>
+        {currentPassage ? (
+          <PassageCard
+            passage={currentPassage}
+            collapsed={collapsedPassages[currentPassage.id] ?? false}
+            onToggle={() =>
+              setCollapsedPassages((prev) => ({ ...prev, [currentPassage.id]: !(prev[currentPassage.id] ?? false) }))
+            }
+          />
+        ) : null}
         <ContentBlockRenderer blocks={question.stemContent} />
 
         <View style={styles.options}>

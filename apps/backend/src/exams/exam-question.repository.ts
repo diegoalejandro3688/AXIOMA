@@ -57,9 +57,9 @@ export class ExamQuestionRepository {
   }
 
   link(
-    data: { examId: string; questionVersionId: string; displayOrder: number },
+    data: { examId: string; questionVersionId: string; displayOrder: number; passageId?: string | null },
     tx?: Prisma.TransactionClient,
   ): Promise<ExamQuestion> {
-    return (tx ?? this.prisma).examQuestion.create({ data });
+    return (tx ?? this.prisma).examQuestion.create({ data: { ...data, passageId: data.passageId ?? null } });
   }
 }

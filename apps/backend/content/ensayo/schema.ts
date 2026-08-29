@@ -77,7 +77,81 @@ export const examSourceOptionSchema = z.object({
 });
 export type ExamSourceOption = z.infer<typeof examSourceOptionSchema>;
 
-export const examSourceQuestionSchema = z
+/**
+ * ENSAYOS-F2 -- habilidad lectora PAES Competencia Lectora. SOLO clasificación
+ * de fuente: NO se materializa como columna en `exam_question` (igual que
+ * `axis`/`primarySkill` para M1). Los 65 ítems de Lectora NO se agregan en F2.
+ */
+export const examReadingSkillSchema = z.enum(['LOCALIZAR', 'INTERPRETAR', 'EVALUAR']);
+export type ExamReadingSkill = z.infer<typeof examReadingSkillSchema>;
+
+/**
+ * ENSAYOS-F2 -- bloque de TABLA estructurada dentro del contenido de un texto
+ * fuente. Misma forma que `examTableBlockSchema` de `@axioma/contracts`
+ * (headers/rows/footnote). La invariante esencial son filas/columnas
+ * estructuradas, nunca Markdown ni imagen.
+ */
+export const sourceTableBlockSchema = z.object({
+  type: z.literal('table'),
+  order: z.number().int().nonnegative(),
+  headers: z.array(z.string().min(1)).min(1),
+  rows: z.array(z.array(z.string())).min(1),
+  footnote: z.string().min(1).optional(),
+});
+export type SourceTableBlock = z.infer<typeof sourceTableBlockSchema>;
+
+/** Cada fila de tabla debe tener exactamente `headers.length` celdas; ninguna fila totalmente vacía. */
+function refineSourceTables(blocks: Array<{ type: string } & Record<string, unknown>>, ctx: z.RefinementCtx): void {
+  blocks.forEach((block, index) => {
+    if (block.type !== 'table') return;
+    const headers = block.headers as string[];
+    const rows = block.rows as string[][];
+    rows.forEach((row, rowIndex) => {
+      if (row.length !== headers.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index, 'rows', rowIndex],
+          message: `La fila ${rowIndex} tiene ${row.length} celdas, se esperaban ${headers.length}.`,
+        });
+      }
+      if (row.length > 0 && row.every((cell) => cell.trim() === '')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index, 'rows', rowIndex],
+          message: `La fila ${rowIndex} está completamente vacía.`,
+        });
+      }
+    });
+  });
+}
+
+/** Contenido de un texto/estímulo fuente: heading|paragraph|formula|image|table. Persistido UNA vez como `ExamPassage.content`. */
+export const sourcePassageBlockSchema = z.discriminatedUnion('type', [
+  headingBlockSchema,
+  paragraphBlockSchema,
+  sourceFormulaBlockSchema,
+  imageBlockSchema,
+  sourceTableBlockSchema,
+]);
+export const sourcePassageContentSchema = z
+  .array(sourcePassageBlockSchema)
+  .min(1)
+  .superRefine((blocks, ctx) => refineSourceTables(blocks as never, ctx));
+export type SourcePassageBlock = z.infer<typeof sourcePassageBlockSchema>;
+
+/** Un texto compartido dentro de un módulo de ensayo (opcional -- M1/M2 no tienen). */
+export const examSourcePassageSchema = z.object({
+  /** Código estable del texto, ej. "ENSAYO.LECTORA.T1". */
+  passageKey: examCodeSchema,
+  /** Orden de presentación del texto dentro del ensayo (1-based, contiguo). */
+  displayOrder: z.number().int().positive(),
+  title: z.string().min(1),
+  content: sourcePassageContentSchema,
+});
+export type ExamSourcePassage = z.infer<typeof examSourcePassageSchema>;
+
+/** Pregunta de familia MATEMÁTica (M1/M2) -- forma EXACTA previa a ENSAYOS-F2. */
+export const mathSourceQuestionSchema = z
   .object({
     /** Código estable de la pregunta, ej. "ENSAYO.M1.Q1". */
     questionKey: examCodeSchema,
@@ -95,7 +169,53 @@ export const examSourceQuestionSchema = z
     message: 'Cada pregunta debe tener exactamente una alternativa correcta.',
     path: ['options'],
   });
+export type MathSourceQuestion = z.infer<typeof mathSourceQuestionSchema>;
+
+/**
+ * ENSAYOS-F2 -- pregunta de familia COMPETENCIA LECTORA. Se ancla a un texto
+ * compartido vía `passageKey`. La clasificación (`readingSkill`/`difficulty`)
+ * es SOLO de fuente. NO se agregan ítems reales de Lectora en F2.
+ */
+export const lectoraSourceQuestionSchema = z
+  .object({
+    questionKey: examCodeSchema,
+    displayOrder: z.number().int().positive(),
+    readingSkill: examReadingSkillSchema,
+    difficulty: examDifficultySchema,
+    /** `passageKey` de un `examSourcePassageSchema` del mismo módulo. */
+    passageKey: examCodeSchema,
+    stemContent: sourceStemContentSchema,
+    options: z.array(examSourceOptionSchema).length(4),
+    explanationContent: sourceExplanationContentSchema,
+  })
+  .refine((q) => q.options.filter((o) => o.correct).length === 1, {
+    message: 'Cada pregunta debe tener exactamente una alternativa correcta.',
+    path: ['options'],
+  });
+export type LectoraSourceQuestion = z.infer<typeof lectoraSourceQuestionSchema>;
+
+/** Una pregunta de ensayo: matemática (M1/M2) o competencia lectora (F2+). */
+export const examSourceQuestionSchema = z.union([mathSourceQuestionSchema, lectoraSourceQuestionSchema]);
 export type ExamSourceQuestion = z.infer<typeof examSourceQuestionSchema>;
+
+/** `true` si la pregunta fuente es de familia Competencia Lectora (lleva `passageKey`). */
+export function isLectoraSourceQuestion(q: ExamSourceQuestion): q is LectoraSourceQuestion {
+  return 'passageKey' in q && typeof (q as { passageKey?: unknown }).passageKey === 'string';
+}
+
+/**
+ * ENSAYOS-F2 -- clasificación de fuente, discriminada por familia de ensayo.
+ * SOLO para el importer / gate; nunca produce columnas de BD.
+ */
+export type ExamSourceClassification =
+  | { family: 'MATEMATICA'; axis: ExamAxis; primarySkill: ExamPrimarySkill; difficulty: ExamDifficulty }
+  | { family: 'COMPETENCIA_LECTORA'; readingSkill: ExamReadingSkill; difficulty: ExamDifficulty };
+
+export function examClassification(q: ExamSourceQuestion): ExamSourceClassification {
+  return isLectoraSourceQuestion(q)
+    ? { family: 'COMPETENCIA_LECTORA', readingSkill: q.readingSkill, difficulty: q.difficulty }
+    : { family: 'MATEMATICA', axis: q.axis, primarySkill: q.primarySkill, difficulty: q.difficulty };
+}
 
 /**
  * Módulo de Ensayo -- lo que un archivo bajo `content/ensayo/**` exporta por
@@ -110,6 +230,12 @@ export const examSourceModuleSchema = z
     /** `Subject.subjectKey` real, ej. "matematica". */
     subjectKey: z.string().min(1),
     durationMinutes: z.number().int().positive(),
+    /**
+     * ENSAYOS-F2 -- textos/estímulos compartidos del ensayo. `[]` para M1/M2
+     * (default -> los módulos existentes validan sin cambios). Cada pregunta de
+     * familia lectora referencia uno por `passageKey`.
+     */
+    passages: z.array(examSourcePassageSchema).default([]),
     questions: z.array(examSourceQuestionSchema).min(1),
   })
   .refine(
@@ -122,5 +248,23 @@ export const examSourceModuleSchema = z
       return orders.every((o, i) => o === i + 1);
     },
     { message: 'displayOrder debe ser 1..N sin huecos ni duplicados.', path: ['questions'] },
+  )
+  .refine(
+    (m) => new Set(m.passages.map((p) => p.passageKey)).size === m.passages.length,
+    { message: 'passageKey duplicado dentro del ensayo.', path: ['passages'] },
+  )
+  .refine(
+    (m) => {
+      const orders = m.passages.map((p) => p.displayOrder).sort((a, b) => a - b);
+      return orders.every((o, i) => o === i + 1);
+    },
+    { message: 'displayOrder de textos debe ser 1..N sin huecos ni duplicados.', path: ['passages'] },
+  )
+  .refine(
+    (m) => {
+      const keys = new Set(m.passages.map((p) => p.passageKey));
+      return m.questions.every((q) => !isLectoraSourceQuestion(q) || keys.has(q.passageKey));
+    },
+    { message: 'Una pregunta de competencia lectora referencia un passageKey que no existe en el módulo.', path: ['questions'] },
   );
 export type ExamSourceModule = z.infer<typeof examSourceModuleSchema>;

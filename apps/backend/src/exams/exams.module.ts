@@ -5,6 +5,7 @@ import { EducationModule } from '../education/education.module';
 import { ObjectStorageModule } from '../platform/object-storage/object-storage.module';
 import { ExamRepository } from './exam.repository';
 import { ExamQuestionRepository } from './exam-question.repository';
+import { ExamPassageRepository } from './exam-passage.repository';
 import { ExamAttemptRepository } from './exam-attempt.repository';
 import { ExamAttemptAnswerRepository } from './exam-attempt-answer.repository';
 import { ExamScoringService } from './exam-scoring.service';
@@ -36,6 +37,7 @@ import { ExamAdminController } from './exam-admin.controller';
   providers: [
     ExamRepository,
     ExamQuestionRepository,
+    ExamPassageRepository,
     ExamAttemptRepository,
     ExamAttemptAnswerRepository,
     ExamScoringService,

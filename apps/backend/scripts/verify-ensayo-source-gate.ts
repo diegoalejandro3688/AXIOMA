@@ -20,6 +20,12 @@
 import { join, relative } from 'node:path';
 import { loadExamModules } from '../content/ensayo/load';
 import {
+  examSourceModuleSchema,
+  examClassification,
+  isLectoraSourceQuestion,
+  type MathSourceQuestion,
+} from '../content/ensayo/schema';
+import {
   ENSAYO_MANIFEST,
   findExamBlueprint,
   EXAM_AXES,
@@ -148,10 +154,18 @@ async function main() {
     check(`${N} explicaciones no vacías (vacías: ${emptyExplanations})`, emptyExplanations === 0);
     check(`${N} enunciados no vacíos (vacíos: ${emptyStems})`, emptyStems === 0);
 
+    console.log('--- 4b. ENSAYOS-F2: M1/M2 no tienen textos compartidos ni preguntas de lectora ---');
+    check(`${exam.examKey}: passages == [] (encontrados: ${exam.passages.length})`, exam.passages.length === 0);
+    check(
+      `${exam.examKey}: 0 preguntas de competencia lectora`,
+      exam.questions.every((q) => !isLectoraSourceQuestion(q)),
+    );
+
     console.log('--- 5. Blueprint: distribuciones exactas (eje / dificultad / habilidad) ---');
-    const axisCount = tally(exam.questions.map((q) => q.axis), EXAM_AXES);
-    const diffCount = tally(exam.questions.map((q) => q.difficulty), EXAM_DIFFICULTIES);
-    const skillCount = tally(exam.questions.map((q) => q.primarySkill), EXAM_PRIMARY_SKILLS);
+    const mathQs = exam.questions.filter((q): q is MathSourceQuestion => !isLectoraSourceQuestion(q));
+    const axisCount = tally(mathQs.map((q) => q.axis), EXAM_AXES);
+    const diffCount = tally(mathQs.map((q) => q.difficulty), EXAM_DIFFICULTIES);
+    const skillCount = tally(mathQs.map((q) => q.primarySkill), EXAM_PRIMARY_SKILLS);
     for (const a of EXAM_AXES) check(`eje ${a}: ${axisCount[a]} == ${bp.expectedAxis[a]}`, axisCount[a] === bp.expectedAxis[a]);
     for (const d of EXAM_DIFFICULTIES) check(`dificultad ${d}: ${diffCount[d]} == ${bp.expectedDifficulty[d]}`, diffCount[d] === bp.expectedDifficulty[d]);
     for (const s of EXAM_PRIMARY_SKILLS) check(`habilidad ${s}: ${skillCount[s]} == ${bp.expectedPrimarySkill[s]}`, skillCount[s] === bp.expectedPrimarySkill[s]);
@@ -246,6 +260,98 @@ async function main() {
         dsAxes.get('ENSAYO.M2.Q49') === 'PROBABILIDAD_ESTADISTICA',
     );
   }
+
+  console.log('\n--- 10. ENSAYOS-F2: fixture SINTÉTICO -- texto compartido + tabla + preguntas de lectora ---');
+  const syntheticTable = {
+    type: 'table' as const,
+    order: 1,
+    headers: ['A', 'B', 'C'],
+    rows: [
+      ['1', '2', '3'],
+      ['4', '5', '6'],
+    ],
+    footnote: 'Fuente: fixture sintético.',
+  };
+  const syntheticModule = {
+    examKey: 'ENSAYO.ZZTESTSRC',
+    title: 'Ensayo sintético F2',
+    subjectKey: 'competencia-lectora',
+    durationMinutes: 60,
+    passages: [
+      {
+        passageKey: 'ENSAYO.ZZTESTSRC.T1',
+        displayOrder: 1,
+        title: 'Texto sintético 1',
+        content: [
+          { type: 'paragraph' as const, order: 0, text: 'Párrafo del texto compartido con acentos: á é í ó ú ñ.' },
+          syntheticTable,
+        ],
+      },
+    ],
+    questions: [
+      {
+        questionKey: 'ENSAYO.ZZTESTSRC.Q1',
+        displayOrder: 1,
+        readingSkill: 'LOCALIZAR' as const,
+        difficulty: 'FACIL' as const,
+        passageKey: 'ENSAYO.ZZTESTSRC.T1',
+        stemContent: [{ type: 'paragraph' as const, order: 0, text: 'Pregunta 1 sobre el texto.' }],
+        options: [
+          { content: { type: 'paragraph' as const, order: 0, text: 'a' }, correct: true },
+          { content: { type: 'paragraph' as const, order: 0, text: 'b' }, correct: false },
+          { content: { type: 'paragraph' as const, order: 0, text: 'c' }, correct: false },
+          { content: { type: 'paragraph' as const, order: 0, text: 'd' }, correct: false },
+        ],
+        explanationContent: [{ type: 'paragraph' as const, order: 0, text: 'Porque a.' }],
+      },
+      {
+        questionKey: 'ENSAYO.ZZTESTSRC.Q2',
+        displayOrder: 2,
+        readingSkill: 'INTERPRETAR' as const,
+        difficulty: 'MEDIA' as const,
+        passageKey: 'ENSAYO.ZZTESTSRC.T1',
+        stemContent: [{ type: 'paragraph' as const, order: 0, text: 'Pregunta 2 sobre el MISMO texto.' }],
+        options: [
+          { content: { type: 'paragraph' as const, order: 0, text: 'a' }, correct: false },
+          { content: { type: 'paragraph' as const, order: 0, text: 'b' }, correct: true },
+          { content: { type: 'paragraph' as const, order: 0, text: 'c' }, correct: false },
+          { content: { type: 'paragraph' as const, order: 0, text: 'd' }, correct: false },
+        ],
+        explanationContent: [{ type: 'paragraph' as const, order: 0, text: 'Porque b.' }],
+      },
+    ],
+  };
+  const parsed = examSourceModuleSchema.safeParse(syntheticModule);
+  check('fixture sintético F2: cumple examSourceModuleSchema', parsed.success);
+  if (parsed.success) {
+    check('fixture: 1 texto compartido, 2 preguntas de lectora al mismo passageKey', parsed.data.passages.length === 1 && parsed.data.questions.length === 2);
+    check(
+      'fixture: ambas preguntas clasifican como COMPETENCIA_LECTORA',
+      parsed.data.questions.every((q) => examClassification(q).family === 'COMPETENCIA_LECTORA'),
+    );
+    const tableBlock = parsed.data.passages[0].content.find((b) => b.type === 'table') as typeof syntheticTable | undefined;
+    check(
+      'fixture: la tabla conserva EXACTAMENTE headers A|B|C y filas 1|2|3 / 4|5|6 tras el roundtrip',
+      !!tableBlock &&
+        JSON.stringify(tableBlock.headers) === JSON.stringify(['A', 'B', 'C']) &&
+        JSON.stringify(tableBlock.rows) === JSON.stringify([['1', '2', '3'], ['4', '5', '6']]),
+    );
+  }
+  // Negativos
+  check(
+    'fixture: se RECHAZA una fila de tabla con celdas de más',
+    !examSourceModuleSchema.safeParse({
+      ...syntheticModule,
+      passages: [{ ...syntheticModule.passages[0], content: [{ ...syntheticTable, rows: [['1', '2', '3', '4']] }] }],
+    }).success,
+  );
+  check(
+    'fixture: se RECHAZA una pregunta de lectora con passageKey inexistente',
+    !examSourceModuleSchema.safeParse({
+      ...syntheticModule,
+      questions: [{ ...syntheticModule.questions[0], passageKey: 'ENSAYO.ZZTESTSRC.T9' }, syntheticModule.questions[1]],
+    }).success,
+  );
 
   console.log('');
   if (failures > 0) {

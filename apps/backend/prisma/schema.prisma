@@ -2889,11 +2889,42 @@ model Exam {
 
   subject   Subject        @relation(fields: [subjectId], references: [id], onDelete: Restrict)
   questions ExamQuestion[]
+  passages  ExamPassage[]
   attempts  ExamAttempt[]
 
   @@index([subjectId])
   @@index([status])
   @@map("exam")
+}
+
+/// ENSAYOS-F2 -- Texto/estímulo compartido de un ensayo. Un `ExamPassage`
+/// pertenece a UN `Exam` (`(examId, passageKey)` y `(examId, displayOrder)`
+/// únicos) y puede ser referenciado por 0..N `ExamQuestion` del MISMO ensayo
+/// (`ExamQuestion.passageId` nullable -- M1/M2 lo dejan en NULL). El pasaje se
+/// persiste UNA sola vez; nunca se duplica dentro del `stemContent` de cada
+/// pregunta. `content` = `ExamPassageContentBlock[]` (heading|paragraph|
+/// formula|image|table), validado por Zod (`@axioma/contracts`), no por
+/// Postgres. Inmutable una vez que su `Exam` está PUBLISHED, aplicado por el
+/// trigger `enforce_exam_passage_frozen_after_publish` -- misma filosofía que
+/// `enforce_exam_attempt_answer_frozen_after_close` (bloquea INSERT/UPDATE tras
+/// el cambio de estado; DELETE queda para teardown de fixtures).
+model ExamPassage {
+  id           String   @id @default(uuid()) @db.Uuid
+  examId       String   @map("exam_id") @db.Uuid
+  passageKey   String   @map("passage_key")
+  displayOrder Int      @map("display_order")
+  title        String
+  /// `ExamPassageContentBlock[]` -- validado por Zod, no por Postgres.
+  content      Json
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  exam      Exam           @relation(fields: [examId], references: [id], onDelete: Restrict)
+  questions ExamQuestion[]
+
+  @@unique([examId, passageKey])
+  @@unique([examId, displayOrder])
+  @@index([examId])
+  @@map("exam_passage")
 }
 
 /// Vínculo ordenado entre un `Exam` y una `QuestionVersion` publicada. El
@@ -2909,15 +2940,23 @@ model ExamQuestion {
   examId            String   @map("exam_id") @db.Uuid
   questionVersionId String   @map("question_version_id") @db.Uuid
   displayOrder      Int      @map("display_order")
+  /// ENSAYOS-F2 -- texto/estímulo compartido que acompaña a esta pregunta.
+  /// NULL en M1/M2 y en cualquier ensayo sin pasajes. Cuando NO es NULL, el
+  /// trigger `enforce_exam_question_passage_consistency` exige que el pasaje
+  /// pertenezca al MISMO `examId`; `enforce_exam_question_passage_mapping_frozen`
+  /// impide reasignarlo una vez que el ensayo está PUBLISHED.
+  passageId         String?  @map("passage_id") @db.Uuid
   createdAt         DateTime @default(now()) @map("created_at")
 
   exam            Exam            @relation(fields: [examId], references: [id], onDelete: Restrict)
   questionVersion QuestionVersion @relation(fields: [questionVersionId], references: [id], onDelete: Restrict)
+  passage         ExamPassage?    @relation(fields: [passageId], references: [id], onDelete: Restrict)
 
   @@unique([examId, questionVersionId])
   @@unique([examId, displayOrder])
   @@index([examId])
   @@index([questionVersionId])
+  @@index([passageId])
   @@map("exam_question")
 }
 

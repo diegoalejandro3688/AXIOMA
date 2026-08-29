@@ -2,10 +2,11 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { PrismaService } from '../platform/prisma/prisma.service';
 import { AnswerOptionRepository } from '../education/answer-option.repository';
 import { Prisma } from '../generated/prisma/client';
-import type { AnswerOption, Exam, ExamAttempt } from '../generated/prisma/client';
+import type { AnswerOption, Exam, ExamAttempt, ExamPassage } from '../generated/prisma/client';
 import type { ExamAttemptScore } from '@axioma/contracts';
 import { ExamRepository } from './exam.repository';
 import { ExamQuestionRepository, type ExamQuestionWithVersion } from './exam-question.repository';
+import { ExamPassageRepository } from './exam-passage.repository';
 import { ExamAttemptRepository } from './exam-attempt.repository';
 import { ExamAttemptAnswerRepository } from './exam-attempt-answer.repository';
 import { ExamScoringService } from './exam-scoring.service';
@@ -35,12 +36,35 @@ import { ExamScoringService } from './exam-scoring.service';
 const EXAM_LOCK_NAMESPACE = 24;
 const TX_OPTIONS = { timeout: 30_000, maxWait: 30_000 } as const;
 
+/**
+ * ENSAYOS-F2 -- forma canónica de un valor JSON para comparar contenido de
+ * pasajes con independencia del orden de claves de objeto. El orden de los
+ * arrays SÍ es significativo (los bloques y las filas de tabla son ordenados).
+ */
+function canonicalizeJson(value: unknown): string {
+  const normalize = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(normalize);
+    if (v && typeof v === 'object') {
+      return Object.keys(v as Record<string, unknown>)
+        .sort()
+        .reduce<Record<string, unknown>>((acc, k) => {
+          acc[k] = normalize((v as Record<string, unknown>)[k]);
+          return acc;
+        }, {});
+    }
+    return v;
+  };
+  return JSON.stringify(normalize(value));
+}
+
 export type ExamAttemptQuestionView = {
   questionVersionId: string;
   displayOrder: number;
   stemContent: Prisma.JsonValue;
   answerOptions: AnswerOption[];
   selectedAnswerOptionId: string | null;
+  /** ENSAYOS-F2 -- `id` del `ExamPassage` que acompaña a esta pregunta, o `null`. */
+  passageId: string | null;
 };
 
 export type ExamAttemptReviewQuestionView = ExamAttemptQuestionView & {
@@ -51,7 +75,13 @@ export type ExamAttemptReviewQuestionView = ExamAttemptQuestionView & {
 
 export type ExamListItemView = { exam: Exam; questionCount: number };
 export type ExamAttemptResultView = { attempt: ExamAttempt; score: ExamAttemptScore };
-export type ExamAttemptReviewView = { attempt: ExamAttempt; score: ExamAttemptScore; questions: ExamAttemptReviewQuestionView[] };
+export type ExamAttemptQuestionsView = { attempt: ExamAttempt; passages: ExamPassage[]; questions: ExamAttemptQuestionView[] };
+export type ExamAttemptReviewView = {
+  attempt: ExamAttempt;
+  score: ExamAttemptScore;
+  passages: ExamPassage[];
+  questions: ExamAttemptReviewQuestionView[];
+};
 
 @Injectable()
 export class ExamService {
@@ -59,6 +89,7 @@ export class ExamService {
     private readonly prisma: PrismaService,
     private readonly examRepo: ExamRepository,
     private readonly examQuestionRepo: ExamQuestionRepository,
+    private readonly examPassageRepo: ExamPassageRepository,
     private readonly attemptRepo: ExamAttemptRepository,
     private readonly answerRepo: ExamAttemptAnswerRepository,
     private readonly answerOptionRepo: AnswerOptionRepository,
@@ -126,10 +157,7 @@ export class ExamService {
   }
 
   /** Entrega ordenada de preguntas de un intento ACTIVE -- SIN pauta (§delivery). */
-  async getAttemptQuestions(
-    accountId: string,
-    attemptId: string,
-  ): Promise<{ attempt: ExamAttempt; questions: ExamAttemptQuestionView[] }> {
+  async getAttemptQuestions(accountId: string, attemptId: string): Promise<ExamAttemptQuestionsView> {
     return this.prisma.$transaction(async (tx) => {
       await this.lockAttempt(tx, attemptId);
       const attempt = await this.refreshExpiry(tx, await this.loadOwnedAttempt(tx, accountId, attemptId));
@@ -138,11 +166,12 @@ export class ExamService {
       }
 
       const links = await this.examQuestionRepo.findByExamIdOrdered(attempt.examId, tx);
+      const passages = await this.examPassageRepo.findByExamIdOrdered(attempt.examId, tx);
       const answers = await this.answerRepo.findByAttemptId(attemptId, tx);
       const selectedByQuestion = new Map(answers.map((a) => [a.questionVersionId, a.answerOptionId]));
 
       const questions = links.map((link) => this.toQuestionView(link, selectedByQuestion));
-      return { attempt, questions };
+      return { attempt, passages, questions };
     }, TX_OPTIONS);
   }
 
@@ -247,6 +276,7 @@ export class ExamService {
       }
 
       const links = await this.examQuestionRepo.findByExamIdOrdered(attempt.examId, tx);
+      const passages = await this.examPassageRepo.findByExamIdOrdered(attempt.examId, tx);
       const answers = await this.answerRepo.findByAttemptId(attemptId, tx);
       const selectedByQuestion = new Map(answers.map((a) => [a.questionVersionId, a.answerOptionId]));
 
@@ -262,7 +292,7 @@ export class ExamService {
       });
 
       const score = await this.computeScore(tx, attempt);
-      return { attempt, score, questions };
+      return { attempt, score, passages, questions };
     }, TX_OPTIONS);
   }
 
@@ -307,9 +337,21 @@ export class ExamService {
     examId: string;
     questionVersionId: string;
     displayOrder: number;
+    passageId?: string | null;
   }): Promise<{ link: Awaited<ReturnType<ExamQuestionRepository['link']>>; created: boolean }> {
     const exam = await this.examRepo.findById(input.examId);
     if (!exam) throw new NotFoundException('Ese ensayo no existe.');
+
+    const passageId = input.passageId ?? null;
+    if (passageId !== null) {
+      // ENSAYOS-F2 -- el pasaje debe existir y pertenecer al MISMO ensayo
+      // (el trigger `enforce_exam_question_passage_consistency` es el respaldo).
+      const passage = await this.examPassageRepo.findById(passageId);
+      if (!passage) throw new NotFoundException(`El texto ${passageId} no existe.`);
+      if (passage.examId !== input.examId) {
+        throw new ConflictException(`El texto ${passageId} pertenece a otro ensayo -- una pregunta no puede referenciar un texto ajeno.`);
+      }
+    }
 
     const byVersion = await this.examQuestionRepo.findByExamAndVersion(input.examId, input.questionVersionId);
     if (byVersion) {
@@ -318,13 +360,65 @@ export class ExamService {
           `La pregunta ${input.questionVersionId} ya está vinculada al ensayo en la posición ${byVersion.displayOrder}, no ${input.displayOrder}.`,
         );
       }
+      if ((byVersion.passageId ?? null) !== passageId) {
+        throw new ConflictException(
+          `La pregunta ${input.questionVersionId} ya está vinculada con un texto distinto -- no se reasigna en silencio.`,
+        );
+      }
       return { link: byVersion, created: false };
     }
     const byOrder = await this.examQuestionRepo.findByExamAndOrder(input.examId, input.displayOrder);
     if (byOrder) {
       throw new ConflictException(`La posición ${input.displayOrder} del ensayo ya está ocupada por otra pregunta.`);
     }
-    return { link: await this.examQuestionRepo.link(input), created: true };
+    return { link: await this.examQuestionRepo.link({ ...input, passageId }), created: true };
+  }
+
+  /**
+   * ENSAYOS-F2 -- resolver-o-crear un `ExamPassage` por `(examId, passageKey)`.
+   * Idempotente: `passageKey` existente con `title` / `displayOrder` / contenido
+   * canónico IDÉNTICOS -> NO-OP con el mismo `id`. Divergencia estructural -> 409,
+   * nunca sobrescritura (mismo criterio que `resolveOrCreateExam`). Sobre un
+   * ensayo ya PUBLISHED cualquier INSERT/UPDATE de pasaje lo rechaza el trigger
+   * `enforce_exam_passage_frozen_after_publish` -- aquí no se intenta.
+   */
+  async resolveOrCreatePassage(input: {
+    examId: string;
+    passageKey: string;
+    displayOrder: number;
+    title: string;
+    content: unknown;
+  }): Promise<{ passage: ExamPassage; created: boolean }> {
+    const exam = await this.examRepo.findById(input.examId);
+    if (!exam) throw new NotFoundException('Ese ensayo no existe.');
+
+    const existing = await this.examPassageRepo.findByExamAndKey(input.examId, input.passageKey);
+    if (existing) {
+      const structuralMismatch =
+        existing.title !== input.title ||
+        existing.displayOrder !== input.displayOrder ||
+        canonicalizeJson(existing.content) !== canonicalizeJson(input.content);
+      if (structuralMismatch) {
+        throw new ConflictException(
+          `Ya existe un texto con passageKey "${input.passageKey}" en este ensayo pero con contenido/atributos distintos -- no se sobrescribe.`,
+        );
+      }
+      return { passage: existing, created: false };
+    }
+
+    const byOrder = await this.examPassageRepo.findByExamAndOrder(input.examId, input.displayOrder);
+    if (byOrder) {
+      throw new ConflictException(`La posición ${input.displayOrder} de textos de este ensayo ya está ocupada por otro texto.`);
+    }
+
+    const passage = await this.examPassageRepo.create({
+      examId: input.examId,
+      passageKey: input.passageKey,
+      displayOrder: input.displayOrder,
+      title: input.title,
+      content: input.content as Prisma.InputJsonValue,
+    });
+    return { passage, created: true };
   }
 
   /** Idempotente. `DRAFT -> PUBLISHED`; `PUBLISHED` es NO-OP; `RETIRED` es 409. */
@@ -373,6 +467,7 @@ export class ExamService {
       stemContent: link.questionVersion.stemContent,
       answerOptions: link.questionVersion.answerOptions,
       selectedAnswerOptionId: selectedByQuestion.get(link.questionVersionId) ?? null,
+      passageId: link.passageId ?? null,
     };
   }
 }

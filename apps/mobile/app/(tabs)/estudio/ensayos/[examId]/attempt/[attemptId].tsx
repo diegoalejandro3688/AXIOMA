@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Pressable, ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { ExamAttemptQuestion, ExamAttemptStateResponse } from '@axioma/contracts';
+import type { ExamAttemptQuestion, ExamAttemptStateResponse, ExamPassageView } from '@axioma/contracts';
 import {
   getExamAttempt,
   getExamAttemptQuestions,
@@ -24,6 +24,7 @@ import { LoadingState } from '../../../../../../components/loading-state';
 import { ErrorState } from '../../../../../../components/error-state';
 import { ContentBlockRenderer } from '../../../../../../components/content-block-renderer';
 import { ExamCountdown } from '../../../../../../components/exams/exam-countdown';
+import { PassageCard } from '../../../../../../components/exams/passage-card';
 import { ExamQuestionNavigator, type NavigatorCellState } from '../../../../../../components/exams/exam-question-navigator';
 import { IconButton, Text, Button, AnswerOption, Dialog } from '../../../../../../components/ui';
 import type { AnswerOptionState } from '../../../../../../components/ui';
@@ -39,6 +40,8 @@ type ScreenState =
   | {
       status: 'ready';
       questions: ExamAttemptQuestion[];
+      /** ENSAYOS-F2 -- textos compartidos, cada uno UNA sola vez. `[]` en M1/M2. */
+      passages: ExamPassageView[];
       selections: SelectionMap;
       timing: TimingRef;
     };
@@ -71,6 +74,12 @@ export default function EnsayoAttemptScreen() {
   const [pendingOptionId, setPendingOptionId] = useState<string | null>(null);
   const [answerError, setAnswerError] = useState<string | null>(null);
   const [navigatorOpen, setNavigatorOpen] = useState(false);
+  /**
+   * ENSAYOS-F2 -- estado de plegado por `passageId` (texto expandido por
+   * defecto). Es SOLO presentación: no es un segundo índice de pregunta, no
+   * afecta a `currentIndex` ni a las selecciones.
+   */
+  const [collapsedPassages, setCollapsedPassages] = useState<Record<string, boolean>>({});
   const [confirmSubmit, setConfirmSubmit] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const mounted = useRef(true);
@@ -115,6 +124,7 @@ export default function EnsayoAttemptScreen() {
       setState({
         status: 'ready',
         questions,
+        passages: qResult.data.passages,
         selections: selectionsFromQuestions(questions),
         timing: { expiresAt: qResult.data.expiresAt, serverTime: qResult.data.serverTime },
       });
@@ -218,6 +228,12 @@ export default function EnsayoAttemptScreen() {
   const currentQuestion = question;
   currentQuestionIdRef.current = currentQuestion.questionVersionId;
   const selectedOptionId = state.selections[currentQuestion.questionVersionId];
+  // ENSAYOS-F2 -- el texto de la pregunta actual, resuelto por `passageId`
+  // desde el mapa `passages` (renderizado una sola vez, sin importar cuántas
+  // preguntas lo compartan). `null` -> no se muestra ninguna PassageCard.
+  const currentPassage = currentQuestion.passageId
+    ? state.passages.find((p) => p.id === currentQuestion.passageId) ?? null
+    : null;
   const { answered, unanswered } = countProgress(state.questions, state.selections);
 
   const navigatorStates: NavigatorCellState[] = state.questions.map((q, index) =>
@@ -263,6 +279,15 @@ export default function EnsayoAttemptScreen() {
           posición de scroll) del enunciado anterior sobrevive al cambio de
           índice. Elimina la clase de bug "header en Q65 / contenido en Q61". */}
       <ScrollView key={currentQuestion.questionVersionId} style={styles.scroll} contentContainerStyle={styles.content}>
+        {currentPassage ? (
+          <PassageCard
+            passage={currentPassage}
+            collapsed={collapsedPassages[currentPassage.id] ?? false}
+            onToggle={() =>
+              setCollapsedPassages((prev) => ({ ...prev, [currentPassage.id]: !(prev[currentPassage.id] ?? false) }))
+            }
+          />
+        ) : null}
         <ContentBlockRenderer blocks={currentQuestion.stemContent} />
         <Text variant="bodySmall" color="secondary">
           Selecciona una alternativa. Puedes cambiarla mientras el ensayo siga abierto.

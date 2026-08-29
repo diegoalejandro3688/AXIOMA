@@ -13,6 +13,7 @@ import {
   examAttemptReviewResponseSchema,
   explanationContentResponseSchema,
   resourceContentBlocksResponseSchema,
+  examPassageContentResponseSchema,
   type ExamListResponse,
   type ExamDetailResponse,
   type ExamAttemptStateResponse,
@@ -24,6 +25,7 @@ import {
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { parseRequestBody } from '../platform/validation/parse-request-body';
 import { ObjectStorageService } from '../platform/object-storage/object-storage.service';
+import type { ExamPassage } from '../generated/prisma/client';
 import { ExamService, type ExamAttemptQuestionView } from './exam.service';
 
 /** Mismo TTL de URL firmada que `EducationService`/`QuickQuestionController` -- lectura de corta duración, nunca persistida (ADR-0010). */
@@ -119,12 +121,13 @@ export class ExamController {
     @Req() request: AuthenticatedRequest,
     @Param('attemptId') attemptId: string,
   ): Promise<ExamAttemptQuestionsResponse> {
-    const { attempt, questions } = await this.examService.getAttemptQuestions(request.accountId, attemptId);
+    const { attempt, passages, questions } = await this.examService.getAttemptQuestions(request.accountId, attemptId);
     return examAttemptQuestionsResponseSchema.parse({
       attemptId: attempt.id,
       status: attempt.status,
       expiresAt: attempt.expiresAt.toISOString(),
       serverTime: new Date().toISOString(),
+      passages: await Promise.all(passages.map((p) => this.toPassageView(p))),
       questions: await Promise.all(questions.map((q) => this.toQuestionResponse(q))),
     });
   }
@@ -167,12 +170,13 @@ export class ExamController {
 
   @Get('me/attempts/:attemptId/review')
   async review(@Req() request: AuthenticatedRequest, @Param('attemptId') attemptId: string): Promise<ExamAttemptReviewResponse> {
-    const { attempt, score, questions } = await this.examService.getReview(request.accountId, attemptId);
+    const { attempt, score, passages, questions } = await this.examService.getReview(request.accountId, attemptId);
     return examAttemptReviewResponseSchema.parse({
       attemptId: attempt.id,
       examId: attempt.examId,
       status: attempt.status,
       score,
+      passages: await Promise.all(passages.map((p) => this.toPassageView(p))),
       questions: await Promise.all(
         questions.map(async (q) => ({
           ...(await this.toQuestionResponse(q)),
@@ -212,6 +216,23 @@ export class ExamController {
         displayOrder: option.displayOrder,
       })),
       selectedAnswerOptionId: q.selectedAnswerOptionId,
+      passageId: q.passageId ?? null,
+    };
+  }
+
+  /**
+   * ENSAYOS-F2 -- proyección de un `ExamPassage` para runtime. El texto se
+   * emite UNA sola vez en `passages[]` aunque N preguntas lo referencien; cada
+   * pregunta lo resuelve por `passageId`. Bloques `image` -> URL firmada, igual
+   * que el enunciado. Nunca expone pauta.
+   */
+  private async toPassageView(p: ExamPassage) {
+    return {
+      id: p.id,
+      passageKey: p.passageKey,
+      displayOrder: p.displayOrder,
+      title: p.title,
+      content: await this.resolveBlocks(examPassageContentResponseSchema.parse(p.content)),
     };
   }
 

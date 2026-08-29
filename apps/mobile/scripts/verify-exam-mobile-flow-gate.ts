@@ -81,6 +81,7 @@ function main() {
     stemContent: [{ type: 'paragraph', order: 0, text: 'x' }],
     answerOptions: [{ id: `${id}-a`, content: { type: 'paragraph', order: 0, text: 'a' }, displayOrder: 0 }],
     selectedAnswerOptionId: selected,
+    passageId: null,
   });
   const questions = [q('q1', 'q1-a'), q('q2', null), q('q3', 'q3-a')];
   const selections = selectionsFromQuestions(questions);
@@ -112,6 +113,7 @@ function main() {
     ],
     selectedAnswerOptionId: selected, correctAnswerOptionId: correct, isCorrect,
     explanationContent: [{ type: 'paragraph', order: 0, text: 'porque sí' }],
+    passageId: null,
   });
   check('reviewOptionState: la correcta -> correct', reviewOptionState(rq('A', 'B', false), 'A') === 'correct');
   check('reviewOptionState: la elegida equivocada -> incorrect', reviewOptionState(rq('A', 'B', false), 'B') === 'incorrect');
@@ -223,6 +225,7 @@ function main() {
       },
     ],
     selectedAnswerOptionId: null,
+    passageId: null,
   });
   const exam65 = Array.from({ length: 65 }, (_, k) => mk65(k + 1));
   check('el fixture tiene exactamente 65 preguntas', exam65.length === 65);
@@ -336,9 +339,67 @@ function main() {
   check('la pantalla de intento deriva el header de currentQuestion.displayOrder (no de safeIndex + 1)', /Pregunta \{currentQuestion\.displayOrder\} de \{total\}/.test(attemptScreen) && !/Pregunta \{safeIndex \+ 1\}/.test(attemptScreen));
   check('la pantalla de intento ordena por displayOrder y reancla en el refetch', /sortByDisplayOrder\(qResult\.data\.questions\)/.test(attemptScreen) && /reindexCurrentQuestion\(questions, currentQuestionIdRef\.current\)/.test(attemptScreen));
   check('la pantalla de intento remonta el subárbol de la pregunta por identidad (key)', /<ScrollView key=\{currentQuestion\.questionVersionId\}/.test(attemptScreen));
-  check('la pantalla de intento NO guarda un currentDisplayOrder aparte de currentIndex (una sola fuente)', !/currentDisplayOrder|setCurrentDisplayOrder/.test(attemptScreen) && (attemptScreen.match(/useState\(/g) ?? []).length <= 7);
+  check('la pantalla de intento NO guarda un currentDisplayOrder aparte de currentIndex (una sola fuente)', !/currentDisplayOrder|setCurrentDisplayOrder/.test(attemptScreen) && (attemptScreen.match(/useState\(/g) ?? []).length <= 8);
   check('currentQuestionIdRef es copia derivada refrescada en render (no segunda fuente de verdad)', /currentQuestionIdRef\.current = currentQuestion\.questionVersionId/.test(attemptScreen));
   check('la revisión también ordena por displayOrder, header por displayOrder y remonta con key', /sortByDisplayOrder\(state\.review\.questions\)/.test(reviewScreen) && /Pregunta \{question\.displayOrder\} de \{total\}/.test(reviewScreen) && /<ScrollView key=\{question\.questionVersionId\}/.test(reviewScreen));
+
+  console.log('--- 18. ENSAYOS-F2: textos de lectura compartidos (PassageCard) + tabla ---');
+  // Fixture sintético: Q1/Q2 comparten el texto T1; Q3 pasa al texto T2; Q4 sin texto.
+  type F2Q = ExamAttemptQuestion;
+  const passages = [
+    {
+      id: 'p-t1',
+      passageKey: 'ENSAYO.ZZTESTF2.T1',
+      displayOrder: 1,
+      title: 'Texto 1',
+      content: [
+        { type: 'paragraph' as const, order: 0, text: 'Texto compartido 1.' },
+        { type: 'table' as const, order: 1, headers: ['A', 'B', 'C'], rows: [['1', '2', '3'], ['4', '5', '6']], footnote: 'Fuente.' },
+      ],
+    },
+    { id: 'p-t2', passageKey: 'ENSAYO.ZZTESTF2.T2', displayOrder: 2, title: 'Texto 2', content: [{ type: 'paragraph' as const, order: 0, text: 'Texto compartido 2.' }] },
+  ];
+  const f2q = (i: number, passageId: string | null): F2Q => ({
+    questionVersionId: `f2-qv-${i}`,
+    displayOrder: i,
+    stemContent: [{ type: 'paragraph', order: 0, text: `Pregunta ${i}` }],
+    answerOptions: [{ id: `f2-qv-${i}-a`, content: { type: 'paragraph', order: 0, text: 'a' }, displayOrder: 0 }],
+    selectedAnswerOptionId: null,
+    passageId,
+  });
+  const f2questions = sortByDisplayOrder([f2q(1, 'p-t1'), f2q(2, 'p-t1'), f2q(3, 'p-t2'), f2q(4, null)]);
+  const resolvePassage = (q: F2Q) => (q.passageId ? passages.find((p) => p.id === q.passageId) ?? null : null);
+
+  check('el payload contiene 2 textos, una sola vez cada uno (aunque Q1 y Q2 comparten T1)', passages.length === 2 && new Set(passages.map((p) => p.id)).size === 2);
+  check('Q1 y Q2 resuelven al MISMO objeto de texto (T1)', resolvePassage(f2questions[0]) === resolvePassage(f2questions[1]) && resolvePassage(f2questions[0])?.id === 'p-t1');
+  check('Q3 resuelve al texto siguiente (T2)', resolvePassage(f2questions[2])?.id === 'p-t2');
+  check('Q4 sin passageId -> no hay texto -> se renderiza la ruta existente sin PassageCard', resolvePassage(f2questions[3]) === null);
+  // Volver de Q3 a Q2 restaura el texto anterior (T1) -- la resolución es por
+  // passageId de la pregunta actual, sin estado de texto arrastrado.
+  check('back Q3 -> Q2 restaura el texto previo (T1), no deja T2 pegado', resolvePassage(f2questions[1])?.id === 'p-t1');
+  const t1Table = passages[0].content.find((b) => b.type === 'table') as { headers: string[]; rows: string[][] } | undefined;
+  check('la tabla del texto conserva A|B|C y 1|2|3 / 4|5|6 (sin conversión a imagen ni Markdown)', !!t1Table && JSON.stringify(t1Table.headers) === JSON.stringify(['A', 'B', 'C']) && JSON.stringify(t1Table.rows) === JSON.stringify([['1', '2', '3'], ['4', '5', '6']]));
+
+  // Estático: componentes y cableado.
+  for (const rel of ['components/exams/passage-card.tsx', 'components/exams/passage-content-renderer.tsx', 'components/exams/passage-table.tsx']) {
+    check(`existe ${rel}`, existsSync(join(mobileDir, rel)));
+  }
+  const passageCard = stripComments(read('components/exams/passage-card.tsx'));
+  const passageRenderer = stripComments(read('components/exams/passage-content-renderer.tsx'));
+  const passageTable = stripComments(read('components/exams/passage-table.tsx'));
+  check('PassageCard: header "TEXTO <title>" y control "Ver texto / Ocultar texto"', /TEXTO \{passage\.title\}/.test(passageCard) && /Ver texto/.test(passageCard) && /Ocultar texto/.test(passageCard));
+  check('PassageCard: plegado controlado por props (collapsed/onToggle), no un índice mutable propio', /collapsed:\s*boolean/.test(passageCard) && !/useState/.test(passageCard));
+  check('PassageContentRenderer delega los bloques estándar a ContentBlockRenderer y maneja `table` él mismo', /ContentBlockRenderer/.test(passageRenderer) && /PassageTable/.test(passageRenderer) && !/SvgXml|parseSvgIntrinsicSize/.test(passageRenderer));
+  check('PassageTable: filas/columnas reales, sin conversión a imagen ni Markdown', !/<Image|require\(|\.png|\bmarkdown\b|dangerouslySetInnerHTML/i.test(passageTable) && /block\.headers/.test(passageTable) && /block\.rows/.test(passageTable));
+  check('PassageTable: scroll horizontal SOLO para la tabla (ScrollView horizontal local)', /<ScrollView\s+horizontal/.test(passageTable));
+  check('ningún ScrollView vertical anidado dentro del contenido del texto (no atrapa gestos)', !/<ScrollView(?![^>]*horizontal)/.test(passageCard) && !/<ScrollView(?![^>]*horizontal)/.test(passageRenderer));
+
+  for (const [rel, src] of [['attempt', attemptScreen], ['review', reviewScreen]] as const) {
+    check(`la pantalla de ${rel} renderiza PassageCard resuelto por passageId desde el mapa de textos`, /<PassageCard/.test(src) && /passages\.find\(\(p\) => p\.id === /.test(src));
+    check(`la pantalla de ${rel} solo muestra PassageCard cuando hay texto (currentPassage ? ... : null)`, /currentPassage \? \(\s*<PassageCard/.test(src));
+    check(`la pantalla de ${rel} mantiene el plegado de textos a nivel de pantalla (Record), sin segundo índice de pregunta`, /collapsedPassages/.test(src) && !/currentDisplayOrder|setCurrentIndex2/.test(src));
+    check(`la pantalla de ${rel} coloca el texto DENTRO del ScrollView de la pregunta (fluye con el resto)`, /<ScrollView key=\{[\s\S]{0,260}<PassageCard/.test(src));
+  }
 
   console.log('');
   if (failures > 0) {

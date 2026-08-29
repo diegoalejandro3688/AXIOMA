@@ -1,6 +1,15 @@
 import { z } from 'zod';
 import { entityId, isoDateTime } from './common';
-import { resourceContentBlocksResponseSchema, explanationContentResponseSchema, answerOptionPublicResponseSchema } from './education';
+import {
+  resourceContentBlocksResponseSchema,
+  explanationContentResponseSchema,
+  answerOptionPublicResponseSchema,
+  headingBlockSchema,
+  paragraphBlockSchema,
+  formulaBlockSchema,
+  imageBlockSchema,
+  imageBlockResponseSchema,
+} from './education';
 
 /**
  * Contratos HTTP del dominio EXAMS / Ensayos V1 (ENSAYOS-F1) -- ver
@@ -30,6 +39,96 @@ export type ExamStatus = z.infer<typeof examStatusSchema>;
 
 export const examAttemptStatusSchema = z.enum(['ACTIVE', 'COMPLETED', 'EXPIRED']);
 export type ExamAttemptStatus = z.infer<typeof examAttemptStatusSchema>;
+
+// ===========================================================================
+// ENSAYOS-F2 -- TEXTOS/ESTÍMULOS COMPARTIDOS (`ExamPassage`).
+//
+// Un pasaje es un texto que acompaña a VARIAS preguntas del mismo ensayo. Se
+// persiste UNA sola vez (`exam_passage.content`) y viaja al cliente UNA sola
+// vez (`passages[]` de la respuesta); cada pregunta sólo lleva el `passageId`
+// que la relaciona -- NUNCA una copia del texto en su `stemContent`.
+//
+// El modelo de bloques del ENUNCIADO / la EXPLICACIÓN de una pregunta NO
+// cambia. El bloque `table` es EXCLUSIVO del contenido de pasaje (blast radius
+// mínimo: la unión de bloques de Study no se toca).
+// ===========================================================================
+
+/**
+ * Bloque de tabla estructurada -- SOLO dentro del contenido de un
+ * `ExamPassage`. `headers`/`rows` con relación fila/columna exacta; nunca
+ * Markdown ni imagen. Storage y respuesta son idénticos (no hay `objectKey`).
+ */
+export const examTableBlockSchema = z.object({
+  type: z.literal('table'),
+  order: z.number().int().nonnegative(),
+  headers: z.array(z.string().min(1)).min(1),
+  rows: z.array(z.array(z.string())).min(1),
+  footnote: z.string().min(1).optional(),
+});
+export type ExamTableBlock = z.infer<typeof examTableBlockSchema>;
+
+/** Cada fila de una tabla tiene exactamente `headers.length` celdas y ninguna fila está entera vacía. */
+function refineTables(blocks: Array<{ type: string } & Record<string, unknown>>, ctx: z.RefinementCtx): void {
+  blocks.forEach((b, i) => {
+    if (b.type !== 'table') return;
+    const headers = b.headers as string[];
+    const rows = b.rows as string[][];
+    rows.forEach((row, ri) => {
+      if (row.length !== headers.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [i, 'rows', ri],
+          message: `la fila ${ri} tiene ${row.length} celda(s); se esperaban ${headers.length} (una por encabezado)`,
+        });
+      }
+      if (row.length > 0 && row.every((c) => c.trim() === '')) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [i, 'rows', ri], message: `la fila ${ri} está completamente vacía` });
+      }
+    });
+  });
+}
+
+/** Bloques permitidos en un pasaje -- ALMACENAMIENTO (`image` con `objectKey`). */
+export const examPassageContentBlockSchema = z.discriminatedUnion('type', [
+  headingBlockSchema,
+  paragraphBlockSchema,
+  formulaBlockSchema,
+  imageBlockSchema,
+  examTableBlockSchema,
+]);
+export const examPassageContentSchema = z
+  .array(examPassageContentBlockSchema)
+  .min(1)
+  .superRefine((blocks, ctx) => refineTables(blocks as never, ctx));
+export type ExamPassageContentBlock = z.infer<typeof examPassageContentBlockSchema>;
+
+/** Bloques permitidos en un pasaje -- RESPUESTA (`image` resuelto a URL firmada). */
+export const examPassageContentBlockResponseSchema = z.discriminatedUnion('type', [
+  headingBlockSchema,
+  paragraphBlockSchema,
+  formulaBlockSchema,
+  imageBlockResponseSchema,
+  examTableBlockSchema,
+]);
+export const examPassageContentResponseSchema = z
+  .array(examPassageContentBlockResponseSchema)
+  .min(1)
+  .superRefine((blocks, ctx) => refineTables(blocks as never, ctx));
+export type ExamPassageContentBlockResponse = z.infer<typeof examPassageContentBlockResponseSchema>;
+
+/**
+ * Un pasaje tal como llega al cliente -- aparece UNA vez en `passages[]`
+ * aunque 7 preguntas lo referencien. `id` es la clave estable de relación en
+ * runtime (`question.passageId`); `passageKey` se conserva para auditoría.
+ */
+export const examPassageViewSchema = z.object({
+  id: entityId,
+  passageKey: z.string().min(1),
+  displayOrder: z.number().int().nonnegative(),
+  title: z.string().min(1),
+  content: examPassageContentResponseSchema,
+});
+export type ExamPassageView = z.infer<typeof examPassageViewSchema>;
 
 // --- GET /exams -- listado de ensayos disponibles (solo PUBLISHED) ---
 
@@ -93,6 +192,13 @@ export const examAttemptQuestionSchema = z.object({
   answerOptions: z.array(answerOptionPublicResponseSchema).min(1),
   /** Selección vigente del estudiante para esta pregunta en este intento -- `null` si aún no respondió. */
   selectedAnswerOptionId: entityId.nullable(),
+  /**
+   * ENSAYOS-F2 -- `id` del `ExamPassage` de `passages[]` que acompaña a esta
+   * pregunta, o `null` (M1/M2 y cualquier ensayo sin textos). ADITIVO: un
+   * cliente anterior que valide sin este campo lo descarta (objeto no
+   * `.strict()`), y su comportamiento no cambia porque siempre es `null`.
+   */
+  passageId: entityId.nullable().default(null),
 });
 export type ExamAttemptQuestion = z.infer<typeof examAttemptQuestionSchema>;
 
@@ -101,6 +207,11 @@ export const examAttemptQuestionsResponseSchema = z.object({
   status: examAttemptStatusSchema,
   expiresAt: isoDateTime,
   serverTime: isoDateTime,
+  /**
+   * ENSAYOS-F2 -- textos compartidos del ensayo, cada uno UNA sola vez aunque
+   * varias preguntas lo referencien. `[]` para M1/M2. ADITIVO (ver `passageId`).
+   */
+  passages: z.array(examPassageViewSchema).default([]),
   questions: z.array(examAttemptQuestionSchema),
 });
 export type ExamAttemptQuestionsResponse = z.infer<typeof examAttemptQuestionsResponseSchema>;
@@ -188,6 +299,8 @@ export const examAttemptReviewQuestionSchema = z.object({
   correctAnswerOptionId: entityId,
   isCorrect: z.boolean(),
   explanationContent: explanationContentResponseSchema.nullable(),
+  /** ENSAYOS-F2 -- ver `examAttemptQuestionSchema.passageId`. `null` en M1/M2. */
+  passageId: entityId.nullable().default(null),
 });
 export type ExamAttemptReviewQuestion = z.infer<typeof examAttemptReviewQuestionSchema>;
 
@@ -196,6 +309,8 @@ export const examAttemptReviewResponseSchema = z.object({
   examId: entityId,
   status: examAttemptStatusSchema,
   score: examAttemptScoreSchema,
+  /** ENSAYOS-F2 -- textos del ensayo, una sola vez. `[]` en M1/M2. */
+  passages: z.array(examPassageViewSchema).default([]),
   questions: z.array(examAttemptReviewQuestionSchema),
 });
 export type ExamAttemptReviewResponse = z.infer<typeof examAttemptReviewResponseSchema>;
@@ -237,6 +352,8 @@ export const adminLinkExamQuestionRequestSchema = z
   .object({
     questionVersionId: entityId,
     displayOrder: z.number().int().positive(),
+    /** ENSAYOS-F2 -- `id` de un `ExamPassage` del MISMO ensayo (resuelto antes con `POST .../passages`), o ausente/`null`. */
+    passageId: entityId.nullish(),
   })
   .strict();
 export type AdminLinkExamQuestionRequest = z.infer<typeof adminLinkExamQuestionRequestSchema>;
@@ -246,10 +363,38 @@ export const adminExamQuestionLinkResponseSchema = z.object({
   examId: entityId,
   questionVersionId: entityId,
   displayOrder: z.number().int().positive(),
+  passageId: entityId.nullable(),
   /** `true` si esta petición creó el vínculo; `false` si ya existía idéntico (NO-OP). */
   created: z.boolean(),
 });
 export type AdminExamQuestionLinkResponse = z.infer<typeof adminExamQuestionLinkResponseSchema>;
+
+/**
+ * ENSAYOS-F2 -- resolver-o-crear un `ExamPassage` por `(examId, passageKey)`.
+ * Idempotente: mismo `passageKey` + contenido canónico idéntico -> NO-OP con
+ * el mismo `id`. Divergencia estructural (título / displayOrder / contenido)
+ * -> 409, nunca sobrescritura. Sobre un ensayo ya PUBLISHED, cualquier
+ * escritura de pasaje se rechaza (trigger `enforce_exam_passage_frozen_after_publish`).
+ */
+export const adminResolveExamPassageRequestSchema = z
+  .object({
+    passageKey: z.string().trim().min(1).max(200),
+    displayOrder: z.number().int().positive(),
+    title: z.string().trim().min(1).max(300),
+    content: examPassageContentSchema,
+  })
+  .strict();
+export type AdminResolveExamPassageRequest = z.infer<typeof adminResolveExamPassageRequestSchema>;
+
+export const adminExamPassageResponseSchema = z.object({
+  id: entityId,
+  examId: entityId,
+  passageKey: z.string(),
+  displayOrder: z.number().int().positive(),
+  /** `true` si esta petición creó el pasaje; `false` si ya existía idéntico (NO-OP). */
+  created: z.boolean(),
+});
+export type AdminExamPassageResponse = z.infer<typeof adminExamPassageResponseSchema>;
 
 export const adminPublishExamRequestSchema = z.object({}).strict();
 export type AdminPublishExamRequest = z.infer<typeof adminPublishExamRequestSchema>;

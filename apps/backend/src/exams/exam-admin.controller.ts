@@ -6,9 +6,12 @@ import {
   adminExamQuestionLinkResponseSchema,
   adminPublishExamRequestSchema,
   adminPublishExamResponseSchema,
+  adminResolveExamPassageRequestSchema,
+  adminExamPassageResponseSchema,
   type AdminExamResponse,
   type AdminExamQuestionLinkResponse,
   type AdminPublishExamResponse,
+  type AdminExamPassageResponse,
 } from '@axioma/contracts';
 import { AdminAuthGuard } from '../administration/admin-auth.guard';
 import { AdminRoleGuard } from '../administration/admin-role.guard';
@@ -77,12 +80,43 @@ export class ExamAdminController {
       examId,
       questionVersionId: input.questionVersionId,
       displayOrder: input.displayOrder,
+      passageId: input.passageId ?? null,
     });
     return adminExamQuestionLinkResponseSchema.parse({
       id: link.id,
       examId: link.examId,
       questionVersionId: link.questionVersionId,
       displayOrder: link.displayOrder,
+      passageId: link.passageId ?? null,
+      created,
+    });
+  }
+
+  /**
+   * ENSAYOS-F2 -- resolver-o-crear un texto/estímulo compartido del ensayo
+   * (idempotente por `examId + passageKey`). Mismo `passageKey` con contenido
+   * canónico idéntico -> NO-OP con el mismo `id`; contenido en conflicto -> 409
+   * (nunca sobrescritura). Sobre un ensayo PUBLISHED lo rechaza el trigger.
+   */
+  @Post(':examId/passages')
+  @RequireAdminRole('AUTHOR', 'PUBLISHER')
+  async resolveExamPassage(
+    @Param('examId', new ParseUUIDPipe()) examId: string,
+    @Body() body: unknown,
+  ): Promise<AdminExamPassageResponse> {
+    const input = parseRequestBody(adminResolveExamPassageRequestSchema, body);
+    const { passage, created } = await this.examService.resolveOrCreatePassage({
+      examId,
+      passageKey: input.passageKey,
+      displayOrder: input.displayOrder,
+      title: input.title,
+      content: input.content,
+    });
+    return adminExamPassageResponseSchema.parse({
+      id: passage.id,
+      examId: passage.examId,
+      passageKey: passage.passageKey,
+      displayOrder: passage.displayOrder,
       created,
     });
   }
