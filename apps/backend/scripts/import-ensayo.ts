@@ -25,8 +25,23 @@ import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { loadExamModules } from '../content/ensayo/load';
-import { ENSAYO_MANIFEST, findExamBlueprint } from '../content/ensayo/manifest';
-import type { ExamSourceModule } from '../content/ensayo/schema';
+import {
+  ENSAYO_MANIFEST,
+  ENSAYO_READING_MANIFEST,
+  ENSAYO_MODULE_COUNT,
+  findExamBlueprint,
+  findReadingBlueprint,
+} from '../content/ensayo/manifest';
+import { isLectoraSourceQuestion, type ExamSourceModule } from '../content/ensayo/schema';
+
+/** Datos comunes que el importer necesita de un blueprint, sea de la familia que sea. */
+function resolveBlueprintFor(examKey: string): { subjectKey: string; expectedQuestionCount: number } | null {
+  const math = findExamBlueprint(examKey);
+  if (math) return { subjectKey: math.subjectKey, expectedQuestionCount: math.expectedQuestionCount };
+  const reading = findReadingBlueprint(examKey);
+  if (reading) return { subjectKey: reading.subjectKey, expectedQuestionCount: reading.expectedQuestionCount };
+  return null;
+}
 
 const ADMIN_TOKEN_HEADER = 'x-admin-token';
 const DEFAULT_API_URL = 'http://127.0.0.1:3000';
@@ -207,22 +222,24 @@ interface ImportCtx {
 async function importExam(exam: ExamSourceModule, ctx: ImportCtx): Promise<void> {
   const { apiUrl, authorToken, publisherToken, dryRun } = ctx;
   const durationSeconds = exam.durationMinutes * 60;
-  const bp = findExamBlueprint(exam.examKey);
-  if (!bp) fail(`"${exam.examKey}" no tiene un blueprint en ENSAYO_MANIFEST -- añádelo antes de importar.`);
+  const bp = resolveBlueprintFor(exam.examKey);
+  if (!bp) fail(`"${exam.examKey}" no tiene un blueprint (ni MATEMATICA ni COMPETENCIA_LECTORA) -- añádelo antes de importar.`);
   if (exam.subjectKey !== bp.subjectKey) {
     fail(`"${exam.examKey}": el módulo declara subjectKey "${exam.subjectKey}" pero el blueprint espera "${bp.subjectKey}".`);
   }
   // El Subject académico del Exam es el del propio módulo (validado arriba).
   const examSubjectKey = exam.subjectKey;
+  const passages = exam.passages ?? [];
 
-  console.log(`=== ENSAYO IMPORT: ${exam.examKey} -- ${exam.questions.length} preguntas -- dry-run: ${dryRun} ===\n`);
+  console.log(`=== ENSAYO IMPORT: ${exam.examKey} -- ${passages.length} textos / ${exam.questions.length} preguntas -- dry-run: ${dryRun} ===\n`);
 
   if (dryRun) {
     console.log('[dry-run] plan:');
     console.log(`  - resolver Subject '${ENSAYO_SUBJECT.subjectKey}' + CurriculumTopic '${exam.examKey}'`);
-    console.log(`  - por cada Q1..Q${exam.questions.length}: leer por clave -> CREATE|NO-OP|RESUMED|NEW_VERSION -> publicar`);
     console.log(`  - resolver Exam '${exam.examKey}' (subject '${examSubjectKey}', durationSeconds ${durationSeconds})`);
-    console.log(`  - vincular ${exam.questions.length} ExamQuestion (displayOrder 1..${exam.questions.length})`);
+    if (passages.length > 0) console.log(`  - resolver/crear ${passages.length} ExamPassage (T1..T${passages.length})`);
+    console.log(`  - por cada Q1..Q${exam.questions.length}: leer por clave -> CREATE|NO-OP|RESUMED|NEW_VERSION -> publicar`);
+    console.log(`  - vincular ${exam.questions.length} ExamQuestion (displayOrder 1..${exam.questions.length}${passages.length ? ', con passageId' : ''})`);
     console.log(`  - publicar Exam`);
     return;
   }
@@ -248,6 +265,44 @@ async function importExam(exam: ExamSourceModule, ctx: ImportCtx): Promise<void>
     `resolución de CurriculumTopic '${exam.examKey}'`,
   ) as { id: string; created: boolean };
   console.log(`  CurriculumTopic ${exam.examKey}: ${topicBody.id} (${topicBody.created ? 'CREATED' : 'NO-OP'})`);
+
+  // --- 1b. Exam (DRAFT) + textos compartidos ---
+  // El Exam se resuelve ANTES de las preguntas porque los ExamPassage cuelgan
+  // de un Exam existente (FK + trigger de consistencia F2). `resolveOrCreateExam`
+  // es idempotente: en la 2a corrida devuelve el mismo id sin recrear nada. El
+  // Exam permanece DRAFT hasta el publish final (paso 4).
+  console.log('\n--- 1b. Exam (DRAFT) + textos compartidos ---');
+  await sleep(WRITE_PACING_MS);
+  const examBody = assertOk(
+    await adminRequest(apiUrl, publisherToken, 'POST', '/administration/exams', {
+      examKey: exam.examKey,
+      title: exam.title,
+      subjectKey: examSubjectKey,
+      durationSeconds,
+    }),
+    `resolución de Exam "${exam.examKey}"`,
+  ) as { id: string; status: string; created: boolean; subjectId: string; durationSeconds: number };
+  console.log(`  Exam ${exam.examKey}: ${examBody.id} (${examBody.created ? 'CREATED' : 'NO-OP'}) status=${examBody.status} subject=${examBody.subjectId} durationSeconds=${examBody.durationSeconds}`);
+
+  const passageIdByKey = new Map<string, string>();
+  const passageSummary = { created: 0, noop: 0 };
+  for (const passage of passages) {
+    await sleep(WRITE_PACING_MS);
+    const res = assertOk(
+      await adminRequest(apiUrl, publisherToken, 'POST', `/administration/exams/${examBody.id}/passages`, {
+        passageKey: passage.passageKey,
+        displayOrder: passage.displayOrder,
+        title: passage.title,
+        content: passage.content,
+      }),
+      `resolución de ExamPassage "${passage.passageKey}"`,
+    ) as { id: string; created: boolean };
+    passageIdByKey.set(passage.passageKey, res.id);
+    if (res.created) passageSummary.created += 1;
+    else passageSummary.noop += 1;
+    console.log(`  ExamPassage ${passage.passageKey} (orden ${passage.displayOrder}): ${res.id} (${res.created ? 'CREATED' : 'NO-OP'})`);
+  }
+  if (passages.length > 0) console.log(`  Textos: ${passageSummary.created} creados, ${passageSummary.noop} NO-OP`);
 
   // --- 2. Preguntas: crear/reconciliar y publicar ---
   console.log('\n--- 2. Preguntas (workflow editorial real) ---');
@@ -320,30 +375,21 @@ async function importExam(exam: ExamSourceModule, ctx: ImportCtx): Promise<void>
     console.log(`  ${q.questionKey} (pos ${q.displayOrder}): ${action} -> version ${publishedVersionId}`);
   }
 
-  // --- 3. Exam ---
-  console.log('\n--- 3. Exam ---');
-  await sleep(WRITE_PACING_MS);
-  const examBody = assertOk(
-    await adminRequest(apiUrl, publisherToken, 'POST', '/administration/exams', {
-      examKey: exam.examKey,
-      title: exam.title,
-      subjectKey: examSubjectKey,
-      durationSeconds,
-    }),
-    `resolución de Exam "${exam.examKey}"`,
-  ) as { id: string; status: string; created: boolean; subjectId: string; durationSeconds: number };
-  console.log(`  Exam ${exam.examKey}: ${examBody.id} (${examBody.created ? 'CREATED' : 'NO-OP'}) status=${examBody.status} subject=${examBody.subjectId} durationSeconds=${examBody.durationSeconds}`);
-
-  // --- 4. ExamQuestion links ---
-  console.log('\n--- 4. ExamQuestion links ---');
+  // --- 3. ExamQuestion links ---
+  console.log('\n--- 3. ExamQuestion links ---');
   const linkSummary = { created: 0, noop: 0 };
   for (const q of exam.questions) {
     const questionVersionId = publishedVersionByOrder.get(q.displayOrder)!;
+    const passageId = isLectoraSourceQuestion(q) ? passageIdByKey.get(q.passageKey) : undefined;
+    if (isLectoraSourceQuestion(q) && !passageId) {
+      fail(`"${q.questionKey}": passageKey "${q.passageKey}" no resuelve a ningún ExamPassage creado.`);
+    }
     await sleep(WRITE_PACING_MS);
     const link = assertOk(
       await adminRequest(apiUrl, publisherToken, 'POST', `/administration/exams/${examBody.id}/questions`, {
         questionVersionId,
         displayOrder: q.displayOrder,
+        ...(passageId ? { passageId } : {}),
       }),
       `vínculo ExamQuestion pos ${q.displayOrder}`,
     ) as { created: boolean };
@@ -352,8 +398,8 @@ async function importExam(exam: ExamSourceModule, ctx: ImportCtx): Promise<void>
   }
   console.log(`  ${linkSummary.created} creados, ${linkSummary.noop} NO-OP`);
 
-  // --- 5. Publicar Exam ---
-  console.log('\n--- 5. Publicar Exam ---');
+  // --- 4. Publicar Exam ---
+  console.log('\n--- 4. Publicar Exam ---');
   await sleep(WRITE_PACING_MS);
   const pub = assertOk(
     await adminRequest(apiUrl, publisherToken, 'POST', `/administration/exams/${examBody.id}/publish`, {}),
@@ -364,6 +410,7 @@ async function importExam(exam: ExamSourceModule, ctx: ImportCtx): Promise<void>
   // --- Resumen ---
   console.log(`\n=== RESUMEN ${exam.examKey} ===`);
   console.log(`  Preguntas: CREATE=${summary.CREATE} NO-OP=${summary['NO-OP']} RESUMED=${summary.RESUMED} NEW_VERSION=${summary.NEW_VERSION}`);
+  if (passages.length > 0) console.log(`  Textos:    created=${passageSummary.created} noop=${passageSummary.noop}`);
   console.log(`  Links:     created=${linkSummary.created} noop=${linkSummary.noop}`);
   console.log(`  Exam:      ${examBody.created ? 'CREATED' : 'REUSED'} / ${pub.status} / subject=${examSubjectKey}`);
   console.log(`  Blueprint: ${bp.expectedQuestionCount} preguntas esperadas, ${exam.questions.length} en source`);
@@ -403,13 +450,14 @@ async function main(): Promise<void> {
     for (const i of issues) console.error(`  ${i.file}: ${i.message}`);
     process.exit(1);
   }
-  if (loaded.length !== ENSAYO_MANIFEST.length) {
-    fail(`se esperaban ${ENSAYO_MANIFEST.length} módulo(s) de Ensayo (uno por blueprint del manifest), se cargaron ${loaded.length}.`);
+  if (loaded.length !== ENSAYO_MODULE_COUNT) {
+    fail(`se esperaban ${ENSAYO_MODULE_COUNT} módulo(s) de Ensayo (uno por blueprint del manifest), se cargaron ${loaded.length}.`);
   }
 
   const requestedKey = flags.get('exam-key');
-  // Orden determinista: el del manifest.
-  const ordered = ENSAYO_MANIFEST.map((bp) => loaded.find((l) => l.module.examKey === bp.examKey)!.module);
+  // Orden determinista: primero los MATEMATICA (M1, M2), luego COMPETENCIA_LECTORA.
+  const manifestOrder = [...ENSAYO_MANIFEST, ...ENSAYO_READING_MANIFEST];
+  const ordered = manifestOrder.map((bp) => loaded.find((l) => l.module.examKey === bp.examKey)!.module);
   const targets: ExamSourceModule[] = requestedKey
     ? ordered.filter((m) => m.examKey === requestedKey)
     : ordered;

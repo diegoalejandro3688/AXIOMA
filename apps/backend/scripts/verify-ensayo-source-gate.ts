@@ -27,10 +27,14 @@ import {
 } from '../content/ensayo/schema';
 import {
   ENSAYO_MANIFEST,
+  ENSAYO_READING_MANIFEST,
+  ENSAYO_MODULE_COUNT,
   findExamBlueprint,
+  findReadingBlueprint,
   EXAM_AXES,
   EXAM_DIFFICULTIES,
   EXAM_PRIMARY_SKILLS,
+  EXAM_READING_SKILLS,
 } from '../content/ensayo/manifest';
 import { loadResourceModules as loadStudyModules } from '../content/load';
 import { CONTENT_MANIFEST, totalExpectedQuestions, totalExpectedResources } from '../content/manifest';
@@ -74,11 +78,11 @@ async function main() {
     console.error(`       ${issue.message}`);
   }
   check(
-    `${ENSAYO_MANIFEST.length} módulo(s) de Ensayo cargado(s) y válido(s) (encontrados: ${loaded.length})`,
-    loaded.length === ENSAYO_MANIFEST.length,
+    `${ENSAYO_MODULE_COUNT} módulo(s) de Ensayo cargado(s) y válido(s) (encontrados: ${loaded.length})`,
+    loaded.length === ENSAYO_MODULE_COUNT,
   );
   const loadedKeys = new Set(loaded.map((l) => l.module.examKey));
-  for (const bp of ENSAYO_MANIFEST) {
+  for (const bp of [...ENSAYO_MANIFEST, ...ENSAYO_READING_MANIFEST]) {
     check(`el manifest declara "${bp.examKey}" y existe su módulo fuente`, loadedKeys.has(bp.examKey));
   }
 
@@ -91,7 +95,8 @@ async function main() {
     for (const q of s.module.questions) studyQuestionKeys.add(q.questionKey);
   }
 
-  for (const { file, module: exam } of loaded) {
+  const mathModules = loaded.filter((l) => !!findExamBlueprint(l.module.examKey));
+  for (const { file, module: exam } of mathModules) {
     const bp = findExamBlueprint(exam.examKey);
     console.log(`\n=== ${exam.examKey} (${relative(CONTENT_ROOT, file)}) ===`);
     check(`${exam.examKey}: tiene un blueprint en ENSAYO_MANIFEST`, !!bp);
@@ -259,6 +264,202 @@ async function main() {
         dsAxes.get('ENSAYO.M2.Q40') === 'ALGEBRA_FUNCIONES' &&
         dsAxes.get('ENSAYO.M2.Q49') === 'PROBABILIDAD_ESTADISTICA',
     );
+  }
+
+  console.log('\n--- 9b. ENSAYO.LECTORA: contenido productivo de Competencia Lectora ---');
+  const lectoraBp = findReadingBlueprint('ENSAYO.LECTORA')!;
+  const lectora = loaded.find((l) => l.module.examKey === 'ENSAYO.LECTORA')?.module;
+  check('ENSAYO.LECTORA presente y cargado', !!lectora && !!lectoraBp);
+  if (lectora) {
+    const L = lectora;
+    check(`ENSAYO.LECTORA: title = "${lectoraBp.title}"`, L.title === lectoraBp.title);
+    check('ENSAYO.LECTORA: subjectKey = "lenguaje"', L.subjectKey === 'lenguaje');
+    check('ENSAYO.LECTORA: durationMinutes = 150', L.durationMinutes === 150);
+    check(`ENSAYO.LECTORA: ${lectoraBp.expectedPassageCount} textos (encontrados: ${L.passages.length})`, L.passages.length === 10);
+    check(`ENSAYO.LECTORA: ${lectoraBp.expectedQuestionCount} preguntas (encontradas: ${L.questions.length})`, L.questions.length === 65);
+
+    // Claves T1..T10 y orden 1..10
+    const pKeys = L.passages.map((p) => p.passageKey);
+    check(
+      'ENSAYO.LECTORA: passageKeys = ENSAYO.LECTORA.T1..T10',
+      JSON.stringify([...pKeys].sort()) === JSON.stringify(Array.from({ length: 10 }, (_, i) => `ENSAYO.LECTORA.T${i + 1}`).sort()),
+    );
+    const pOrders = L.passages.map((p) => p.displayOrder).sort((a, b) => a - b);
+    check('ENSAYO.LECTORA: displayOrder de textos es 1..10', JSON.stringify(pOrders) === JSON.stringify([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
+
+    // questionKeys Q1..Q65, displayOrder 1..65, todas lectora
+    const qKeys = L.questions.map((q) => q.questionKey);
+    check(
+      'ENSAYO.LECTORA: questionKeys = ENSAYO.LECTORA.Q1..Q65',
+      JSON.stringify([...qKeys].sort()) === JSON.stringify(Array.from({ length: 65 }, (_, i) => `ENSAYO.LECTORA.Q${i + 1}`).sort()),
+    );
+    const qOrders = L.questions.map((q) => q.displayOrder).sort((a, b) => a - b);
+    check('ENSAYO.LECTORA: displayOrder 1..65 sin huecos', JSON.stringify(qOrders) === JSON.stringify(Array.from({ length: 65 }, (_, i) => i + 1)));
+    check('ENSAYO.LECTORA: TODAS las preguntas son de competencia lectora (llevan passageKey)', L.questions.every((q) => isLectoraSourceQuestion(q)));
+    check('ENSAYO.LECTORA: 0 colisión de questionKey con Study', qKeys.every((k) => !studyQuestionKeys.has(k)));
+    check('ENSAYO.LECTORA: examKey/passageKeys bajo namespace "ENSAYO."', L.examKey.startsWith('ENSAYO.') && pKeys.every((k) => k.startsWith('ENSAYO.')));
+
+    // Mapa texto -> rango de preguntas EXACTO contra el blueprint autoritativo
+    const byKey = (q: { passageKey?: string }) => (q as { passageKey: string }).passageKey;
+    let mapOk = true;
+    for (const range of lectoraBp.passageMap) {
+      const inRange = L.questions.filter((q) => q.displayOrder >= range.firstQuestion && q.displayOrder <= range.lastQuestion);
+      const allMapped = inRange.every((q) => byKey(q) === range.passageKey);
+      const count = inRange.length;
+      const expectedCount = range.lastQuestion - range.firstQuestion + 1;
+      if (!allMapped || count !== expectedCount) mapOk = false;
+      check(
+        `ENSAYO.LECTORA: ${range.passageKey} ("${range.title}") <- Q${range.firstQuestion}..Q${range.lastQuestion} (${count}/${expectedCount})`,
+        allMapped && count === expectedCount,
+      );
+      const passage = L.passages.find((p) => p.passageKey === range.passageKey)!;
+      check(`ENSAYO.LECTORA: ${range.passageKey} title = "${range.title}"`, passage.title === range.title);
+    }
+    check('ENSAYO.LECTORA: cada pregunta apunta a un passageKey que existe', L.questions.every((q) => pKeys.includes(byKey(q))));
+    check('ENSAYO.LECTORA: mapa texto->pregunta 100% coherente con el blueprint', mapOk);
+
+    // Integridad por pregunta
+    let opts = 0;
+    let correct = 0;
+    for (const q of L.questions) {
+      opts += q.options.length;
+      const c = q.options.filter((o) => o.correct).length;
+      correct += c;
+      check(`ENSAYO.LECTORA ${q.questionKey}: 4 alternativas / 1 correcta`, q.options.length === 4 && c === 1);
+      check(`ENSAYO.LECTORA ${q.questionKey}: enunciado y explicación no vacíos`, q.stemContent.length > 0 && q.explanationContent.length > 0);
+      const canon = q.options.map((o) => (o.content.type === 'formula' ? `f:${o.content.latex}` : `t:${o.content.text}`));
+      check(`ENSAYO.LECTORA ${q.questionKey}: alternativas no duplicadas`, new Set(canon).size === 4);
+    }
+    check(`ENSAYO.LECTORA: 260 alternativas en total (${opts})`, opts === 260);
+    check(`ENSAYO.LECTORA: 65 correctas / 195 incorrectas (${correct}/${opts - correct})`, correct === 65 && opts - correct === 195);
+
+    // Blueprint DERIVADO desde las 65 preguntas (labels reales, no hardcode del resultado)
+    const skillTally = tally(L.questions.map((q) => (q as { readingSkill: (typeof EXAM_READING_SKILLS)[number] }).readingSkill), EXAM_READING_SKILLS);
+    const diffTally = tally(L.questions.map((q) => q.difficulty), EXAM_DIFFICULTIES);
+    for (const s of EXAM_READING_SKILLS) {
+      check(`ENSAYO.LECTORA: habilidad ${s}: ${skillTally[s]} == ${lectoraBp.expectedReadingSkill[s]}`, skillTally[s] === lectoraBp.expectedReadingSkill[s]);
+    }
+    for (const d of EXAM_DIFFICULTIES) {
+      check(`ENSAYO.LECTORA: dificultad ${d}: ${diffTally[d]} == ${lectoraBp.expectedDifficulty[d]}`, diffTally[d] === lectoraBp.expectedDifficulty[d]);
+    }
+
+    // Clave autoritativa compacta Q1..Q65
+    const KEY = 'BCBCDABABDBCCCBBCACDCBDBCBABBBAABCBCACADDACDADCDACDBDACDBDCADCBDA';
+    const derivedKey = [...L.questions]
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+      .map((q) => 'ABCD'[q.options.findIndex((o) => o.correct)])
+      .join('');
+    check(`ENSAYO.LECTORA: clave Q1..Q65 coincide con la compacta autoritativa`, derivedKey === KEY);
+    const keyDist = { A: 0, B: 0, C: 0, D: 0 } as Record<string, number>;
+    for (const ch of derivedKey) keyDist[ch] += 1;
+    check(
+      `ENSAYO.LECTORA: distribución de clave A=14 B=18 C=18 D=15 (${JSON.stringify(keyDist)})`,
+      keyDist.A === 14 && keyDist.B === 18 && keyDist.C === 18 && keyDist.D === 15,
+    );
+
+    // Q19 -- PIN de la versión DEFINITIVA CORREGIDA, no regresar a la vieja
+    const q19 = L.questions.find((q) => q.questionKey === 'ENSAYO.LECTORA.Q19')!;
+    const q19stem = q19.stemContent.map((b) => (b.type === 'formula' ? b.latex : b.text)).join(' ');
+    check('ENSAYO.LECTORA Q19: readingSkill=EVALUAR, difficulty=MEDIA', (q19 as { readingSkill: string }).readingSkill === 'EVALUAR' && q19.difficulty === 'MEDIA');
+    check('ENSAYO.LECTORA Q19: correcta = C', q19.options.findIndex((o) => o.correct) === 2);
+    check(
+      'ENSAYO.LECTORA Q19: enunciado es la versión DEFINITIVA ("...debilitaría más directamente la defensa...")',
+      q19stem.includes('debilitaría más directamente la defensa que hace el autor de reservar treinta minutos'),
+    );
+    check(
+      'ENSAYO.LECTORA Q19: NO es la versión antigua ("la principal objeción")',
+      !q19stem.includes('principal objeción') && !q19stem.includes('objeción más fuerte'),
+    );
+    check(
+      'ENSAYO.LECTORA Q19: la alternativa C es el estudio con grupos comparables',
+      q19.options[2].content.type === 'paragraph' &&
+        q19.options[2].content.text.includes('grupos comparables') &&
+        q19.options[2].content.text.includes('no desarrollan mayor autonomía ni persistencia'),
+    );
+
+    // Tablas T2 / T5 / T10 -- estructura y valores EXACTOS
+    const tableOf = (key: string) => L.passages.find((p) => p.passageKey === key)!.content.find((b) => b.type === 'table') as
+      | { headers: string[]; rows: string[][]; footnote?: string }
+      | undefined;
+    const t2 = tableOf('ENSAYO.LECTORA.T2');
+    check(
+      'ENSAYO.LECTORA T2: headers exactos (Zona / Cobertura / Temperatura / Árboles...)',
+      !!t2 &&
+        JSON.stringify(t2.headers) ===
+          JSON.stringify([
+            'Zona',
+            'Cobertura aproximada de copas',
+            'Temperatura del pavimento',
+            'Árboles plantados cinco años antes que seguían vivos',
+          ]),
+    );
+    check(
+      'ENSAYO.LECTORA T2: filas exactas (8 %/38,6 °C/54 %, 22 %/34,2 °C/76 %, 47 %/29,8 °C/89 %)',
+      !!t2 &&
+        JSON.stringify(t2.rows) ===
+          JSON.stringify([
+            ['Avenida Norte', '8 %', '38,6 °C', '54 %'],
+            ['Barrio Estación', '22 %', '34,2 °C', '76 %'],
+            ['Parque Sur', '47 %', '29,8 °C', '89 %'],
+          ]),
+    );
+    const t5 = tableOf('ENSAYO.LECTORA.T5');
+    check(
+      'ENSAYO.LECTORA T5: headers exactos (Sector / Horas grabadas / Especies... / Registros...)',
+      !!t5 &&
+        JSON.stringify(t5.headers) ===
+          JSON.stringify(['Sector', 'Horas grabadas', 'Especies acústicamente identificadas', 'Registros de vocalizaciones']),
+    );
+    check(
+      'ENSAYO.LECTORA T5: filas exactas (120/18/640, 120/24/510, 120/13/790)',
+      !!t5 &&
+        JSON.stringify(t5.rows) ===
+          JSON.stringify([
+            ['Quebrada', '120', '18', '640'],
+            ['Bosque alto', '120', '24', '510'],
+            ['Borde agrícola', '120', '13', '790'],
+          ]),
+    );
+    const t10 = tableOf('ENSAYO.LECTORA.T10');
+    check(
+      'ENSAYO.LECTORA T10: headers exactos (Sector / Temperatura nocturna... / Día promedio...* / Árboles observados)',
+      !!t10 &&
+        JSON.stringify(t10.headers) ===
+          JSON.stringify([
+            'Sector',
+            'Temperatura nocturna media previa a la floración',
+            'Día promedio de primera floración*',
+            'Árboles observados',
+          ]),
+    );
+    check(
+      'ENSAYO.LECTORA T10: filas exactas (11,8 °C/72/40, 9,9 °C/78/40, 8,7 °C/84/40)',
+      !!t10 &&
+        JSON.stringify(t10.rows) ===
+          JSON.stringify([
+            ['Centro urbano', '11,8 °C', '72', '40'],
+            ['Periferia', '9,9 °C', '78', '40'],
+            ['Valle rural', '8,7 °C', '84', '40'],
+          ]),
+    );
+    check('ENSAYO.LECTORA T10: footnote = "*El día 1 corresponde al 1 de enero."', t10?.footnote === '*El día 1 corresponde al 1 de enero.');
+    check('ENSAYO.LECTORA: exactamente 3 textos con tabla (T2, T5, T10)', L.passages.filter((p) => p.content.some((b) => b.type === 'table')).length === 3);
+
+    // El texto NO se repite dentro del stem de cada pregunta
+    let dupInStem = 0;
+    for (const q of L.questions) {
+      const passage = L.passages.find((p) => p.passageKey === byKey(q))!;
+      const firstProse = passage.content.find((b) => b.type === 'paragraph') as { text: string } | undefined;
+      const stemJoined = q.stemContent.map((b) => (b.type === 'formula' ? b.latex : b.text)).join(' ');
+      if (firstProse && firstProse.text.length > 60 && stemJoined.includes(firstProse.text.slice(0, 60))) dupInStem += 1;
+    }
+    check('ENSAYO.LECTORA: NINGUNA pregunta embebe el texto completo en su stem', dupInStem === 0);
+
+    // Unicode limpio + puntuación española
+    const allStr = JSON.stringify(L);
+    check('ENSAYO.LECTORA: sin carácter de reemplazo U+FFFD', !allStr.includes('�'));
+    check('ENSAYO.LECTORA: conserva acentos y ¿ del español', /[áéíóúñ]/.test(allStr) && allStr.includes('¿'));
+    check('ENSAYO.LECTORA: em dash y comillas tipográficas representadas', allStr.includes('—') && (allStr.includes('“') || allStr.includes('”')));
   }
 
   console.log('\n--- 10. ENSAYOS-F2: fixture SINTÉTICO -- texto compartido + tabla + preguntas de lectora ---');

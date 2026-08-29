@@ -200,6 +200,68 @@ async function main() {
     const srForFixtures = await zero(`SELECT count(*)::int n FROM student_response WHERE question_version_id = ANY(ARRAY['${qv[0]}','${qv[1]}','${qv[2]}']::uuid[])`);
     check('0 student_response para las question_version del gate', srForFixtures === 0);
 
+    console.log('--- 9b. ENSAYOS-LECTORA: camino de textos compartidos del importer (idempotencia, IDs estables, separación de subject) ---');
+    // Ensayo aislado con 2 textos: T1 <- Q1,Q2 ; T2 <- Q3. subjectKey académico
+    // 'lenguaje' (como ENSAYO.LECTORA); las QuestionVersions siguen bajo el
+    // Subject técnico del gate. El importer real usa exactamente estas rutas.
+    const lecKey = `ENSAYO.ZZLECTORA.${runId}`;
+    // La DB de gates puede no tener el Subject académico 'lenguaje' -- lo
+    // creamos si falta (mismo criterio que el fixture de subject técnico).
+    const lenguajeRow = await pg.query(`SELECT id FROM subject WHERE subject_key='lenguaje'`);
+    if (lenguajeRow.rowCount === 0) {
+      await pg.query(
+        `INSERT INTO subject (id, subject_key, name, short_name, display_order, status, created_at, updated_at)
+         VALUES ($1,'lenguaje','Lenguaje','Leng',10,'ACTIVE',now(),now())`,
+        [randomUUID()],
+      );
+    }
+    const lecExam = await req('POST', '/administration/exams', H(publisher.token), {
+      examKey: lecKey, title: 'Ensayo ZZLECTORA', subjectKey: 'lenguaje', durationSeconds: 9000,
+    });
+    check('resolve Exam de familia lectora (subjectKey lenguaje) -> created', (lecExam.status === 200 || lecExam.status === 201) && lecExam.body?.created === true);
+    const lecExamId = lecExam.body.id as string;
+    trackedExamIds.push(lecExamId);
+    const pContent = (n: string) => [
+      { type: 'paragraph', order: 0, text: `Texto compartido ${n} de Competencia Lectora, con acentos á é í ó ú ñ y ¿signos?` },
+      { type: 'table', order: 1, headers: ['Sector', 'Valor'], rows: [['Norte', '10'], ['Sur', '20']], footnote: 'Fuente.' },
+    ];
+    const resolveP = (key: string, order: number, title: string, n: string) =>
+      req('POST', `/administration/exams/${lecExamId}/passages`, H(publisher.token), { passageKey: key, displayOrder: order, title, content: pContent(n) });
+    const p1a = await resolveP(`${lecKey}.T1`, 1, 'Texto 1', 'T1');
+    const p2a = await resolveP(`${lecKey}.T2`, 2, 'Texto 2', 'T2');
+    check('resuelve 2 ExamPassage -> created', p1a.body?.created === true && p2a.body?.created === true);
+    const p1Id = p1a.body.id as string;
+    const p2Id = p2a.body.id as string;
+    const p1b = await resolveP(`${lecKey}.T1`, 1, 'Texto 1', 'T1');
+    check('segunda resolución idéntica de T1 -> created:false, MISMO id (idempotente)', p1b.body?.created === false && p1b.body?.id === p1Id);
+    check('re-resolver T1 con contenido en conflicto -> 409 (nunca sobrescribe)', (await req('POST', `/administration/exams/${lecExamId}/passages`, H(publisher.token), {
+      passageKey: `${lecKey}.T1`, displayOrder: 1, title: 'Texto 1', content: [{ type: 'paragraph', order: 0, text: 'contenido distinto' }],
+    })).status === 409);
+
+    const l1 = await req('POST', `/administration/exams/${lecExamId}/questions`, H(publisher.token), { questionVersionId: qv[0], displayOrder: 1, passageId: p1Id });
+    const l2 = await req('POST', `/administration/exams/${lecExamId}/questions`, H(publisher.token), { questionVersionId: qv[1], displayOrder: 2, passageId: p1Id });
+    const l3 = await req('POST', `/administration/exams/${lecExamId}/questions`, H(publisher.token), { questionVersionId: qv[2], displayOrder: 3, passageId: p2Id });
+    check('Q1/Q2 -> T1, Q3 -> T2 (un texto sirve a varias preguntas)', l1.body?.passageId === p1Id && l2.body?.passageId === p1Id && l3.body?.passageId === p2Id);
+    const l1again = await req('POST', `/administration/exams/${lecExamId}/questions`, H(publisher.token), { questionVersionId: qv[0], displayOrder: 1, passageId: p1Id });
+    check('re-link idéntico de Q1 -> created:false, MISMO id, mismo passageId', l1again.body?.created === false && l1again.body?.id === l1.body.id && l1again.body?.passageId === p1Id);
+
+    const lecPub = await req('POST', `/administration/exams/${lecExamId}/publish`, H(publisher.token), {});
+    check('publish Exam lectora -> PUBLISHED', lecPub.body?.status === 'PUBLISHED');
+
+    const lecDb = await pg.query(
+      `SELECT (SELECT count(*)::int FROM exam_passage WHERE exam_id=$1) passages,
+              (SELECT count(*)::int FROM exam_question WHERE exam_id=$1) links,
+              (SELECT count(*)::int FROM exam_question WHERE exam_id=$1 AND passage_id IS NOT NULL) mapped,
+              (SELECT s.subject_key FROM exam e JOIN subject s ON s.id=e.subject_id WHERE e.id=$1) exam_subject`,
+      [lecExamId],
+    );
+    check('DB: 2 passages, 3 links, 3 mapped, Exam.subject = lenguaje', lecDb.rows[0].passages === 2 && lecDb.rows[0].links === 3 && lecDb.rows[0].mapped === 3 && lecDb.rows[0].exam_subject === 'lenguaje');
+    const qSubject = await pg.query(
+      `SELECT DISTINCT s.subject_key FROM exam_question eq JOIN question_version qv ON qv.id=eq.question_version_id JOIN question q ON q.id=qv.question_id JOIN subject s ON s.id=q.primary_subject_id WHERE eq.exam_id=$1`,
+      [lecExamId],
+    );
+    check('DB: las QuestionVersions NO cuelgan del subject académico del Exam (separación editorial vs académico)', qSubject.rows.every((r) => r.subject_key !== 'lenguaje'));
+
     console.log('--- 10. Frontera estática: exam-admin.controller no toca PROGRESS/Outbox/StudentResponse ---');
     const { readFileSync } = await import('node:fs');
     const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
@@ -216,6 +278,7 @@ async function main() {
       await pg.query(`DELETE FROM exam_attempt_answer WHERE attempt_id IN (SELECT id FROM exam_attempt WHERE exam_id=$1)`, [examId]);
       await pg.query(`DELETE FROM exam_attempt WHERE exam_id=$1`, [examId]);
       await pg.query(`DELETE FROM exam_question WHERE exam_id=$1`, [examId]);
+      await pg.query(`DELETE FROM exam_passage WHERE exam_id=$1`, [examId]);
       await pg.query(`DELETE FROM exam WHERE id=$1`, [examId]);
     }
   }
