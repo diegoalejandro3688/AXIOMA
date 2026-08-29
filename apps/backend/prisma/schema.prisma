@@ -60,6 +60,10 @@ model Subject {
   curriculumTopics  CurriculumTopic[]
   learningResources LearningResource[]
   questions         Question[]
+  /// Dominio EXAMS / Ensayos (ADR-0024) -- un `Exam` pertenece a una materia,
+  /// igual que `LearningResource`/`Question`. Ensayos reutiliza esta identidad
+  /// de materia sin crear una paralela.
+  exams             Exam[]
 
   @@map("subject")
 }
@@ -193,6 +197,13 @@ model QuestionVersion {
   quickQuestionAttempts  QuickQuestionAttempt[]
   /// Incremento 4 (Tutor IA) -- ver AiConversation.contextQuestionVersionId.
   aiConversationContexts AiConversation[]
+  /// Dominio EXAMS / Ensayos (ADR-0024) -- lado inverso de
+  /// `ExamQuestion.questionVersionId` (vínculo ordenado a un ensayo) y
+  /// `ExamAttemptAnswer.questionVersionId` (respuesta dentro de un intento).
+  /// FK Restrict: una versión publicada vinculada a un ensayo no puede
+  /// desaparecer bajo él.
+  examQuestions          ExamQuestion[]
+  examAttemptAnswers     ExamAttemptAnswer[]
 
   @@index([questionId])
   @@index([curriculumTopicId])
@@ -219,6 +230,9 @@ model AnswerOption {
   studentResponses      StudentResponse[]
   /// Bloque IV, Incremento 4, sub-incremento 4.a -- lado inverso de QuickQuestionAttempt.answerOptionId.
   quickQuestionAttempts QuickQuestionAttempt[]
+  /// Dominio EXAMS / Ensayos (ADR-0024) -- lado inverso de
+  /// `ExamAttemptAnswer.answerOptionId`. FK Restrict.
+  examAttemptAnswers    ExamAttemptAnswer[]
 
   @@index([questionVersionId])
   @@map("answer_option")
@@ -2818,4 +2832,157 @@ model AdminAction {
   @@index([actorId, occurredAt])
   @@index([cms018ActivationId])
   @@map("admin_action")
+}
+
+// ===========================================================================
+// Dominio EXAMS / Ensayos V1 -- ENSAYOS-F1. Ver docs/adr/0024-ensayos-foundation.md.
+//
+// Ensayos es un dominio SEPARADO de Study (`ENSAYOS != STUDY BANK`). Reutiliza
+// la infraestructura editorial de preguntas (`Question`/`QuestionVersion`/
+// `AnswerOption`) pero NUNCA `StudentResponse`/`CurriculumTopicProgress` -- un
+// intento de ensayo no otorga XP/LP, no toca racha/meta diaria/desafíos y no
+// emite ningún evento de gamificación existente. El orden de las preguntas
+// vive en `ExamQuestion`, nunca en `QuestionVersion`. El reloj es
+// server-authoritative (`expiresAt` persistido = `startedAt + durationSeconds`).
+// Sin pausa en V1. Sin puntaje PAES / conversión raw->scaled.
+// ===========================================================================
+
+/// Disponibilidad de un ensayo. Solo `PUBLISHED` es iniciable por un
+/// estudiante (mismo criterio que `EditorialStatus.PUBLISHED` en EDUCATION,
+/// pero es un ciclo de vida propio y más simple -- un ensayo no tiene
+/// versiones).
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+  RETIRED
+
+  @@map("exam_status")
+}
+
+/// Ciclo de vida de un intento -- forward-only, reforzado por el trigger
+/// `enforce_exam_attempt_status_transition` (mismo criterio que
+/// `enforce_quick_question_session_status_transition`). `ACTIVE -> COMPLETED`
+/// (entrega explícita) y `ACTIVE -> EXPIRED` (transición perezosa al superar
+/// `expiresAt`) son las dos únicas transiciones; nunca hacia atrás, nunca
+/// `COMPLETED <-> EXPIRED`.
+enum ExamAttemptStatus {
+  ACTIVE
+  COMPLETED
+  EXPIRED
+
+  @@map("exam_attempt_status")
+}
+
+/// Identidad estable de un ensayo disponible. `subjectId` reutiliza la materia
+/// real (nunca una paralela). `durationSeconds` es la duración total en
+/// segundos -- el cliente deriva el countdown, jamás al revés.
+model Exam {
+  id              String     @id @default(uuid()) @db.Uuid
+  examKey         String     @unique @map("exam_key")
+  title           String
+  subjectId       String     @map("subject_id") @db.Uuid
+  durationSeconds Int        @map("duration_seconds")
+  status          ExamStatus @default(DRAFT)
+  publishedAt     DateTime?  @map("published_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  subject   Subject        @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  questions ExamQuestion[]
+  attempts  ExamAttempt[]
+
+  @@index([subjectId])
+  @@index([status])
+  @@map("exam")
+}
+
+/// Vínculo ordenado entre un `Exam` y una `QuestionVersion` publicada. El
+/// orden de presentación vive AQUÍ (`displayOrder`), no en la pregunta.
+/// `@@unique([examId, questionVersionId])` -- una pregunta no puede aparecer
+/// dos veces en el mismo ensayo. `@@unique([examId, displayOrder])` -- sin
+/// dos preguntas en la misma posición. El trigger
+/// `enforce_exam_question_version_published` rechaza vincular una versión que
+/// no esté `PUBLISHED` (defensa en profundidad sobre la validación de
+/// servicio).
+model ExamQuestion {
+  id                String   @id @default(uuid()) @db.Uuid
+  examId            String   @map("exam_id") @db.Uuid
+  questionVersionId String   @map("question_version_id") @db.Uuid
+  displayOrder      Int      @map("display_order")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  exam            Exam            @relation(fields: [examId], references: [id], onDelete: Restrict)
+  questionVersion QuestionVersion @relation(fields: [questionVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([examId, questionVersionId])
+  @@unique([examId, displayOrder])
+  @@index([examId])
+  @@index([questionVersionId])
+  @@map("exam_question")
+}
+
+/// Una rendición individual de un ensayo. `accountId` SIN FK a `Account` --
+/// mismo criterio que `QuickQuestionSession`/`ValidatedGamificationActivity`/
+/// `CurriculumTopicProgress` (ADR-0014). Repetible: NO existe
+/// `@@unique([accountId, examId])` global (a diferencia de
+/// `StudentResponse`). El índice único PARCIAL
+/// `exam_attempt_one_active_per_account_exam` (migración SQL, Prisma no
+/// soporta índices parciales en el DSL -- mismo criterio que
+/// `quick_question_session_one_active_per_account`) garantiza como máximo un
+/// intento `ACTIVE` por `(cuenta, ensayo)`.
+///
+/// `expiresAt` se PERSISTE al iniciar (`startedAt + durationSeconds`), no se
+/// deriva en cada lectura: un cambio posterior a `Exam.durationSeconds` nunca
+/// mueve la expiración de un intento ya en curso, y cerrar/reabrir la app no
+/// reinicia el reloj (no hay pausa en V1).
+model ExamAttempt {
+  id          String            @id @default(uuid()) @db.Uuid
+  accountId   String            @map("account_id") @db.Uuid
+  examId      String            @map("exam_id") @db.Uuid
+  status      ExamAttemptStatus @default(ACTIVE)
+  startedAt   DateTime          @default(now()) @map("started_at")
+  expiresAt   DateTime          @map("expires_at")
+  completedAt DateTime?         @map("completed_at")
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  exam    Exam                @relation(fields: [examId], references: [id], onDelete: Restrict)
+  answers ExamAttemptAnswer[]
+
+  @@index([accountId])
+  @@index([examId])
+  @@index([accountId, examId])
+  @@map("exam_attempt")
+}
+
+/// La selección vigente de UNA pregunta dentro de UN intento.
+/// `@@unique([attemptId, questionVersionId])` -- exactamente una respuesta
+/// vigente por pregunta por intento. Mutable MIENTRAS el intento esté `ACTIVE`
+/// (cambiar de alternativa antes de entregar = `UPDATE` de esta fila);
+/// inmutable tras `COMPLETED`/`EXPIRED`, reforzado por el trigger
+/// `enforce_exam_attempt_answer_frozen_after_close` (INSERT/UPDATE/DELETE
+/// bloqueados si el intento no está `ACTIVE`). `isCorrect` lo resuelve el
+/// servidor desde `AnswerOption.isCorrect`, nunca el cliente. `operationId`
+/// -- idempotencia de transporte, mismo patrón que
+/// `StudentResponse.operationId`/`QuickQuestionAttempt.operationId`.
+model ExamAttemptAnswer {
+  id                String   @id @default(uuid()) @db.Uuid
+  attemptId         String   @map("attempt_id") @db.Uuid
+  /// Denormalizado -- mismo criterio que `QuickQuestionAttempt.accountId`
+  /// (lectura directa sin join; el intento es la fuente real de `accountId`).
+  accountId         String   @map("account_id") @db.Uuid
+  questionVersionId String   @map("question_version_id") @db.Uuid
+  answerOptionId    String   @map("answer_option_id") @db.Uuid
+  isCorrect         Boolean  @map("is_correct")
+  respondedAt       DateTime @default(now()) @map("responded_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  operationId       String   @unique @map("operation_id") @db.Uuid
+
+  attempt         ExamAttempt     @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+  questionVersion QuestionVersion @relation(fields: [questionVersionId], references: [id], onDelete: Restrict)
+  answerOption    AnswerOption    @relation(fields: [answerOptionId], references: [id], onDelete: Restrict)
+
+  @@unique([attemptId, questionVersionId])
+  @@index([attemptId])
+  @@index([accountId])
+  @@map("exam_attempt_answer")
 }

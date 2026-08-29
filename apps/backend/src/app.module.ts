@@ -16,6 +16,8 @@ import { GamificationModule } from './gamification/gamification.module';
 import { AiModule } from './ai/ai.module';
 import { AdministrationModule } from './administration/administration.module';
 import { EditorialModule } from './editorial/editorial.module';
+// ENSAYOS-F1 -- dominio EXAMS / Ensayos V1 (ADR-0024).
+import { ExamsModule } from './exams/exams.module';
 // LEF Bloque VII, Incremento 5 -- Content Coverage Matrix (SOLO LECTURA, §12.5).
 import { CoverageMatrixModule } from './editorial/coverage-matrix.module';
 
@@ -36,6 +38,7 @@ import { CoverageMatrixModule } from './editorial/coverage-matrix.module';
     AiModule,
     AdministrationModule,
     EditorialModule,
+    ExamsModule,
     CoverageMatrixModule,
     HealthModule,
   ],

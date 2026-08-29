@@ -7,6 +7,7 @@ export * from './education';
 export * from './progress';
 export * from './gamification';
 export * from './quick-question';
+export * from './exams';
 export * from './league-participation';
 export * from './ai';
 export * from './administration';

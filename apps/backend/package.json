@@ -53,6 +53,7 @@
     "verify:competitive-profile-foundation-gate": "tsx scripts/run-gate.ts verify-competitive-profile-foundation-gate.ts",
     "verify:competitive-profile-endpoint-gate": "tsx scripts/run-gate.ts verify-competitive-profile-endpoint-gate.ts",
     "verify:competitive-leaderboard-gate": "tsx scripts/run-gate.ts verify-competitive-leaderboard-gate.ts",
+    "verify:exam-foundation-gate": "tsx scripts/run-gate.ts verify-exam-foundation-gate.ts",
     "verify:quick-question-foundation-gate": "tsx scripts/run-gate.ts verify-quick-question-foundation-gate.ts",
     "verify:quick-question-engine-gate": "tsx scripts/run-gate.ts verify-quick-question-engine-gate.ts",
     "verify:quick-question-http-gate": "tsx scripts/run-gate.ts verify-quick-question-http-gate.ts",
