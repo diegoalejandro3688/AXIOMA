@@ -25,7 +25,8 @@ import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { loadExamModules } from '../content/ensayo/load';
-import { ENSAYO_M1_BLUEPRINT } from '../content/ensayo/manifest';
+import { ENSAYO_MANIFEST, findExamBlueprint } from '../content/ensayo/manifest';
+import type { ExamSourceModule } from '../content/ensayo/schema';
 
 const ADMIN_TOKEN_HEADER = 'x-admin-token';
 const DEFAULT_API_URL = 'http://127.0.0.1:3000';
@@ -38,12 +39,14 @@ const MAX_429_RETRIES = 6;
 const RETRY_BACKOFF_MS = [2000, 5000, 10000, 15000, 20000, 30000];
 
 // Contenedor técnico de la taxonomía de Ensayos -- NO es una materia Study.
+// TODAS las QuestionVersions de TODOS los ensayos cuelgan de aquí, cada
+// ensayo bajo su propio CurriculumTopic raíz (`ENSAYO.M1`, `ENSAYO.M2`, ...).
 const ENSAYO_SUBJECT = { subjectKey: 'ensayos', name: 'Ensayos', shortName: 'Ens', displayOrder: 900 } as const;
-// Subject real al que se asocia el Exam (ADR-0024 §7). `matematica` ES ahora
-// "Matemática M1" tras M1/M2 SUBJECT TAXONOMY ALIGNMENT -> ENSAYO.M1 queda
-// correctamente bajo Matemática M1. El futuro ENSAYO.M2 usará
-// `subjectKey: 'matematica-m2'` (incremento aparte); hoy sólo M1 se importa.
-const EXAM_SUBJECT_KEY = 'matematica';
+// El Subject ACADÉMICO real al que se asocia cada `Exam` viene del propio
+// módulo (`exam.subjectKey`), validado contra el blueprint del manifest:
+//   ENSAYO.M1 -> 'matematica'      (= "Matemática M1")
+//   ENSAYO.M2 -> 'matematica-m2'   (= "Matemática M2")
+// No confundir con `ENSAYO_SUBJECT` (contenedor técnico de las preguntas).
 
 type Flags = Map<string, string>;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -194,22 +197,23 @@ async function readLatestQuestion(apiUrl: string, token: string, key: string): P
   };
 }
 
-async function main(): Promise<void> {
-  const flags = parseArgs(process.argv.slice(2));
-  const dryRun = flags.get('dry-run') === 'true';
-  const apiUrl = resolveApiUrl(flags);
-  const authorToken = dryRun && !flags.get('token') && !process.env.AXIOMA_ADMIN_TOKEN ? '(dry-run)' : resolveToken(flags);
-  const publisherToken = resolvePublisherToken(flags, authorToken);
+interface ImportCtx {
+  apiUrl: string;
+  authorToken: string;
+  publisherToken: string;
+  dryRun: boolean;
+}
 
-  const { loaded, issues } = await loadExamModules(ENSAYO_ROOT);
-  if (issues.length > 0) {
-    console.error('Validación pre-BD FALLÓ -- no se escribe nada:');
-    for (const i of issues) console.error(`  ${i.file}: ${i.message}`);
-    process.exit(1);
-  }
-  if (loaded.length !== 1) fail(`se esperaba exactamente 1 módulo de Ensayo, se cargaron ${loaded.length}.`);
-  const exam = loaded[0]!.module;
+async function importExam(exam: ExamSourceModule, ctx: ImportCtx): Promise<void> {
+  const { apiUrl, authorToken, publisherToken, dryRun } = ctx;
   const durationSeconds = exam.durationMinutes * 60;
+  const bp = findExamBlueprint(exam.examKey);
+  if (!bp) fail(`"${exam.examKey}" no tiene un blueprint en ENSAYO_MANIFEST -- añádelo antes de importar.`);
+  if (exam.subjectKey !== bp.subjectKey) {
+    fail(`"${exam.examKey}": el módulo declara subjectKey "${exam.subjectKey}" pero el blueprint espera "${bp.subjectKey}".`);
+  }
+  // El Subject académico del Exam es el del propio módulo (validado arriba).
+  const examSubjectKey = exam.subjectKey;
 
   console.log(`=== ENSAYO IMPORT: ${exam.examKey} -- ${exam.questions.length} preguntas -- dry-run: ${dryRun} ===\n`);
 
@@ -217,7 +221,7 @@ async function main(): Promise<void> {
     console.log('[dry-run] plan:');
     console.log(`  - resolver Subject '${ENSAYO_SUBJECT.subjectKey}' + CurriculumTopic '${exam.examKey}'`);
     console.log(`  - por cada Q1..Q${exam.questions.length}: leer por clave -> CREATE|NO-OP|RESUMED|NEW_VERSION -> publicar`);
-    console.log(`  - resolver Exam '${exam.examKey}' (subject '${EXAM_SUBJECT_KEY}', durationSeconds ${durationSeconds})`);
+    console.log(`  - resolver Exam '${exam.examKey}' (subject '${examSubjectKey}', durationSeconds ${durationSeconds})`);
     console.log(`  - vincular ${exam.questions.length} ExamQuestion (displayOrder 1..${exam.questions.length})`);
     console.log(`  - publicar Exam`);
     return;
@@ -323,7 +327,7 @@ async function main(): Promise<void> {
     await adminRequest(apiUrl, publisherToken, 'POST', '/administration/exams', {
       examKey: exam.examKey,
       title: exam.title,
-      subjectKey: EXAM_SUBJECT_KEY,
+      subjectKey: examSubjectKey,
       durationSeconds,
     }),
     `resolución de Exam "${exam.examKey}"`,
@@ -358,14 +362,68 @@ async function main(): Promise<void> {
   console.log(`  status=${pub.status} (${pub.alreadyPublished ? 'ya estaba PUBLISHED' : 'PUBLICADO ahora'})`);
 
   // --- Resumen ---
-  console.log('\n=== RESUMEN ===');
+  console.log(`\n=== RESUMEN ${exam.examKey} ===`);
   console.log(`  Preguntas: CREATE=${summary.CREATE} NO-OP=${summary['NO-OP']} RESUMED=${summary.RESUMED} NEW_VERSION=${summary.NEW_VERSION}`);
   console.log(`  Links:     created=${linkSummary.created} noop=${linkSummary.noop}`);
-  console.log(`  Exam:      ${examBody.created ? 'CREATED' : 'REUSED'} / ${pub.status}`);
-  console.log(`  Blueprint: ${ENSAYO_M1_BLUEPRINT.expectedQuestionCount} preguntas esperadas, ${exam.questions.length} en source`);
+  console.log(`  Exam:      ${examBody.created ? 'CREATED' : 'REUSED'} / ${pub.status} / subject=${examSubjectKey}`);
+  console.log(`  Blueprint: ${bp.expectedQuestionCount} preguntas esperadas, ${exam.questions.length} en source`);
 
   const totalPublished = summary.CREATE + summary['NO-OP'] + summary.RESUMED + summary.NEW_VERSION;
   if (totalPublished !== exam.questions.length) fail(`se esperaban ${exam.questions.length} preguntas resueltas, se procesaron ${totalPublished}.`);
+}
+
+const HELP = `
+import-ensayo.ts -- importer del banco de Ensayos (ENSAYOS-M1-B / ENSAYOS-M2).
+
+USO
+  pnpm --filter @axioma/backend ensayo:import -- [--exam-key ENSAYO.M2] [--dry-run]
+      --exam-key <key>   Importa SÓLO ese ensayo (ej. ENSAYO.M2). Si se omite,
+                         descubre e importa TODOS los módulos de content/ensayo/**
+                         de forma determinista (orden de ENSAYO_MANIFEST).
+      --token / AXIOMA_ADMIN_TOKEN        actor AUTOR.
+      --publisher-token / AXIOMA_PUBLISHER_TOKEN   actor PUBLICADOR (CMS-018).
+      --api-url / AXIOMA_ADMIN_API_URL    destino (por defecto ${DEFAULT_API_URL}).
+      --dry-run          plan, sin escribir.
+`;
+
+async function main(): Promise<void> {
+  const flags = parseArgs(process.argv.slice(2));
+  if (flags.get('help') === 'true') {
+    console.log(HELP);
+    return;
+  }
+  const dryRun = flags.get('dry-run') === 'true';
+  const apiUrl = resolveApiUrl(flags);
+  const authorToken = dryRun && !flags.get('token') && !process.env.AXIOMA_ADMIN_TOKEN ? '(dry-run)' : resolveToken(flags);
+  const publisherToken = resolvePublisherToken(flags, authorToken);
+
+  const { loaded, issues } = await loadExamModules(ENSAYO_ROOT);
+  if (issues.length > 0) {
+    console.error('Validación pre-BD FALLÓ -- no se escribe nada:');
+    for (const i of issues) console.error(`  ${i.file}: ${i.message}`);
+    process.exit(1);
+  }
+  if (loaded.length !== ENSAYO_MANIFEST.length) {
+    fail(`se esperaban ${ENSAYO_MANIFEST.length} módulo(s) de Ensayo (uno por blueprint del manifest), se cargaron ${loaded.length}.`);
+  }
+
+  const requestedKey = flags.get('exam-key');
+  // Orden determinista: el del manifest.
+  const ordered = ENSAYO_MANIFEST.map((bp) => loaded.find((l) => l.module.examKey === bp.examKey)!.module);
+  const targets: ExamSourceModule[] = requestedKey
+    ? ordered.filter((m) => m.examKey === requestedKey)
+    : ordered;
+  if (requestedKey && targets.length === 0) {
+    fail(`--exam-key "${requestedKey}" no corresponde a ningún módulo cargado (${ordered.map((m) => m.examKey).join(', ')}).`);
+  }
+
+  console.log(`=== ENSAYO IMPORT: ${targets.map((m) => m.examKey).join(', ')} -- dry-run: ${dryRun} ===\n`);
+  const ctx: ImportCtx = { apiUrl, authorToken, publisherToken, dryRun };
+  for (const exam of targets) {
+    console.log(`\n########## ${exam.examKey} -- ${exam.questions.length} preguntas ##########`);
+    await importExam(exam, ctx);
+  }
+  console.log('\n=== IMPORT COMPLETO ===');
 }
 
 main().catch((error) => {

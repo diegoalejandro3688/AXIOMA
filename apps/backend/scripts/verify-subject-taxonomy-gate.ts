@@ -176,17 +176,28 @@ async function main() {
     );
     check('DB: 0 temas M1.* bajo la materia `matematica-m2`', m1Leak.rows[0].n === 0, `n=${m1Leak.rows[0].n}`);
 
-    const exam = await pg.query(
-      `SELECT e.exam_key, s.subject_key, s.name FROM exam e JOIN subject s ON s.id = e.subject_id WHERE e.exam_key = 'ENSAYO.M1'`,
+    const exams = await pg.query(
+      `SELECT e.exam_key, s.subject_key, s.name FROM exam e JOIN subject s ON s.id = e.subject_id WHERE e.exam_key IN ('ENSAYO.M1','ENSAYO.M2')`,
     );
-    if (exam.rows.length === 1) {
-      check(
-        'Exam ENSAYO.M1 pertenece a la materia `matematica` = "Matemática M1"',
-        exam.rows[0].subject_key === 'matematica' && exam.rows[0].name === 'Matemática M1',
-        `subject_key=${exam.rows[0].subject_key} name="${exam.rows[0].name}"`,
-      );
-    } else {
-      console.log('  --  Exam ENSAYO.M1 no está en esta BD (gates) -- verificado en runtime de axioma_dev por separado');
+    const bySubject = new Map<string, { subject_key: string; name: string }>(
+      exams.rows.map((r) => [r.exam_key, { subject_key: r.subject_key, name: r.name }]),
+    );
+    const wantExamSubject: Record<string, { key: string; name: string }> = {
+      'ENSAYO.M1': { key: 'matematica', name: 'Matemática M1' },
+      'ENSAYO.M2': { key: 'matematica-m2', name: 'Matemática M2' },
+    };
+    for (const examKey of ['ENSAYO.M1', 'ENSAYO.M2'] as const) {
+      const got = bySubject.get(examKey);
+      const want = wantExamSubject[examKey];
+      if (got) {
+        check(
+          `Exam ${examKey} pertenece a la materia \`${want.key}\` = "${want.name}"`,
+          got.subject_key === want.key && got.name === want.name,
+          `subject_key=${got.subject_key} name="${got.name}"`,
+        );
+      } else {
+        console.log(`  --  Exam ${examKey} no está en esta BD (gates) -- verificado en runtime de axioma_dev por separado`);
+      }
     }
   } finally {
     await pg.end();

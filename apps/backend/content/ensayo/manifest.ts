@@ -78,8 +78,27 @@ export const ENSAYO_M1_BLUEPRINT: ExamBlueprint = examBlueprintSchema.parse({
   expectedPrimarySkill: { RESOLVER_PROBLEMAS: 25, MODELAR: 15, REPRESENTAR: 14, ARGUMENTAR: 11 },
 });
 
-/** Todos los ensayos declarados en V1. HOY: solo el M1. */
-export const ENSAYO_MANIFEST: ExamBlueprint[] = [ENSAYO_M1_BLUEPRINT];
+/**
+ * Blueprint DEFINITIVO del Ensayo PAES M2 ZETRYND (handoff "ENSAYOS-M2 —
+ * IMPLEMENTACIÓN DEFINITIVA" §7, con la resolución de dificultad de Q10 ->
+ * MEDIA). `subjectKey: 'matematica-m2'` -- el `Exam` se asocia a la materia
+ * académica "Matemática M2" (M1/M2 SUBJECT TAXONOMY ALIGNMENT), no a
+ * `matematica`. Las QuestionVersions del ensayo siguen aisladas bajo el
+ * Subject técnico `ensayos` + CurriculumTopic raíz `ENSAYO.M2`.
+ */
+export const ENSAYO_M2_BLUEPRINT: ExamBlueprint = examBlueprintSchema.parse({
+  examKey: 'ENSAYO.M2',
+  title: 'Ensayo PAES M2',
+  subjectKey: 'matematica-m2',
+  durationMinutes: 140,
+  expectedQuestionCount: 55,
+  expectedAxis: { NUMEROS: 12, ALGEBRA_FUNCIONES: 17, GEOMETRIA: 12, PROBABILIDAD_ESTADISTICA: 14 },
+  expectedDifficulty: { FACIL: 9, MEDIA: 27, DIFICIL: 19 },
+  expectedPrimarySkill: { RESOLVER_PROBLEMAS: 19, MODELAR: 14, REPRESENTAR: 11, ARGUMENTAR: 11 },
+});
+
+/** Todos los ensayos declarados en V1: M1 y M2. */
+export const ENSAYO_MANIFEST: ExamBlueprint[] = [ENSAYO_M1_BLUEPRINT, ENSAYO_M2_BLUEPRINT];
 
 export function findExamBlueprint(examKey: string): ExamBlueprint | null {
   return ENSAYO_MANIFEST.find((b) => b.examKey === examKey) ?? null;
