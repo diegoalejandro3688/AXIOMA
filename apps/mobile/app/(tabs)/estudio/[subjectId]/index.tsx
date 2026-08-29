@@ -8,10 +8,10 @@ import { subjectIcon, subjectToneBackground, subjectToneColor } from '../../../.
 
 /**
  * Detalle de materia -- 4 accesos del wireframe aprobado (Unidades, Recursos,
- * Práctica libre, Ensayo). Solo Unidades es funcional en Bloque IV; los otros
- * 3 se muestran deshabilitados con un indicador "Próximamente" discreto, sin
- * navegación ni lógica (aprobación de alcance explícita del usuario -- ver
- * UI-4 Gate 4, no activarlas; STUDY-2 solo rediseña la presentación).
+ * Práctica libre, Ensayo). Unidades y Ensayo son funcionales; Recursos y
+ * Práctica libre siguen deshabilitados con "Próximamente" (aprobación de
+ * alcance explícita del usuario -- ver UI-4 Gate 4; STUDY-2 solo rediseña la
+ * presentación). ENSAYOS-M1-C habilitó el acceso a Ensayos (ADR-0024).
  *
  * STUDY-2 -- el icono de cada fila representa la MODALIDAD (acción dentro de
  * la materia), no la materia en sí -- antes las 4 filas repetían el mismo
@@ -55,9 +55,14 @@ const STUDY_MODE_TILES: StudyModeTile[] = [
     label: 'Ensayo',
     description: 'Simulacros y ensayos para medir tu preparación.',
     icon: 'study-mode-essay',
-    enabled: false,
+    enabled: true,
   },
 ];
+
+const TILE_ROUTE: Record<string, '/(tabs)/estudio/[subjectId]/unidades' | '/(tabs)/estudio/ensayos'> = {
+  unidades: '/(tabs)/estudio/[subjectId]/unidades',
+  ensayo: '/(tabs)/estudio/ensayos',
+};
 
 export default function SubjectDetailScreen() {
   const { subjectId, name } = useLocalSearchParams<{ subjectId: string; name?: string }>();
@@ -104,8 +109,8 @@ export default function SubjectDetailScreen() {
               disabled={!tile.enabled}
               accessibilityLabel={tile.enabled ? tile.label : `${tile.label}, próximamente`}
               onPress={
-                tile.enabled
-                  ? () => router.push({ pathname: '/(tabs)/estudio/[subjectId]/unidades', params: { subjectId, name: name ?? '' } })
+                tile.enabled && TILE_ROUTE[tile.key]
+                  ? () => router.push({ pathname: TILE_ROUTE[tile.key], params: { subjectId, name: name ?? '' } })
                   : undefined
               }
             />

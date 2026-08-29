@@ -32,6 +32,12 @@ export default function EstudioLayout() {
       <Stack.Screen name="[subjectId]/unidades" options={{ title: 'Unidades' }} />
       <Stack.Screen name="topic/[topicId]/recurso" options={{ headerShown: false }} />
       <Stack.Screen name="topic/[topicId]/ejercicio" options={{ headerShown: false }} />
+      {/* ENSAYOS-M1-C -- flujo de Ensayos, misma pestaña Estudio (ADR-0024). */}
+      <Stack.Screen name="ensayos/index" options={{ title: 'Ensayos' }} />
+      <Stack.Screen name="ensayos/[examId]/index" options={{ title: 'Ensayo' }} />
+      <Stack.Screen name="ensayos/[examId]/attempt/[attemptId]" options={{ headerShown: false }} />
+      <Stack.Screen name="ensayos/[examId]/result/[attemptId]" options={{ headerShown: false }} />
+      <Stack.Screen name="ensayos/[examId]/review/[attemptId]" options={{ headerShown: false }} />
     </Stack>
   );
 }
