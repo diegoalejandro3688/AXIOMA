@@ -266,18 +266,74 @@ export class ExamService {
     }, TX_OPTIONS);
   }
 
-  // --- Escritura de definición (sin HTTP en F1 -- camino único para el gate y el importer futuro de ENSAYOS-M1) ---
+  // --- Escritura de definición (ENSAYOS-M1-B: expuesta vía `/administration/exams`, delegada a este servicio) ---
 
-  createExam(input: { examKey: string; title: string; subjectId: string; durationSeconds: number }): Promise<Exam> {
-    return this.examRepo.create(input);
+  /**
+   * Idempotente por `examKey`. Si el ensayo ya existe, sus atributos
+   * estructurales (`title`/`subjectId`/`durationSeconds`) deben COINCIDIR --
+   * una divergencia es 409, nunca una sobrescritura silenciosa (mismo criterio
+   * que `EditorialTaxonomyService.resolveOrCreateSubject`).
+   */
+  async resolveOrCreateExam(input: {
+    examKey: string;
+    title: string;
+    subjectId: string;
+    durationSeconds: number;
+  }): Promise<{ exam: Exam; created: boolean }> {
+    const existing = await this.examRepo.findByKey(input.examKey);
+    if (existing) {
+      if (
+        existing.title !== input.title ||
+        existing.subjectId !== input.subjectId ||
+        existing.durationSeconds !== input.durationSeconds
+      ) {
+        throw new ConflictException(
+          `Ya existe un Exam con examKey "${input.examKey}" pero con atributos estructurales distintos -- no se sobrescribe.`,
+        );
+      }
+      return { exam: existing, created: false };
+    }
+    return { exam: await this.examRepo.create(input), created: true };
   }
 
-  linkQuestion(input: { examId: string; questionVersionId: string; displayOrder: number }) {
-    return this.examQuestionRepo.link(input);
+  /**
+   * Idempotente por `(examId, questionVersionId)`. Un segundo link de la misma
+   * pregunta con el MISMO `displayOrder` es NO-OP; con un `displayOrder`
+   * distinto es 409. Un `displayOrder` ya ocupado por OTRA pregunta del mismo
+   * ensayo es 409. El trigger `enforce_exam_question_version_published` es el
+   * respaldo final (la versión debe estar PUBLISHED).
+   */
+  async linkQuestionIdempotent(input: {
+    examId: string;
+    questionVersionId: string;
+    displayOrder: number;
+  }): Promise<{ link: Awaited<ReturnType<ExamQuestionRepository['link']>>; created: boolean }> {
+    const exam = await this.examRepo.findById(input.examId);
+    if (!exam) throw new NotFoundException('Ese ensayo no existe.');
+
+    const byVersion = await this.examQuestionRepo.findByExamAndVersion(input.examId, input.questionVersionId);
+    if (byVersion) {
+      if (byVersion.displayOrder !== input.displayOrder) {
+        throw new ConflictException(
+          `La pregunta ${input.questionVersionId} ya está vinculada al ensayo en la posición ${byVersion.displayOrder}, no ${input.displayOrder}.`,
+        );
+      }
+      return { link: byVersion, created: false };
+    }
+    const byOrder = await this.examQuestionRepo.findByExamAndOrder(input.examId, input.displayOrder);
+    if (byOrder) {
+      throw new ConflictException(`La posición ${input.displayOrder} del ensayo ya está ocupada por otra pregunta.`);
+    }
+    return { link: await this.examQuestionRepo.link(input), created: true };
   }
 
-  publishExam(examId: string): Promise<Exam> {
-    return this.examRepo.publish(examId);
+  /** Idempotente. `DRAFT -> PUBLISHED`; `PUBLISHED` es NO-OP; `RETIRED` es 409. */
+  async ensureExamPublished(examId: string): Promise<{ exam: Exam; alreadyPublished: boolean }> {
+    const exam = await this.examRepo.findById(examId);
+    if (!exam) throw new NotFoundException('Ese ensayo no existe.');
+    if (exam.status === 'PUBLISHED') return { exam, alreadyPublished: true };
+    if (exam.status === 'RETIRED') throw new ConflictException('Un ensayo retirado no puede volver a publicarse.');
+    return { exam: await this.examRepo.publish(examId), alreadyPublished: false };
   }
 
   // --- Internos ---

@@ -44,6 +44,18 @@ export class ExamQuestionRepository {
     return row !== null;
   }
 
+  findByExamAndVersion(examId: string, questionVersionId: string, tx?: Prisma.TransactionClient): Promise<ExamQuestion | null> {
+    return (tx ?? this.prisma).examQuestion.findUnique({
+      where: { examId_questionVersionId: { examId, questionVersionId } },
+    });
+  }
+
+  findByExamAndOrder(examId: string, displayOrder: number, tx?: Prisma.TransactionClient): Promise<ExamQuestion | null> {
+    return (tx ?? this.prisma).examQuestion.findUnique({
+      where: { examId_displayOrder: { examId, displayOrder } },
+    });
+  }
+
   link(
     data: { examId: string; questionVersionId: string; displayOrder: number },
     tx?: Prisma.TransactionClient,

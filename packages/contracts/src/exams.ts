@@ -199,3 +199,66 @@ export const examAttemptReviewResponseSchema = z.object({
   questions: z.array(examAttemptReviewQuestionSchema),
 });
 export type ExamAttemptReviewResponse = z.infer<typeof examAttemptReviewResponseSchema>;
+
+// ===========================================================================
+// API ADMINISTRATIVA de definición de ensayos -- ENSAYOS-M1-B.
+//
+// Fachada HTTP mínima sobre `ExamService` (F1 la designó como el único write
+// path del importer y el gate). Todas bajo `AdminAuthGuard` + `AdminRoleGuard`
+// -- nunca `AuthGuard` de estudiante. Semántica IDEMPOTENTE por clave estable
+// (`examKey`, `(examId, questionVersionId)`): `created` distingue CREATE de
+// NO-OP; una contradicción estructural es 409, nunca una sobrescritura.
+// ===========================================================================
+
+export const adminResolveExamRequestSchema = z
+  .object({
+    examKey: z.string().trim().min(1).max(200),
+    title: z.string().trim().min(1).max(300),
+    /** `Subject.subjectKey` real al que se asocia el ensayo (p. ej. "matematica"). Debe existir. */
+    subjectKey: z.string().trim().min(1).max(100),
+    durationSeconds: z.number().int().positive(),
+  })
+  .strict();
+export type AdminResolveExamRequest = z.infer<typeof adminResolveExamRequestSchema>;
+
+export const adminExamResponseSchema = z.object({
+  id: entityId,
+  examKey: z.string(),
+  title: z.string(),
+  subjectId: entityId,
+  durationSeconds: z.number().int().positive(),
+  status: examStatusSchema,
+  /** `true` si esta petición creó el Exam; `false` si ya existía idéntico (NO-OP). */
+  created: z.boolean(),
+});
+export type AdminExamResponse = z.infer<typeof adminExamResponseSchema>;
+
+export const adminLinkExamQuestionRequestSchema = z
+  .object({
+    questionVersionId: entityId,
+    displayOrder: z.number().int().positive(),
+  })
+  .strict();
+export type AdminLinkExamQuestionRequest = z.infer<typeof adminLinkExamQuestionRequestSchema>;
+
+export const adminExamQuestionLinkResponseSchema = z.object({
+  id: entityId,
+  examId: entityId,
+  questionVersionId: entityId,
+  displayOrder: z.number().int().positive(),
+  /** `true` si esta petición creó el vínculo; `false` si ya existía idéntico (NO-OP). */
+  created: z.boolean(),
+});
+export type AdminExamQuestionLinkResponse = z.infer<typeof adminExamQuestionLinkResponseSchema>;
+
+export const adminPublishExamRequestSchema = z.object({}).strict();
+export type AdminPublishExamRequest = z.infer<typeof adminPublishExamRequestSchema>;
+
+export const adminPublishExamResponseSchema = z.object({
+  id: entityId,
+  examKey: z.string(),
+  status: examStatusSchema,
+  /** `true` si el ensayo ya estaba PUBLISHED antes de esta petición (NO-OP). */
+  alreadyPublished: z.boolean(),
+});
+export type AdminPublishExamResponse = z.infer<typeof adminPublishExamResponseSchema>;

@@ -127,7 +127,37 @@ El banco de Ensayos tiene su propia infraestructura de contenido fuente, **separ
 
 `content/ensayo/**` **ya no** lo recorren el gate/importer de Study (`verify-content-source-gate.ts`, `import-content.ts`, `verify-content-import-gate.ts`) — esos tres tenían un scan especulativo previo a este ADR, ahora retirado. Study sigue validando exclusivamente `content/estudio/**` y permanece **98 LR / 980 Q**.
 
-`ENSAYOS-M1-A` es **SOURCE ONLY**: no importa nada a DB, no crea filas `exam`/`exam_question`, no toca mobile. La forma del árbol `CurriculumTopic` para las preguntas de ensayo y el import se deciden en `ENSAYOS-M1-B`.
+`ENSAYOS-M1-A` es **SOURCE ONLY**: no importa nada a DB, no crea filas `exam`/`exam_question`, no toca mobile.
+
+## Import a DB (ENSAYOS-M1-B)
+
+### API administrativa de definición de ensayos
+
+Fachada HTTP mínima sobre `ExamService`, mismo patrón exacto que `EditorialController` (`AdminAuthGuard` + `AdminRoleGuard`, nunca `AuthGuard` de estudiante):
+
+| Método | Ruta | Rol | Semántica |
+| --- | --- | --- | --- |
+| `POST` | `/administration/exams` | AUTHOR/PUBLISHER | resolver-o-crear por `examKey` (idempotente; atributos distintos → 409) |
+| `POST` | `/administration/exams/:examId/questions` | AUTHOR/PUBLISHER | vincular `QuestionVersion` publicada en posición fija (idempotente; misma pregunta en otra posición o posición ocupada → 409; versión no publicada → rechazada por trigger) |
+| `POST` | `/administration/exams/:examId/publish` | PUBLISHER | `DRAFT → PUBLISHED` (idempotente) |
+
+Sin concepto de CMS-018 aquí: definir un ensayo no es autoría de contenido académico (ese contenido ya pasó su propio ciclo editorial como `Question`/`QuestionVersion`).
+
+### Taxonomía de las QuestionVersions de ensayo
+
+Las 65 `QuestionVersion` de `ENSAYO.M1` cuelgan de un `CurriculumTopic` `ENSAYO.M1` (raíz, `order: 1`) bajo un `Subject` contenedor **`ensayos`** — NO bajo `matematica`. Motivo: `GET /education/subjects/:id/topics` devuelve TODOS los temas raíz de una materia sin filtro, así que un tema `ENSAYO.*` bajo `matematica` aparecería como "unidad" en la pantalla Study de Matemática.
+
+`SubjectRepository.findAllActive` (único listador de materias del sistema — lo consumen el catálogo del estudiante, el resumen académico y la matriz de cobertura) excluye `NON_STUDY_SUBJECT_KEYS = ['ensayos']`. Su predicado se mantiene idéntico para los cuatro lectores de §11.1 (invariante 19 de LEF Bloque VII): `education.service.ts` y `progress.service.ts` NO cambian. `findById`/`findByKey` (resolución puntual) NO filtran.
+
+`Exam.subjectId` → el `Subject` **real `matematica`** (categorización del ensayo). Son dos preocupaciones distintas: `Exam.subjectId` categoriza el ensayo; el `curriculumTopicId` de las `QuestionVersion` es plomería editorial que no debe tocar el árbol Study.
+
+### Importer
+
+`scripts/import-ensayo.ts` (`pnpm ensayo:import`) — cliente HTTP delgado, mismo espíritu que `import-content.ts`: NO abre Prisma, NO usa SQL. Reutiliza el workflow editorial real (`DRAFT → IN_REVIEW → APPROVED → PUBLISHED`, dos actores por CMS-018) para las 65 `Question`, y la fachada administrativa de arriba para `Exam`/`ExamQuestion`. Idempotente: un segundo run sobre source sin cambios es NO-OP total (0 filas nuevas, IDs estables). `durationMinutes` (140) del source → `Exam.durationSeconds` (8400) al importar.
+
+`verify:ensayo-import-gate` — gate contra `axioma_gates_dev` con fixtures aisladas (`ENSAYO.ZZTEST.*`, nunca el ensayo productivo): idempotencia, estabilidad de IDs, orden fijo, conflictos, aislamiento total frente a Study/progreso/gamificación, y frontera estática (`exam-admin.controller`/`exam.service` no usan `StudentResponse`/`Outbox`/`XpGrant`).
+
+La forma del árbol `CurriculumTopic` para M2/Lectora/Historia/Ciencias y el import mobile (`ENSAYOS-M1-C`) quedan fuera.
 
 ## Alcance de este ADR (lo que deliberadamente NO decide)
 

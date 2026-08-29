@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { AdministrationModule } from '../administration/administration.module';
 import { EducationModule } from '../education/education.module';
 import { ObjectStorageModule } from '../platform/object-storage/object-storage.module';
 import { ExamRepository } from './exam.repository';
@@ -9,6 +10,7 @@ import { ExamAttemptAnswerRepository } from './exam-attempt-answer.repository';
 import { ExamScoringService } from './exam-scoring.service';
 import { ExamService } from './exam.service';
 import { ExamController } from './exam.controller';
+import { ExamAdminController } from './exam-admin.controller';
 
 /**
  * Dominio EXAMS / Ensayos V1 -- ENSAYOS-F1. Ver docs/adr/0024-ensayos-foundation.md.
@@ -29,8 +31,8 @@ import { ExamController } from './exam.controller';
  * que ese importer futuro y el gate compartan un único camino de escritura.
  */
 @Module({
-  imports: [AuthModule, EducationModule, ObjectStorageModule],
-  controllers: [ExamController],
+  imports: [AuthModule, AdministrationModule, EducationModule, ObjectStorageModule],
+  controllers: [ExamController, ExamAdminController],
   providers: [
     ExamRepository,
     ExamQuestionRepository,
