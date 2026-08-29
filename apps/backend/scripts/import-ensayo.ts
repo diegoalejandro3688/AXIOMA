@@ -39,7 +39,11 @@ const RETRY_BACKOFF_MS = [2000, 5000, 10000, 15000, 20000, 30000];
 
 // Contenedor técnico de la taxonomía de Ensayos -- NO es una materia Study.
 const ENSAYO_SUBJECT = { subjectKey: 'ensayos', name: 'Ensayos', shortName: 'Ens', displayOrder: 900 } as const;
-const EXAM_SUBJECT_KEY = 'matematica'; // Subject real al que se asocia el Exam (ADR-0024 §7).
+// Subject real al que se asocia el Exam (ADR-0024 §7). `matematica` ES ahora
+// "Matemática M1" tras M1/M2 SUBJECT TAXONOMY ALIGNMENT -> ENSAYO.M1 queda
+// correctamente bajo Matemática M1. El futuro ENSAYO.M2 usará
+// `subjectKey: 'matematica-m2'` (incremento aparte); hoy sólo M1 se importa.
+const EXAM_SUBJECT_KEY = 'matematica';
 
 type Flags = Map<string, string>;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

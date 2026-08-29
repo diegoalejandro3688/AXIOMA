@@ -162,9 +162,17 @@ async function main() {
   // Pregunta DRAFT (no elegible) -- fixture SQL puntual, único caso sin seed real disponible.
   const draftQuestionId = randomUUID();
   const draftVersionId = randomUUID();
-  await pg.query(`INSERT INTO question (id, question_key, primary_subject_id, question_type, status, created_at, updated_at) VALUES ($1, $2, (SELECT id FROM subject LIMIT 1), 'SINGLE_CHOICE', 'ACTIVE', now(), now())`, [
+  // `primary_subject_id` DEBE coincidir con la materia del tema al que se
+  // versiona la pregunta (trigger `enforce_question_version_subject_consistency`).
+  // Antes se usaba `(SELECT id FROM subject LIMIT 1)`, no determinista: cualquier
+  // UPDATE sobre `subject` (p. ej. la alineación M1/M2) puede reordenar el heap
+  // y devolver una materia distinta de la del `topicId`. Se toma la materia del
+  // propio tema -- el valor no afecta lo que este caso prueba (una versión DRAFT
+  // nunca debe exponerse como contexto de IA).
+  await pg.query(`INSERT INTO question (id, question_key, primary_subject_id, question_type, status, created_at, updated_at) VALUES ($1, $2, (SELECT subject_id FROM curriculum_topic WHERE id = $3), 'SINGLE_CHOICE', 'ACTIVE', now(), now())`, [
     draftQuestionId,
     `gate-i4-draft-${draftQuestionId}`,
+    topicId,
   ]);
   await pg.query(
     `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, created_at, updated_at)

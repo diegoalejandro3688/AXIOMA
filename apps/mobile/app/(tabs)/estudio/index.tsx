@@ -41,7 +41,7 @@ export default function EstudioIndexScreen() {
     // Diagnóstico de desarrollo -- ver UI-3 Implementation Report ("Materia
     // no mapeada"): nunca decide un color/icono nuevo por su cuenta, solo
     // reporta qué materias cayeron en el fallback neutro.
-    const known = new Set(['Matemática', 'Ciencias', 'Historia', 'Lenguaje']);
+    const known = new Set(['Matemática', 'Matemática M1', 'Matemática M2', 'Ciencias', 'Historia', 'Lenguaje']);
     const unmapped = Array.from(new Set(result.data.filter((s) => !known.has(s.name)).map((s) => s.name)));
     if (unmapped.length > 0) {
       // eslint-disable-next-line no-console

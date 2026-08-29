@@ -29,6 +29,7 @@
     "verify:observability-gate": "tsx scripts/run-gate.ts verify-observability-gate.ts",
     "verify:user-gate": "tsx scripts/run-gate.ts verify-user-gate.ts",
     "verify:object-storage-gate": "tsx scripts/run-gate.ts verify-object-storage-gate.ts",
+    "verify:subject-taxonomy-gate": "tsx scripts/run-gate.ts verify-subject-taxonomy-gate.ts",
     "verify:education-gate": "tsx scripts/run-gate.ts verify-education-gate.ts",
     "verify:education-published-immutability-gate": "tsx scripts/run-gate.ts verify-education-published-immutability-gate.ts",
     "verify:progress-gate": "tsx scripts/run-gate.ts verify-progress-gate.ts",

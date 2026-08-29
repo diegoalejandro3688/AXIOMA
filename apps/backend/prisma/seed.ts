@@ -317,7 +317,8 @@ async function seedCienciasFixture() {
   const subject = await prisma.subject.upsert({
     where: { subjectKey: 'ciencias' },
     update: {},
-    create: { subjectKey: 'ciencias', name: 'Ciencias', shortName: 'Cien', displayOrder: 2 },
+    // M1/M2 SUBJECT TAXONOMY ALIGNMENT -- displayOrder 2 -> 4 (nueva `matematica-m2` en 2).
+    create: { subjectKey: 'ciencias', name: 'Ciencias', shortName: 'Cien', displayOrder: 4 },
   });
 
   const unidad = await upsertTopic({
@@ -378,7 +379,8 @@ async function seedHistoriaFixture() {
   const subject = await prisma.subject.upsert({
     where: { subjectKey: 'historia' },
     update: {},
-    create: { subjectKey: 'historia', name: 'Historia', shortName: 'Hist', displayOrder: 4 },
+    // M1/M2 SUBJECT TAXONOMY ALIGNMENT -- displayOrder 4 -> 5 (nueva `matematica-m2` en 2).
+    create: { subjectKey: 'historia', name: 'Historia', shortName: 'Hist', displayOrder: 5 },
   });
 
   const unidad = await upsertTopic({
@@ -408,10 +410,20 @@ async function seedHistoriaFixture() {
 async function main() {
   await seedLevelLadder();
 
+  // M1/M2 SUBJECT TAXONOMY ALIGNMENT -- `matematica` representa oficialmente
+  // "Matemática M1" (id y subjectKey preservados). La materia hermana
+  // "Matemática M2" (`matematica-m2`, displayOrder 2) se crea como identidad
+  // vacía aquí; sus unidades/contenido las siembra el importer del manifest.
+  // Para BD ya poblada esto lo alinea la migración 20260829120000_split_m1_m2_subjects.
   const subject = await prisma.subject.upsert({
     where: { subjectKey: 'matematica' },
     update: {},
-    create: { subjectKey: 'matematica', name: 'Matemática', shortName: 'Mate', displayOrder: 1 },
+    create: { subjectKey: 'matematica', name: 'Matemática M1', shortName: 'M1', displayOrder: 1 },
+  });
+  await prisma.subject.upsert({
+    where: { subjectKey: 'matematica-m2' },
+    update: {},
+    create: { subjectKey: 'matematica-m2', name: 'Matemática M2', shortName: 'M2', displayOrder: 2 },
   });
 
   const unidad = await upsertTopic({

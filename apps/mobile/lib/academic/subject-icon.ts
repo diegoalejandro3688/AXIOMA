@@ -23,7 +23,13 @@ export type SubjectTone = 'accent' | 'success' | 'warning' | 'violet' | null;
  */
 export function subjectIcon(name: string): { icon: IconName; tone: SubjectTone } {
   switch (name) {
+    // M1/M2 SUBJECT TAXONOMY ALIGNMENT -- "Matemática" se dividió en dos
+    // materias académicas visibles ("Matemática M1" / "Matemática M2"); ambas
+    // son la misma familia (icono math, tono azul). El `default` ya caía en
+    // math+accent, esto sólo lo hace explícito y silencia el diagnóstico UI-3.
     case 'Matemática':
+    case 'Matemática M1':
+    case 'Matemática M2':
       return { icon: 'subject-math', tone: 'accent' };
     case 'Ciencias':
       return { icon: 'subject-science', tone: 'success' };

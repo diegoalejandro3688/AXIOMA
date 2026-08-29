@@ -107,9 +107,18 @@ export const CONTENT_MANIFEST: ContentManifest = [
    * este incremento).
    */
   {
+    // M1/M2 SUBJECT TAXONOMY ALIGNMENT -- Estudio V1 tiene 5 materias
+    // académicas y "Matemática M1" / "Matemática M2" son DISTINTAS. Este
+    // Subject (subjectKey `matematica`, id preservado) pasa a representar
+    // oficialmente Matemática M1; sólo contiene unidades M1.*. Las unidades
+    // M2.* viven ahora en la entrada `matematica-m2` de más abajo. La
+    // migración `20260829120000_split_m1_m2_subjects` reasigna la taxonomía
+    // ya persistida; `resolveOrCreateSubject` (editorial) rechaza un name/
+    // shortName/displayOrder distinto del persistido, así que estos tres
+    // valores DEBEN coincidir exactamente con esa migración y con seed.ts.
     subjectKey: 'matematica',
-    name: 'Matemática',
-    shortName: 'Mate',
+    name: 'Matemática M1',
+    shortName: 'M1',
     displayOrder: 1,
     kind: 'catalog',
     units: [
@@ -258,17 +267,25 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
         ],
       },
-      /**
-       * M2-C1A -- Golden Unit real M2 / Ejes Números y Álgebra y funciones
-       * (PAES M2). Mismo patrón exacto que las unidades M1: recursos reales
-       * con módulo `.ts` completo en `content/estudio/m2-numeros/` y
-       * `content/estudio/m2-algebra-funciones/`, contenido editorial ya
-       * cerrado/APPROVED en este incremento -- solo implementación técnica
-       * (contentBlocks/LaTeX/keys), cero cambios de contenido. Reutiliza el
-       * subject `matematica`. La distribución de dificultad M2 es 2/4/4
-       * (FACIL/MEDIA/DIFICIL), distinta del 3/5/2 de M1. Este incremento NO
-       * importa a DB (M2-C1B).
-       */
+    ],
+  },
+  {
+    // M1/M2 SUBJECT TAXONOMY ALIGNMENT -- nueva materia académica "Matemática
+    // M2" (subjectKey `matematica-m2`, displayOrder 2). Sólo unidades M2.*.
+    // El CONTENIDO editorial (LearningResource/Question/versiones/alternativas)
+    // NO se mueve ni se recrea: la migración `20260829120000_split_m1_m2_subjects`
+    // reasigna `curriculum_topic.subject_id` / `*.primary_subject_id` de las
+    // identidades M2.* ya persistidas, con los IDs intactos. name/shortName/
+    // displayOrder DEBEN coincidir con esa migración y con seed.ts
+    // (`resolveOrCreateSubject` rechaza un valor distinto del persistido).
+    // Los `order` de unidad se conservan (5..8) para que el importer sea
+    // NO-OP contra la taxonomía ya sembrada; no se re-numeran.
+    subjectKey: 'matematica-m2',
+    name: 'Matemática M2',
+    shortName: 'M2',
+    displayOrder: 2,
+    kind: 'catalog',
+    units: [
       {
         unitCode: 'M2.NUMEROS',
         name: 'Números',
@@ -303,15 +320,6 @@ export const CONTENT_MANIFEST: ContentManifest = [
           },
         ],
       },
-      /**
-       * M2-C2A -- Golden Unit real M2 / Ejes Geometría y Probabilidad y
-       * estadística (PAES M2). Cierra M2 V1 (8 recursos / 80 preguntas).
-       * Mismo patrón técnico que M2-C1A: módulos `.ts` en
-       * `content/estudio/m2-geometria/` y
-       * `content/estudio/m2-probabilidad-estadistica/`, contenido editorial
-       * APPROVED transcrito verbatim, distribución 2/4/4. Sin import a DB
-       * (M2-C2B).
-       */
       {
         unitCode: 'M2.GEOMETRIA',
         name: 'Geometría',
@@ -531,7 +539,9 @@ export const CONTENT_MANIFEST: ContentManifest = [
     subjectKey: 'historia',
     name: 'Historia',
     shortName: 'Hist',
-    displayOrder: 4,
+    // M1/M2 SUBJECT TAXONOMY ALIGNMENT -- desplazado 4 -> 5 por la nueva
+    // materia `matematica-m2` en displayOrder 2.
+    displayOrder: 5,
     kind: 'catalog',
     units: [
       {
@@ -745,7 +755,9 @@ export const CONTENT_MANIFEST: ContentManifest = [
     subjectKey: 'ciencias',
     name: 'Ciencias',
     shortName: 'Cien',
-    displayOrder: 2,
+    // M1/M2 SUBJECT TAXONOMY ALIGNMENT -- desplazado 2 -> 4 por la nueva
+    // materia `matematica-m2` en displayOrder 2.
+    displayOrder: 4,
     kind: 'catalog',
     units: [
       {

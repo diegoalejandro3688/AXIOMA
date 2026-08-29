@@ -142,8 +142,13 @@ export default function RecursoScreen() {
  */
 function resourceEyebrow(name: string | undefined, resourceKey: string): string | null {
   const segment = resourceKey.split('.')[0];
-  if (!name && !segment) return null;
-  return [name?.toUpperCase(), segment].filter(Boolean).join(' · ');
+  const label = name?.toUpperCase();
+  if (!label && !segment) return null;
+  // M1/M2 SUBJECT TAXONOMY ALIGNMENT -- la materia ahora es "Matemática M1" /
+  // "Matemática M2": ya incluye el segmento curricular, no se repite
+  // ("MATEMÁTICA M1 · M1" -> "MATEMÁTICA M1").
+  if (label && segment && label.endsWith(` ${segment.toUpperCase()}`)) return label;
+  return [label, segment].filter(Boolean).join(' · ');
 }
 
 /**
