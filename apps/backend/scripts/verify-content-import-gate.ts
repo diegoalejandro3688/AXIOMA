@@ -430,9 +430,8 @@ async function main() {
   // ==========================================================================
   console.log("\n--- Caso H: --all selecciona EXACTAMENTE el catálogo real (catalog) y excluye validation/fixture ---");
 
-  const { loaded: estudioForH } = await loadResourceModules(join(backendDir, 'content', 'estudio'));
-  const { loaded: ensayoForH } = await loadResourceModules(join(backendDir, 'content', 'ensayo'));
-  const allLoadedForH = [...estudioForH, ...ensayoForH];
+  // `content/ensayo/**` es un dominio separado (ADR-0024), no se recorre aquí.
+  const { loaded: allLoadedForH } = await loadResourceModules(join(backendDir, 'content', 'estudio'));
   const expectedCatalogKeys = allLoadedForH
     .filter((e) => e.module.kind === 'catalog')
     .map((e) => e.module.resourceKey)

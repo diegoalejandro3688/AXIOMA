@@ -115,13 +115,27 @@ Orden fijo por `ExamQuestion.displayOrder`. Sin shuffle, sin pool aleatorio en V
 
 Todas bajo `AuthGuard`, todas sobre `request.accountId` — nunca un id del body. Cuerpos `.strict()` (incluidos los vacíos). Usuario A no puede leer/responder/entregar/revisar un intento de B (404 uniforme). La escritura de definición de ensayo (crear `Exam`, vincular `ExamQuestion`, publicar) **no se expone por HTTP en F1** — `ExamService` la ofrece como camino único para el importer de `ENSAYOS-M1-B` y el gate.
 
+## Capa de source de Ensayos (ENSAYOS-M1-A)
+
+El banco de Ensayos tiene su propia infraestructura de contenido fuente, **separada** de la de Study:
+
+- `content/ensayo/schema.ts` — `examSourceModuleSchema` (exam + preguntas). Reutiliza SOLO los bloques base de `@axioma/contracts`; no importa `content/schema.ts` ni `content/manifest.ts` de Study. Metadata por pregunta: `questionKey`, `displayOrder`, `axis`, `difficulty`, `primarySkill`, `stemContent`, 4 `options` (exactamente 1 correcta), `explanationContent`.
+- `content/ensayo/manifest.ts` — `ENSAYO_M1_BLUEPRINT` (distribuciones esperadas de eje / dificultad / habilidad, `durationMinutes`, `expectedQuestionCount`). **No** se importa desde `CONTENT_MANIFEST` de Study.
+- `content/ensayo/load.ts` — loader dedicado que recorre `content/ensayo/**` con `examSourceModuleSchema`.
+- `content/ensayo/m1/ensayo-paes-m1.ts` — el Ensayo PAES M1 (65 preguntas + explicaciones + clasificación, todo APPROVED, transcrito verbatim).
+- `verify:ensayo-source-gate` — gate estático (sin DB/servidor): definición, conteos (65 / 260 / 65 / 65), orden Q1–Q65, claves `ENSAYO.*` sin colisión con Study, integridad de contenido, LaTeX renderizable (MathJax), Unicode, y las tres distribuciones exactas del blueprint (15/19/15/16, 16/33/16, 25/15/14/11).
+
+`content/ensayo/**` **ya no** lo recorren el gate/importer de Study (`verify-content-source-gate.ts`, `import-content.ts`, `verify-content-import-gate.ts`) — esos tres tenían un scan especulativo previo a este ADR, ahora retirado. Study sigue validando exclusivamente `content/estudio/**` y permanece **98 LR / 980 Q**.
+
+`ENSAYOS-M1-A` es **SOURCE ONLY**: no importa nada a DB, no crea filas `exam`/`exam_question`, no toca mobile. La forma del árbol `CurriculumTopic` para las preguntas de ensayo y el import se deciden en `ENSAYOS-M1-B`.
+
 ## Alcance de este ADR (lo que deliberadamente NO decide)
 
-- NO carga las 65 preguntas M1 ni ninguna de M2/Lectora/Historia/Ciencias.
+- ENSAYOS-F1: NO carga las 65 preguntas M1 ni ninguna de M2/Lectora/Historia/Ciencias.
 - NO construye UI mobile (el tile sigue deshabilitado). NO crea rutas de mobile.
 - NO implementa puntaje PAES / conversión raw→scaled / percentiles / adaptativo / shuffle / generación aleatoria / pausa / rankings / logros / gating premium / notificaciones.
 - NO toca Railway.
-- NO decide la forma del árbol `ENSAYO.M1.*` de `CurriculumTopic` (eso es `ENSAYOS-M1-A`).
+- ENSAYOS-M1-A NO importa a DB, NO crea filas productivas `exam`/`exam_question`, NO decide la forma del árbol `CurriculumTopic` para las preguntas de ensayo (eso es `ENSAYOS-M1-B`).
 
 ## Consecuencias
 

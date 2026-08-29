@@ -844,10 +844,10 @@ async function main() {
   const token = dryRun && !args.flags.get('token') && !process.env.AXIOMA_ADMIN_TOKEN ? '(dry-run, sin token real necesario para el plan)' : resolveToken(args);
   const publisherToken = resolvePublisherToken(args, token);
 
-  const { loaded, issues } = await loadResourceModules(join(CONTENT_ROOT, 'estudio'));
-  const { loaded: ensayoLoaded, issues: ensayoIssues } = await loadResourceModules(join(CONTENT_ROOT, 'ensayo'));
-  const allLoaded = [...loaded, ...ensayoLoaded];
-  const allIssues = [...issues, ...ensayoIssues];
+  // ENSAYOS-M1-A (ADR-0024): `content/ensayo/**` es un dominio separado con su
+  // propio schema/loader; este importer de Study ya no lo recorre. El import
+  // del banco de Ensayos será ENSAYOS-M1-B, con su propio driver.
+  const { loaded: allLoaded, issues: allIssues } = await loadResourceModules(join(CONTENT_ROOT, 'estudio'));
 
   if (allIssues.length > 0) {
     console.error('Validación pre-BD FALLÓ -- no se ejecuta ninguna escritura:');

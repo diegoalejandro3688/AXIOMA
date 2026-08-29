@@ -8,8 +8,13 @@
 // `resourceContentModuleSchema` (@axioma/content-schema local, que a su vez
 // reutiliza los bloques de `@axioma/contracts`), y cruza cada uno contra
 // `CONTENT_MANIFEST` para las reglas de negocio (unicidad, orden,
-// cobertura esperada, fórmulas LaTeX). `content/ensayo/**` se recorre con
-// el mismo criterio si llega a tener contenido -- hoy está vacío.
+// cobertura esperada, fórmulas LaTeX).
+//
+// ENSAYOS-M1-A (ADR-0024): `content/ensayo/**` YA NO se recorre aquí. El
+// banco de Ensayos es un dominio SEPARADO con su propio schema/loader/
+// manifest (`content/ensayo/schema.ts` etc.) y su propio gate
+// (`verify:ensayo-source-gate`). Este gate valida EXCLUSIVAMENTE el
+// catálogo Study (`content/estudio/**`, 98 LR / 980 Q).
 import { join, relative } from 'node:path';
 import { type ResourceContentModule, type SourceContentBlock, type SourceQuestion } from '../content/schema';
 import { loadResourceModules as loadResourceModulesShared, type LoadedResource } from '../content/load';
@@ -126,10 +131,10 @@ function printCoverageSummary(manifest: ContentManifest, foundQuestionsByTopic: 
 }
 
 async function main() {
-  console.log('--- 0. Carga de módulos de contenido (content/estudio/**, content/ensayo/**) ---');
-  const estudioResources = await loadResourceModules(join(CONTENT_ROOT, 'estudio'));
-  const ensayoResources = await loadResourceModules(join(CONTENT_ROOT, 'ensayo'));
-  const allResources = [...estudioResources, ...ensayoResources];
+  console.log('--- 0. Carga de módulos de contenido Study (content/estudio/**) ---');
+  // `content/ensayo/**` NO se carga aquí -- dominio separado, gate propio
+  // (`verify:ensayo-source-gate`). Ver ADR-0024.
+  const allResources = await loadResourceModules(join(CONTENT_ROOT, 'estudio'));
   check(`al menos un módulo de Recurso cargado y con forma válida (encontrados: ${allResources.length})`, allResources.length > 0);
 
   console.log('\n--- 1. Unicidad global de resourceKey / questionKey ---');
