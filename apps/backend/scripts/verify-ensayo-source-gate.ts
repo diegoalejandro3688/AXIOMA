@@ -575,10 +575,35 @@ async function main() {
           ['1900', '58 %', '1.080.000', '290'],
         ]),
     );
+    const t4 = tableOf('ENSAYO.HISTORIA.T4');
+    check(
+      'ENSAYO.HISTORIA T4: headers + filas exactos, sin footnote',
+      !!t4 &&
+        JSON.stringify(t4.headers) === JSON.stringify(['Indicador', '1930', '1960']) &&
+        JSON.stringify(t4.rows) === JSON.stringify([
+          ['Habitantes de la ciudad', '180.000', '410.000'],
+          ['Población nacida en zonas rurales', '21 %', '37 %'],
+          ['Viviendas con acceso a agua potable', '68 %', '61 %'],
+          ['Personas por vivienda, promedio', '4,7', '6,1'],
+        ]) &&
+        t4.footnote === undefined,
+    );
+    const t8 = tableOf('ENSAYO.HISTORIA.T8');
+    check(
+      'ENSAYO.HISTORIA T8: headers + filas exactos, sin footnote',
+      !!t8 &&
+        JSON.stringify(t8.headers) === JSON.stringify(['Semana', 'Cantidad ofrecida', 'Precio promedio por kg']) &&
+        JSON.stringify(t8.rows) === JSON.stringify([
+          ['Antes de las lluvias', '10.000 kg', '$1.200'],
+          ['Después de las lluvias', '6.000 kg', '$1.750'],
+        ]) &&
+        t8.footnote === undefined,
+    );
     const t9 = tableOf('ENSAYO.HISTORIA.T9');
     check(
-      'ENSAYO.HISTORIA T9: filas exactas + footnote "Índice 1928 = 100."',
+      'ENSAYO.HISTORIA T9: headers + filas exactos + footnote "Índice 1928 = 100."',
       !!t9 &&
+        JSON.stringify(t9.headers) === JSON.stringify(['Indicador', '1928', '1932']) &&
         JSON.stringify(t9.rows) === JSON.stringify([
           ['Valor de las exportaciones', '100', '38'],
           ['Empleo en sectores exportadores', '100', '61'],
@@ -587,11 +612,59 @@ async function main() {
         ]) &&
         t9.footnote === 'Índice 1928 = 100.',
     );
-    check('ENSAYO.HISTORIA T17: sin footnote', tableOf('ENSAYO.HISTORIA.T17')?.footnote === undefined);
+    const t12 = tableOf('ENSAYO.HISTORIA.T12');
+    check(
+      'ENSAYO.HISTORIA T12: headers + filas exactos, sin footnote',
+      !!t12 &&
+        JSON.stringify(t12.headers) === JSON.stringify(['Indicador', '1960', '1970']) &&
+        JSON.stringify(t12.rows) === JSON.stringify([
+          ['Población urbana', '68 %', '76 %'],
+          ['Inscripción electoral', '1,8 millones', '3,5 millones'],
+          ['Trabajadores sindicalizados', '290.000', '560.000'],
+          ['Propiedades agrícolas incluidas en procesos de reforma', '100', '2.900'],
+        ]) &&
+        t12.footnote === undefined,
+    );
+    const t15 = tableOf('ENSAYO.HISTORIA.T15');
+    check(
+      'ENSAYO.HISTORIA T15: headers + filas exactos, sin footnote',
+      !!t15 &&
+        JSON.stringify(t15.headers) === JSON.stringify(['Indicador', 'Año 1', 'Año 2']) &&
+        JSON.stringify(t15.rows) === JSON.stringify([
+          ['Ingreso familiar', '$600.000', '$630.000'],
+          ['Costo de una canasta habitual de bienes y servicios', '$500.000', '$550.000'],
+        ]) &&
+        t15.footnote === undefined,
+    );
+    const t17 = tableOf('ENSAYO.HISTORIA.T17');
+    check(
+      'ENSAYO.HISTORIA T17: headers + filas exactos, sin footnote',
+      !!t17 &&
+        JSON.stringify(t17.headers) === JSON.stringify(['Territorio', 'Potencia colonial previa', 'Independencia']) &&
+        JSON.stringify(t17.rows) === JSON.stringify([
+          ['India', 'Reino Unido', '1947'],
+          ['Ghana', 'Reino Unido', '1957'],
+          ['Argelia', 'Francia', '1962'],
+        ]) &&
+        t17.footnote === undefined,
+    );
     const t24 = tableOf('ENSAYO.HISTORIA.T24');
     check(
-      'ENSAYO.HISTORIA T24: conserva el signo menos U+2212 en "−1 %" (no altera el valor)',
-      !!t24 && t24.rows[0][2] === '−1 %' && t24.rows[0][0] === 'Crecimiento de la producción',
+      'ENSAYO.HISTORIA T24: headers + filas exactos (conserva el signo menos U+2212 en "−1 %"), sin footnote',
+      !!t24 &&
+        JSON.stringify(t24.headers) === JSON.stringify(['Indicador', 'Año 1', 'Año 2']) &&
+        JSON.stringify(t24.rows) === JSON.stringify([
+          ['Crecimiento de la producción', '+4 %', '−1 %'],
+          ['Desempleo', '6 %', '9 %'],
+          ['Índice de precios', '100', '108'],
+          ['Índice de salario nominal promedio', '100', '105'],
+        ]) &&
+        t24.rows[0][2] === '−1 %' &&
+        t24.footnote === undefined,
+    );
+    check(
+      'ENSAYO.HISTORIA: regresión de datos productiva para los 8 textos con tabla (T2/T4/T8/T9/T12/T15/T17/T24)',
+      [t2, t4, t8, t9, t12, t15, t17, t24].every((t) => !!t),
     );
 
     // Cronologías T13/T16/T20 -- valores exactos
