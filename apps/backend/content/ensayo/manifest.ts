@@ -12,7 +12,14 @@
 // -- un blueprint inconsistente consigo mismo falla al cargar, antes de que
 // el gate compare nada contra el contenido real.
 import { z } from 'zod';
-import { examAxisSchema, examDifficultySchema, examPrimarySkillSchema, examReadingSkillSchema } from './schema';
+import {
+  examAxisSchema,
+  examDifficultySchema,
+  examPrimarySkillSchema,
+  examReadingSkillSchema,
+  examHistoriaAxisSchema,
+  examHistoriaSkillSchema,
+} from './schema';
 
 const axisDistributionSchema = z.object({
   NUMEROS: z.number().int().nonnegative(),
@@ -211,5 +218,128 @@ export function findReadingBlueprint(examKey: string): ExamReadingBlueprint | nu
   return ENSAYO_READING_MANIFEST.find((b) => b.examKey === examKey) ?? null;
 }
 
+export const EXAM_HISTORIA_AXES = examHistoriaAxisSchema.options;
+export const EXAM_HISTORIA_SKILLS = examHistoriaSkillSchema.options;
+
+// ---------------------------------------------------------------------------
+// ENSAYO.HISTORIA -- blueprint de familia HISTORIA_CIENCIAS_SOCIALES.
+//
+// Reutiliza la infraestructura de textos compartidos + tablas de ENSAYOS-F2.
+// Clasificacion `axis` + `skill` + `difficulty`, SOLO de source (sin columnas
+// DB). Declara el mapa autoritativo texto -> rango de preguntas.
+// ---------------------------------------------------------------------------
+const historiaAxisDistributionSchema = z.object({
+  HISTORIA_MUNDO_AMERICA_CHILE: z.number().int().nonnegative(),
+  FORMACION_CIUDADANA: z.number().int().nonnegative(),
+  SISTEMA_ECONOMICO: z.number().int().nonnegative(),
+});
+const historiaSkillDistributionSchema = z.object({
+  PENSAMIENTO_TEMPORAL_ESPACIAL: z.number().int().nonnegative(),
+  ANALISIS_FUENTES: z.number().int().nonnegative(),
+  PENSAMIENTO_CRITICO: z.number().int().nonnegative(),
+});
+const answerDistributionSchema = z.object({
+  A: z.number().int().nonnegative(),
+  B: z.number().int().nonnegative(),
+  C: z.number().int().nonnegative(),
+  D: z.number().int().nonnegative(),
+});
+
+export const examHistoriaBlueprintSchema = z
+  .object({
+    family: z.literal('HISTORIA_CIENCIAS_SOCIALES'),
+    examKey: z.string().min(1),
+    title: z.string().min(1),
+    subjectKey: z.string().min(1),
+    durationMinutes: z.number().int().positive(),
+    expectedQuestionCount: z.number().int().positive(),
+    expectedPassageCount: z.number().int().positive(),
+    expectedAxis: historiaAxisDistributionSchema,
+    expectedSkill: historiaSkillDistributionSchema,
+    expectedDifficulty: difficultyDistributionSchema,
+    expectedAnswerDistribution: answerDistributionSchema,
+    compactKey: z.string().length(65).regex(/^[ABCD]+$/),
+    passageMap: z.array(passageRangeSchema).min(1),
+  })
+  .refine((b) => sum(b.expectedAxis) === b.expectedQuestionCount, { message: 'expectedAxis debe sumar expectedQuestionCount.', path: ['expectedAxis'] })
+  .refine((b) => sum(b.expectedSkill) === b.expectedQuestionCount, { message: 'expectedSkill debe sumar expectedQuestionCount.', path: ['expectedSkill'] })
+  .refine((b) => sum(b.expectedDifficulty) === b.expectedQuestionCount, { message: 'expectedDifficulty debe sumar expectedQuestionCount.', path: ['expectedDifficulty'] })
+  .refine((b) => sum(b.expectedAnswerDistribution) === b.expectedQuestionCount, { message: 'expectedAnswerDistribution debe sumar expectedQuestionCount.', path: ['expectedAnswerDistribution'] })
+  .refine((b) => b.compactKey.length === b.expectedQuestionCount, { message: 'compactKey debe tener expectedQuestionCount caracteres.', path: ['compactKey'] })
+  .refine(
+    (b) => {
+      const d = { A: 0, B: 0, C: 0, D: 0 } as Record<string, number>;
+      for (const ch of b.compactKey) d[ch] += 1;
+      return (['A', 'B', 'C', 'D'] as const).every((k) => d[k] === b.expectedAnswerDistribution[k]);
+    },
+    { message: 'La distribución de compactKey no coincide con expectedAnswerDistribution.', path: ['compactKey'] },
+  )
+  .refine((b) => b.passageMap.length === b.expectedPassageCount, { message: 'passageMap debe tener expectedPassageCount entradas.', path: ['passageMap'] })
+  .refine(
+    (b) => {
+      const sorted = [...b.passageMap].sort((x, y) => x.firstQuestion - y.firstQuestion);
+      if (sorted[0].firstQuestion !== 1) return false;
+      if (sorted[sorted.length - 1].lastQuestion !== b.expectedQuestionCount) return false;
+      return sorted.every((r, i) => r.lastQuestion >= r.firstQuestion && (i === 0 || r.firstQuestion === sorted[i - 1].lastQuestion + 1));
+    },
+    { message: 'passageMap debe cubrir 1..expectedQuestionCount con rangos contiguos.', path: ['passageMap'] },
+  );
+export type ExamHistoriaBlueprint = z.infer<typeof examHistoriaBlueprintSchema>;
+
+/**
+ * Blueprint APPROVED del Ensayo PAES Historia y Ciencias Sociales ZETRYND.
+ * `subjectKey: 'historia'` -- el `Exam` se asocia a la materia academica
+ * "Historia"; las QuestionVersions siguen aisladas bajo el Subject tecnico
+ * `ensayos` + CurriculumTopic raiz `ENSAYO.HISTORIA`.
+ */
+export const ENSAYO_HISTORIA_BLUEPRINT: ExamHistoriaBlueprint = examHistoriaBlueprintSchema.parse({
+  family: 'HISTORIA_CIENCIAS_SOCIALES',
+  examKey: 'ENSAYO.HISTORIA',
+  title: 'Ensayo PAES Historia y Ciencias Sociales',
+  subjectKey: 'historia',
+  durationMinutes: 120,
+  expectedQuestionCount: 65,
+  expectedPassageCount: 24,
+  expectedAxis: { HISTORIA_MUNDO_AMERICA_CHILE: 38, FORMACION_CIUDADANA: 17, SISTEMA_ECONOMICO: 10 },
+  expectedSkill: { PENSAMIENTO_TEMPORAL_ESPACIAL: 18, ANALISIS_FUENTES: 30, PENSAMIENTO_CRITICO: 17 },
+  expectedDifficulty: { FACIL: 16, MEDIA: 33, DIFICIL: 16 },
+  expectedAnswerDistribution: { A: 16, B: 16, C: 16, D: 17 },
+  compactKey: 'CADBCABDCABDACDBCADBACBDACDBACDBCADBCADBBDACBADCABDCBACDBACDBCDAD',
+  passageMap: [
+    { passageKey: 'ENSAYO.HISTORIA.T1', title: 'República y ciudadanía en el siglo XIX', firstQuestion: 1, lastQuestion: 3 },
+    { passageKey: 'ENSAYO.HISTORIA.T2', title: 'Industrialización y urbanización', firstQuestion: 4, lastQuestion: 5 },
+    { passageKey: 'ENSAYO.HISTORIA.T3', title: 'Chile y los mercados internacionales', firstQuestion: 6, lastQuestion: 7 },
+    { passageKey: 'ENSAYO.HISTORIA.T4', title: 'Una ciudad chilena en transformación', firstQuestion: 8, lastQuestion: 10 },
+    { passageKey: 'ENSAYO.HISTORIA.T5', title: 'Crisis de la democracia liberal en el periodo de entreguerras', firstQuestion: 11, lastQuestion: 12 },
+    { passageKey: 'ENSAYO.HISTORIA.T6', title: 'Instituciones y Estado de derecho', firstQuestion: 13, lastQuestion: 15 },
+    { passageKey: 'ENSAYO.HISTORIA.T7', title: 'Información y democracia', firstQuestion: 16, lastQuestion: 17 },
+    { passageKey: 'ENSAYO.HISTORIA.T8', title: 'Mercado de tomates', firstQuestion: 18, lastQuestion: 20 },
+    { passageKey: 'ENSAYO.HISTORIA.T9', title: 'Crisis económica y dependencia externa', firstQuestion: 21, lastQuestion: 23 },
+    { passageKey: 'ENSAYO.HISTORIA.T10', title: 'Industrialización y acción estatal', firstQuestion: 24, lastQuestion: 25 },
+    { passageKey: 'ENSAYO.HISTORIA.T11', title: 'Un mundo dividido', firstQuestion: 26, lastQuestion: 27 },
+    { passageKey: 'ENSAYO.HISTORIA.T12', title: 'Transformaciones y tensiones en Chile durante la década de 1960', firstQuestion: 28, lastQuestion: 30 },
+    { passageKey: 'ENSAYO.HISTORIA.T13', title: 'Dictadura y transición política en Chile', firstQuestion: 31, lastQuestion: 32 },
+    { passageKey: 'ENSAYO.HISTORIA.T14', title: 'Municipio, ciudadanía y control institucional', firstQuestion: 33, lastQuestion: 37 },
+    { passageKey: 'ENSAYO.HISTORIA.T15', title: 'Inflación y poder adquisitivo', firstQuestion: 38, lastQuestion: 40 },
+    { passageKey: 'ENSAYO.HISTORIA.T16', title: 'Después de la Segunda Guerra Mundial', firstQuestion: 41, lastQuestion: 43 },
+    { passageKey: 'ENSAYO.HISTORIA.T17', title: 'La descolonización', firstQuestion: 44, lastQuestion: 45 },
+    { passageKey: 'ENSAYO.HISTORIA.T18', title: 'América Latina en la Guerra Fría', firstQuestion: 46, lastQuestion: 48 },
+    { passageKey: 'ENSAYO.HISTORIA.T19', title: 'Dictadura militar y derechos humanos en Chile', firstQuestion: 49, lastQuestion: 51 },
+    { passageKey: 'ENSAYO.HISTORIA.T20', title: 'El fin de la Guerra Fría y un mundo más interconectado', firstQuestion: 52, lastQuestion: 54 },
+    { passageKey: 'ENSAYO.HISTORIA.T21', title: 'Representación y participación ciudadana', firstQuestion: 55, lastQuestion: 57 },
+    { passageKey: 'ENSAYO.HISTORIA.T22', title: 'Igualdad y no discriminación', firstQuestion: 58, lastQuestion: 59 },
+    { passageKey: 'ENSAYO.HISTORIA.T23', title: 'Poder público y controles institucionales', firstQuestion: 60, lastQuestion: 61 },
+    { passageKey: 'ENSAYO.HISTORIA.T24', title: 'Producción, empleo y poder adquisitivo', firstQuestion: 62, lastQuestion: 65 },
+  ],
+});
+
+/** Todos los ensayos de familia HISTORIA_CIENCIAS_SOCIALES declarados en V1. */
+export const ENSAYO_HISTORIA_MANIFEST: ExamHistoriaBlueprint[] = [ENSAYO_HISTORIA_BLUEPRINT];
+
+export function findHistoriaBlueprint(examKey: string): ExamHistoriaBlueprint | null {
+  return ENSAYO_HISTORIA_MANIFEST.find((b) => b.examKey === examKey) ?? null;
+}
+
 /** Total de modulos de ensayo esperados (todas las familias). */
-export const ENSAYO_MODULE_COUNT = ENSAYO_MANIFEST.length + ENSAYO_READING_MANIFEST.length;
+export const ENSAYO_MODULE_COUNT =
+  ENSAYO_MANIFEST.length + ENSAYO_READING_MANIFEST.length + ENSAYO_HISTORIA_MANIFEST.length;

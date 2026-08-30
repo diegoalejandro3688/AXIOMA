@@ -28,11 +28,13 @@ import { loadExamModules } from '../content/ensayo/load';
 import {
   ENSAYO_MANIFEST,
   ENSAYO_READING_MANIFEST,
+  ENSAYO_HISTORIA_MANIFEST,
   ENSAYO_MODULE_COUNT,
   findExamBlueprint,
   findReadingBlueprint,
+  findHistoriaBlueprint,
 } from '../content/ensayo/manifest';
-import { isLectoraSourceQuestion, type ExamSourceModule } from '../content/ensayo/schema';
+import { questionPassageKey, type ExamSourceModule } from '../content/ensayo/schema';
 
 /** Datos comunes que el importer necesita de un blueprint, sea de la familia que sea. */
 function resolveBlueprintFor(examKey: string): { subjectKey: string; expectedQuestionCount: number } | null {
@@ -40,6 +42,8 @@ function resolveBlueprintFor(examKey: string): { subjectKey: string; expectedQue
   if (math) return { subjectKey: math.subjectKey, expectedQuestionCount: math.expectedQuestionCount };
   const reading = findReadingBlueprint(examKey);
   if (reading) return { subjectKey: reading.subjectKey, expectedQuestionCount: reading.expectedQuestionCount };
+  const historia = findHistoriaBlueprint(examKey);
+  if (historia) return { subjectKey: historia.subjectKey, expectedQuestionCount: historia.expectedQuestionCount };
   return null;
 }
 
@@ -380,9 +384,10 @@ async function importExam(exam: ExamSourceModule, ctx: ImportCtx): Promise<void>
   const linkSummary = { created: 0, noop: 0 };
   for (const q of exam.questions) {
     const questionVersionId = publishedVersionByOrder.get(q.displayOrder)!;
-    const passageId = isLectoraSourceQuestion(q) ? passageIdByKey.get(q.passageKey) : undefined;
-    if (isLectoraSourceQuestion(q) && !passageId) {
-      fail(`"${q.questionKey}": passageKey "${q.passageKey}" no resuelve a ningún ExamPassage creado.`);
+    const pKey = questionPassageKey(q);
+    const passageId = pKey ? passageIdByKey.get(pKey) : undefined;
+    if (pKey && !passageId) {
+      fail(`"${q.questionKey}": passageKey "${pKey}" no resuelve a ningún ExamPassage creado.`);
     }
     await sleep(WRITE_PACING_MS);
     const link = assertOk(
@@ -455,8 +460,8 @@ async function main(): Promise<void> {
   }
 
   const requestedKey = flags.get('exam-key');
-  // Orden determinista: primero los MATEMATICA (M1, M2), luego COMPETENCIA_LECTORA.
-  const manifestOrder = [...ENSAYO_MANIFEST, ...ENSAYO_READING_MANIFEST];
+  // Orden determinista: MATEMATICA (M1, M2) -> COMPETENCIA_LECTORA -> HISTORIA.
+  const manifestOrder = [...ENSAYO_MANIFEST, ...ENSAYO_READING_MANIFEST, ...ENSAYO_HISTORIA_MANIFEST];
   const ordered = manifestOrder.map((bp) => loaded.find((l) => l.module.examKey === bp.examKey)!.module);
   const targets: ExamSourceModule[] = requestedKey
     ? ordered.filter((m) => m.examKey === requestedKey)

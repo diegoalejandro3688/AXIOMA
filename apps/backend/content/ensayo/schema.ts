@@ -86,6 +86,26 @@ export const examReadingSkillSchema = z.enum(['LOCALIZAR', 'INTERPRETAR', 'EVALU
 export type ExamReadingSkill = z.infer<typeof examReadingSkillSchema>;
 
 /**
+ * ENSAYO.HISTORIA -- ejes y habilidades PAES Historia y Ciencias Sociales.
+ * SOLO clasificación de fuente: NO se materializan como columnas en
+ * `exam_question` (igual que axis/primarySkill en M1 y readingSkill en
+ * Lectora).
+ */
+export const examHistoriaAxisSchema = z.enum([
+  'HISTORIA_MUNDO_AMERICA_CHILE',
+  'FORMACION_CIUDADANA',
+  'SISTEMA_ECONOMICO',
+]);
+export type ExamHistoriaAxis = z.infer<typeof examHistoriaAxisSchema>;
+
+export const examHistoriaSkillSchema = z.enum([
+  'PENSAMIENTO_TEMPORAL_ESPACIAL',
+  'ANALISIS_FUENTES',
+  'PENSAMIENTO_CRITICO',
+]);
+export type ExamHistoriaSkill = z.infer<typeof examHistoriaSkillSchema>;
+
+/**
  * ENSAYOS-F2 -- bloque de TABLA estructurada dentro del contenido de un texto
  * fuente. Misma forma que `examTableBlockSchema` de `@axioma/contracts`
  * (headers/rows/footnote). La invariante esencial son filas/columnas
@@ -194,13 +214,54 @@ export const lectoraSourceQuestionSchema = z
   });
 export type LectoraSourceQuestion = z.infer<typeof lectoraSourceQuestionSchema>;
 
-/** Una pregunta de ensayo: matemática (M1/M2) o competencia lectora (F2+). */
-export const examSourceQuestionSchema = z.union([mathSourceQuestionSchema, lectoraSourceQuestionSchema]);
+/**
+ * ENSAYO.HISTORIA -- pregunta de familia HISTORIA_CIENCIAS_SOCIALES. Se ancla a
+ * un texto/estímulo compartido vía `passageKey`. Clasificación (`axis` / `skill`
+ * / `difficulty`) SOLO de fuente. Se distingue de la familia lectora por llevar
+ * `axis` + `skill` en vez de `readingSkill`.
+ */
+export const historiaSourceQuestionSchema = z
+  .object({
+    questionKey: examCodeSchema,
+    displayOrder: z.number().int().positive(),
+    axis: examHistoriaAxisSchema,
+    skill: examHistoriaSkillSchema,
+    difficulty: examDifficultySchema,
+    /** `passageKey` de un `examSourcePassageSchema` del mismo módulo. */
+    passageKey: examCodeSchema,
+    stemContent: sourceStemContentSchema,
+    options: z.array(examSourceOptionSchema).length(4),
+    explanationContent: sourceExplanationContentSchema,
+  })
+  .refine((q) => q.options.filter((o) => o.correct).length === 1, {
+    message: 'Cada pregunta debe tener exactamente una alternativa correcta.',
+    path: ['options'],
+  });
+export type HistoriaSourceQuestion = z.infer<typeof historiaSourceQuestionSchema>;
+
+/** Una pregunta de ensayo: matemática (M1/M2), competencia lectora o historia y ciencias sociales. */
+export const examSourceQuestionSchema = z.union([
+  mathSourceQuestionSchema,
+  lectoraSourceQuestionSchema,
+  historiaSourceQuestionSchema,
+]);
 export type ExamSourceQuestion = z.infer<typeof examSourceQuestionSchema>;
 
-/** `true` si la pregunta fuente es de familia Competencia Lectora (lleva `passageKey`). */
+/** `true` si la pregunta fuente es de familia Competencia Lectora (lleva `readingSkill`). */
 export function isLectoraSourceQuestion(q: ExamSourceQuestion): q is LectoraSourceQuestion {
-  return 'passageKey' in q && typeof (q as { passageKey?: unknown }).passageKey === 'string';
+  return 'readingSkill' in q && typeof (q as { readingSkill?: unknown }).readingSkill === 'string';
+}
+
+/** `true` si la pregunta fuente es de familia Historia y Ciencias Sociales (lleva `axis` + `skill`). */
+export function isHistoriaSourceQuestion(q: ExamSourceQuestion): q is HistoriaSourceQuestion {
+  return 'skill' in q && typeof (q as { skill?: unknown }).skill === 'string';
+}
+
+/** El `passageKey` que referencia una pregunta (Lectora / Historia), o `null` (Matemática). */
+export function questionPassageKey(q: ExamSourceQuestion): string | null {
+  return 'passageKey' in q && typeof (q as { passageKey?: unknown }).passageKey === 'string'
+    ? (q as { passageKey: string }).passageKey
+    : null;
 }
 
 /**
@@ -209,12 +270,17 @@ export function isLectoraSourceQuestion(q: ExamSourceQuestion): q is LectoraSour
  */
 export type ExamSourceClassification =
   | { family: 'MATEMATICA'; axis: ExamAxis; primarySkill: ExamPrimarySkill; difficulty: ExamDifficulty }
-  | { family: 'COMPETENCIA_LECTORA'; readingSkill: ExamReadingSkill; difficulty: ExamDifficulty };
+  | { family: 'COMPETENCIA_LECTORA'; readingSkill: ExamReadingSkill; difficulty: ExamDifficulty }
+  | { family: 'HISTORIA_CIENCIAS_SOCIALES'; axis: ExamHistoriaAxis; skill: ExamHistoriaSkill; difficulty: ExamDifficulty };
 
 export function examClassification(q: ExamSourceQuestion): ExamSourceClassification {
-  return isLectoraSourceQuestion(q)
-    ? { family: 'COMPETENCIA_LECTORA', readingSkill: q.readingSkill, difficulty: q.difficulty }
-    : { family: 'MATEMATICA', axis: q.axis, primarySkill: q.primarySkill, difficulty: q.difficulty };
+  if (isLectoraSourceQuestion(q)) {
+    return { family: 'COMPETENCIA_LECTORA', readingSkill: q.readingSkill, difficulty: q.difficulty };
+  }
+  if (isHistoriaSourceQuestion(q)) {
+    return { family: 'HISTORIA_CIENCIAS_SOCIALES', axis: q.axis, skill: q.skill, difficulty: q.difficulty };
+  }
+  return { family: 'MATEMATICA', axis: q.axis, primarySkill: q.primarySkill, difficulty: q.difficulty };
 }
 
 /**
@@ -263,8 +329,11 @@ export const examSourceModuleSchema = z
   .refine(
     (m) => {
       const keys = new Set(m.passages.map((p) => p.passageKey));
-      return m.questions.every((q) => !isLectoraSourceQuestion(q) || keys.has(q.passageKey));
+      return m.questions.every((q) => {
+        const key = questionPassageKey(q);
+        return key === null || keys.has(key);
+      });
     },
-    { message: 'Una pregunta de competencia lectora referencia un passageKey que no existe en el módulo.', path: ['questions'] },
+    { message: 'Una pregunta referencia un passageKey que no existe en el módulo.', path: ['questions'] },
   );
 export type ExamSourceModule = z.infer<typeof examSourceModuleSchema>;

@@ -23,14 +23,19 @@ import {
   examSourceModuleSchema,
   examClassification,
   isLectoraSourceQuestion,
+  isHistoriaSourceQuestion,
   type MathSourceQuestion,
 } from '../content/ensayo/schema';
 import {
   ENSAYO_MANIFEST,
   ENSAYO_READING_MANIFEST,
+  ENSAYO_HISTORIA_MANIFEST,
   ENSAYO_MODULE_COUNT,
   findExamBlueprint,
   findReadingBlueprint,
+  findHistoriaBlueprint,
+  EXAM_HISTORIA_AXES,
+  EXAM_HISTORIA_SKILLS,
   EXAM_AXES,
   EXAM_DIFFICULTIES,
   EXAM_PRIMARY_SKILLS,
@@ -82,7 +87,7 @@ async function main() {
     loaded.length === ENSAYO_MODULE_COUNT,
   );
   const loadedKeys = new Set(loaded.map((l) => l.module.examKey));
-  for (const bp of [...ENSAYO_MANIFEST, ...ENSAYO_READING_MANIFEST]) {
+  for (const bp of [...ENSAYO_MANIFEST, ...ENSAYO_READING_MANIFEST, ...ENSAYO_HISTORIA_MANIFEST]) {
     check(`el manifest declara "${bp.examKey}" y existe su módulo fuente`, loadedKeys.has(bp.examKey));
   }
 
@@ -460,6 +465,177 @@ async function main() {
     check('ENSAYO.LECTORA: sin carácter de reemplazo U+FFFD', !allStr.includes('�'));
     check('ENSAYO.LECTORA: conserva acentos y ¿ del español', /[áéíóúñ]/.test(allStr) && allStr.includes('¿'));
     check('ENSAYO.LECTORA: em dash y comillas tipográficas representadas', allStr.includes('—') && (allStr.includes('“') || allStr.includes('”')));
+  }
+
+  console.log('\n--- 9c. ENSAYO.HISTORIA: contenido productivo de Historia y Ciencias Sociales ---');
+  const histBp = findHistoriaBlueprint('ENSAYO.HISTORIA')!;
+  const historia = loaded.find((l) => l.module.examKey === 'ENSAYO.HISTORIA')?.module;
+  check('ENSAYO.HISTORIA presente y cargado', !!historia && !!histBp);
+  if (historia) {
+    const H = historia;
+    check(`ENSAYO.HISTORIA: title = "${histBp.title}"`, H.title === histBp.title);
+    check('ENSAYO.HISTORIA: subjectKey = "historia"', H.subjectKey === 'historia');
+    check('ENSAYO.HISTORIA: durationMinutes = 120', H.durationMinutes === 120);
+    check(`ENSAYO.HISTORIA: ${histBp.expectedPassageCount} textos (encontrados: ${H.passages.length})`, H.passages.length === 24);
+    check(`ENSAYO.HISTORIA: ${histBp.expectedQuestionCount} preguntas (encontradas: ${H.questions.length})`, H.questions.length === 65);
+
+    const pKeys = H.passages.map((p) => p.passageKey);
+    check(
+      'ENSAYO.HISTORIA: passageKeys = ENSAYO.HISTORIA.T1..T24',
+      JSON.stringify([...pKeys].sort()) === JSON.stringify(Array.from({ length: 24 }, (_, i) => `ENSAYO.HISTORIA.T${i + 1}`).sort()),
+    );
+    const pOrders = H.passages.map((p) => p.displayOrder).sort((a, b) => a - b);
+    check('ENSAYO.HISTORIA: displayOrder de textos es 1..24', JSON.stringify(pOrders) === JSON.stringify(Array.from({ length: 24 }, (_, i) => i + 1)));
+
+    const qKeys = H.questions.map((q) => q.questionKey);
+    check(
+      'ENSAYO.HISTORIA: questionKeys = ENSAYO.HISTORIA.Q1..Q65',
+      JSON.stringify([...qKeys].sort()) === JSON.stringify(Array.from({ length: 65 }, (_, i) => `ENSAYO.HISTORIA.Q${i + 1}`).sort()),
+    );
+    const qOrders = H.questions.map((q) => q.displayOrder).sort((a, b) => a - b);
+    check('ENSAYO.HISTORIA: displayOrder 1..65 sin huecos', JSON.stringify(qOrders) === JSON.stringify(Array.from({ length: 65 }, (_, i) => i + 1)));
+    check('ENSAYO.HISTORIA: TODAS las preguntas son de familia HISTORIA_CIENCIAS_SOCIALES', H.questions.every((q) => isHistoriaSourceQuestion(q)));
+    check('ENSAYO.HISTORIA: 0 preguntas de familia lectora/matemática', H.questions.every((q) => !isLectoraSourceQuestion(q)));
+    check('ENSAYO.HISTORIA: 0 colisión de questionKey con Study', qKeys.every((k) => !studyQuestionKeys.has(k)));
+    check('ENSAYO.HISTORIA: namespace "ENSAYO."', H.examKey.startsWith('ENSAYO.') && pKeys.every((k) => k.startsWith('ENSAYO.')));
+
+    // Mapa texto -> rango EXACTO
+    const pkOf = (q: { passageKey?: string }) => (q as { passageKey: string }).passageKey;
+    let mapOk = true;
+    for (const range of histBp.passageMap) {
+      const inRange = H.questions.filter((q) => q.displayOrder >= range.firstQuestion && q.displayOrder <= range.lastQuestion);
+      const allMapped = inRange.every((q) => pkOf(q) === range.passageKey);
+      const expectedCount = range.lastQuestion - range.firstQuestion + 1;
+      if (!allMapped || inRange.length !== expectedCount) mapOk = false;
+      check(
+        `ENSAYO.HISTORIA: ${range.passageKey} ("${range.title}") <- Q${range.firstQuestion}..Q${range.lastQuestion} (${inRange.length}/${expectedCount})`,
+        allMapped && inRange.length === expectedCount,
+      );
+      check(`ENSAYO.HISTORIA: ${range.passageKey} title = "${range.title}"`, H.passages.find((p) => p.passageKey === range.passageKey)!.title === range.title);
+    }
+    check('ENSAYO.HISTORIA: cada pregunta apunta a un passageKey existente', H.questions.every((q) => pKeys.includes(pkOf(q))));
+    check('ENSAYO.HISTORIA: mapa texto->pregunta 100% coherente con el blueprint', mapOk);
+
+    // Integridad por pregunta
+    let opts = 0;
+    let correct = 0;
+    for (const q of H.questions) {
+      opts += q.options.length;
+      const c = q.options.filter((o) => o.correct).length;
+      correct += c;
+      check(`ENSAYO.HISTORIA ${q.questionKey}: 4 alternativas / 1 correcta`, q.options.length === 4 && c === 1);
+      check(`ENSAYO.HISTORIA ${q.questionKey}: enunciado y explicación no vacíos`, q.stemContent.length > 0 && q.explanationContent.length > 0);
+      const canon = q.options.map((o) => (o.content.type === 'formula' ? `f:${o.content.latex}` : `t:${o.content.text}`));
+      check(`ENSAYO.HISTORIA ${q.questionKey}: alternativas no duplicadas`, new Set(canon).size === 4);
+    }
+    check(`ENSAYO.HISTORIA: 260 alternativas (${opts})`, opts === 260);
+    check(`ENSAYO.HISTORIA: 65 correctas / 195 incorrectas (${correct}/${opts - correct})`, correct === 65 && opts - correct === 195);
+
+    // Blueprint DERIVADO desde las 65 preguntas
+    const axisTally = tally(H.questions.map((q) => (q as { axis: (typeof EXAM_HISTORIA_AXES)[number] }).axis), EXAM_HISTORIA_AXES);
+    const skillTally = tally(H.questions.map((q) => (q as { skill: (typeof EXAM_HISTORIA_SKILLS)[number] }).skill), EXAM_HISTORIA_SKILLS);
+    const diffTally = tally(H.questions.map((q) => q.difficulty), EXAM_DIFFICULTIES);
+    for (const a of EXAM_HISTORIA_AXES) check(`ENSAYO.HISTORIA: eje ${a}: ${axisTally[a]} == ${histBp.expectedAxis[a]}`, axisTally[a] === histBp.expectedAxis[a]);
+    for (const s of EXAM_HISTORIA_SKILLS) check(`ENSAYO.HISTORIA: habilidad ${s}: ${skillTally[s]} == ${histBp.expectedSkill[s]}`, skillTally[s] === histBp.expectedSkill[s]);
+    for (const d of EXAM_DIFFICULTIES) check(`ENSAYO.HISTORIA: dificultad ${d}: ${diffTally[d]} == ${histBp.expectedDifficulty[d]}`, diffTally[d] === histBp.expectedDifficulty[d]);
+    check('ENSAYO.HISTORIA: todas las preguntas clasifican como HISTORIA_CIENCIAS_SOCIALES', H.questions.every((q) => examClassification(q).family === 'HISTORIA_CIENCIAS_SOCIALES'));
+
+    // Clave autoritativa compacta
+    const derivedKey = [...H.questions]
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+      .map((q) => 'ABCD'[q.options.findIndex((o) => o.correct)])
+      .join('');
+    check('ENSAYO.HISTORIA: clave Q1..Q65 == compacta autoritativa', derivedKey === histBp.compactKey);
+    check('ENSAYO.HISTORIA: compacta tiene 65 caracteres', histBp.compactKey.length === 65);
+    const keyDist = { A: 0, B: 0, C: 0, D: 0 } as Record<string, number>;
+    for (const ch of derivedKey) keyDist[ch] += 1;
+    check(
+      `ENSAYO.HISTORIA: distribución de clave A=16 B=16 C=16 D=17 (${JSON.stringify(keyDist)})`,
+      keyDist.A === 16 && keyDist.B === 16 && keyDist.C === 16 && keyDist.D === 17,
+    );
+
+    // Exactamente 8 tablas: T2/T4/T8/T9/T12/T15/T17/T24
+    const tableKeys = H.passages.filter((p) => p.content.some((b) => b.type === 'table')).map((p) => p.passageKey).sort();
+    check(
+      'ENSAYO.HISTORIA: exactamente 8 textos con tabla (T2/T4/T8/T9/T12/T15/T17/T24)',
+      JSON.stringify(tableKeys) ===
+        JSON.stringify(['ENSAYO.HISTORIA.T12', 'ENSAYO.HISTORIA.T15', 'ENSAYO.HISTORIA.T17', 'ENSAYO.HISTORIA.T2', 'ENSAYO.HISTORIA.T24', 'ENSAYO.HISTORIA.T4', 'ENSAYO.HISTORIA.T8', 'ENSAYO.HISTORIA.T9'].sort()),
+    );
+    const tableOf = (key: string) => H.passages.find((p) => p.passageKey === key)!.content.find((b) => b.type === 'table') as
+      | { headers: string[]; rows: string[][]; footnote?: string }
+      | undefined;
+    const t2 = tableOf('ENSAYO.HISTORIA.T2');
+    check(
+      'ENSAYO.HISTORIA T2: headers + filas exactos (1850/1875/1900)',
+      !!t2 &&
+        JSON.stringify(t2.headers) === JSON.stringify(['Año', 'Población urbana', 'Trabajadores en manufactura', 'Producción industrial (índice, 1850=100)']) &&
+        JSON.stringify(t2.rows) === JSON.stringify([
+          ['1850', '31 %', '420.000', '100'],
+          ['1875', '44 %', '690.000', '175'],
+          ['1900', '58 %', '1.080.000', '290'],
+        ]),
+    );
+    const t9 = tableOf('ENSAYO.HISTORIA.T9');
+    check(
+      'ENSAYO.HISTORIA T9: filas exactas + footnote "Índice 1928 = 100."',
+      !!t9 &&
+        JSON.stringify(t9.rows) === JSON.stringify([
+          ['Valor de las exportaciones', '100', '38'],
+          ['Empleo en sectores exportadores', '100', '61'],
+          ['Ingresos fiscales provenientes del comercio exterior', '100', '47'],
+          ['Producción destinada al mercado interno', '100', '92'],
+        ]) &&
+        t9.footnote === 'Índice 1928 = 100.',
+    );
+    check('ENSAYO.HISTORIA T17: sin footnote', tableOf('ENSAYO.HISTORIA.T17')?.footnote === undefined);
+    const t24 = tableOf('ENSAYO.HISTORIA.T24');
+    check(
+      'ENSAYO.HISTORIA T24: conserva el signo menos U+2212 en "−1 %" (no altera el valor)',
+      !!t24 && t24.rows[0][2] === '−1 %' && t24.rows[0][0] === 'Crecimiento de la producción',
+    );
+
+    // Cronologías T13/T16/T20 -- valores exactos
+    const proseOf = (key: string) => H.passages.find((p) => p.passageKey === key)!.content.filter((b) => b.type === 'paragraph').map((b) => (b as { text: string }).text);
+    const t13 = proseOf('ENSAYO.HISTORIA.T13').join(' | ');
+    check(
+      'ENSAYO.HISTORIA T13: cronología 1973/1980/1988/1989/1990 exacta',
+      t13.includes('1973: quiebre del orden democrático') && t13.includes('1980: aprobación de una nueva Constitución') && t13.includes('1988: plebiscito') && t13.includes('1989: elecciones presidenciales y parlamentarias') && t13.includes('1990: asume un gobierno elegido mediante sufragio'),
+    );
+    const t16 = proseOf('ENSAYO.HISTORIA.T16').join(' | ');
+    check(
+      'ENSAYO.HISTORIA T16: cronología 1939/1945/1948 exacta',
+      t16.includes('1939: comienza la Segunda Guerra Mundial') && t16.includes('1945: termina la guerra') && t16.includes('1948: la Asamblea General'),
+    );
+    const t20 = proseOf('ENSAYO.HISTORIA.T20').join(' | ');
+    check(
+      'ENSAYO.HISTORIA T20: cronología 1989/1991/1995 exacta',
+      t20.includes('1989: cae el Muro de Berlín') && t20.includes('1991: se disuelve la Unión Soviética') && t20.includes('1995: comienza a funcionar la Organización Mundial del Comercio'),
+    );
+
+    // Provenance lines preserved
+    const proseHas = (key: string, needle: string) => proseOf(key).some((t) => t.includes(needle));
+    check(
+      'ENSAYO.HISTORIA: se preserva la línea de procedencia "Datos hipotéticos elaborados para ZETRYND" (T2/T4)',
+      proseHas('ENSAYO.HISTORIA.T2', 'Datos hipotéticos elaborados para ZETRYND') && proseHas('ENSAYO.HISTORIA.T4', 'Datos hipotéticos elaborados para ZETRYND'),
+    );
+    check(
+      'ENSAYO.HISTORIA: se preserva "Datos seleccionados para fines educativos" (T17)',
+      proseHas('ENSAYO.HISTORIA.T17', 'Datos seleccionados para fines educativos'),
+    );
+
+    // Texto NO repetido en el stem
+    let dupInStem = 0;
+    for (const q of H.questions) {
+      const passage = H.passages.find((p) => p.passageKey === pkOf(q))!;
+      const firstProse = passage.content.find((b) => b.type === 'paragraph') as { text: string } | undefined;
+      const stemJoined = q.stemContent.map((b) => (b.type === 'formula' ? b.latex : b.text)).join(' ');
+      if (firstProse && firstProse.text.length > 60 && stemJoined.includes(firstProse.text.slice(0, 60))) dupInStem += 1;
+    }
+    check('ENSAYO.HISTORIA: NINGUNA pregunta embebe el texto completo en su stem', dupInStem === 0);
+
+    const allStr = JSON.stringify(H);
+    check('ENSAYO.HISTORIA: sin carácter de reemplazo U+FFFD', !allStr.includes('�'));
+    check('ENSAYO.HISTORIA: conserva acentos y ¿ del español', /[áéíóúñ]/.test(allStr) && allStr.includes('¿'));
   }
 
   console.log('\n--- 10. ENSAYOS-F2: fixture SINTÉTICO -- texto compartido + tabla + preguntas de lectora ---');
