@@ -106,6 +106,26 @@ export const examHistoriaSkillSchema = z.enum([
 export type ExamHistoriaSkill = z.infer<typeof examHistoriaSkillSchema>;
 
 /**
+ * ENSAYO.CIENCIAS.BIOLOGIA -- clasificación PAES Ciencias (Módulo Biología).
+ * SOLO de fuente: NO se materializa como columnas en `exam_question` (igual
+ * que axis/skill en M1/M2/Historia y readingSkill en Lectora).
+ */
+export const examCienciasDisciplineSchema = z.enum(['BIOLOGIA', 'FISICA', 'QUIMICA']);
+export type ExamCienciasDiscipline = z.infer<typeof examCienciasDisciplineSchema>;
+
+export const examCienciasModuleSchema = z.enum(['COMUN', 'ELECTIVO_BIOLOGIA']);
+export type ExamCienciasModule = z.infer<typeof examCienciasModuleSchema>;
+
+export const examCienciasSkillSchema = z.enum([
+  'OBSERVAR_Y_PLANTEAR_PREGUNTAS',
+  'PLANIFICAR_Y_CONDUCIR_UNA_INVESTIGACION',
+  'PROCESAR_Y_ANALIZAR_LA_EVIDENCIA',
+  'EVALUAR',
+  'COMUNICAR',
+]);
+export type ExamCienciasSkill = z.infer<typeof examCienciasSkillSchema>;
+
+/**
  * ENSAYOS-F2 -- bloque de TABLA estructurada dentro del contenido de un texto
  * fuente. Misma forma que `examTableBlockSchema` de `@axioma/contracts`
  * (headers/rows/footnote). La invariante esencial son filas/columnas
@@ -239,11 +259,38 @@ export const historiaSourceQuestionSchema = z
   });
 export type HistoriaSourceQuestion = z.infer<typeof historiaSourceQuestionSchema>;
 
-/** Una pregunta de ensayo: matemática (M1/M2), competencia lectora o historia y ciencias sociales. */
+/**
+ * ENSAYO.CIENCIAS.BIOLOGIA -- pregunta de familia CIENCIAS_MODULO_BIOLOGIA.
+ * Se ancla a un texto/estímulo compartido vía `passageKey`. Clasificación
+ * (`discipline` / `module` / `skill` / `difficulty`) SOLO de fuente. Se
+ * distingue por llevar `discipline` + `module`.
+ */
+export const cienciasSourceQuestionSchema = z
+  .object({
+    questionKey: examCodeSchema,
+    displayOrder: z.number().int().positive(),
+    discipline: examCienciasDisciplineSchema,
+    module: examCienciasModuleSchema,
+    skill: examCienciasSkillSchema,
+    difficulty: examDifficultySchema,
+    /** `passageKey` de un `examSourcePassageSchema` del mismo módulo. */
+    passageKey: examCodeSchema,
+    stemContent: sourceStemContentSchema,
+    options: z.array(examSourceOptionSchema).length(4),
+    explanationContent: sourceExplanationContentSchema,
+  })
+  .refine((q) => q.options.filter((o) => o.correct).length === 1, {
+    message: 'Cada pregunta debe tener exactamente una alternativa correcta.',
+    path: ['options'],
+  });
+export type CienciasSourceQuestion = z.infer<typeof cienciasSourceQuestionSchema>;
+
+/** Una pregunta de ensayo: matemática (M1/M2), competencia lectora, historia o ciencias módulo biología. */
 export const examSourceQuestionSchema = z.union([
   mathSourceQuestionSchema,
   lectoraSourceQuestionSchema,
   historiaSourceQuestionSchema,
+  cienciasSourceQuestionSchema,
 ]);
 export type ExamSourceQuestion = z.infer<typeof examSourceQuestionSchema>;
 
@@ -252,9 +299,14 @@ export function isLectoraSourceQuestion(q: ExamSourceQuestion): q is LectoraSour
   return 'readingSkill' in q && typeof (q as { readingSkill?: unknown }).readingSkill === 'string';
 }
 
-/** `true` si la pregunta fuente es de familia Historia y Ciencias Sociales (lleva `axis` + `skill`). */
+/** `true` si la pregunta fuente es de familia Ciencias Módulo Biología (lleva `discipline` + `module`). */
+export function isCienciasSourceQuestion(q: ExamSourceQuestion): q is CienciasSourceQuestion {
+  return 'discipline' in q && 'module' in q && typeof (q as { discipline?: unknown }).discipline === 'string';
+}
+
+/** `true` si la pregunta fuente es de familia Historia y Ciencias Sociales (lleva `axis` + `skill`, sin `discipline`). */
 export function isHistoriaSourceQuestion(q: ExamSourceQuestion): q is HistoriaSourceQuestion {
-  return 'skill' in q && typeof (q as { skill?: unknown }).skill === 'string';
+  return 'axis' in q && 'skill' in q && typeof (q as { skill?: unknown }).skill === 'string';
 }
 
 /** El `passageKey` que referencia una pregunta (Lectora / Historia), o `null` (Matemática). */
@@ -271,11 +323,21 @@ export function questionPassageKey(q: ExamSourceQuestion): string | null {
 export type ExamSourceClassification =
   | { family: 'MATEMATICA'; axis: ExamAxis; primarySkill: ExamPrimarySkill; difficulty: ExamDifficulty }
   | { family: 'COMPETENCIA_LECTORA'; readingSkill: ExamReadingSkill; difficulty: ExamDifficulty }
-  | { family: 'HISTORIA_CIENCIAS_SOCIALES'; axis: ExamHistoriaAxis; skill: ExamHistoriaSkill; difficulty: ExamDifficulty };
+  | { family: 'HISTORIA_CIENCIAS_SOCIALES'; axis: ExamHistoriaAxis; skill: ExamHistoriaSkill; difficulty: ExamDifficulty }
+  | {
+      family: 'CIENCIAS_MODULO_BIOLOGIA';
+      discipline: ExamCienciasDiscipline;
+      module: ExamCienciasModule;
+      skill: ExamCienciasSkill;
+      difficulty: ExamDifficulty;
+    };
 
 export function examClassification(q: ExamSourceQuestion): ExamSourceClassification {
   if (isLectoraSourceQuestion(q)) {
     return { family: 'COMPETENCIA_LECTORA', readingSkill: q.readingSkill, difficulty: q.difficulty };
+  }
+  if (isCienciasSourceQuestion(q)) {
+    return { family: 'CIENCIAS_MODULO_BIOLOGIA', discipline: q.discipline, module: q.module, skill: q.skill, difficulty: q.difficulty };
   }
   if (isHistoriaSourceQuestion(q)) {
     return { family: 'HISTORIA_CIENCIAS_SOCIALES', axis: q.axis, skill: q.skill, difficulty: q.difficulty };

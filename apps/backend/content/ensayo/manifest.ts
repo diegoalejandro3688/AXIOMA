@@ -19,6 +19,9 @@ import {
   examReadingSkillSchema,
   examHistoriaAxisSchema,
   examHistoriaSkillSchema,
+  examCienciasDisciplineSchema,
+  examCienciasModuleSchema,
+  examCienciasSkillSchema,
 } from './schema';
 
 const axisDistributionSchema = z.object({
@@ -340,6 +343,179 @@ export function findHistoriaBlueprint(examKey: string): ExamHistoriaBlueprint | 
   return ENSAYO_HISTORIA_MANIFEST.find((b) => b.examKey === examKey) ?? null;
 }
 
+export const EXAM_CIENCIAS_DISCIPLINES = examCienciasDisciplineSchema.options;
+export const EXAM_CIENCIAS_MODULES = examCienciasModuleSchema.options;
+export const EXAM_CIENCIAS_SKILLS = examCienciasSkillSchema.options;
+
+// ---------------------------------------------------------------------------
+// ENSAYO.CIENCIAS.BIOLOGIA -- blueprint de familia CIENCIAS_MODULO_BIOLOGIA.
+//
+// Reutiliza la infraestructura de textos compartidos + tablas de ENSAYOS-F2.
+// Clasificacion `discipline` + `module` + `skill` + `difficulty`, SOLO de
+// source. Declara ademas el permutation map autoritativo (§8.2 del paquete):
+// 24 preguntas cuyas alternativas se reordenaron respecto del orden editorial
+// BASE para obtener la clave final. El source gate compara todo contra el
+// contenido real.
+// ---------------------------------------------------------------------------
+const cienciasModuleDistributionSchema = z.object({
+  COMUN: z.number().int().nonnegative(),
+  ELECTIVO_BIOLOGIA: z.number().int().nonnegative(),
+});
+const cienciasDisciplineDistributionSchema = z.object({
+  BIOLOGIA: z.number().int().nonnegative(),
+  FISICA: z.number().int().nonnegative(),
+  QUIMICA: z.number().int().nonnegative(),
+});
+const cienciasSkillDistributionSchema = z.object({
+  OBSERVAR_Y_PLANTEAR_PREGUNTAS: z.number().int().nonnegative(),
+  PLANIFICAR_Y_CONDUCIR_UNA_INVESTIGACION: z.number().int().nonnegative(),
+  PROCESAR_Y_ANALIZAR_LA_EVIDENCIA: z.number().int().nonnegative(),
+  EVALUAR: z.number().int().nonnegative(),
+  COMUNICAR: z.number().int().nonnegative(),
+});
+const permutationCodeSchema = z.string().regex(/^(?!.*(.).*\1)[ABCD]{4}$/, 'Un permutation code debe ser una permutación de ABCD.');
+
+export const examCienciasBlueprintSchema = z
+  .object({
+    family: z.literal('CIENCIAS_MODULO_BIOLOGIA'),
+    examKey: z.string().min(1),
+    title: z.string().min(1),
+    subjectKey: z.string().min(1),
+    durationMinutes: z.number().int().positive(),
+    expectedQuestionCount: z.number().int().positive(),
+    expectedPassageCount: z.number().int().positive(),
+    /** Q1..N que pertenecen al módulo común (el resto es electivo). */
+    comunLastQuestion: z.number().int().positive(),
+    expectedModule: cienciasModuleDistributionSchema,
+    expectedDiscipline: cienciasDisciplineDistributionSchema,
+    expectedDisciplineComun: cienciasDisciplineDistributionSchema,
+    expectedDisciplineElectivo: cienciasDisciplineDistributionSchema,
+    expectedSkill: cienciasSkillDistributionSchema,
+    expectedDifficulty: difficultyDistributionSchema,
+    expectedAnswerDistribution: answerDistributionSchema,
+    compactKey: z.string().regex(/^[ABCD]+$/),
+    /** §8.2 -- preguntas cuyas alternativas se reordenaron y su código de permutación. */
+    permutationMap: z.record(z.string().regex(/^\d+$/), permutationCodeSchema),
+    passageMap: z.array(passageRangeSchema).min(1),
+  })
+  .refine((b) => sum(b.expectedModule) === b.expectedQuestionCount, { message: 'expectedModule debe sumar expectedQuestionCount.', path: ['expectedModule'] })
+  .refine((b) => sum(b.expectedDiscipline) === b.expectedQuestionCount, { message: 'expectedDiscipline debe sumar expectedQuestionCount.', path: ['expectedDiscipline'] })
+  .refine((b) => sum(b.expectedDisciplineComun) === b.expectedModule.COMUN, { message: 'expectedDisciplineComun debe sumar expectedModule.COMUN.', path: ['expectedDisciplineComun'] })
+  .refine((b) => sum(b.expectedDisciplineElectivo) === b.expectedModule.ELECTIVO_BIOLOGIA, { message: 'expectedDisciplineElectivo debe sumar expectedModule.ELECTIVO_BIOLOGIA.', path: ['expectedDisciplineElectivo'] })
+  .refine((b) => sum(b.expectedSkill) === b.expectedQuestionCount, { message: 'expectedSkill debe sumar expectedQuestionCount.', path: ['expectedSkill'] })
+  .refine((b) => sum(b.expectedDifficulty) === b.expectedQuestionCount, { message: 'expectedDifficulty debe sumar expectedQuestionCount.', path: ['expectedDifficulty'] })
+  .refine((b) => sum(b.expectedAnswerDistribution) === b.expectedQuestionCount, { message: 'expectedAnswerDistribution debe sumar expectedQuestionCount.', path: ['expectedAnswerDistribution'] })
+  .refine((b) => b.compactKey.length === b.expectedQuestionCount, { message: 'compactKey debe tener expectedQuestionCount caracteres.', path: ['compactKey'] })
+  .refine(
+    (b) => {
+      const d = { A: 0, B: 0, C: 0, D: 0 } as Record<string, number>;
+      for (const ch of b.compactKey) d[ch] += 1;
+      return (['A', 'B', 'C', 'D'] as const).every((k) => d[k] === b.expectedAnswerDistribution[k]);
+    },
+    { message: 'La distribución de compactKey no coincide con expectedAnswerDistribution.', path: ['compactKey'] },
+  )
+  .refine(
+    (b) => Object.keys(b.permutationMap).every((k) => Number(k) >= 1 && Number(k) <= b.expectedQuestionCount),
+    { message: 'permutationMap contiene una pregunta fuera de rango.', path: ['permutationMap'] },
+  )
+  .refine((b) => b.passageMap.length === b.expectedPassageCount, { message: 'passageMap debe tener expectedPassageCount entradas.', path: ['passageMap'] })
+  .refine(
+    (b) => {
+      const sorted = [...b.passageMap].sort((x, y) => x.firstQuestion - y.firstQuestion);
+      if (sorted[0].firstQuestion !== 1) return false;
+      if (sorted[sorted.length - 1].lastQuestion !== b.expectedQuestionCount) return false;
+      return sorted.every((r, i) => r.lastQuestion >= r.firstQuestion && (i === 0 || r.firstQuestion === sorted[i - 1].lastQuestion + 1));
+    },
+    { message: 'passageMap debe cubrir 1..expectedQuestionCount con rangos contiguos.', path: ['passageMap'] },
+  );
+export type ExamCienciasBlueprint = z.infer<typeof examCienciasBlueprintSchema>;
+
+/**
+ * Blueprint APPROVED (versión FINAL post-patch) del Ensayo PAES Ciencias,
+ * Módulo Biología ZETRYND. `subjectKey: 'ciencias'` -- el `Exam` se asocia a la
+ * materia académica "Ciencias"; las QuestionVersions siguen aisladas bajo el
+ * Subject técnico `ensayos` + CurriculumTopic raíz `ENSAYO.CIENCIAS.BIOLOGIA`.
+ */
+export const ENSAYO_CIENCIAS_BIOLOGIA_BLUEPRINT: ExamCienciasBlueprint = examCienciasBlueprintSchema.parse({
+  family: 'CIENCIAS_MODULO_BIOLOGIA',
+  examKey: 'ENSAYO.CIENCIAS.BIOLOGIA',
+  title: 'Ensayo PAES Ciencias — Módulo Biología',
+  subjectKey: 'ciencias',
+  durationMinutes: 160,
+  expectedQuestionCount: 80,
+  expectedPassageCount: 41,
+  comunLastQuestion: 54,
+  expectedModule: { COMUN: 54, ELECTIVO_BIOLOGIA: 26 },
+  expectedDiscipline: { BIOLOGIA: 44, FISICA: 18, QUIMICA: 18 },
+  expectedDisciplineComun: { BIOLOGIA: 18, FISICA: 18, QUIMICA: 18 },
+  expectedDisciplineElectivo: { BIOLOGIA: 26, FISICA: 0, QUIMICA: 0 },
+  expectedSkill: {
+    OBSERVAR_Y_PLANTEAR_PREGUNTAS: 12,
+    PLANIFICAR_Y_CONDUCIR_UNA_INVESTIGACION: 16,
+    PROCESAR_Y_ANALIZAR_LA_EVIDENCIA: 28,
+    EVALUAR: 16,
+    COMUNICAR: 8,
+  },
+  expectedDifficulty: { FACIL: 20, MEDIA: 40, DIFICIL: 20 },
+  expectedAnswerDistribution: { A: 20, B: 20, C: 20, D: 20 },
+  compactKey: 'BDCCBADAABDCABCCBADCBBCDACDBDCCDAADBCDABBDABBACCABCABADDABCDACBDCCDAABBDDCDDAABC',
+  permutationMap: {
+    '3': 'BCAD', '8': 'CABD', '15': 'ABDC', '21': 'BACD', '22': 'ACBD', '23': 'ACBD', '29': 'BCDA', '31': 'ABDC',
+    '32': 'ACDB', '33': 'CABD', '44': 'ACBD', '47': 'ABDC', '51': 'ABDC', '52': 'CABD', '53': 'BACD', '54': 'BACD',
+    '56': 'ABDC', '65': 'BCAD', '68': 'BACD', '70': 'ACBD', '73': 'BCDA', '75': 'ACDB', '77': 'CABD', '80': 'ABDC',
+  },
+  passageMap: [
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T1', title: 'Especialización celular', firstQuestion: 1, lastQuestion: 3 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T2', title: 'Luz y fotosíntesis', firstQuestion: 4, lastQuestion: 5 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T3', title: 'Transmisión en una sinapsis química', firstQuestion: 6, lastQuestion: 6 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T4', title: 'Transferencia de energía en un ecosistema', firstQuestion: 7, lastQuestion: 7 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T5', title: 'Ondas electromagnéticas', firstQuestion: 8, lastQuestion: 9 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T6', title: 'Fuerza, aceleración y movimiento', firstQuestion: 10, lastQuestion: 12 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T7', title: 'Resistencia eléctrica', firstQuestion: 13, lastQuestion: 14 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T8', title: 'Temperatura y solubilidad', firstQuestion: 15, lastQuestion: 15 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T9', title: 'Separación de una mezcla', firstQuestion: 16, lastQuestion: 16 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T10', title: 'Estructura atómica', firstQuestion: 17, lastQuestion: 17 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T11', title: 'Conservación y relaciones cuantitativas', firstQuestion: 18, lastQuestion: 20 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T12', title: 'Cambios durante el ciclo ovárico y uterino', firstQuestion: 21, lastQuestion: 22 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T13', title: 'Bacterias y resistencia a un antibiótico', firstQuestion: 23, lastQuestion: 24 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T14', title: 'Estructura y función de los gametos', firstQuestion: 25, lastQuestion: 26 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T15', title: 'Movimiento de un carro', firstQuestion: 27, lastQuestion: 28 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T16', title: 'Formación de imágenes con una lente convergente', firstQuestion: 29, lastQuestion: 30 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T17', title: 'Sismos y subducción', firstQuestion: 31, lastQuestion: 32 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T18', title: 'Circuitos eléctricos', firstQuestion: 33, lastQuestion: 33 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T19', title: 'Propiedades físicas de sustancias puras', firstQuestion: 34, lastQuestion: 35 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T20', title: 'Determinación experimental de densidad', firstQuestion: 36, lastQuestion: 36 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T21', title: 'Modelo de una reacción química', firstQuestion: 37, lastQuestion: 38 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T22', title: 'Preparación de una disolución', firstQuestion: 39, lastQuestion: 40 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T23', title: 'Respiración celular en semillas', firstQuestion: 41, lastQuestion: 43 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T24', title: 'Respuesta del sistema nervioso a un estímulo', firstQuestion: 44, lastQuestion: 45 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T25', title: 'Refracción de la luz', firstQuestion: 46, lastQuestion: 47 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T26', title: 'Potencia y consumo de energía eléctrica', firstQuestion: 48, lastQuestion: 49 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T27', title: 'Serie de alcoholes', firstQuestion: 50, lastQuestion: 51 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T28', title: 'Separación de una disolución mediante destilación', firstQuestion: 52, lastQuestion: 52 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T29', title: 'Fórmula empírica de un compuesto', firstQuestion: 53, lastQuestion: 53 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T30', title: 'Temperatura y solubilidad', firstQuestion: 54, lastQuestion: 54 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T31', title: 'Manipulación genética y producción de un fármaco', firstQuestion: 55, lastQuestion: 56 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T32', title: 'Anatomía comparada y evolución', firstQuestion: 57, lastQuestion: 58 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T33', title: 'Punto de control del ciclo celular', firstQuestion: 59, lastQuestion: 60 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T34', title: 'Ciclo celular y cantidad de ADN', firstQuestion: 61, lastQuestion: 63 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T35', title: 'Mitosis y punto de control de metafase', firstQuestion: 64, lastQuestion: 65 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T36', title: 'Meiosis I y meiosis II', firstQuestion: 66, lastQuestion: 67 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T37', title: 'Resistencia y selección natural', firstQuestion: 68, lastQuestion: 70 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T38', title: 'Registro fósil y cambio a través del tiempo', firstQuestion: 71, lastQuestion: 73 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T39', title: 'Etapas de la fotosíntesis', firstQuestion: 74, lastQuestion: 75 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T40', title: 'Flujo de energía en una cadena trófica', firstQuestion: 76, lastQuestion: 77 },
+    { passageKey: 'ENSAYO.CIENCIAS.BIOLOGIA.T41', title: 'Factores que limitan la fotosíntesis', firstQuestion: 78, lastQuestion: 80 },
+  ],
+});
+
+/** Todos los ensayos de familia CIENCIAS_MODULO_BIOLOGIA declarados en V1. */
+export const ENSAYO_CIENCIAS_MANIFEST: ExamCienciasBlueprint[] = [ENSAYO_CIENCIAS_BIOLOGIA_BLUEPRINT];
+
+export function findCienciasBlueprint(examKey: string): ExamCienciasBlueprint | null {
+  return ENSAYO_CIENCIAS_MANIFEST.find((b) => b.examKey === examKey) ?? null;
+}
+
 /** Total de modulos de ensayo esperados (todas las familias). */
 export const ENSAYO_MODULE_COUNT =
-  ENSAYO_MANIFEST.length + ENSAYO_READING_MANIFEST.length + ENSAYO_HISTORIA_MANIFEST.length;
+  ENSAYO_MANIFEST.length + ENSAYO_READING_MANIFEST.length + ENSAYO_HISTORIA_MANIFEST.length + ENSAYO_CIENCIAS_MANIFEST.length;

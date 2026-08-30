@@ -29,10 +29,12 @@ import {
   ENSAYO_MANIFEST,
   ENSAYO_READING_MANIFEST,
   ENSAYO_HISTORIA_MANIFEST,
+  ENSAYO_CIENCIAS_MANIFEST,
   ENSAYO_MODULE_COUNT,
   findExamBlueprint,
   findReadingBlueprint,
   findHistoriaBlueprint,
+  findCienciasBlueprint,
 } from '../content/ensayo/manifest';
 import { questionPassageKey, type ExamSourceModule } from '../content/ensayo/schema';
 
@@ -44,6 +46,8 @@ function resolveBlueprintFor(examKey: string): { subjectKey: string; expectedQue
   if (reading) return { subjectKey: reading.subjectKey, expectedQuestionCount: reading.expectedQuestionCount };
   const historia = findHistoriaBlueprint(examKey);
   if (historia) return { subjectKey: historia.subjectKey, expectedQuestionCount: historia.expectedQuestionCount };
+  const ciencias = findCienciasBlueprint(examKey);
+  if (ciencias) return { subjectKey: ciencias.subjectKey, expectedQuestionCount: ciencias.expectedQuestionCount };
   return null;
 }
 
@@ -460,8 +464,13 @@ async function main(): Promise<void> {
   }
 
   const requestedKey = flags.get('exam-key');
-  // Orden determinista: MATEMATICA (M1, M2) -> COMPETENCIA_LECTORA -> HISTORIA.
-  const manifestOrder = [...ENSAYO_MANIFEST, ...ENSAYO_READING_MANIFEST, ...ENSAYO_HISTORIA_MANIFEST];
+  // Orden determinista: MATEMATICA (M1, M2) -> COMPETENCIA_LECTORA -> HISTORIA -> CIENCIAS.
+  const manifestOrder = [
+    ...ENSAYO_MANIFEST,
+    ...ENSAYO_READING_MANIFEST,
+    ...ENSAYO_HISTORIA_MANIFEST,
+    ...ENSAYO_CIENCIAS_MANIFEST,
+  ];
   const ordered = manifestOrder.map((bp) => loaded.find((l) => l.module.examKey === bp.examKey)!.module);
   const targets: ExamSourceModule[] = requestedKey
     ? ordered.filter((m) => m.examKey === requestedKey)
