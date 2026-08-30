@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../platform/prisma/prisma.service';
 import { GameSeasonRepository } from './game-season.repository';
 import { LeagueDefinitionRepository } from './league-definition.repository';
 import { LeagueGroupRepository } from './league-group.repository';
 import { SeasonLeagueParticipationRepository } from './season-league-participation.repository';
-import type { SeasonLeagueParticipation } from '../generated/prisma/client';
+import { RewardBundleRepository } from './reward-bundle.repository';
+import { RewardEvaluationWorker } from './reward-evaluation.worker';
+import type { LeagueDefinition, SeasonLeagueParticipation } from '../generated/prisma/client';
 
 /**
  * Namespace de advisory lock DISTINTO a los de ADR-0019 (`19`) y Bloque III
@@ -40,12 +42,16 @@ export type ParticipationStatusOutcome =
  */
 @Injectable()
 export class LeagueEnrollmentService {
+  private readonly logger = new Logger(LeagueEnrollmentService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly seasonRepo: GameSeasonRepository,
     private readonly leagueDefinitionRepo: LeagueDefinitionRepository,
     private readonly leagueGroupRepo: LeagueGroupRepository,
     private readonly participationRepo: SeasonLeagueParticipationRepository,
+    private readonly rewardBundleRepo: RewardBundleRepository,
+    private readonly rewardEvaluationWorker: RewardEvaluationWorker,
   ) {}
 
   /**
@@ -65,7 +71,7 @@ export class LeagueEnrollmentService {
     const targetLeagueDefinition = await this.resolveTargetTier(accountId);
     if (!targetLeagueDefinition) return { outcome: 'NO_ACTIVE_SEASON' };
 
-    return this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       async (tx) => {
         // $executeRaw, no $queryRaw: pg_advisory_xact_lock devuelve `void`.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(${LEAGUE_ENROLLMENT_LOCK_NAMESPACE}, hashtext(${season.id + ':' + targetLeagueDefinition.id}))`;
@@ -106,18 +112,69 @@ export class LeagueEnrollmentService {
       },
       { timeout: 30_000, maxWait: 30_000 },
     );
+
+    // COSMETICS-V1 §4/§9 -- al inscribirse REALMENTE en un tier por primera
+    // vez, entregar su marco de liga (permanente, idempotente, nunca
+    // autoequip). Fuera de la transacción (mismo criterio que la entrega de
+    // rewards de nivel en RewardEvaluationWorker) y "best-effort": un fallo
+    // de entrega NUNCA revierte la inscripción -- el grant queda
+    // `reward:LEAGUE:{leagueDefinitionId}` y se reintenta en la próxima
+    // inscripción a esa misma liga.
+    if (result.created) {
+      await this.deliverLeagueFrameReward(accountId, targetLeagueDefinition);
+    }
+    return result;
   }
 
   /**
-   * §9.2 -- estudiante nuevo: tier más bajo, sin excepción. Estudiante
-   * recurrente: el tier de su última participación (el ascenso/descenso real
-   * es responsabilidad de Incremento 2, no de este método).
+   * §4/§9 -- entrega idempotente del marco de la liga `league` a `accountId`
+   * usando EXACTAMENTE el mecanismo genérico existente
+   * (`RewardEvaluationWorker.deliverBundleComponents`), fuente `LEAGUE`,
+   * `sourceEntityId = league.id`. `idempotencyKey = reward:LEAGUE:{league.id}`
+   * -> volver a inscribirse en la misma liga en otra temporada NO duplica la
+   * propiedad. Sin bundle configurado -> nada que entregar.
    */
-  private async resolveTargetTier(accountId: string) {
+  private async deliverLeagueFrameReward(accountId: string, league: LeagueDefinition): Promise<void> {
+    if (!league.rewardBundleId) return;
+    try {
+      const bundle = await this.rewardBundleRepo.findById(league.rewardBundleId);
+      if (!bundle) {
+        this.logger.error(`Liga "${league.leagueKey}" referencia un reward_bundle_id inexistente (${league.rewardBundleId}).`);
+        return;
+      }
+      const { allResolved } = await this.rewardEvaluationWorker.deliverBundleComponents(accountId, bundle, 'LEAGUE', league.id);
+      if (!allResolved) {
+        this.logger.warn(`Marco de liga "${league.leagueKey}" quedó PENDING para la cuenta ${accountId} -- se reintentará en la próxima inscripción a esa liga.`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Fallo entregando el marco de liga "${league.leagueKey}" a la cuenta ${accountId}: ${message}`);
+    }
+  }
+
+  /**
+   * §3 (decisión Product/TPM) -- estudiante nuevo (sin ninguna participación
+   * previa): tier más bajo (Bronce), sin excepción. Estudiante recurrente: se
+   * parte del tier de su ÚLTIMA participación y se aplica su resultado:
+   *   PROMOTED -> tier ACTIVE inmediatamente superior (Gran Maestro: se queda)
+   *   DEMOTED  -> tier ACTIVE inmediatamente inferior (Bronce: se queda)
+   *   cualquier otro estado (RETAINED / SEASON_ENDED / ACTIVE) -> mismo tier
+   * Sin subdivisiones, sin saltos. `LeaderboardFinalizationService` es quien
+   * decide PROMOTED/DEMOTED/RETAINED al cerrar el grupo (Incremento 2, ADR-0020).
+   */
+  private async resolveTargetTier(accountId: string): Promise<LeagueDefinition | null> {
     const mostRecent = await this.participationRepo.findMostRecentByAccountId(accountId);
     if (mostRecent) {
-      const previousTier = await this.leagueDefinitionRepo.findById(mostRecent.leagueDefinitionId);
-      if (previousTier && previousTier.status === 'ACTIVE') return previousTier;
+      const fromTier = await this.leagueDefinitionRepo.findById(mostRecent.leagueDefinitionId);
+      if (fromTier && fromTier.status === 'ACTIVE') {
+        if (mostRecent.participationStatus === 'PROMOTED') {
+          return (await this.leagueDefinitionRepo.findAdjacentActiveTier(fromTier.tierOrder, 'up')) ?? fromTier;
+        }
+        if (mostRecent.participationStatus === 'DEMOTED') {
+          return (await this.leagueDefinitionRepo.findAdjacentActiveTier(fromTier.tierOrder, 'down')) ?? fromTier;
+        }
+        return fromTier;
+      }
     }
     return this.leagueDefinitionRepo.findLowestActiveTier();
   }

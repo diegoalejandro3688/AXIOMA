@@ -6,6 +6,7 @@ import {
   answerOptionContentSchema,
 } from '@axioma/contracts';
 import { PrismaClient } from '../src/generated/prisma/client';
+import { levelLadderThresholds } from '../src/gamification/level-thresholds';
 
 /**
  * Seed idempotente: correr este script N veces produce el mismo estado final,
@@ -282,9 +283,10 @@ async function seedQuestion(input: {
  * Upsert por `levelNumber` -- correr este script N veces no duplica filas.
  */
 async function seedLevelLadder() {
-  const thresholds = [0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700];
-  for (const [index, minimumLifetimeXp] of thresholds.entries()) {
-    const levelNumber = index + 1;
+  // COSMETICS-V1 / B1 -- escalera extendida a 70 niveles vía la misma
+  // progresión (`25*n*(n+1)-50`) que ya definía los niveles 1..10; esos
+  // umbrales quedan numéricamente idénticos. Ver src/gamification/level-thresholds.ts.
+  for (const { levelNumber, minimumLifetimeXp } of levelLadderThresholds()) {
     await prisma.levelDefinition.upsert({
       where: { levelNumber },
       update: { minimumLifetimeXp },

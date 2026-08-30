@@ -322,7 +322,15 @@ async function main() {
   console.log('--- 8. Reintento no duplica (Gate 53) ---');
   const outcomeL2 = await worker.processAccount(accountL);
   check('reintento (sin pendientes nuevas) -> PROCESSED', outcomeL2 === 'PROCESSED');
-  const inventoryCountL = await pg.query('SELECT count(*)::int AS n FROM inventory_item WHERE account_id = $1', [accountL]);
+  // COSMETICS-V1: la BD de gates comparte level_definition con los premios de
+  // nivel del catálogo V1 (niveles 10..70 con reward_bundle_id), que este
+  // accountL -- con saldo XP por encima del nivel 70 -- también recibe. El
+  // invariante que valida "reintento no duplica" es "no hay una segunda copia
+  // DEL cosmético otorgado por ESTE bundle", no el total de la cuenta.
+  const inventoryCountL = await pg.query('SELECT count(*)::int AS n FROM inventory_item WHERE account_id = $1 AND cosmetic_item_id = $2', [
+    accountL,
+    cosmeticItem.id,
+  ]);
   check('sigue existiendo UNA sola inventory_item tras el reintento', inventoryCountL.rows[0].n === 1);
 
   console.log('--- 9. Entrega real vía el worker: fuente ACHIEVEMENT_UNLOCK, componente COSMETIC (Gate 51) ---');

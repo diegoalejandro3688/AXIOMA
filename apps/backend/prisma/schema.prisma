@@ -1009,6 +1009,13 @@ enum RewardSourceEntityType {
   /// real (LEVEL/ACHIEVEMENT_UNLOCK/CHALLENGE_CLAIM) -- distinción de
   /// procedencia honesta en `inventory_item.acquisition_source_type`.
   SYSTEM_STARTER
+  /// COSMETICS-V1 -- procedencia de los marcos de liga entregados al
+  /// inscribirse por primera vez en cada tier (`LeagueEnrollmentService`).
+  /// `sourceEntityId` = `LeagueDefinition.id`: identidad estable del reward
+  /// por liga, INDEPENDIENTE de la temporada -- volver a inscribirse en la
+  /// misma liga en otra temporada nunca duplica la propiedad
+  /// (`idempotencyKey = reward:LEAGUE:{leagueDefinitionId}`).
+  LEAGUE
 
   @@map("reward_source_entity_type")
 }

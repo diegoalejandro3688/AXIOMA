@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, View } from 'react-native';
 import type { CosmeticSlotValue, ListCosmeticsResponse, OwnedCosmetic } from '@axioma/contracts';
 import { listCosmetics, equipCosmetic } from '../lib/api/cosmetics';
 import { SLOT_LABEL, groupOwnedCosmetics, groupLockedCosmetics } from '../lib/cosmetics/group-cosmetics';
@@ -123,6 +123,8 @@ export function CosmeticSlotCard({ slot, controller }: { slot: CosmeticSlotValue
   const isExpanded = expandedSlot === slot;
   const isEquipping = equippingSlot === slot;
   const isAvatarLikeSlot = slot === 'AVATAR' || slot === 'AVATAR_FRAME';
+  // COSMETICS-V1 §21.E -- el banner NO es circular: preview rectangular con recorte `cover`.
+  const isBannerSlot = slot === 'PROFILE_BANNER';
 
   return (
     <Card variant="outlined" style={styles.card}>
@@ -133,8 +135,19 @@ export function CosmeticSlotCard({ slot, controller }: { slot: CosmeticSlotValue
         disabled={equippingSlot !== null}
         style={styles.slotHeader}
       >
-        <View style={styles.slotPreview}>
-          {isAvatarLikeSlot ? (
+        <View style={isBannerSlot ? styles.bannerPreview : styles.slotPreview}>
+          {isBannerSlot ? (
+            equippedItem ? (
+              <Image
+                source={{ uri: equippedItem.assetReference }}
+                style={styles.bannerPreviewImage}
+                resizeMode="cover"
+                accessibilityLabel={`Banner ${equippedItem.name}`}
+              />
+            ) : (
+              <View style={styles.bannerPreviewPlaceholder} />
+            )
+          ) : isAvatarLikeSlot ? (
             <Avatar avatarUri={equippedItem?.assetReference ?? null} size="small" />
           ) : equippedItem ? (
             <Avatar avatarUri={equippedItem.assetReference} size="small" />
@@ -213,6 +226,10 @@ function createStyles(t: ThemeTokens) {
     slotHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12 },
     slotPreview: { width: 40, height: 40, borderRadius: 8, overflow: 'hidden' as const, backgroundColor: t.color.background.default },
     previewPlaceholder: { width: 40, height: 40, borderWidth: 1, borderColor: t.color.border.default, borderRadius: 8 },
+    // COSMETICS-V1 §21.E -- preview de banner: rectángulo apaisado (~3:1), nunca círculo.
+    bannerPreview: { width: 66, height: 24, borderRadius: 6, overflow: 'hidden' as const, backgroundColor: t.color.background.default },
+    bannerPreviewImage: { width: '100%' as const, height: '100%' as const },
+    bannerPreviewPlaceholder: { width: '100%' as const, height: '100%' as const, borderWidth: 1, borderColor: t.color.border.default, borderRadius: 6 },
     slotInfo: { flex: 1, gap: 2 },
     slotLabel: { textTransform: 'uppercase' as const },
     optionsList: { gap: 6, paddingTop: 4, borderTopWidth: 1, borderTopColor: t.color.border.default },

@@ -59,4 +59,23 @@ export class LeagueDefinitionRepository {
       orderBy: { tierOrder: 'desc' },
     });
   }
+
+  /**
+   * COSMETICS-V1 / B2 (decisión Product/TPM §3) -- el tier ACTIVE
+   * inmediatamente por encima (`direction: 'up'`) o por debajo
+   * (`direction: 'down'`) de `fromTierOrder`. `null` si no existe
+   * (`fromTierOrder` es el extremo) -- el llamador aplica la excepción de
+   * borde (Bronce no desciende, Gran Maestro no asciende). Primitiva
+   * mínima: una sola consulta ordenada, sin subdivisiones ni saltos.
+   */
+  findAdjacentActiveTier(fromTierOrder: number, direction: 'up' | 'down', tx?: Prisma.TransactionClient): Promise<LeagueDefinition | null> {
+    const client: Client = tx ?? this.prisma;
+    return client.leagueDefinition.findFirst({
+      where: {
+        status: 'ACTIVE',
+        tierOrder: direction === 'up' ? { gt: fromTierOrder } : { lt: fromTierOrder },
+      },
+      orderBy: { tierOrder: direction === 'up' ? 'asc' : 'desc' },
+    });
+  }
 }

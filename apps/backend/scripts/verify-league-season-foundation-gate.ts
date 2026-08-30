@@ -20,6 +20,21 @@ import { LeagueEnrollmentService } from '../src/gamification/league-enrollment.s
 import { LeaguePointGrantService } from '../src/gamification/league-point-grant.service';
 import { SeasonTransitionService } from '../src/gamification/season-transition.service';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
+import { RewardBundleRepository } from '../src/gamification/reward-bundle.repository';
+import { RewardGrantRepository } from '../src/gamification/reward-grant.repository';
+import { RewardGrantComponentRepository } from '../src/gamification/reward-grant-component.repository';
+import { RewardEvaluationCursorRepository } from '../src/gamification/reward-evaluation-cursor.repository';
+import { RewardEvaluationWorker } from '../src/gamification/reward-evaluation.worker';
+import { XpLedgerEntryRepository } from '../src/gamification/xp-ledger-entry.repository';
+import { XpBalanceRepository } from '../src/gamification/xp-balance.repository';
+import { LevelDefinitionRepository } from '../src/gamification/level-definition.repository';
+import { ProgressionService } from '../src/gamification/progression.service';
+import { AchievementDefinitionRepository } from '../src/gamification/achievement-definition.repository';
+import { AchievementVersionRepository } from '../src/gamification/achievement-version.repository';
+import { AchievementProgressRepository } from '../src/gamification/achievement-progress.repository';
+import { AchievementUnlockRepository } from '../src/gamification/achievement-unlock.repository';
+import { AccountTitleRepository } from '../src/gamification/account-title.repository';
+import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
 
 let failures = 0;
@@ -47,7 +62,45 @@ async function main() {
   const activityRepo = new ValidatedGamificationActivityRepository(prisma);
   const txRunner = new TransactionRunnerService(prisma);
 
-  const enrollmentService = new LeagueEnrollmentService(prisma, seasonRepo, leagueDefinitionRepo, leagueGroupRepo, participationRepo);
+  // COSMETICS-V1 / B2 -- LeagueEnrollmentService ahora entrega el marco de
+  // liga vía el mecanismo genérico de rewards al inscribirse; hay que
+  // construir el worker real (mismo patrón que verify-personalization-catalog-gate).
+  const bundleRepo = new RewardBundleRepository(prisma);
+  const grantRepo = new RewardGrantRepository(prisma);
+  const componentRepo = new RewardGrantComponentRepository(prisma);
+  const cursorRepo = new RewardEvaluationCursorRepository(prisma);
+  const ledgerEntryRepo = new XpLedgerEntryRepository(prisma);
+  const balanceRepo = new XpBalanceRepository(prisma);
+  const levelDefRepo = new LevelDefinitionRepository(prisma);
+  const progressionService = new ProgressionService(balanceRepo, ledgerEntryRepo, levelDefRepo);
+  const inventoryItemRepo = new InventoryItemRepository(prisma);
+  const rewardWorker = new RewardEvaluationWorker(
+    prisma,
+    ledgerEntryRepo,
+    cursorRepo,
+    balanceRepo,
+    progressionService,
+    levelDefRepo,
+    bundleRepo,
+    grantRepo,
+    componentRepo,
+    txRunner,
+    new AchievementDefinitionRepository(prisma),
+    new AchievementVersionRepository(prisma),
+    new AchievementProgressRepository(prisma),
+    new AchievementUnlockRepository(prisma),
+    new AccountTitleRepository(prisma),
+    inventoryItemRepo,
+  );
+  const enrollmentService = new LeagueEnrollmentService(
+    prisma,
+    seasonRepo,
+    leagueDefinitionRepo,
+    leagueGroupRepo,
+    participationRepo,
+    bundleRepo,
+    rewardWorker,
+  );
   const grantService = new LeaguePointGrantService(txRunner, activityRepo, participationRepo, seasonRepo, leagueGroupRepo, ruleRepo, ledgerRepo);
   const transitionService = new SeasonTransitionService(prisma, seasonRepo, leagueGroupRepo, participationRepo);
 

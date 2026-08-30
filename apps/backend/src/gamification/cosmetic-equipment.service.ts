@@ -3,6 +3,7 @@ import { InventoryItemRepository, type InventoryItemWithCosmeticItem } from './i
 import { CosmeticItemRepository } from './cosmetic-item.repository';
 import { EquippedCosmeticRepository, type EquippedCosmeticWithDetails } from './equipped-cosmetic.repository';
 import { UnlockRequirementResolverService, type UnlockRequirementView } from './unlock-requirement-resolver.service';
+import { COSMETICS_V1_STARTER_ITEM_KEYS } from './cosmetics-v1-catalog';
 import type { CosmeticItem, CosmeticSlot } from '../generated/prisma/client';
 
 export interface LockedCosmeticView {
@@ -11,24 +12,15 @@ export interface LockedCosmeticView {
 }
 
 /**
- * COSMETICS-STARTER-1 -- ÚNICO punto autoritativo de los `itemKey` que
- * forman el Starter Kit (decisión del Product Owner, 2026-08-22). Excluye
- * deliberadamente `asset1-frame-madera-nivel5`: su nombre expresa una
- * intención de producto de desbloqueo por nivel 5, aunque hoy no esté
- * conectado a ningún `reward_bundle` real -- no debe regalarse por una vía
- * distinta a la que eventualmente lo desbloquee. Ninguna otra capa (mobile,
- * seeds, controllers) debe declarar esta lista de forma independiente.
+ * Starter Kit -- ÚNICO punto autoritativo de los `itemKey` que se otorgan a
+ * toda cuenta. COSMETICS-V1 (decisión Product/TPM §10): 32 ítems = 30 AVATAR
+ * + 2 PROFILE_BANNER (Templo del Conocimiento + Observatorio del Horizonte).
+ * SIN marcos, SIN badges, SIN los banners nuevos (esos se desbloquean por
+ * nivel). La lista se DERIVA del catálogo V1 versionado
+ * (`cosmetics-v1-catalog.ts`) -- no hay una segunda fuente de verdad; ninguna
+ * otra capa (mobile, seeds, controllers) declara esta lista por su cuenta.
  */
-const STARTER_COSMETIC_ITEM_KEYS: readonly string[] = [
-  'asset1-avatar-buho',
-  'asset1-banner-templo-conocimiento',
-  'asset2-avatar-pi',
-  'asset2-avatar-astrolabio',
-  'asset2-avatar-humano-lentes',
-  'asset2-frame-plata',
-  'asset2-frame-bronce',
-  'asset2-banner-observatorio-horizonte',
-];
+const STARTER_COSMETIC_ITEM_KEYS: readonly string[] = COSMETICS_V1_STARTER_ITEM_KEYS;
 
 /** Constante, no ligada a ninguna cuenta -- el Starter Kit no es un evento por-cuenta, es la misma política para todas. */
 const STARTER_KIT_ACQUISITION_SOURCE_ID = 'starter-kit';

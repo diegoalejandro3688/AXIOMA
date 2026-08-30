@@ -6,7 +6,7 @@ import { Text } from '../../../components/ui';
 import { useTheme, useThemedStyles, spacing } from '../../../theme';
 import type { ThemeTokens } from '../../../theme';
 
-type PersonalizationTab = 'avatar' | 'banner' | 'insignia' | 'titulo';
+type PersonalizationTab = 'avatar' | 'banner' | 'titulo';
 
 /**
  * PROFILE-2 (decisión del Product Owner, 2026-08-22) -- superficie dedicada
@@ -18,15 +18,22 @@ type PersonalizationTab = 'avatar' | 'banner' | 'insignia' | 'titulo';
  * privacidad, cerrar sesión) se movió al panel de Ajustes en
  * `perfil/index.tsx` (abierto desde el engranaje del hero).
  *
- * Cuatro tabs -- Avatar | Banner | Insignia | Título -- como estado local
- * (mismo patrón ya aprobado en `perfil/index.tsx` para Resumen/Estadísticas:
- * sin rutas hijas, sin tabs globales). `useCosmeticsController()` se
- * instancia UNA sola vez aquí arriba -- un único `listCosmetics()` para
- * toda la pantalla; cambiar de tab solo cambia qué `CosmeticSlotCard` ya
- * resuelto se muestra, sin volver a pedir nada al servidor. La tab
- * "Avatar" muestra DOS `CosmeticSlotCard` independientes (`AVATAR` +
- * `AVATAR_FRAME`) -- mismo controlador compartido, pero cada uno lee/
- * escribe únicamente su propia clave, sin fusionar contrato ni estado.
+ * Tres tabs -- Avatar | Banner | Título -- como estado local (mismo patrón ya
+ * aprobado en `perfil/index.tsx` para Resumen/Estadísticas: sin rutas hijas,
+ * sin tabs globales). `useCosmeticsController()` se instancia UNA sola vez
+ * aquí arriba -- un único `listCosmetics()` para toda la pantalla; cambiar de
+ * tab solo cambia qué `CosmeticSlotCard` ya resuelto se muestra, sin volver a
+ * pedir nada al servidor. La tab "Avatar" muestra DOS `CosmeticSlotCard`
+ * independientes (`AVATAR` + `AVATAR_FRAME`) -- mismo controlador compartido,
+ * pero cada uno lee/escribe únicamente su propia clave, sin fusionar contrato
+ * ni estado.
+ *
+ * COSMETICS-V1 (decisión Product/TPM §12) -- la pestaña "Insignia" (slot
+ * `BADGE`) se retira de la SUPERFICIE PRODUCTIVA: los cosméticos de insignia
+ * no entran en V1. La infraestructura backend (`CosmeticSlot.BADGE`,
+ * contratos, triggers, migraciones) queda intacta/latente -- este cambio es
+ * de presentación únicamente. `FeaturedAchievement` (logros destacados) y los
+ * títulos son sistemas distintos y no se tocan.
  *
  * "Título" reutiliza `TitlesSection` TAL CUAL -- ya era autosuficiente
  * (fetch propio, acordeón, reconciliación), nunca dependió del agregador
@@ -41,7 +48,6 @@ export default function PersonalizacionScreen() {
   const tabs: { key: PersonalizationTab; label: string }[] = [
     { key: 'avatar', label: 'Avatar' },
     { key: 'banner', label: 'Banner' },
-    { key: 'insignia', label: 'Insignia' },
     { key: 'titulo', label: 'Título' },
   ];
 
@@ -78,11 +84,6 @@ export default function PersonalizacionScreen() {
       {tab === 'banner' ? (
         <View style={styles.tabContent}>
           <CosmeticSlotCard slot="PROFILE_BANNER" controller={cosmeticsController} />
-        </View>
-      ) : null}
-      {tab === 'insignia' ? (
-        <View style={styles.tabContent}>
-          <CosmeticSlotCard slot="BADGE" controller={cosmeticsController} />
         </View>
       ) : null}
       {tab === 'titulo' ? (
