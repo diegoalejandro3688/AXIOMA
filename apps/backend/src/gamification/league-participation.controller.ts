@@ -15,6 +15,7 @@ function toEnrolledPayload(view: EnrolledParticipationView) {
     outcome: 'ENROLLED' as const,
     leagueName: view.leagueName,
     leagueTier: view.leagueTier,
+    leaguePoints: view.leaguePoints,
     joinedAt: view.joinedAt.toISOString(),
     status: view.participationStatus,
     season: { startsAt: view.season.startsAt.toISOString(), endsAt: view.season.endsAt.toISOString() },

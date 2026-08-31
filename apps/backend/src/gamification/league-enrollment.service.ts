@@ -30,6 +30,15 @@ export type EnrolledParticipationView = {
   leagueName: string;
   /** COMPETITIVE V1 -- `tierOrder` del tier actual (1..7). Dato de producto, nunca un id interno. */
   leagueTier: number;
+  /**
+   * COMPETITIVE V1 (parche final de QA) -- saldo VIVO de puntos de liga
+   * (`season_league_participation.league_points`), el balance denormalizado
+   * y autoritativo que `LeaguePointGrantService` incrementa ~cada minuto.
+   * Se expone aquí para que la tarjeta de Liga muestre LP al instante, sin
+   * esperar al recálculo del leaderboard (:00/:15/:30/:45). La POSICIÓN
+   * sigue viniendo del leaderboard (`competitive-profile`), nunca de aquí.
+   */
+  leaguePoints: number;
   joinedAt: Date;
   participationStatus: SeasonLeagueParticipation['participationStatus'];
   /** COMPETITIVE V1 -- ventana de la temporada (solo fechas, nunca el id de `game_season`). */
@@ -223,6 +232,7 @@ export class LeagueEnrollmentService {
     return {
       leagueName: league.name,
       leagueTier: league.tierOrder,
+      leaguePoints: participation.leaguePoints,
       joinedAt: participation.joinedAt,
       participationStatus: participation.participationStatus,
       season: { startsAt: season.startsAt, endsAt: season.endsAt },

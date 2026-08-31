@@ -266,31 +266,37 @@ export default function CompetirScreen() {
             </Text>
           </View>
         ) : (
+          // COMPETITIVE V1 (parche final de QA) -- LP y POSICIÓN son dos
+          // conceptos distintos con dos fuentes distintas: los LP son el
+          // saldo VIVO de la participación (`view.leaguePoints`, se
+          // actualiza ~cada minuto) y SIEMPRE se muestran; la posición
+          // viene del leaderboard (`position`, recalculado en
+          // :00/:15/:30/:45) y puede estar "poniéndose al día". El número de
+          // posición solo aparece cuando el backend ya calculó uno real; los
+          // LP solo son cero si el saldo real de la participación es cero.
           <View style={styles.leagueStatsRow}>
-            {position.kind === 'known' ? (
-              <>
-                <View style={styles.leagueStat}>
-                  <Text variant="titleLarge" weight="bold">
-                    #{position.rankPosition}
-                  </Text>
-                  <Text variant="caption" color="muted">
-                    posición
-                  </Text>
-                </View>
-                <View style={styles.leagueStat}>
-                  <Text variant="titleLarge" weight="bold">
-                    {position.metricValue}
-                  </Text>
-                  <Text variant="caption" color="muted">
-                    LP
-                  </Text>
-                </View>
-              </>
-            ) : (
-              <Text variant="bodySmall" color="secondary">
-                Actualizando posición…
+            <View style={styles.leagueStat}>
+              {position.kind === 'known' ? (
+                <Text variant="titleLarge" weight="bold">
+                  #{position.rankPosition}
+                </Text>
+              ) : (
+                <Text variant="bodySmall" color="secondary" style={styles.leagueStatPending}>
+                  Actualizando posición…
+                </Text>
+              )}
+              <Text variant="caption" color="muted">
+                posición
               </Text>
-            )}
+            </View>
+            <View style={styles.leagueStat}>
+              <Text variant="titleLarge" weight="bold">
+                {view.leaguePoints}
+              </Text>
+              <Text variant="caption" color="muted">
+                LP
+              </Text>
+            </View>
           </View>
         )}
 
@@ -490,6 +496,7 @@ function createStyles(t: ThemeTokens) {
     },
     leagueStatsRow: { flexDirection: 'row' as const, gap: spacing.space6, alignItems: 'flex-end' as const },
     leagueStat: { gap: 2 },
+    leagueStatPending: { paddingBottom: 2 },
     outcomePill: {
       alignSelf: 'flex-start' as const,
       flexDirection: 'row' as const,

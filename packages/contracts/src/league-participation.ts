@@ -14,10 +14,17 @@ import { isoDateTime } from './common';
  * cuerpo acepta tier, grupo ni identidad. Ninguna respuesta expone
  * `leagueDefinitionId`/`seasonLeagueParticipationId`/`gameSeasonId`/
  * `leagueGroupId`/`accountId` -- mismo criterio que `competitiveContextSchema`
- * (ADR-0021 §2/§3). Deliberadamente SIN `leaguePoints`: el saldo y la
- * posición siguen perteneciendo a los endpoints competitivos existentes
- * (`/user/public-profile/me/competitive-profile`), este contrato es
- * EXCLUSIVAMENTE sobre el hecho de estar o no inscrito.
+ * (ADR-0021 §2/§3).
+ *
+ * COMPETITIVE V1 (parche final de QA) -- la respuesta ENROLLED SÍ incluye
+ * `leaguePoints`: el saldo VIVO denormalizado de
+ * `season_league_participation.league_points`, no la posición. El motivo:
+ * el leaderboard se recalcula solo en :00/:15/:30/:45, así que un usuario
+ * recién inscrito o activo veía "Actualizando posición…" sin ningún LP
+ * durante hasta ~15 min aunque su saldo ya se hubiese actualizado. La
+ * POSICIÓN sigue perteneciendo EXCLUSIVAMENTE a los endpoints competitivos
+ * (`/user/public-profile/me/competitive-profile`); este contrato nunca
+ * expone rank.
  */
 
 export const leagueParticipationBodySchema = z.object({}).strict();
@@ -47,6 +54,14 @@ export const enrolledLeagueParticipationSchema = z.object({
    * del marco equipado (que puede ser de otra liga -- ADR-COSMETICS).
    */
   leagueTier: z.number().int().positive(),
+  /**
+   * COMPETITIVE V1 -- saldo VIVO de puntos de liga
+   * (`season_league_participation.league_points`), entero y no negativo,
+   * autoritativo desde el servidor. NO es la posición: el móvil lo muestra
+   * al instante mientras la posición del leaderboard "se pone al día" en el
+   * siguiente recálculo (:00/:15/:30/:45).
+   */
+  leaguePoints: z.number().int().nonnegative(),
   joinedAt: isoDateTime,
   /** COMPETITIVE V1 -- ventana de la temporada de esta participación. */
   season: enrolledSeasonWindowSchema,

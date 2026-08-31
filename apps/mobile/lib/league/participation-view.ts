@@ -11,6 +11,13 @@ export type LeagueParticipationView =
       leagueName: string;
       /** COMPETITIVE V1 -- `tierOrder` (1 = Bronce … 7 = Gran Maestro), para el arte/insignia de liga. */
       leagueTier: number;
+      /**
+       * COMPETITIVE V1 -- saldo VIVO de LP (server-authoritative). Se
+       * reenvía tal cual, nunca se deriva ni se incrementa localmente. La
+       * tarjeta de Liga lo muestra al instante; la POSICIÓN sigue viniendo
+       * del `CompetitiveContext` del leaderboard.
+       */
+      leaguePoints: number;
       status: string;
       /** COMPETITIVE V1 -- ventana de la temporada, ISO strings, para la cuenta regresiva. */
       season: { startsAt: string; endsAt: string };
@@ -33,6 +40,7 @@ export function describeParticipation(
       kind: 'enrolled',
       leagueName: response.leagueName,
       leagueTier: response.leagueTier,
+      leaguePoints: response.leaguePoints,
       status: response.status,
       season: { startsAt: response.season.startsAt, endsAt: response.season.endsAt },
     };

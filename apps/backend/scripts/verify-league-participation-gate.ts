@@ -116,8 +116,12 @@ async function main() {
   check('leagueName presente', typeof post1.body?.leagueName === 'string' && post1.body.leagueName.length > 0);
   check('status ACTIVE (recién inscrita)', post1.body?.status === 'ACTIVE');
   check('joinedAt es ISO string', typeof post1.body?.joinedAt === 'string' && !Number.isNaN(Date.parse(post1.body.joinedAt)));
-  const forbiddenKeys = ['accountId', 'leagueDefinitionId', 'seasonLeagueParticipationId', 'gameSeasonId', 'leagueGroupId', 'leaguePoints'];
-  check('sin ninguna clave prohibida (IDs internos ni leaguePoints)', forbiddenKeys.every((k) => !(k in (post1.body ?? {}))));
+  // COMPETITIVE V1 (parche final de QA) -- `leaguePoints` (saldo VIVO) SÍ se
+  // expone; la posición NUNCA (rank/rankPosition/currentRank siguen prohibidos).
+  check('leaguePoints presente, entero, no negativo', Number.isInteger(post1.body?.leaguePoints) && post1.body.leaguePoints >= 0);
+  check('participación recién creada -> leaguePoints === 0', post1.body?.leaguePoints === 0);
+  const forbiddenKeys = ['accountId', 'leagueDefinitionId', 'seasonLeagueParticipationId', 'gameSeasonId', 'leagueGroupId', 'currentRank', 'rankPosition', 'finalRank'];
+  check('sin ninguna clave prohibida (IDs internos ni posición)', forbiddenKeys.every((k) => !(k in (post1.body ?? {}))));
   check('la respuesta cruda tampoco contiene esas cadenas', forbiddenKeys.every((k) => !post1.raw.includes(k)));
 
   console.log('--- 4. GET después del POST: ENROLLED, MISMO leagueName/joinedAt/status (persistente, "antes y después de reiniciar la app") ---');
@@ -143,6 +147,16 @@ async function main() {
   check('MISMO joinedAt que la primera inscripción (no se reinscribió)', post2.body?.joinedAt === post1.body?.joinedAt);
   const aliceRowCount = await pg.query('SELECT count(*)::int AS n FROM season_league_participation WHERE account_id = $1', [alice.accountId]);
   check('exactamente UNA fila real para Alice', aliceRowCount.rows[0].n === 1);
+
+  console.log('--- 6b. leaguePoints refleja el saldo persistido de season_league_participation.league_points ---');
+  // `LeaguePointGrantService` incrementa esta columna en producción; aquí se
+  // simula el efecto con un UPDATE dirigido (mismo criterio "fixture por SQL"
+  // que el resto del gate) para probar que el endpoint LEE la columna viva.
+  await pg.query('UPDATE season_league_participation SET league_points = 7 WHERE account_id = $1 AND game_season_id = $2', [alice.accountId, season.id]);
+  const getAfterLp = await req('GET', LP, alice.headers);
+  check('GET tras cambiar el saldo -> leaguePoints === 7 (lee el valor persistido, no lo recalcula)', getAfterLp.body?.leaguePoints === 7);
+  check('GET sigue sin exponer posición', !('rankPosition' in (getAfterLp.body ?? {})) && !('currentRank' in (getAfterLp.body ?? {})));
+  await pg.query('UPDATE season_league_participation SET league_points = 0 WHERE account_id = $1 AND game_season_id = $2', [alice.accountId, season.id]);
 
   console.log('--- 7. Cinco POST CONCURRENTES de una cuenta NUEVA -> UNA sola participación real ---');
   const carol = await createSession('carol');
