@@ -1,22 +1,25 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, SectionList, View } from 'react-native';
+import { ActivityIndicator, SectionList, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import type { ChallengeSummary, CompetitiveContext } from '@axioma/contracts';
+import type { ChallengeSummary, CompetitiveContext, CompetitiveZone, SeasonHistoryEntry } from '@axioma/contracts';
 import { listChallenges, claimChallenge } from '../../../lib/api/challenges';
-import { getLeagueParticipation, joinLeague } from '../../../lib/api/league';
+import { getLeagueParticipation, joinLeague, getLeagueHistory } from '../../../lib/api/league';
 import { getMyCompetitiveProfile } from '../../../lib/api/competitive';
 import { groupChallenges, progressRatio, canClaim } from '../../../lib/challenges/group-challenges';
 import { challengeTypeLabel, formatCountdown, formatRewardXp, claimCtaLabel, isPastPeriod } from '../../../lib/challenges/challenge-card-view';
 import { describeParticipation, type LeagueParticipationView } from '../../../lib/league/participation-view';
 import { seasonCountdown } from '../../../lib/league/season-countdown';
+import { leagueVisual } from '../../../lib/league/league-visual';
 import { describeMyPosition } from '../../../lib/leaderboard/paginate-leaderboard';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
 import { Text, Card, Button, Progress, Icon } from '../../../components/ui';
 import { QuickQuestionIllustration } from '../../../components/competitive/quick-question-illustration';
-import { useTheme, useThemedStyles, spacing, radii } from '../../../theme';
-import type { ThemeTokens } from '../../../theme';
+import { LeagueEmblem } from '../../../components/competitive/league-emblem';
+import { LeagueTrophy } from '../../../components/competitive/league-trophy';
+import { useTheme, useThemedStyles, useColorSchemeName, spacing, radii } from '../../../theme';
+import type { ThemeTokens, IconName } from '../../../theme';
 
 type ScreenState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; challenges: ChallengeSummary[] };
 
@@ -32,7 +35,11 @@ const STATUS_LABEL: Record<ChallengeSummary['challengeStatus'], string> = {
   CLAIMED: 'Reclamado',
 };
 
-/** COMPETITIVE V1 -- copy compacto para los estados "finales" de participación (§20). */
+/**
+ * COMPETITIVE V1 -- copy de los estados "finales" de participación: el
+ * outcome que el móvil muestra en la tarjeta de Liga tras finalizar la
+ * temporada (`season_league_participation.participation_status`).
+ */
 const PARTICIPATION_STATUS_LABEL: Record<string, string> = {
   ACTIVE: 'Temporada en curso',
   SEASON_ENDED: 'Temporada finalizada',
@@ -50,22 +57,49 @@ const PARTICIPATION_STATUS_TONE: Record<string, OutcomeTone> = {
   ACTIVE: 'neutral',
 };
 
+/** Una participación deja de estar "en curso" en cualquiera de estos estados -- ver `PARTICIPATION_STATUS_LABEL`. */
+const FINAL_PARTICIPATION_STATUSES = new Set(['PROMOTED', 'DEMOTED', 'RETAINED', 'SEASON_ENDED']);
+function isFinalParticipation(status: string): boolean {
+  return FINAL_PARTICIPATION_STATUSES.has(status);
+}
+
 /**
- * Competir -- hub. Participación de liga (COMPETITIVE V1: identidad de liga,
- * rango, LP, cuenta regresiva de 7 días, estados finales) + Pregunta rápida +
- * Desafíos (Bloque III 4.d, CERRADO -- sin cambios de comportamiento).
+ * COMPETITIVE V1 (rediseño visual, Incremento 3) -- presentación de la zona
+ * competitiva EN VIVO. La zona la decide el backend (`competitiveZone` de
+ * `CompetitiveContext`, gramática `promotion-grammar.ts`); esto SOLO la
+ * traduce a copy + flecha. El móvil NUNCA calcula la zona.
+ */
+const LEAGUE_ZONE: Record<CompetitiveZone, { label: string; icon: IconName | null; tone: OutcomeTone }> = {
+  PROMOTION: { label: 'Zona de ascenso', icon: 'chevron-up', tone: 'promotion' },
+  RETENTION: { label: 'Zona de permanencia', icon: null, tone: 'neutral' },
+  DEMOTION: { label: 'Zona de descenso', icon: 'chevron-down', tone: 'demotion' },
+};
+
+/**
+ * Referencia inicial del lado del escudo (~<=35% del ancho útil de la
+ * tarjeta, dentro de la banda 104–132). Deliberadamente una constante única
+ * y fácil de ajustar tras el QA en dispositivo físico -- no un valor "de
+ * diseño final".
+ */
+const LEAGUE_EMBLEM_SIZE = 108;
+
+/**
+ * Competir -- hub. Tarjeta de Liga (COMPETITIVE V1, rediseño visual: escudo
+ * real, nombre prominente, posición, LP con trofeo, zona en vivo, cuenta
+ * regresiva; y estado de temporada finalizada con escudo + posición final +
+ * LP final + outcome) + Pregunta rápida + Desafíos (Bloque III 4.d, CERRADO
+ * -- sin cambios de comportamiento).
  *
- * COMPETITIVE V1 (§27) -- una sola superficie de scroll: el encabezado, la
- * tarjeta de Liga y Pregunta rápida viajan en `ListHeaderComponent` de la
- * misma `SectionList` de Desafíos. Las tarjetas de Desafío y su flujo de
- * `claim`/reconciliación NO cambian.
- *
- * La sección de liga y la de Desafíos son INDEPENDIENTES -- un fallo en una
- * no bloquea la otra. La inscripción se dispara SOLO desde el `onPress`
- * explícito de "Unirme a la liga", nunca desde un efecto (gate-verificado).
+ * Una sola superficie de scroll: encabezado, tarjeta de Liga y Pregunta
+ * rápida viajan en `ListHeaderComponent` de la misma `SectionList` de
+ * Desafíos. La sección de Liga y la de Desafíos son INDEPENDIENTES -- un
+ * fallo en una no bloquea la otra. La inscripción se dispara SOLO desde el
+ * `onPress` explícito de "Unirme a la liga", nunca desde un efecto
+ * (gate-verificado).
  */
 export default function CompetirScreen() {
   const tokens = useTheme();
+  const scheme = useColorSchemeName();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(createStyles);
@@ -75,16 +109,22 @@ export default function CompetirScreen() {
 
   const [leagueState, setLeagueState] = useState<LeagueSectionState>({ status: 'loading' });
   const [joining, setJoining] = useState(false);
-  // COMPETITIVE V1 -- contexto competitivo propio (rango + LP). `null` = la
-  // proyección de ranking aún no calculó una posición (estado "pending"
-  // honesto, nunca #0). `'unknown'` = todavía no consultado.
+  // COMPETITIVE V1 -- contexto competitivo propio (rango + zona en vivo).
+  // `null` = la proyección de ranking aún no calculó una posición (estado
+  // "pending" honesto, nunca #0). `'unknown'` = todavía no consultado. Los
+  // LP NO salen de aquí -- salen del saldo vivo de la participación.
   const [myContext, setMyContext] = useState<CompetitiveContext | null | 'unknown'>('unknown');
-  // Cuenta regresiva a nivel de minuto -- sin ticker por segundo (§7).
+  // COMPETITIVE V1 -- temporada finalizada más reciente (instantánea
+  // inmutable), SOLO para la posición final de la tarjeta cuando la
+  // participación ya no está ACTIVE. `null` = sin instantánea todavía.
+  const [finalizedSeason, setFinalizedSeason] = useState<SeasonHistoryEntry | null>(null);
+  // Cuenta regresiva a nivel de minuto -- sin ticker por segundo.
   const [now, setNow] = useState(() => new Date());
 
   const loadLeague = useCallback(async () => {
     setLeagueState({ status: 'loading' });
     setMyContext('unknown');
+    setFinalizedSeason(null);
     const result = await getLeagueParticipation();
     if (!result.ok) {
       setLeagueState({ status: 'error', message: result.message });
@@ -92,13 +132,28 @@ export default function CompetirScreen() {
     }
     const view = describeParticipation(result.data);
     setLeagueState({ status: 'ready', view });
-    if (view.kind === 'enrolled') {
-      // Reutiliza el endpoint YA existente (`me/competitive-profile`) --
-      // nunca recalcula ranking en el cliente. 404 (sin public_profile) o
-      // error -> `null` (pending), no un error de pantalla.
-      const profile = await getMyCompetitiveProfile();
-      setMyContext(profile.ok ? profile.data.competitive : null);
+    if (view.kind !== 'enrolled') return;
+
+    if (isFinalParticipation(view.status)) {
+      // Temporada finalizada: la posición final vive en la instantánea
+      // INMUTABLE del historial (`leaderboard_snapshot_entry`), nunca en el
+      // ranking live. Se busca EXACTAMENTE la temporada de esta
+      // participación (por su ventana), nunca "la más reciente" a ciegas. Un
+      // fallo, un historial vacío o una temporada sin instantánea todavía
+      // (p. ej. SEASON_ENDED) -> la tarjeta simplemente omite la posición
+      // final y muestra escudo + outcome + LP.
+      const history = await getLeagueHistory();
+      const match = history.ok ? history.data.seasons.find((s) => s.seasonStartsAt === view.season.startsAt) : undefined;
+      setFinalizedSeason(match ?? null);
+      return;
     }
+
+    // Temporada en curso: reutiliza el endpoint YA existente
+    // (`me/competitive-profile`) para rango + zona -- nunca recalcula
+    // ranking en el cliente. 404/ error -> `null` (pending), no un error de
+    // pantalla.
+    const profile = await getMyCompetitiveProfile();
+    setMyContext(profile.ok ? profile.data.competitive : null);
   }, []);
 
   const load = useCallback(async () => {
@@ -137,6 +192,8 @@ export default function CompetirScreen() {
     const view = describeParticipation(result.data);
     setLeagueState({ status: 'ready', view });
     if (view.kind === 'enrolled') {
+      // Recién inscrita -> siempre ACTIVE, nunca un estado final: se pide el
+      // contexto competitivo, nunca el historial.
       const profile = await getMyCompetitiveProfile();
       setMyContext(profile.ok ? profile.data.competitive : null);
     }
@@ -170,26 +227,68 @@ export default function CompetirScreen() {
     setItemErrors((prev) => ({ ...prev, [id]: message }));
   }
 
-  /**
-   * Insignia de liga a partir del `tierOrder` (1..7) -- SIN inferir la liga
-   * del marco equipado (que puede ser de otra liga). Sin arte nuevo: `Icon
-   * name="shield"` en un aro con tinte por tier, dentro del lenguaje visual
-   * ya usado en la fila de Liga de Inicio.
-   */
-  function leagueBadge(tier: number) {
-    const tint = LEAGUE_TIER_TINT(tokens)[Math.min(Math.max(tier, 1), 7) - 1];
-    return (
-      <View style={[styles.leagueBadge, { borderColor: tint, backgroundColor: tokens.color.accent.subtleBg }]}>
-        <Icon name="shield" size={20} color={tint} />
-      </View>
-    );
-  }
-
+  /** Encabezado simple con escudo genérico -- SOLO para los estados sin participación (sin temporada / no inscrito). */
   function leagueHeader(icon: ReactNode, title: string) {
     return (
       <View style={styles.leagueHeader}>
         {icon}
         <Text variant="titleLarge">{title}</Text>
+      </View>
+    );
+  }
+
+  /** Fila de estadística: valor grande arriba, etiqueta pequeña debajo. */
+  function leagueStat(value: ReactNode, label: string) {
+    return (
+      <View style={styles.leagueStat}>
+        {value}
+        <Text variant="caption" color="muted">
+          {label}
+        </Text>
+      </View>
+    );
+  }
+
+  function lpValue(points: number) {
+    return (
+      <View style={styles.lpValueRow}>
+        <LeagueTrophy size={22} />
+        <Text variant="titleLarge" weight="bold">
+          {points}
+        </Text>
+      </View>
+    );
+  }
+
+  function zoneChip(zone: CompetitiveZone) {
+    const z = LEAGUE_ZONE[zone];
+    const color =
+      z.tone === 'promotion' ? tokens.color.state.success.text : z.tone === 'demotion' ? tokens.color.state.warning.text : tokens.color.text.secondary;
+    return (
+      <View style={styles.zoneChip}>
+        {z.icon ? (
+          <Icon name={z.icon} size={14} color={color} />
+        ) : (
+          <Text variant="caption" weight="bold" style={{ color }}>
+            —
+          </Text>
+        )}
+        <Text variant="caption" weight="semibold" style={{ color }}>
+          {z.label}
+        </Text>
+      </View>
+    );
+  }
+
+  function outcomePill(status: string) {
+    const tone = PARTICIPATION_STATUS_TONE[status] ?? 'neutral';
+    return (
+      <View style={[styles.outcomePill, outcomePillStyle(tokens, tone)]}>
+        {tone === 'promotion' ? <Icon name="chevron-up" size={14} color={tokens.color.state.success.text} /> : null}
+        {tone === 'demotion' ? <Icon name="chevron-down" size={14} color={tokens.color.state.warning.text} /> : null}
+        <Text variant="bodySmall" weight="semibold" style={{ color: outcomePillTextColor(tokens, tone) }}>
+          {PARTICIPATION_STATUS_LABEL[status] ?? status}
+        </Text>
       </View>
     );
   }
@@ -248,63 +347,73 @@ export default function CompetirScreen() {
       );
     }
 
-    // view.kind === 'enrolled'
-    const isFinalOutcome = view.status === 'PROMOTED' || view.status === 'DEMOTED' || view.status === 'RETAINED' || view.status === 'SEASON_ENDED';
-    const tone = PARTICIPATION_STATUS_TONE[view.status] ?? 'neutral';
+    // view.kind === 'enrolled' -- identidad de liga compartida por el estado
+    // "en curso" y el "finalizado": misma arquitectura, cambian el escudo y
+    // el acento/tinte/halo (`leagueVisual`), nunca la estructura.
+    const visual = leagueVisual(view.leagueTier, scheme);
+    const cardStyle = [styles.leagueCard, styles.leagueCardTinted, { backgroundColor: visual.tint, borderColor: visual.accent }];
+
+    const topRow = (kicker: string) => (
+      <View style={styles.leagueTopRow}>
+        <View style={styles.leagueTopText}>
+          <Text variant="caption" color="muted" style={styles.leagueKicker}>
+            {kicker}
+          </Text>
+          <Text variant="heading2" weight="bold" numberOfLines={2} style={styles.leagueName}>
+            {view.leagueName.toUpperCase()}
+          </Text>
+        </View>
+        <LeagueEmblem tier={view.leagueTier} size={LEAGUE_EMBLEM_SIZE} accessibilityLabel={`Escudo de la liga ${view.leagueName}`} />
+      </View>
+    );
+
+    if (isFinalParticipation(view.status)) {
+      return (
+        <Card variant="surface" style={cardStyle}>
+          {topRow('TEMPORADA FINALIZADA')}
+          {outcomePill(view.status)}
+          <View style={styles.leagueStatsRow}>
+            {finalizedSeason ? leagueStat(<Text variant="titleLarge" weight="bold">#{finalizedSeason.finalRank}</Text>, 'Posición final') : null}
+            {leagueStat(lpValue(view.leaguePoints), 'LP')}
+          </View>
+        </Card>
+      );
+    }
+
+    // Temporada EN CURSO. LP = saldo VIVO de la participación
+    // (`view.leaguePoints`, ~cada minuto), SIEMPRE visible. Posición = del
+    // leaderboard (`position`, recalculado :00/:15/:30/:45): el número solo
+    // aparece cuando el backend ya calculó uno real, nunca #0. Zona = del
+    // backend (`ctx.competitiveZone`), nunca calculada aquí.
+    const ctx = myContext === 'unknown' ? null : myContext;
+    const position = describeMyPosition(ctx);
     const countdown = seasonCountdown(view.season.endsAt, now);
-    const position = describeMyPosition(myContext === 'unknown' ? null : myContext);
 
     return (
-      <Card variant="surface" style={styles.leagueCard}>
-        {leagueHeader(leagueBadge(view.leagueTier), view.leagueName)}
+      <Card variant="surface" style={cardStyle}>
+        {topRow('LIGA ACTUAL')}
 
-        {isFinalOutcome ? (
-          <View style={[styles.outcomePill, outcomePillStyle(tokens, tone)]}>
-            {tone === 'promotion' ? <Icon name="chevron-up" size={14} color={tokens.color.state.success.text} /> : null}
-            <Text variant="bodySmall" weight="semibold" style={{ color: outcomePillTextColor(tokens, tone) }}>
-              {PARTICIPATION_STATUS_LABEL[view.status] ?? view.status}
-            </Text>
-          </View>
-        ) : (
-          // COMPETITIVE V1 (parche final de QA) -- LP y POSICIÓN son dos
-          // conceptos distintos con dos fuentes distintas: los LP son el
-          // saldo VIVO de la participación (`view.leaguePoints`, se
-          // actualiza ~cada minuto) y SIEMPRE se muestran; la posición
-          // viene del leaderboard (`position`, recalculado en
-          // :00/:15/:30/:45) y puede estar "poniéndose al día". El número de
-          // posición solo aparece cuando el backend ya calculó uno real; los
-          // LP solo son cero si el saldo real de la participación es cero.
-          <View style={styles.leagueStatsRow}>
-            <View style={styles.leagueStat}>
-              {position.kind === 'known' ? (
-                <Text variant="titleLarge" weight="bold">
-                  #{position.rankPosition}
-                </Text>
-              ) : (
-                <Text variant="bodySmall" color="secondary" style={styles.leagueStatPending}>
-                  Actualizando posición…
-                </Text>
-              )}
-              <Text variant="caption" color="muted">
-                posición
-              </Text>
-            </View>
-            <View style={styles.leagueStat}>
+        <View style={styles.leagueStatsRow}>
+          {leagueStat(
+            position.kind === 'known' ? (
               <Text variant="titleLarge" weight="bold">
-                {view.leaguePoints}
+                #{position.rankPosition}
               </Text>
-              <Text variant="caption" color="muted">
-                LP
+            ) : (
+              <Text variant="bodySmall" color="secondary" style={styles.leagueStatPending}>
+                Actualizando posición…
               </Text>
-            </View>
-          </View>
-        )}
+            ),
+            'Posición',
+          )}
+          {leagueStat(lpValue(view.leaguePoints), 'LP')}
+        </View>
 
-        {!isFinalOutcome ? (
-          <Text variant="caption" color="secondary">
-            {countdown.ended ? 'La temporada está terminando…' : `${countdown.label} restantes`}
-          </Text>
-        ) : null}
+        {ctx ? zoneChip(ctx.competitiveZone) : null}
+
+        <Text variant="caption" color="secondary">
+          {countdown.ended ? 'La temporada está terminando…' : `${countdown.label} restantes`}
+        </Text>
 
         <Button label="Ver ranking" onPress={() => router.push('/(tabs)/competir/ranking')} variant="tertiary" size="small" />
       </Card>
@@ -446,19 +555,6 @@ export default function CompetirScreen() {
   );
 }
 
-/** Tinte discreto por tier (1 Bronce … 7 Gran Maestro) -- solo para el aro de la insignia, nunca un fondo saturado. */
-function LEAGUE_TIER_TINT(t: ThemeTokens): string[] {
-  return [
-    '#A9743F', // Bronce
-    '#9AA3AC', // Plata
-    t.color.state.warning.text, // Oro
-    t.color.state.success.text, // Esmeralda
-    t.color.accent.default, // Diamante
-    t.color.accent.strong, // Maestro
-    t.color.academic.violet.text, // Gran Maestro
-  ];
-}
-
 function outcomePillStyle(t: ThemeTokens, tone: OutcomeTone) {
   if (tone === 'promotion') return { backgroundColor: t.color.state.success.background, borderColor: t.color.state.success.border };
   if (tone === 'demotion') return { backgroundColor: t.color.state.warning.background, borderColor: t.color.state.warning.border };
@@ -476,7 +572,11 @@ function createStyles(t: ThemeTokens) {
     container: { padding: 16, gap: spacing.space3, paddingBottom: 32 },
     headerBlock: { gap: spacing.space3 },
     subtitle: { marginTop: -spacing.space2 },
-    leagueCard: { gap: spacing.space3, paddingVertical: 24 },
+    leagueCard: { gap: spacing.space3, paddingVertical: 20 },
+    // Identidad de liga: superficie con tinte MUY sutil + hairline de acento.
+    // El fondo sigue siendo una surface ZETRYND; el color de la liga solo
+    // aparece como identidad discreta (el escudo carga la identidad visual).
+    leagueCardTinted: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' as const },
     leagueHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.space3 },
     leagueIconWrap: {
       width: 38,
@@ -486,17 +586,26 @@ function createStyles(t: ThemeTokens) {
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
     },
-    leagueBadge: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
-      borderWidth: 2,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-    },
+    leagueTopRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.space3 },
+    leagueTopText: { flex: 1, gap: 2 },
+    leagueKicker: { textTransform: 'uppercase' as const, letterSpacing: 0.6 },
+    leagueName: { textTransform: 'uppercase' as const },
     leagueStatsRow: { flexDirection: 'row' as const, gap: spacing.space6, alignItems: 'flex-end' as const },
     leagueStat: { gap: 2 },
     leagueStatPending: { paddingBottom: 2 },
+    lpValueRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4 },
+    zoneChip: {
+      alignSelf: 'flex-start' as const,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 4,
+      borderWidth: 1,
+      borderColor: t.color.border.default,
+      backgroundColor: t.color.background.surface,
+      borderRadius: radii.full,
+      paddingVertical: 3,
+      paddingHorizontal: 10,
+    },
     outcomePill: {
       alignSelf: 'flex-start' as const,
       flexDirection: 'row' as const,

@@ -89,9 +89,31 @@ function main() {
   check('el hub usa `seasonCountdown` para la cuenta regresiva de 7 días', hubSource.includes('seasonCountdown('));
   check('estado honesto "Actualizando posición…" cuando la proyección aún no calculó', hubSource.includes('Actualizando posición'));
   check('el hub NUNCA infiere la liga del marco equipado -- usa `leagueTier`', hubSource.includes('view.leagueTier') && !hubSource.includes("cosmeticSlot === 'AVATAR_FRAME'"));
-  check('estados finales (PROMOTED/DEMOTED/RETAINED/SEASON_ENDED) tienen copy compacto en la MISMA tarjeta (sin pantalla nueva)', hubSource.includes('PARTICIPATION_STATUS_LABEL') && hubSource.includes("view.status === 'PROMOTED'"));
+  check(
+    'estados finales (PROMOTED/DEMOTED/RETAINED/SEASON_ENDED) tienen copy compacto en la MISMA tarjeta (sin pantalla nueva)',
+    hubSource.includes('PARTICIPATION_STATUS_LABEL') &&
+      hubSource.includes('isFinalParticipation') &&
+      ['PROMOTED', 'DEMOTED', 'RETAINED', 'SEASON_ENDED'].every((s) => hubSource.includes(`'${s}'`)),
+  );
   check('la ruta de Ranking no cambió -- sigue navegando a /(tabs)/competir/ranking', hubSource.includes("router.push('/(tabs)/competir/ranking')"));
   check('el estado "sin temporada activa" honesto se conserva', hubSource.includes('No hay una temporada de liga activa'));
+
+  console.log('--- 9. COMPETITIVE V1 (rediseño visual, Incremento 3): tarjeta de Liga definitiva ---');
+  check('usa el escudo real de la liga (`<LeagueEmblem`), no un icono de placeholder', hubSource.includes('<LeagueEmblem') && hubSource.includes('tier={view.leagueTier}'));
+  check('usa el trofeo (`<LeagueTrophy`) junto al número de LP, no "N LP" / "N puntos de liga" como representación principal', hubSource.includes('<LeagueTrophy') && !/\bpuntos de liga\b/.test(hubSource));
+  check('deriva accent/tint/halo de `leagueVisual(view.leagueTier, scheme)` -- misma arquitectura para las 7 ligas', hubSource.includes('leagueVisual(view.leagueTier, scheme)'));
+  check('el tamaño del escudo es una constante única y ajustable (LEAGUE_EMBLEM_SIZE)', hubSource.includes('LEAGUE_EMBLEM_SIZE'));
+  check('label pequeño "LIGA ACTUAL" en el estado en curso', hubSource.includes('LIGA ACTUAL'));
+  check('label "TEMPORADA FINALIZADA" en el estado finalizado', hubSource.includes('TEMPORADA FINALIZADA'));
+  check('la ZONA se toma de `competitiveZone` del backend -- el hub NUNCA la calcula', hubSource.includes('ctx.competitiveZone') && !/computeZoneCounts|resolveCompetitiveZone|parseTopPercent|parseBottomPercent/.test(hubSource));
+  check('las tres zonas tienen copy (ascenso / permanencia / descenso)', /Zona de ascenso/.test(hubSource) && /Zona de permanencia/.test(hubSource) && /Zona de descenso/.test(hubSource));
+  check('la posición final del estado finalizado sale del historial inmutable (`getLeagueHistory` / finalRank), nunca del ranking live', hubSource.includes('getLeagueHistory') && hubSource.includes('finalRank'));
+  // Bloque JSX del estado finalizado: entre su encabezado y el del estado en curso.
+  const finalizedBlock = hubSource.slice(hubSource.indexOf("topRow('TEMPORADA FINALIZADA')"), hubSource.indexOf("topRow('LIGA ACTUAL')"));
+  check(
+    'el estado finalizado NO renderiza cuenta regresiva ni zona en vivo ni "Ver ranking"',
+    finalizedBlock.length > 0 && !finalizedBlock.includes('countdown.ended') && !finalizedBlock.includes('zoneChip(ctx') && !finalizedBlock.includes('Ver ranking'),
+  );
 
   console.log('--- 8b. COMPETITIVE V1 (parche final de QA): LP VIVO vs POSICIÓN calculada, dos fuentes ---');
   // La tarjeta lee LP del saldo de la participación (`view.leaguePoints`) y
