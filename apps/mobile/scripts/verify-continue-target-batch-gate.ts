@@ -1,22 +1,21 @@
-// Gate de "Continuar estudiando" (Inicio) tras la corrección del fan-out
-// N+1: `pickContinueTarget()` hacía antes un GET /progress/topics/:id POR
-// CADA tema raíz de la materia -- con un catálogo de prueba contaminado
-// (129 temas) esto superaba el rate limit del backend. Ahora usa UNA sola
-// llamada a GET /progress/topics?topicIds=....
+// Gate de "Continuar estudiando" (Inicio).
 //
-// Verificación DETERMINISTA -- corre en Node puro, sin backend real, con
-// `global.fetch` reemplazado por un stub que registra cada llamada y
-// responde según el patrón de URL. Prueba dos cosas que un gate contra un
-// servidor real no puede aislar con la misma certeza:
-//   1. Que `pickContinueTarget()` hace EXACTAMENTE 1 llamada de progreso
-//      (nunca N) sin importar cuántos temas devuelva EDUCATION.
-//   2. Que la lógica de selección (exercise > resource > all-completed >
-//      no-content) NO cambió ni un bit frente al comportamiento anterior.
+// STUDY CONTENT MOBILE REACHABILITY -- `pickContinueTarget()` ahora resuelve
+// a un `curriculum_topic` de RECURSO (hijo de una Unidad canónica), no al id
+// de una Unidad raíz. El flujo es:
+//   1. GET /education/subjects                       (1 llamada)
+//   2. GET /education/subjects/:id/topics            (1 llamada -- unidades canónicas)
+//   3. GET /education/topics/:unitId/children        (N llamadas -- N = nº de unidades, 3-4 reales)
+//   4. GET /progress/topics?topicIds=...             (1 llamada -- batch sobre TODOS los recursos)
 //
-// La reproducción contra el backend/BD REALES (129 temas de Matemática,
-// sin 429) es un gate/verificación aparte -- ver
-// `docs/verification/progress-batch-fix-e2e.md` (evidencia manual) --
-// nunca se mezcla con este, que es intencionalmente sin red real.
+// Verificación DETERMINISTA -- Node puro, sin backend real, `global.fetch`
+// reemplazado por un stub que registra cada llamada. Prueba:
+//   1. Que el progreso se pide en UNA sola llamada batch (nunca N+1), sin
+//      importar cuántos recursos haya.
+//   2. Que la selección (exercise > resource > all-completed > no-content)
+//      opera sobre RECURSOS hijos y no cambió de semántica.
+//   3. Que el destino elegido es SIEMPRE un id de recurso hijo, nunca el de
+//      una Unidad.
 import { randomUUID } from 'node:crypto';
 import Module from 'node:module';
 import { join } from 'node:path';
@@ -24,14 +23,9 @@ import type { CurriculumTopicResponse, SubjectResponse, TopicProgressResponse } 
 
 /**
  * `lib/api/client.ts` -> `lib/auth/session-storage.ts` -> `expo-secure-store`
- * -> `react-native` (para `NativeModules`/`Platform`) -- ese último módulo
- * no se puede cargar en Node puro (fuera de Metro/Expo). Este gate no
- * necesita sesión real (todas las respuestas se sirven desde el `fetch`
- * simulado de abajo), así que se redirige SOLO `expo-secure-store` a un
- * stub local ANTES de importar `pick-continue-topic` -- ningún archivo de
- * producción se modifica ni se mockea; `session-storage.ts` real sigue
- * corriendo tal cual, solo cambia a qué implementación de SecureStore
- * termina llamando.
+ * -> `react-native` -- no cargable en Node puro. Se redirige SOLO
+ * `expo-secure-store` a un stub local; ningún archivo de producción se
+ * modifica ni se mockea.
  */
 type ResolveFilename = (request: string, ...rest: unknown[]) => string;
 const moduleWithInternals = Module as unknown as { _resolveFilename: ResolveFilename };
@@ -58,8 +52,8 @@ interface RecordedCall {
   url: string;
 }
 
-function mockTopic(id: string, order: number, subjectId: string): CurriculumTopicResponse {
-  return { id, code: `mock-${id.slice(0, 8)}`, name: `Tema ${order}`, order, parentId: null, subjectId };
+function mockTopic(id: string, order: number, subjectId: string, parentId: string | null): CurriculumTopicResponse {
+  return { id, code: `mock-${id.slice(0, 8)}`, name: `Tema ${order}`, order, parentId, subjectId };
 }
 
 function mockProgress(topicId: string, kind: 'not-started' | 'resource' | 'exercise' | 'completed'): TopicProgressResponse {
@@ -76,14 +70,12 @@ function mockProgress(topicId: string, kind: 'not-started' | 'resource' | 'exerc
   return { curriculumTopicId: topicId, status: 'COMPLETED', startedAt: '2026-01-01T00:00:00Z', lastActivityAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:00:00Z', responses: [response] };
 }
 
-/**
- * Instala un `fetch` de prueba. `topics`/`progressByTopic` definen el
- * catálogo y el progreso simulados; `calls` acumula cada solicitud para
- * las aserciones de conteo. Cualquier URL no reconocida lanza -- una
- * llamada inesperada (ej. un `GET /progress/topics/:id` singular colado)
- * debe FALLAR el gate, no pasar en silencio.
- */
-function installMockFetch(subject: SubjectResponse, topics: CurriculumTopicResponse[], progressByTopic: Map<string, TopicProgressResponse>) {
+function installMockFetch(
+  subject: SubjectResponse,
+  units: CurriculumTopicResponse[],
+  childrenByUnit: Map<string, CurriculumTopicResponse[]>,
+  progressByTopic: Map<string, TopicProgressResponse>,
+) {
   const calls: RecordedCall[] = [];
 
   (globalThis as { fetch: typeof fetch }).fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -94,12 +86,12 @@ function installMockFetch(subject: SubjectResponse, topics: CurriculumTopicRespo
     const jsonResponse = (data: unknown, status = 200) =>
       new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
 
-    if (url.endsWith('/education/subjects')) {
-      return jsonResponse([subject]);
-    }
-    if (url.includes(`/education/subjects/${subject.id}/topics`)) {
-      return jsonResponse(topics);
-    }
+    if (url.endsWith('/education/subjects')) return jsonResponse([subject]);
+    if (url.includes(`/education/subjects/${subject.id}/topics`)) return jsonResponse(units);
+
+    const childrenMatch = /\/education\/topics\/([^/]+)\/children/.exec(url);
+    if (childrenMatch) return jsonResponse(childrenByUnit.get(childrenMatch[1]) ?? []);
+
     if (url.startsWith('http://mock/progress/topics?topicIds=')) {
       const requestedIds = decodeURIComponent(url.split('topicIds=')[1] ?? '').split(',').filter(Boolean);
       const result = requestedIds
@@ -107,109 +99,127 @@ function installMockFetch(subject: SubjectResponse, topics: CurriculumTopicRespo
         .filter((entry): entry is TopicProgressResponse => Boolean(entry));
       return jsonResponse(result);
     }
-    // Cualquier otra URL (en particular `/progress/topics/<id>` singular)
-    // -- NUNCA debería llamarse desde `pickContinueTarget()` tras la
-    // corrección. Lanzar aquí convierte una regresión silenciosa en un
-    // fallo explícito del gate.
+    // `/progress/topics/<id>` singular NUNCA debe llamarse -- lanzar convierte
+    // una regresión N+1 en un fallo explícito.
     throw new Error(`Llamada inesperada en pickContinueTarget(): ${method} ${url}`);
   }) as typeof fetch;
 
   return calls;
 }
 
+/** Construye N unidades, cada una con `resourcesPerUnit` recursos hijos. */
+function buildCatalog(subjectId: string, unitCount: number, resourcesPerUnit: number) {
+  const units: CurriculumTopicResponse[] = [];
+  const childrenByUnit = new Map<string, CurriculumTopicResponse[]>();
+  const allResources: CurriculumTopicResponse[] = [];
+  for (let u = 0; u < unitCount; u++) {
+    const unit = mockTopic(randomUUID(), u + 1, subjectId, null);
+    units.push(unit);
+    const children = Array.from({ length: resourcesPerUnit }, (_, r) =>
+      mockTopic(randomUUID(), r + 1, subjectId, unit.id),
+    );
+    childrenByUnit.set(unit.id, children);
+    allResources.push(...children);
+  }
+  return { units, childrenByUnit, allResources };
+}
+
 async function main() {
   process.env.EXPO_PUBLIC_API_BASE_URL = 'http://mock';
-  // Import dinámico DESPUÉS de fijar la env var -- `lib/api/client.ts` lee
-  // `EXPO_PUBLIC_API_BASE_URL` al cargarse (constante de módulo).
   const { pickContinueTarget } = await import('../lib/progress/pick-continue-topic');
 
   const subjectId = randomUUID();
-  const subject: SubjectResponse = { id: subjectId, subjectKey: 'matematica', name: 'Matemática', shortName: 'Mate', displayOrder: 1 };
+  const subject: SubjectResponse = { id: subjectId, subjectKey: 'matematica', name: 'Matemática M1', shortName: 'M1', displayOrder: 1 };
 
-  console.log('--- 1. Arquitectura: 150 temas raíz -> UNA sola llamada de progreso, no 150 (reproduce la escala real de Inicio) ---');
+  console.log('--- 1. Arquitectura: 4 unidades x 25 recursos (100) -> UNA sola llamada de progreso, no 100 ---');
   {
-    const topics = Array.from({ length: 150 }, (_, i) => mockTopic(randomUUID(), i + 1, subjectId));
-    const progressByTopic = new Map(topics.map((t) => [t.id, mockProgress(t.id, 'not-started')]));
-    const calls = installMockFetch(subject, topics, progressByTopic);
+    const { units, childrenByUnit, allResources } = buildCatalog(subjectId, 4, 25);
+    const progressByTopic = new Map(allResources.map((t) => [t.id, mockProgress(t.id, 'not-started')]));
+    const calls = installMockFetch(subject, units, childrenByUnit, progressByTopic);
 
     const result = await pickContinueTarget();
 
     check('pickContinueTarget() resuelve ok', result.ok);
-    check('EXACTAMENTE 3 llamadas de red en total (subjects + topics + progress-batch)', calls.length === 3);
     const progressCalls = calls.filter((c) => c.url.includes('/progress/topics'));
-    check('EXACTAMENTE 1 llamada de progreso (nunca 150 -- el fan-out N+1 quedó eliminado)', progressCalls.length === 1);
-    check('la única llamada de progreso es la ruta COLECCIÓN (?topicIds=), no la singular (/progress/topics/:id)', progressCalls[0]?.url.includes('?topicIds='));
-    check('resultado: sin progreso -- "all-completed" no, cae en "resource" del primer tema (todos NOT_STARTED)', result.ok && result.target.kind === 'topic' && result.target.entry === 'resource');
+    check('EXACTAMENTE 1 llamada de progreso (nunca 100 -- sin fan-out N+1)', progressCalls.length === 1);
+    check('la llamada de progreso es la ruta COLECCIÓN (?topicIds=)', progressCalls[0]?.url.includes('?topicIds='));
+    check('EXACTAMENTE 4 llamadas /children (una por unidad canónica)', calls.filter((c) => c.url.includes('/children')).length === 4);
+    check('destino: primer recurso sin comenzar, entry "resource"', result.ok && result.target.kind === 'topic' && result.target.entry === 'resource');
+    check(
+      'el destino es un RECURSO hijo (parentId !== null), nunca una Unidad',
+      result.ok && result.target.kind === 'topic' && result.target.topic.parentId !== null,
+    );
   }
 
-  console.log('--- 2. Selección preservada: EXERCISE tiene prioridad sobre RESOURCE y COMPLETED ---');
+  console.log('--- 2. Selección: EXERCISE tiene prioridad sobre RESOURCE y COMPLETED ---');
   {
-    const topicCompleted = mockTopic(randomUUID(), 1, subjectId);
-    const topicExercise = mockTopic(randomUUID(), 2, subjectId);
-    const topicResource = mockTopic(randomUUID(), 3, subjectId);
-    const topics = [topicCompleted, topicExercise, topicResource];
+    const { units, childrenByUnit, allResources } = buildCatalog(subjectId, 2, 2);
+    const [rCompleted, rExercise, rResource] = allResources;
     const progressByTopic = new Map([
-      [topicCompleted.id, mockProgress(topicCompleted.id, 'completed')],
-      [topicExercise.id, mockProgress(topicExercise.id, 'exercise')],
-      [topicResource.id, mockProgress(topicResource.id, 'resource')],
+      [rCompleted.id, mockProgress(rCompleted.id, 'completed')],
+      [rExercise.id, mockProgress(rExercise.id, 'exercise')],
+      [rResource.id, mockProgress(rResource.id, 'resource')],
+      [allResources[3].id, mockProgress(allResources[3].id, 'not-started')],
     ]);
-    installMockFetch(subject, topics, progressByTopic);
+    installMockFetch(subject, units, childrenByUnit, progressByTopic);
 
     const result = await pickContinueTarget();
-    check('elige el tema EXERCISE aunque no sea el primero de la lista', result.ok && result.target.kind === 'topic' && result.target.topic.id === topicExercise.id);
+    check('elige el recurso EXERCISE aunque no sea el primero', result.ok && result.target.kind === 'topic' && result.target.topic.id === rExercise.id);
     check('entry === "exercise"', result.ok && result.target.kind === 'topic' && result.target.entry === 'exercise');
   }
 
-  console.log('--- 3. Selección preservada: sin EXERCISE, cae en el primer RESOURCE ---');
+  console.log('--- 3. Sin EXERCISE -> primer RESOURCE ---');
   {
-    const topicCompleted = mockTopic(randomUUID(), 1, subjectId);
-    const topicResource = mockTopic(randomUUID(), 2, subjectId);
-    const topics = [topicCompleted, topicResource];
+    const { units, childrenByUnit, allResources } = buildCatalog(subjectId, 1, 2);
     const progressByTopic = new Map([
-      [topicCompleted.id, mockProgress(topicCompleted.id, 'completed')],
-      [topicResource.id, mockProgress(topicResource.id, 'resource')],
+      [allResources[0].id, mockProgress(allResources[0].id, 'completed')],
+      [allResources[1].id, mockProgress(allResources[1].id, 'resource')],
     ]);
-    installMockFetch(subject, topics, progressByTopic);
+    installMockFetch(subject, units, childrenByUnit, progressByTopic);
 
     const result = await pickContinueTarget();
-    check('elige el tema RESOURCE', result.ok && result.target.kind === 'topic' && result.target.topic.id === topicResource.id);
+    check('elige el recurso RESOURCE', result.ok && result.target.kind === 'topic' && result.target.topic.id === allResources[1].id);
     check('entry === "resource"', result.ok && result.target.kind === 'topic' && result.target.entry === 'resource');
   }
 
-  console.log('--- 4. Selección preservada: todo COMPLETED -> "all-completed" ---');
+  console.log('--- 4. Todo COMPLETED -> "all-completed" ---');
   {
-    const topics = [mockTopic(randomUUID(), 1, subjectId), mockTopic(randomUUID(), 2, subjectId)];
-    const progressByTopic = new Map(topics.map((t) => [t.id, mockProgress(t.id, 'completed')]));
-    installMockFetch(subject, topics, progressByTopic);
+    const { units, childrenByUnit, allResources } = buildCatalog(subjectId, 2, 2);
+    const progressByTopic = new Map(allResources.map((t) => [t.id, mockProgress(t.id, 'completed')]));
+    installMockFetch(subject, units, childrenByUnit, progressByTopic);
 
     const result = await pickContinueTarget();
     check('kind === "all-completed"', result.ok && result.target.kind === 'all-completed');
   }
 
-  console.log('--- 5. Sin temas raíz -> "no-content", SIN llamar progreso en absoluto (optimización preexistente intacta) ---');
+  console.log('--- 5. Sin unidades canónicas -> "no-content", sin llamar progreso ---');
   {
-    const calls = installMockFetch(subject, [], new Map());
+    const calls = installMockFetch(subject, [], new Map(), new Map());
     const result = await pickContinueTarget();
     check('kind === "no-content"', result.ok && result.target.kind === 'no-content');
-    check('nunca se llamó a /progress/topics (ni singular ni batch) -- 0 temas, 0 necesidad', !calls.some((c) => c.url.includes('/progress/topics')));
+    check('nunca se llamó a /progress/topics', !calls.some((c) => c.url.includes('/progress/topics')));
   }
 
-  console.log('--- 6. Fallo del batch de progreso se propaga igual que antes (ok:false con el mensaje del servidor) ---');
+  console.log('--- 6. Unidades sin recursos hijos -> "no-content" ---');
   {
-    const topics = [mockTopic(randomUUID(), 1, subjectId)];
+    const unit = mockTopic(randomUUID(), 1, subjectId, null);
+    const calls = installMockFetch(subject, [unit], new Map([[unit.id, []]]), new Map());
+    const result = await pickContinueTarget();
+    check('kind === "no-content" cuando ninguna unidad tiene recursos', result.ok && result.target.kind === 'no-content');
+    check('nunca se llamó a /progress/topics (0 recursos, 0 necesidad)', !calls.some((c) => c.url.includes('/progress/topics')));
+  }
+
+  console.log('--- 7. Fallo del batch de progreso se propaga (ok:false) ---');
+  {
+    const { units, childrenByUnit } = buildCatalog(subjectId, 1, 1);
     (globalThis as { fetch: typeof fetch }).fetch = (async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
-      if (url.endsWith('/education/subjects')) {
-        return new Response(JSON.stringify([subject]), { status: 200, headers: { 'content-type': 'application/json' } });
-      }
-      if (url.includes(`/education/subjects/${subjectId}/topics`)) {
-        return new Response(JSON.stringify(topics), { status: 200, headers: { 'content-type': 'application/json' } });
-      }
+      if (url.endsWith('/education/subjects')) return new Response(JSON.stringify([subject]), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.includes(`/education/subjects/${subjectId}/topics`)) return new Response(JSON.stringify(units), { status: 200, headers: { 'content-type': 'application/json' } });
+      const childrenMatch = /\/education\/topics\/([^/]+)\/children/.exec(url);
+      if (childrenMatch) return new Response(JSON.stringify(childrenByUnit.get(childrenMatch[1]) ?? []), { status: 200, headers: { 'content-type': 'application/json' } });
       if (url.includes('/progress/topics?topicIds=')) {
-        return new Response(JSON.stringify({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Error interno.' } }), {
-          status: 500,
-          headers: { 'content-type': 'application/json' },
-        });
+        return new Response(JSON.stringify({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Error interno.' } }), { status: 500, headers: { 'content-type': 'application/json' } });
       }
       throw new Error(`Llamada inesperada: ${url}`);
     }) as typeof fetch;
@@ -223,7 +233,7 @@ async function main() {
     console.error(`${failures} verificación(es) fallaron.`);
     process.exit(1);
   }
-  console.log('Todas las verificaciones del gate de "Continuar estudiando" (batch de progreso) pasaron.');
+  console.log('Todas las verificaciones del gate de "Continuar estudiando" pasaron.');
 }
 
 main().catch((error) => {

@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "private": true,
   "scripts": {
+    "eas-build-post-install": "pnpm --filter @axioma/contracts build",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
@@ -22,7 +23,8 @@
     "verify:ai-mobile-gate": "tsx scripts/verify-ai-mobile-gate.ts",
     "verify:exam-mobile-flow-gate": "tsx scripts/verify-exam-mobile-flow-gate.ts",
     "verify:continue-target-batch-gate": "tsx scripts/verify-continue-target-batch-gate.ts",
-    "verify:unidades-batch-gate": "tsx scripts/verify-unidades-batch-gate.ts"
+    "verify:unidades-batch-gate": "tsx scripts/verify-unidades-batch-gate.ts",
+    "verify:study-navigation-gate": "tsx scripts/verify-study-navigation-gate.ts"
   },
   "dependencies": {
     "@axioma/contracts": "workspace:*",

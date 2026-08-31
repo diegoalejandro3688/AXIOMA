@@ -47,6 +47,37 @@ export class CurriculumTopicRepository {
     });
   }
 
+  /**
+   * STUDY CONTENT MOBILE REACHABILITY -- unidades CANÓNICAS del catálogo V1:
+   * nodos raíz de la materia que tienen al menos un hijo (Recurso) con una
+   * `learning_resource_version` PUBLISHED. Es exactamente la forma que el
+   * importer del manifest produce para cada una de las 20 unidades
+   * canónicas (Unidad -> 98 Recursos hijos, cada Recurso con recurso
+   * publicado), y NUNCA la de los 4 topics raíz legacy del seed
+   * (`M1.NUMEROS.PORCENTAJES` cuelga su contenido del propio nodo raíz y sus
+   * hijos no tienen recurso publicado; `C1.BIOLOGIA.CELULA` /
+   * `L1.LECTURA.INFERENCIA` / `H1.CHILE.SIGLO20.ISI` no tienen hijos).
+   *
+   * Filtro puramente de LECTURA -- no borra, deprecia ni reparenta nada; la
+   * base de datos y el manifest siguen siendo la autoridad. Deriva la
+   * identidad "unidad canónica" de la estructura de contenido publicado ya
+   * presente, sin una lista de 20 códigos mantenida a mano.
+   */
+  findCanonicalUnitRootsBySubjectId(subjectId: string): Promise<CurriculumTopic[]> {
+    return this.prisma.curriculumTopic.findMany({
+      where: {
+        subjectId,
+        parentId: null,
+        children: {
+          some: {
+            learningResourceVersions: { some: { editorialStatus: 'PUBLISHED' } },
+          },
+        },
+      },
+      orderBy: { order: 'asc' },
+    });
+  }
+
   findChildren(parentId: string | null): Promise<CurriculumTopic[]> {
     return this.prisma.curriculumTopic.findMany({
       where: { parentId },

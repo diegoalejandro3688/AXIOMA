@@ -69,10 +69,84 @@ async function main() {
   const matematica = rSubjects.body?.find((s: { subjectKey: string }) => s.subjectKey === 'matematica');
   check('materia "matematica" sembrada presente', !!matematica);
 
+  // STUDY CONTENT MOBILE REACHABILITY -- `GET /education/subjects/:id/topics`
+  // ahora solo devuelve UNIDADES CANÓNICAS (raíces con un Recurso hijo
+  // publicado); los 4 topics raíz legacy del seed (incl.
+  // `M1.NUMEROS.PORCENTAJES`, cuyo contenido cuelga del propio nodo raíz)
+  // quedan OCULTOS de la superficie. Este gate ya no puede recorrer contra
+  // ese topic legacy: crea su propia unidad canónica de fixture (raíz ->
+  // Recurso hijo con lección PUBLISHED + 2 preguntas PUBLISHED de 4
+  // alternativas), aislada por corrida, y recorre contra ella. Mismo criterio
+  // de higiene que las fixtures GATE.EDU.* de la sección 5b (persisten, no se
+  // borran).
+  const eduSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const unitTopicId = randomUUID();
+  const resourceChildId = randomUUID();
+  await pg.query(
+    `INSERT INTO curriculum_topic (id, code, name, "order", subject_id, created_at, updated_at)
+     VALUES ($1, $2, 'Unidad canónica del gate de EDUCATION', 950, $3, now(), now())`,
+    [unitTopicId, `GATE.EDU.UNIT.${eduSuffix}`, matematica.id],
+  );
+  await pg.query(
+    `INSERT INTO curriculum_topic (id, code, name, "order", parent_id, subject_id, created_at, updated_at)
+     VALUES ($1, $2, 'Recurso hijo del gate de EDUCATION', 1, $3, $4, now(), now())`,
+    [resourceChildId, `GATE.EDU.UNIT.${eduSuffix}.RES`, unitTopicId, matematica.id],
+  );
+  const gateLearningResourceId = randomUUID();
+  await pg.query(
+    `INSERT INTO learning_resource (id, resource_key, primary_subject_id, resource_type, status, created_at, updated_at)
+     VALUES ($1, $2, $3, 'LESSON', 'ACTIVE', now(), now())`,
+    [gateLearningResourceId, `GATE.EDU.UNIT.RESOURCE.${eduSuffix}`, matematica.id],
+  );
+  // DRAFT -> PUBLISHED (los triggers de inmutabilidad exigen que
+  // versión/alternativas se creen en DRAFT y se publiquen después).
+  const gateLrvId = randomUUID();
+  await pg.query(
+    `INSERT INTO learning_resource_version (id, learning_resource_id, curriculum_topic_id, title, content_blocks, editorial_status, created_at, updated_at)
+     VALUES ($1, $2, $3, 'Lección del gate', '[{"type":"paragraph","order":0,"text":"Contenido de la lección del gate."}]', 'DRAFT', now(), now())`,
+    [gateLrvId, gateLearningResourceId, resourceChildId],
+  );
+  await pg.query(`UPDATE learning_resource_version SET editorial_status = 'PUBLISHED', published_at = now() WHERE id = $1`, [gateLrvId]);
+  for (let qi = 0; qi < 2; qi++) {
+    const questionId = randomUUID();
+    const questionVersionId = randomUUID();
+    await pg.query(
+      `INSERT INTO question (id, question_key, primary_subject_id, question_type, status, created_at, updated_at)
+       VALUES ($1, $2, $3, 'SINGLE_CHOICE', 'ACTIVE', now(), now())`,
+      [questionId, `GATE.EDU.UNIT.Q${qi}.${eduSuffix}`, matematica.id],
+    );
+    await pg.query(
+      `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, created_at, updated_at)
+       VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"Enunciado del gate ${qi}."}]', '[{"type":"paragraph","order":0,"text":"Explicación del gate."}]', 'DRAFT', now(), now())`,
+      [questionVersionId, questionId, resourceChildId],
+    );
+    for (let oi = 0; oi < 4; oi++) {
+      await pg.query(
+        `INSERT INTO answer_option (id, question_version_id, content, display_order, is_correct, created_at)
+         VALUES ($1, $2, $3, $4, $5, now())`,
+        [randomUUID(), questionVersionId, JSON.stringify({ type: 'paragraph', order: 0, text: `Alternativa ${oi}` }), oi, oi === 0],
+      );
+    }
+    await pg.query(`UPDATE question_version SET editorial_status = 'PUBLISHED', published_at = now() WHERE id = $1`, [questionVersionId]);
+  }
+
   const rTopics = await req('GET', `/education/subjects/${matematica.id}/topics`, authHeaders);
   check('GET topics de la materia -> 200', rTopics.status === 200);
-  const unidad = rTopics.body?.find((t: { code: string }) => t.code === 'M1.NUMEROS.PORCENTAJES');
-  check('unidad sembrada presente y con subjectId correcto', unidad?.subjectId === matematica.id);
+  const unitTopic = rTopics.body?.find((t: { code: string }) => t.code === `GATE.EDU.UNIT.${eduSuffix}`);
+  check('unidad canónica de fixture visible en listRootTopics (tiene Recurso hijo publicado)', unitTopic?.subjectId === matematica.id);
+  check(
+    'topic raíz legacy M1.NUMEROS.PORCENTAJES NO aparece en listRootTopics (oculto de la superficie V1)',
+    !rTopics.body?.some((t: { code: string }) => t.code === 'M1.NUMEROS.PORCENTAJES'),
+  );
+
+  const rChildren = await req('GET', `/education/topics/${unitTopic.id}/children`, authHeaders);
+  check('GET children de la unidad -> 200', rChildren.status === 200);
+  const resourceChild = rChildren.body?.find((t: { code: string }) => t.code === `GATE.EDU.UNIT.${eduSuffix}.RES`);
+  check('el Recurso hijo es hijo de la unidad y de la misma materia', resourceChild?.parentId === unitTopic.id && resourceChild?.subjectId === matematica.id);
+
+  // A partir de aquí `unidad` = el Recurso hijo (el nodo que realmente lleva
+  // lección + preguntas en el modelo canónico).
+  const unidad = { id: resourceChild.id as string, subjectId: matematica.id as string };
 
   const rResource = await req('GET', `/education/topics/${unidad.id}/resource`, authHeaders);
   check('GET recurso publicado -> 200', rResource.status === 200);

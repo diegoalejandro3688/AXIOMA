@@ -59,7 +59,12 @@ export class EducationService {
 
   async listRootTopics(subjectId: string): Promise<CurriculumTopicResponse[]> {
     await this.getSubjectOrThrow(subjectId);
-    const topics = await this.topicRepo.findRootsBySubjectId(subjectId);
+    // STUDY CONTENT MOBILE REACHABILITY -- solo unidades canónicas V1 (raíces
+    // con un Recurso hijo publicado). Excluye de forma no destructiva los
+    // topics raíz legacy del seed que nunca fueron parte de CONTENT_MANIFEST
+    // (M1.NUMEROS.PORCENTAJES, C1.BIOLOGIA.CELULA, L1.LECTURA.INFERENCIA,
+    // H1.CHILE.SIGLO20.ISI) -- ver docstring del repo.
+    const topics = await this.topicRepo.findCanonicalUnitRootsBySubjectId(subjectId);
     return topics.map(toTopicResponse);
   }
 

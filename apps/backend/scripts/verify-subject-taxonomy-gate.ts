@@ -143,7 +143,13 @@ async function main() {
     // directamente bajo `matematica` por gates previos; la separación real
     // se afirma por "ningún M2.* en M1" y "ningún M1.* en M2" (y por los
     // checks a nivel de DB más abajo, que son a prueba de ese ruido).
-    check('temas raíz de "Matemática M1": al menos un M1.* y ningún M2.*', codesM1.some((c) => c.startsWith('M1.')) && !codesM1.some((c) => c.startsWith('M2.')), codesM1.join(', '));
+    // STUDY CONTENT MOBILE REACHABILITY -- `listRootTopics` ahora solo
+    // devuelve unidades canónicas (raíces con Recurso hijo publicado); la
+    // base de gates no tiene el catálogo canónico importado, así que
+    // `matematica` puede venir vacía de académico aquí (igual que M2 ya lo
+    // contemplaba). La separación real la afirman "ningún M2.* en M1" y los
+    // checks a nivel de DB de más abajo.
+    check('temas raíz de "Matemática M1": todo lo académico es M1.* (o vacío si aún no se importó)', codesM1.filter((c) => /^M\d\./.test(c)).every((c) => c.startsWith('M1.')), codesM1.join(', '));
     check('temas raíz de "Matemática M2": ningún M1.*', !codesM2.some((c) => c.startsWith('M1.')), codesM2.join(', '));
     check('temas raíz de "Matemática M2": todo lo académico es M2.* (o vacío si aún no se importó)', codesM2.filter((c) => /^M\d\./.test(c)).every((c) => c.startsWith('M2.')), codesM2.join(', '));
   } else {

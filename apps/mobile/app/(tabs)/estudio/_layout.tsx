@@ -30,6 +30,8 @@ export default function EstudioLayout() {
       <Stack.Screen name="index" options={{ title: 'Estudio' }} />
       <Stack.Screen name="[subjectId]/index" options={{ title: 'Materia' }} />
       <Stack.Screen name="[subjectId]/unidades" options={{ title: 'Unidades' }} />
+      {/* STUDY CONTENT MOBILE REACHABILITY -- nivel Unidad -> Recursos. */}
+      <Stack.Screen name="[subjectId]/unidad/[unitId]" options={{ title: 'Recursos' }} />
       <Stack.Screen name="topic/[topicId]/recurso" options={{ headerShown: false }} />
       <Stack.Screen name="topic/[topicId]/ejercicio" options={{ headerShown: false }} />
       {/* ENSAYOS-M1-C -- flujo de Ensayos, misma pestaña Estudio (ADR-0024). */}

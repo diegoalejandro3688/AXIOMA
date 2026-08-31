@@ -36,7 +36,13 @@ type ScreenState =
  * Cero contenido académico nuevo -- ver auditoría STUDY-4.
  */
 export default function RecursoScreen() {
-  const { topicId, subjectId, name } = useLocalSearchParams<{ topicId: string; subjectId: string; name?: string }>();
+  const { topicId, subjectId, name, unitId, unitName } = useLocalSearchParams<{
+    topicId: string;
+    subjectId: string;
+    name?: string;
+    unitId?: string;
+    unitName?: string;
+  }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const tokens = useTheme();
@@ -76,10 +82,23 @@ export default function RecursoScreen() {
   }, [load]);
 
   function goToExercise() {
-    router.push({ pathname: '/(tabs)/estudio/topic/[topicId]/ejercicio', params: { topicId, subjectId, name: name ?? '' } });
+    router.push({
+      pathname: '/(tabs)/estudio/topic/[topicId]/ejercicio',
+      params: { topicId, subjectId, name: name ?? '', unitId: unitId ?? '', unitName: unitName ?? '' },
+    });
   }
 
+  // STUDY CONTENT MOBILE REACHABILITY -- vuelve a la lista de Recursos de la
+  // Unidad cuando se entró por ahí (`unitId` presente); si se entró directo
+  // desde "Continuar estudiando" en Inicio, cae a la lista de unidades.
   function backToUnidades() {
+    if (unitId) {
+      router.push({
+        pathname: '/(tabs)/estudio/[subjectId]/unidad/[unitId]',
+        params: { subjectId, unitId, name: name ?? '', unitName: unitName ?? '' },
+      });
+      return;
+    }
     router.push({ pathname: '/(tabs)/estudio/[subjectId]/unidades', params: { subjectId, name: name ?? '' } });
   }
 

@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
-import type { CurriculumTopicResponse, TopicProgressResponse } from '@axioma/contracts';
-import { listRootTopics } from '../../../../lib/api/education';
+import type { CurriculumTopicResponse, TopicProgressResponse, TopicProgressStatus } from '@axioma/contracts';
+import { listRootTopics, listChildTopics } from '../../../../lib/api/education';
 import { getTopicsProgressBatch } from '../../../../lib/api/progress';
-import { resolveContinuationEntry } from '../../../../lib/progress/resolve-continuation';
+import { aggregateUnitProgressStatus } from '../../../../lib/study/aggregate-unit-progress';
+import { unitResourceListParams } from '../../../../lib/study/study-navigation';
 import { LoadingState } from '../../../../components/loading-state';
 import { ErrorState } from '../../../../components/error-state';
 import { EmptyState } from '../../../../components/empty-state';
@@ -18,16 +19,23 @@ import { subjectIcon, subjectToneBackground, subjectToneColor } from '../../../.
 type ScreenState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; topics: CurriculumTopicResponse[]; progressByTopic: Record<string, TopicProgressResponse> };
+  | { status: 'ready'; topics: CurriculumTopicResponse[]; statusByUnit: Record<string, TopicProgressStatus> };
 
 /**
- * Lista de unidades de una materia, con progreso real (PROGRESS, ADR-0014).
- * Ver ADR-0015 (theming). UI-4: rediseño puramente visual -- preserva
- * exactamente `getTopicsProgressBatch()` (Progress Batch Fix, una sola
- * solicitud batch para todos los temas raíz, NUNCA revertir al patrón
- * N+1 `getTopicProgress` por tema) y el criterio de tema ausente del
- * batch -> `NOT_STARTED` (`progress?.status ?? 'NOT_STARTED'` implícito
- * en `topicStatusLabel`).
+ * Lista de unidades canónicas de una materia, con progreso real (PROGRESS,
+ * ADR-0014). Ver ADR-0015 (theming).
+ *
+ * STUDY CONTENT MOBILE REACHABILITY:
+ *   - la Unidad ahora abre la lista de sus Recursos hijos
+ *     (`estudio/[subjectId]/unidad/[unitId]`), no navega directo a
+ *     `topic/[topicId]/recurso` con el id de la Unidad;
+ *   - el progreso de la Unidad se AGREGA del progreso de sus Recursos hijos
+ *     (`aggregateUnitProgressStatus`) -- el id de la Unidad raíz no tiene
+ *     progreso propio en el catálogo canónico;
+ *   - se conserva `getTopicsProgressBatch()` (UNA solicitud batch para todos
+ *     los recursos hijos de todas las unidades visibles, NUNCA el patrón N+1
+ *     `getTopicProgress` por recurso) y el criterio "id ausente del batch ->
+ *     `NOT_STARTED`".
  */
 export default function UnidadesScreen() {
   const { subjectId, name } = useLocalSearchParams<{ subjectId: string; name?: string }>();
@@ -52,25 +60,49 @@ export default function UnidadesScreen() {
       return;
     }
 
-    // Una sola solicitud batch para TODOS los temas raíz -- antes era un
-    // `GET /progress/topics/:id` POR TEMA (mismo fan-out N+1 corregido en
-    // Inicio, reproducible aquí con los mismos datos reales). Un tema
-    // ausente en la respuesta batch (ej. borrado entre `listRootTopics` y
-    // esta llamada) se trata como sin progreso -- mismo criterio que ya usa
-    // el render de abajo (`progress?.status ?? 'NOT_STARTED'`), nunca hace
-    // fallar toda la pantalla por un solo tema.
-    const progressResult = await getTopicsProgressBatch(topicsResult.data.map((topic) => topic.id));
-    if (!progressResult.ok) {
-      setState({ status: 'error', message: progressResult.message });
+    // STUDY CONTENT MOBILE REACHABILITY -- el progreso de una Unidad se
+    // DERIVA de sus Recursos hijos (los nodos que PROGRESS realmente
+    // registra). Preguntar el progreso del id de la Unidad raíz devolvía
+    // siempre `NOT_STARTED`. `listChildTopics` por unidad -> 3-4 llamadas
+    // (M1/M2: 4, Lenguaje/Ciencias/Historia: 3), aceptable para V1 (no hay
+    // endpoint batch de hijos y crear uno para 3-4 llamadas no se justifica).
+    const childrenLists = await Promise.all(topicsResult.data.map((unit) => listChildTopics(unit.id)));
+    const firstChildrenError = childrenLists.find((result) => !result.ok);
+    if (firstChildrenError && !firstChildrenError.ok) {
+      setState({ status: 'error', message: firstChildrenError.message });
       return;
     }
+    const childIdsByUnit = topicsResult.data.map((unit, index) => ({
+      unitId: unit.id,
+      childIds: (childrenLists[index].ok ? childrenLists[index].data : []).map((child) => child.id),
+    }));
 
-    const progressByTopic: Record<string, TopicProgressResponse> = {};
-    for (const progress of progressResult.data) {
-      progressByTopic[progress.curriculumTopicId] = progress;
+    // UNA sola solicitud batch para TODOS los recursos hijos de TODAS las
+    // unidades visibles -- nunca un `GET /progress/topics/:id` por recurso
+    // (mismo fan-out N+1 corregido en Inicio). Un recurso ausente de la
+    // respuesta batch se trata como `NOT_STARTED` (`progressByChild.get(id)
+    // ?? 'NOT_STARTED'`), nunca hace fallar la pantalla.
+    const allChildIds = childIdsByUnit.flatMap((entry) => entry.childIds);
+    const statusByChild = new Map<string, TopicProgressStatus>();
+    if (allChildIds.length > 0) {
+      const progressResult = await getTopicsProgressBatch(allChildIds);
+      if (!progressResult.ok) {
+        setState({ status: 'error', message: progressResult.message });
+        return;
+      }
+      for (const progress of progressResult.data) {
+        statusByChild.set(progress.curriculumTopicId, progress.status);
+      }
     }
 
-    setState({ status: 'ready', topics: topicsResult.data, progressByTopic });
+    const statusByUnit: Record<string, TopicProgressStatus> = {};
+    for (const { unitId, childIds } of childIdsByUnit) {
+      statusByUnit[unitId] = aggregateUnitProgressStatus(
+        childIds.map((id) => statusByChild.get(id) ?? 'NOT_STARTED'),
+      );
+    }
+
+    setState({ status: 'ready', topics: topicsResult.data, statusByUnit });
   }, [subjectId]);
 
   useEffect(() => {
@@ -81,14 +113,13 @@ export default function UnidadesScreen() {
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
   if (state.topics.length === 0) return <EmptyState message="Todavía no hay unidades disponibles para esta materia." />;
 
-  function openTopic(topic: CurriculumTopicResponse) {
-    if (state.status !== 'ready') return;
-    const progress = state.progressByTopic[topic.id];
-    const entry = progress ? resolveContinuationEntry(progress) : 'resource';
-    const screen = entry === 'resource' ? 'recurso' : 'ejercicio';
+  function openUnit(unit: CurriculumTopicResponse) {
+    // STUDY CONTENT MOBILE REACHABILITY -- la Unidad abre la lista de sus
+    // Recursos hijos; la decisión recurso/ejercicio se toma allí, POR
+    // recurso (nunca se pasa el id de la Unidad a `topic/[topicId]/*`).
     router.push({
-      pathname: `/(tabs)/estudio/topic/[topicId]/${screen}`,
-      params: { topicId: topic.id, subjectId, name: name ?? '' },
+      pathname: '/(tabs)/estudio/[subjectId]/unidad/[unitId]',
+      params: unitResourceListParams(subjectId, unit, name),
     });
   }
 
@@ -121,23 +152,26 @@ export default function UnidadesScreen() {
         data={state.topics}
         keyExtractor={(topic) => topic.id}
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => {
-          const progress = state.status === 'ready' ? state.progressByTopic[item.id] : undefined;
-          const status = progress?.status ?? 'NOT_STARTED';
+        renderItem={({ item, index }) => {
+          const status = state.status === 'ready' ? state.statusByUnit[item.id] ?? 'NOT_STARTED' : 'NOT_STARTED';
           const motif = resolveUnitMotif(item.code);
           return (
             <Card
               variant="interactive"
               accessibilityLabel={`Abrir unidad ${item.name}, ${topicStatusLabel(status)}`}
               style={styles.topicCard}
-              onPress={() => openTopic(item)}
+              onPress={() => openUnit(item)}
             >
               <View style={[styles.motifTile, { backgroundColor: motifBackground }]}>
                 <UnitMotif motif={motif} color={motifColor} size={26} />
               </View>
               <View style={styles.topicBody}>
+                {/* STUDY CONTENT MOBILE REACHABILITY -- número por POSICIÓN en
+                    la lista ya filtrada/ordenada (`index + 1`), no `item.order`
+                    crudo: así M2 se muestra como 01-04 aunque su `order`
+                    canónico interno sea 5-8. Presentación pura. */}
                 <Text variant="label" style={{ color: motifColor }}>
-                  {String(item.order).padStart(2, '0')}
+                  {String(index + 1).padStart(2, '0')}
                 </Text>
                 <Text variant="titleMedium">{item.name}</Text>
                 <View style={styles.statusRow}>

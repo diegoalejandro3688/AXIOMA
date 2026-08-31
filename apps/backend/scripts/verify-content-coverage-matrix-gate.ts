@@ -547,7 +547,14 @@ async function main() {
   // ==========================================================================
   console.log('--- 9. Invariante 19: los cuatro lectores de §11.1 siguen byte-idénticos tras I5 ---');
   const readerFiles = [
-    ['education/education.service.ts', 'lector 1 -- EducationService (catálogo)'],
+    // `education.service.ts` se excluye de la comprobación byte-idéntica de
+    // archivo completo: STUDY CONTENT MOBILE REACHABILITY añadió a
+    // `listRootTopics` un filtro de superficie (solo unidades canónicas =
+    // raíces con Recurso hijo publicado), con su propio gate
+    // (`verify:study-content-mobile-reachability-gate`). Ese cambio NO toca el
+    // predicado de contenido PUBLISHED que el invariante 19 protege: se
+    // verifica abajo, por método, que `getPublishedResource` y
+    // `listPublishedQuestions` siguen byte-idénticos.
     ['education/question-version.repository.ts', 'lector 1/2/3 -- QuestionVersionRepository'],
     ['education/learning-resource-version.repository.ts', 'lector 1 -- LearningResourceVersionRepository'],
     ['progress/progress.service.ts', 'lector 2 -- ProgressService'],
@@ -564,6 +571,20 @@ async function main() {
       cwd: repoRoot, encoding: 'utf8', shell: process.platform === 'win32',
     });
     check(`${label}: sin ningún cambio en el árbol de trabajo (invariante 19)`, (git.stdout ?? '').trim() === '', (git.stdout ?? '').trim());
+  }
+  {
+    // Invariante 19 para `education.service.ts` (lector 1) -- el predicado de
+    // contenido PUBLISHED, no la lista de unidades raíz (que STUDY CONTENT
+    // MOBILE REACHABILITY filtra a propósito). Ambos métodos, byte-idénticos.
+    const eduSvc = readFileSync(join(srcDir, 'education', 'education.service.ts'), 'utf8');
+    check(
+      'lector 1 -- EducationService.getPublishedResource: predicado PUBLISHED byte-idéntico (invariante 19)',
+      /const version = await this\.resourceVersionRepo\.findLatestPublishedByTopicId\(topicId\);\s*if \(!version\) throw new NotFoundException\('No hay ningún recurso publicado para este tema\.'\);/.test(eduSvc),
+    );
+    check(
+      'lector 1 -- EducationService.listPublishedQuestions: predicado PUBLISHED byte-idéntico (invariante 19)',
+      /const versions = await this\.questionVersionRepo\.findPublishedByTopicId\(topicId\);\s*return Promise\.all\(versions\.map\(\(version\) => this\.toQuestionResponse\(version\)\)\);/.test(eduSvc),
+    );
   }
   check('`countPublishedByTopicId` sigue existiendo, byte-idéntico, como único punto de entrada de PROGRESS (§12.5: reutilizar sin duplicar)',
     /countPublishedByTopicId\(curriculumTopicId: string\): Promise<number> \{\s*return this\.prisma\.questionVersion\.count\(\{ where: \{ curriculumTopicId, editorialStatus: 'PUBLISHED' \} \}\);/.test(
