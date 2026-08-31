@@ -24,24 +24,61 @@ import type { QuickQuestionSession, QuickQuestionAttempt } from '../generated/pr
  */
 const QUICK_QUESTION_LOCK_NAMESPACE = 23;
 
+/**
+ * COMPETITIVE V1, Incremento 9 -- ventana AUTORITATIVA de la pregunta
+ * rápida. ÚNICA fuente de verdad del backend. La deadline se deriva SIEMPRE
+ * de `currentPresentedAt + este valor`, calculada con el reloj del servidor
+ * -- nunca con un timestamp/`secondsRemaining` enviado por el cliente.
+ */
+export const QUICK_QUESTION_TIME_LIMIT_MS = 45_000;
+
+/** Instante autoritativo de expiración de una pregunta presentada en `presentedAt`. */
+export function quickQuestionDeadline(presentedAt: Date): Date {
+  return new Date(presentedAt.getTime() + QUICK_QUESTION_TIME_LIMIT_MS);
+}
+
+/** `true` si la ventana ya expiró según el reloj del servidor (`now`). */
+export function isQuickQuestionExpired(presentedAt: Date | null, now: Date): boolean {
+  if (!presentedAt) return true; // pendiente sin `presentedAt`: integridad rota -> se trata como expirada.
+  return now.getTime() >= quickQuestionDeadline(presentedAt).getTime();
+}
+
 export type OpenSessionOutcome = { session: QuickQuestionSession; created: boolean };
 
 export type NextOutcome =
-  | { outcome: 'QUESTION_PRESENTED'; session: QuickQuestionSession; questionVersion: QuestionVersionWithAnswerOptions }
+  | {
+      outcome: 'QUESTION_PRESENTED';
+      session: QuickQuestionSession;
+      questionVersion: QuestionVersionWithAnswerOptions;
+      /** `currentPresentedAt + 45 s` -- ventana autoritativa de ESTA presentación. */
+      deadlineAt: Date;
+    }
   | { outcome: 'NO_QUESTIONS_AVAILABLE'; session: QuickQuestionSession };
 
-export type AnswerOutcome = {
-  attempt: QuickQuestionAttempt;
-  created: boolean;
-  explanationContent: Prisma.JsonValue | null;
-  /**
-   * COMPETITIVE V1 (rediseño visual, Incremento 2) -- id de la alternativa
-   * CORRECTA de la pregunta respondida, para que el cliente la resalte
-   * DESPUÉS de responder. Nunca se expone antes (`/next` sigue sin
-   * `isCorrect`). No cambia la economía LP ni `attempt.isCorrect`.
-   */
-  correctAnswerOptionId: string;
-};
+/**
+ * COMPETITIVE V1, Incremento 9 -- `answer` deja de ser un único resultado:
+ *  - `ANSWERED` -- llegó dentro de la ventana; ruta normal (intento + evento
+ *    `quick_question_answered` + economía LP actual).
+ *  - `TIMED_OUT` -- llegó DESPUÉS de la deadline autoritativa: NO crea
+ *    intento, NO emite evento, **0 LP**; se resuelve como timeout y devuelve
+ *    la clave para revelar la correcta.
+ */
+export type AnswerOutcome =
+  | {
+      outcome: 'ANSWERED';
+      attempt: QuickQuestionAttempt;
+      created: boolean;
+      explanationContent: Prisma.JsonValue | null;
+      /** id de la alternativa CORRECTA -- SOLO tras responder/timeout, nunca en `/next`. */
+      correctAnswerOptionId: string;
+    }
+  | { outcome: 'TIMED_OUT'; correctAnswerOptionId: string };
+
+/** COMPETITIVE V1, Incremento 9 -- resultado del endpoint explícito de timeout. */
+export type TimeoutOutcome =
+  | { outcome: 'TIMED_OUT'; correctAnswerOptionId: string }
+  | { outcome: 'NOT_EXPIRED'; deadlineAt: Date }
+  | { outcome: 'NO_PENDING_QUESTION' };
 
 /**
  * Bloque IV, Incremento 4, sub-incremento 4.b ("Motor de sesión de Pregunta
@@ -113,22 +150,94 @@ export class QuickQuestionService {
           throw new ConflictException('Esta sesión de Pregunta rápida ya está cerrada.');
         }
 
+        // Ids excluidos de la selección: los ya intentados en la sesión y,
+        // si aplica, la pregunta que se acaba de consumir por expiración.
+        const excludeIds = await this.attemptRepo.findQuestionVersionIdsBySession(sessionId, tx);
+
         if (session.currentQuestionVersionId) {
-          const pending = await this.questionVersionRepo.findByIdWithAnswerOptions(session.currentQuestionVersionId, tx);
-          if (!pending) {
-            throw new ConflictException('La pregunta pendiente de esta sesión ya no está disponible.');
+          if (!isQuickQuestionExpired(session.currentPresentedAt, new Date())) {
+            // §2.A -- todavía dentro de la ventana: MISMA pregunta pendiente,
+            // conservando SU deadline original (no se reinicia, no se
+            // concede otra ventana).
+            const pending = await this.questionVersionRepo.findByIdWithAnswerOptions(session.currentQuestionVersionId, tx);
+            if (!pending) {
+              throw new ConflictException('La pregunta pendiente de esta sesión ya no está disponible.');
+            }
+            return {
+              outcome: 'QUESTION_PRESENTED' as const,
+              session,
+              questionVersion: pending,
+              deadlineAt: quickQuestionDeadline(session.currentPresentedAt ?? new Date()),
+            };
           }
-          return { outcome: 'QUESTION_PRESENTED' as const, session, questionVersion: pending };
+
+          // §2.B -- ya expiró: se consume/finaliza el timeout AUTORITATIVAMENTE
+          // (limpiar la pregunta pendiente) SIN crear intento ni emitir
+          // `quick_question_answered` (**0 LP**), y se excluye de esta
+          // selección. La revelación de la correcta en el timeout la sirve
+          // el endpoint explícito `/timeout`; este camino es la red de
+          // seguridad para un `/next` sobre una pregunta ya vencida.
+          excludeIds.push(session.currentQuestionVersionId);
+          await this.sessionRepo.clearCurrentQuestion(tx, sessionId);
         }
 
-        const excludeIds = await this.attemptRepo.findQuestionVersionIdsBySession(sessionId, tx);
         const candidate = await this.questionVersionRepo.findRandomEligible(excludeIds, tx);
         if (!candidate) {
-          return { outcome: 'NO_QUESTIONS_AVAILABLE' as const, session };
+          const cleared = await this.sessionRepo.findById(sessionId, tx);
+          return { outcome: 'NO_QUESTIONS_AVAILABLE' as const, session: cleared ?? session };
         }
 
-        const updated = await this.sessionRepo.setCurrentQuestion(sessionId, candidate.id, new Date(), tx);
-        return { outcome: 'QUESTION_PRESENTED' as const, session: updated, questionVersion: candidate };
+        const presentedAt = new Date();
+        const updated = await this.sessionRepo.setCurrentQuestion(sessionId, candidate.id, presentedAt, tx);
+        return {
+          outcome: 'QUESTION_PRESENTED' as const,
+          session: updated,
+          questionVersion: candidate,
+          deadlineAt: quickQuestionDeadline(presentedAt),
+        };
+      },
+      { timeout: 30_000, maxWait: 30_000 },
+    );
+  }
+
+  /**
+   * COMPETITIVE V1, Incremento 9 -- resolución AUTORITATIVA del timeout de la
+   * pregunta pendiente. Comparte la MISMA exclusión mutua (`qq-session:{id}`)
+   * que `next`/`answer`/`close` -> answer-vs-timeout tiene un único
+   * resultado. NO crea `quick_question_attempt`, NO emite
+   * `quick_question_answered` -> **0 LP** garantizado estructuralmente.
+   * Idempotente: un segundo intento cae en `NO_PENDING_QUESTION` (200, nunca
+   * 500).
+   */
+  async timeout(accountId: string, sessionId: string): Promise<TimeoutOutcome> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${QUICK_QUESTION_LOCK_NAMESPACE}, hashtext(${'qq-session:' + sessionId}))`;
+
+        const session = await this.loadOwnedSession(tx, accountId, sessionId);
+        if (session.status !== 'ACTIVE') {
+          throw new ConflictException('Esta sesión de Pregunta rápida ya está cerrada.');
+        }
+        if (!session.currentQuestionVersionId) {
+          return { outcome: 'NO_PENDING_QUESTION' as const };
+        }
+        if (!isQuickQuestionExpired(session.currentPresentedAt, new Date())) {
+          return {
+            outcome: 'NOT_EXPIRED' as const,
+            deadlineAt: quickQuestionDeadline(session.currentPresentedAt ?? new Date()),
+          };
+        }
+
+        const correctOption = await this.answerOptionRepo.findCorrectByQuestionVersionId(session.currentQuestionVersionId, tx);
+        if (!correctOption) {
+          // Integridad rota (pregunta PUBLISHED sin correcta): se consume
+          // igual para no dejar la sesión atascada.
+          await this.sessionRepo.clearCurrentQuestion(tx, sessionId);
+          throw new ConflictException('La pregunta pendiente de esta sesión ya no está disponible.');
+        }
+
+        await this.sessionRepo.clearCurrentQuestion(tx, sessionId);
+        return { outcome: 'TIMED_OUT' as const, correctAnswerOptionId: correctOption.id };
       },
       { timeout: 30_000, maxWait: 30_000 },
     );
@@ -166,6 +275,7 @@ export class QuickQuestionService {
             throw new ConflictException('La pregunta de este intento ya no está disponible.');
           }
           return {
+            outcome: 'ANSWERED' as const,
             attempt: existing,
             created: false,
             explanationContent: questionVersion?.explanationContent ?? null,
@@ -178,6 +288,22 @@ export class QuickQuestionService {
         }
         if (!session.currentQuestionVersionId) {
           throw new ConflictException('No hay ninguna pregunta pendiente para responder en esta sesión.');
+        }
+
+        // COMPETITIVE V1, Incremento 9 -- la deadline se verifica TAMBIÉN
+        // aquí, con el reloj del servidor. Una respuesta que llega después
+        // de `currentPresentedAt + 45 s` NO se acepta como respuesta: no
+        // crea intento, no emite evento (**0 LP**), se resuelve como
+        // timeout. Un cliente viejo/modificado no puede responder tarde y
+        // obtener recompensa. La pregunta queda consumida.
+        if (isQuickQuestionExpired(session.currentPresentedAt, new Date())) {
+          const correctOnTimeout = await this.answerOptionRepo.findCorrectByQuestionVersionId(session.currentQuestionVersionId, tx);
+          if (!correctOnTimeout) {
+            await this.sessionRepo.clearCurrentQuestion(tx, sessionId);
+            throw new ConflictException('La pregunta pendiente de esta sesión ya no está disponible.');
+          }
+          await this.sessionRepo.clearCurrentQuestion(tx, sessionId);
+          return { outcome: 'TIMED_OUT' as const, correctAnswerOptionId: correctOnTimeout.id };
         }
 
         const answerOption = await this.answerOptionRepo.findById(answerOptionId, tx);
@@ -214,7 +340,13 @@ export class QuickQuestionService {
         });
         await this.sessionRepo.clearCurrentQuestion(tx, sessionId);
 
-        return { attempt, created: true, explanationContent: questionVersion.explanationContent, correctAnswerOptionId: correctOption.id };
+        return {
+          outcome: 'ANSWERED' as const,
+          attempt,
+          created: true,
+          explanationContent: questionVersion.explanationContent,
+          correctAnswerOptionId: correctOption.id,
+        };
       },
       { timeout: 30_000, maxWait: 30_000 },
     );
@@ -229,7 +361,7 @@ export class QuickQuestionService {
     // automático. Solo se publica en el camino de creación real (`created
     // === true`), nunca en el replay -- mismo criterio ya usado por
     // PROGRESS al publicar el evento equivalente de respuesta académica.
-    if (result.created) {
+    if (result.outcome === 'ANSWERED' && result.created) {
       await this.outbox.publish({
         eventKey: 'quick_question_answered',
         schemaVersion: GAMIFICATION_SCHEMA_VERSION,

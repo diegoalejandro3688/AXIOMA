@@ -1,12 +1,24 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ActivityIndicator, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import type { AnswerOptionPublicResponse, ResourceContentBlockResponse } from '@axioma/contracts';
-import { openQuickQuestionSession, nextQuickQuestion, answerQuickQuestion, closeQuickQuestionSession } from '../../../lib/api/quick-question';
-import { mapNextResult, mapAnswerResult, resolveAnswerOperationId, type QuestionPresented, type PendingAnswerAttempt } from '../../../lib/quick-question/outcomes';
 import {
-  QUICK_QUESTION_TIME_LIMIT_SECONDS,
+  openQuickQuestionSession,
+  nextQuickQuestion,
+  answerQuickQuestion,
+  timeoutQuickQuestion,
+  closeQuickQuestionSession,
+} from '../../../lib/api/quick-question';
+import {
+  mapNextResult,
+  mapAnswerResult,
+  mapTimeoutResult,
+  resolveAnswerOperationId,
+  type QuestionPresented,
+  type PendingAnswerAttempt,
+} from '../../../lib/quick-question/outcomes';
+import {
   answerHeadline,
   optionOutcome,
   secondsRemainingUntil,
@@ -32,7 +44,7 @@ type Screen =
       status: 'question';
       sessionId: string;
       question: QuestionPresented;
-      /** Epoch ms en que el temporizador VISUAL llega a 0. Solo UI (Incremento 8). */
+      /** Epoch ms de la deadline AUTORITATIVA del servidor (`deadlineAt` de `/next`). */
       deadlineTs: number;
       selectedOptionId: string | null;
       /** El temporizador se congela en la PRIMERA selección y ya no reanuda (§3). */
@@ -44,11 +56,23 @@ type Screen =
       submitError: string | null;
     }
   | {
+      /** El temporizador visual llegó a 0 -- se está pidiendo la confirmación AUTORITATIVA a `/timeout`. */
+      status: 'resolving_timeout';
+      sessionId: string;
+      question: QuestionPresented;
+      error: string | null;
+    }
+  | {
       status: 'result';
       sessionId: string;
       question: QuestionPresented;
       verdict: AnswerVerdict;
-      /** Solo tras `POST /answer`. `null` en un timeout LOCAL -> no se revela la correcta (Incremento 9 lo hará). */
+      /**
+       * id de la alternativa correcta. Presente tras `ANSWERED`, tras un
+       * `TIMED_OUT` CONFIRMADO por el servidor (respuesta tardía o
+       * `/timeout`). `null` sólo en el caso raro `NO_PENDING_QUESTION` (la
+       * pregunta ya no está y no hay clave que revelar).
+       */
       correctAnswerOptionId: string | null;
       selectedOptionId: string | null;
       explanationContent: ResourceContentBlockResponse[] | null;
@@ -58,22 +82,20 @@ type Screen =
 
 /**
  * Pregunta rápida -- Bloque IV, Incremento 5, sub-incremento 5.d + rediseño
- * visual Competir V1, Incremento 8 (temporizador visual + feedback).
- * ONLINE-ONLY: un fallo de red es un error inmediato con reintento manual.
+ * visual Competir V1, Incrementos 8-9.
  *
- * Reanudación: al montar, `openSession` -> `next` puede devolver la
- * pregunta pendiente de una sesión YA existente -- se renderiza igual que
- * una recién seleccionada.
+ * TEMPORIZADOR -- 45 s con AUTORIDAD DE SERVIDOR (Incremento 9). La deadline
+ * llega en `deadlineAt` de `/next` (`currentPresentedAt + 45 s`, reloj del
+ * servidor); el temporizador visual se DERIVA de ahí, así volver de segundo
+ * plano NO lo reinicia. Al llegar a 0 el móvil pide a `/timeout` la
+ * resolución autoritativa -- nunca decide el timeout por su cuenta. El
+ * servidor: `TIMED_OUT` (pregunta consumida, sin recompensa de LP, revela la correcta),
+ * `NOT_EXPIRED` (re-sincroniza con `deadlineAt`) o `NO_PENDING_QUESTION`.
+ * Una respuesta que llega tarde también se resuelve como `TIMED_OUT` en el
+ * servidor.
  *
- * `close()` SOLO se invoca desde el `onPress` del botón de salida -- NUNCA
- * desde un efecto de desmontaje ni un handler de back. `mountedRef` evita
- * `setState` tras desmontar.
- *
- * TEMPORIZADOR (Incremento 8) -- 45 s, SOLO VISUAL/local: arranca únicamente
- * cuando la pregunta ya está cargada y visible; se congela en la primera
- * selección; al llegar a 0 sin selección hace un timeout LOCAL (no consume
- * la pregunta en el servidor, no afirma consecuencia de LP). El Incremento
- * 9 lo reemplazará por un `deadline` autoritativo del backend.
+ * `close()` SOLO se invoca desde el `onPress` del botón de salida.
+ * `mountedRef` evita `setState` tras desmontar.
  */
 export default function QuickQuestionScreen() {
   const router = useRouter();
@@ -82,6 +104,7 @@ export default function QuickQuestionScreen() {
   const [screen, setScreen] = useState<Screen>({ status: 'initializing' });
   const [nowTs, setNowTs] = useState(() => Date.now());
   const mountedRef = useRef(true);
+  const timeoutInFlightRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -110,15 +133,15 @@ export default function QuickQuestionScreen() {
 
   function applyNextOutcome(sessionId: string, outcome: ReturnType<typeof mapNextResult>) {
     if (outcome.kind === 'question_presented') {
-      // El temporizador arranca AQUÍ -- la pregunta ya está cargada y visible.
+      // El temporizador arranca AQUÍ y se deriva de la deadline autoritativa.
       setScreen({
         status: 'question',
         sessionId,
         question: outcome.question,
-        deadlineTs: Date.now() + QUICK_QUESTION_TIME_LIMIT_SECONDS * 1000,
+        deadlineTs: Date.parse(outcome.question.deadlineAt),
         selectedOptionId: null,
         frozen: false,
-        frozenSeconds: QUICK_QUESTION_TIME_LIMIT_SECONDS,
+        frozenSeconds: 0,
         submitting: false,
         pendingAttempt: null,
         submitError: null,
@@ -131,7 +154,6 @@ export default function QuickQuestionScreen() {
       return;
     }
     if (outcome.kind === 'session_closed') {
-      // Estado TERMINAL -- nunca se abre otra sesión automáticamente.
       setScreen({ status: 'session_closed' });
       return;
     }
@@ -142,23 +164,54 @@ export default function QuickQuestionScreen() {
     init();
   }, [init]);
 
-  // Timeout LOCAL: solo aplica si seguimos en la pregunta, sin enviar y sin
-  // selección (una selección congela el temporizador -> nunca llega aquí).
-  const handleLocalTimeout = useCallback(() => {
+  /**
+   * El temporizador visual llegó a 0: se pide a `/timeout` la resolución
+   * AUTORITATIVA. El móvil NUNCA decide el timeout por su cuenta.
+   */
+  const resolveTimeout = useCallback(async (sessionId: string, question: QuestionPresented) => {
+    if (timeoutInFlightRef.current) return;
+    timeoutInFlightRef.current = true;
+    setScreen((prev) => (prev.status === 'question' ? { status: 'resolving_timeout', sessionId, question, error: null } : prev));
+
+    const outcome = mapTimeoutResult(await timeoutQuickQuestion(sessionId));
+    timeoutInFlightRef.current = false;
     if (!mountedRef.current) return;
+
     setScreen((prev) => {
-      if (prev.status !== 'question' || prev.submitting || prev.selectedOptionId !== null) return prev;
-      return {
-        status: 'result',
-        sessionId: prev.sessionId,
-        question: prev.question,
-        verdict: 'timeout',
-        correctAnswerOptionId: null,
-        selectedOptionId: null,
-        explanationContent: null,
-        loadingNext: false,
-        nextError: null,
-      };
+      if (prev.status !== 'resolving_timeout') return prev;
+      if (outcome.kind === 'timed_out' || outcome.kind === 'no_pending') {
+        return {
+          status: 'result',
+          sessionId,
+          question,
+          verdict: 'timeout',
+          correctAnswerOptionId: outcome.kind === 'timed_out' ? outcome.correctAnswerOptionId : null,
+          selectedOptionId: null,
+          explanationContent: null,
+          loadingNext: false,
+          nextError: null,
+        };
+      }
+      if (outcome.kind === 'not_expired') {
+        // El reloj local iba adelantado: se re-sincroniza con la deadline
+        // autoritativa y la pregunta sigue activa.
+        return {
+          status: 'question',
+          sessionId,
+          question,
+          deadlineTs: Date.parse(outcome.deadlineAt),
+          selectedOptionId: null,
+          frozen: false,
+          frozenSeconds: 0,
+          submitting: false,
+          pendingAttempt: null,
+          submitError: null,
+        };
+      }
+      if (outcome.kind === 'session_closed') return { status: 'session_closed' };
+      // network / error -- se mantiene el estado de resolución con un
+      // reintento explícito; las alternativas NO se re-habilitan.
+      return { status: 'resolving_timeout', sessionId, question, error: outcome.message };
     });
   }, []);
 
@@ -166,19 +219,21 @@ export default function QuickQuestionScreen() {
   // desmontar, al congelar, al enviar y al cambiar de pregunta.
   const timerRunning = screen.status === 'question' && !screen.frozen && !screen.submitting;
   const deadlineTs = screen.status === 'question' ? screen.deadlineTs : 0;
+  const activeSessionId = screen.status === 'question' ? screen.sessionId : null;
+  const activeQuestion = screen.status === 'question' ? screen.question : null;
   useEffect(() => {
-    if (!timerRunning) return;
+    if (!timerRunning || activeSessionId === null || activeQuestion === null) return;
     const id = setInterval(() => {
       if (!mountedRef.current) return;
       if (Date.now() >= deadlineTs) {
         clearInterval(id);
-        handleLocalTimeout();
+        void resolveTimeout(activeSessionId, activeQuestion);
         return;
       }
       setNowTs(Date.now());
     }, TIMER_TICK_MS);
     return () => clearInterval(id);
-  }, [timerRunning, deadlineTs, handleLocalTimeout]);
+  }, [timerRunning, deadlineTs, activeSessionId, activeQuestion, resolveTimeout]);
 
   function handleSelectOption(optionId: string) {
     setScreen((prev) => {
@@ -202,6 +257,22 @@ export default function QuickQuestionScreen() {
     const outcome = mapAnswerResult(result);
 
     if (outcome.kind === 'ok') {
+      if (outcome.data.outcome === 'TIMED_OUT') {
+        // La respuesta llegó DESPUÉS de la deadline autoritativa: el
+        // servidor la resolvió como timeout (sin recompensa de LP, sin intento).
+        setScreen({
+          status: 'result',
+          sessionId,
+          question,
+          verdict: 'timeout',
+          correctAnswerOptionId: outcome.data.correctAnswerOptionId,
+          selectedOptionId,
+          explanationContent: null,
+          loadingNext: false,
+          nextError: null,
+        });
+        return;
+      }
       setScreen({
         status: 'result',
         sessionId,
@@ -217,10 +288,8 @@ export default function QuickQuestionScreen() {
     }
 
     if (outcome.kind === 'network') {
-      // AMBIGUO -- conserva pendingAttempt (mismo operationId en el próximo
-      // intento). El temporizador NO se reanuda: la selección ya lo congeló
-      // (§3) -- reintentar el envío no devuelve tiempo. Decisión
-      // conservadora, documentada.
+      // AMBIGUO -- conserva pendingAttempt (mismo operationId). El
+      // temporizador NO se reanuda: la selección ya lo congeló (§3).
       setScreen((prev) => (prev.status === 'question' ? { ...prev, submitting: false, submitError: outcome.message } : prev));
       return;
     }
@@ -232,8 +301,7 @@ export default function QuickQuestionScreen() {
     }
 
     // invalid_option / error -- definitivo; descarta el intento, permite
-    // elegir de nuevo. El temporizador sigue congelado (la selección lo
-    // congeló); no se reanuda.
+    // elegir de nuevo. El temporizador sigue congelado; no se reanuda.
     setScreen((prev) => (prev.status === 'question' ? { ...prev, submitting: false, pendingAttempt: null, submitError: outcome.message } : prev));
   }
 
@@ -286,6 +354,44 @@ export default function QuickQuestionScreen() {
     );
   }
 
+  if (screen.status === 'resolving_timeout') {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <Text variant="heading2" weight="bold" color="secondary">
+          Se acabó el tiempo
+        </Text>
+        <ContentBlockRenderer blocks={screen.question.stemContent} />
+        <View style={styles.options}>
+          {screen.question.answerOptions.map((option) => (
+            <AnswerOptionRow key={option.id} option={option} state="disabled" disabled onSelect={() => undefined} styles={styles} tokens={tokens} />
+          ))}
+        </View>
+        {screen.error ? (
+          <>
+            <Text variant="bodySmall" color="error">
+              {screen.error}
+            </Text>
+            <Button
+              variant="primary"
+              label="Reintentar"
+              accessibilityLabel="Reintentar"
+              onPress={() => resolveTimeout(screen.sessionId, screen.question)}
+              style={styles.primaryButton}
+            />
+          </>
+        ) : (
+          <View style={styles.centeredInline}>
+            <ActivityIndicator color={tokens.color.accent.default} />
+            <Text variant="bodySmall" color="secondary">
+              Confirmando…
+            </Text>
+          </View>
+        )}
+        <Button variant="tertiary" label="Volver a Competir" accessibilityLabel="Volver a Competir" onPress={handleExit} style={styles.exitButton} />
+      </ScrollView>
+    );
+  }
+
   if (screen.status === 'question') {
     const secondsRemaining = screen.frozen ? screen.frozenSeconds : secondsRemainingUntil(screen.deadlineTs, nowTs);
     return (
@@ -328,7 +434,7 @@ export default function QuickQuestionScreen() {
     );
   }
 
-  // screen.status === 'result' -- respuesta enviada o timeout LOCAL.
+  // screen.status === 'result' -- respuesta o timeout CONFIRMADO por el servidor.
   const headlineColor = screen.verdict === 'correct' ? 'success' : screen.verdict === 'incorrect' ? 'error' : 'secondary';
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -338,7 +444,7 @@ export default function QuickQuestionScreen() {
 
       {screen.verdict === 'timeout' ? (
         <Text variant="bodySmall" color="secondary">
-          No respondiste a tiempo. La pregunta sigue disponible desde "Siguiente pregunta".
+          No respondiste a tiempo.
         </Text>
       ) : null}
 
@@ -437,6 +543,7 @@ function createStyles(t: ThemeTokens) {
     container: { flex: 1, backgroundColor: t.color.background.default },
     content: { padding: 16, gap: 16 },
     centered: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 16, padding: 24, backgroundColor: t.color.background.default },
+    centeredInline: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
     infoMessage: { textAlign: 'center' as const },
     options: { gap: 10 },
     primaryButton: { marginTop: 4 },

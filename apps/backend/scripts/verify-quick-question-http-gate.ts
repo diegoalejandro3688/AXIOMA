@@ -185,6 +185,13 @@ async function main() {
     check('NINGUNA alternativa expone isCorrect', noIsCorrectLeaked);
     check('la respuesta cruda tampoco contiene la cadena "isCorrect"', !next1.raw.includes('isCorrect'));
     check('/next NUNCA expone correctAnswerOptionId (la clave solo aparece tras responder)', !next1.raw.includes('correctAnswerOptionId'));
+    // Incremento 9 -- deadline autoritativa (aditiva) = currentPresentedAt + 45 s.
+    check('A. /next incluye deadlineAt (ISO)', typeof next1.body?.deadlineAt === 'string' && !Number.isNaN(Date.parse(next1.body.deadlineAt)));
+    const sessRow1 = await pg.query('SELECT EXTRACT(EPOCH FROM current_presented_at) * 1000 AS presented_ms FROM quick_question_session WHERE id = $1', [sessionId]);
+    check(
+      'A. deadlineAt = currentPresentedAt + 45 s (reloj del servidor)',
+      Date.parse(next1.body.deadlineAt) === Math.round(Number(sessRow1.rows[0].presented_ms)) + 45_000,
+    );
     const presentedOptionIds = new Set((next1.body?.answerOptions ?? []).map((o: { id: string }) => o.id));
     check(
       'la pregunta presentada es UNA de las dos fixtures del universo aislado (selección server-side real, no asumida)',
@@ -201,6 +208,7 @@ async function main() {
     check('segundo /next -> 200', next2.status === 200);
     const presentedOptionIds2 = new Set((next2.body?.answerOptions ?? []).map((o: { id: string }) => o.id));
     check('mismas alternativas presentadas (misma pregunta pendiente, sin regenerar)', [...presentedOptionIds].every((id) => presentedOptionIds2.has(id)));
+    check('B. la deadlineAt NO se reinicia en un /next dentro de la ventana', next2.body?.deadlineAt === next1.body?.deadlineAt);
 
     console.log('--- 6. POST /answers: alternativa perteneciente a OTRA pregunta -> 400 ---');
     const foreignOptionAttempt = await req('POST', `${QQ}/${sessionId}/answers`, alice.authHeaders, {
@@ -224,6 +232,7 @@ async function main() {
       operationId: operationId1,
     });
     check('POST /answers -> 200', answer1.status === 200);
+    check('C. outcome ANSWERED (respuesta dentro de la ventana, semántica intacta)', answer1.body?.outcome === 'ANSWERED');
     check('isCorrect: true (alternativa correcta real)', answer1.body?.isCorrect === true);
     check('correctAnswerOptionId = la alternativa correcta real de la pregunta', answer1.body?.correctAnswerOptionId === presented.correctOptionId);
     check('explanationContent presente (no null, fixture con explicación)', Array.isArray(answer1.body?.explanationContent) && answer1.body.explanationContent.length > 0);
@@ -239,12 +248,109 @@ async function main() {
       operationId: operationId1,
     });
     check('replay -> 200 (nunca 201, nunca error)', answerReplay.status === 200);
+    check('replay -> outcome ANSWERED', answerReplay.body?.outcome === 'ANSWERED');
     check('replay devuelve el MISMO isCorrect', answerReplay.body?.isCorrect === answer1.body?.isCorrect);
     check('replay devuelve el MISMO correctAnswerOptionId', answerReplay.body?.correctAnswerOptionId === answer1.body?.correctAnswerOptionId);
     const outboxCountAfterReplay = await pg.query(`SELECT count(*)::int AS n FROM outbox_event WHERE payload->>'quickQuestionAttemptId' = $1`, [attemptId]);
     check('SIN segunda publicación tras el replay -- sigue existiendo UN solo outbox_event', outboxCountAfterReplay.rows[0].n === 1);
     const attemptCountAfterReplay = await pg.query(`SELECT count(*)::int AS n FROM quick_question_attempt WHERE operation_id = $1`, [operationId1]);
     check('SIN segundo intento -- sigue existiendo UNA sola fila', attemptCountAfterReplay.rows[0].n === 1);
+
+    console.log('--- 9b. Incremento 9: timeout AUTORITATIVO vía HTTP (endpoint explícito + answer tardío) ---');
+    // Cuerpo estricto + auth.
+    const timeoutBadBody = await req('POST', `${QQ}/${sessionId}/timeout`, alice.authHeaders, { anything: 1 });
+    check('E. POST /timeout con propiedad inesperada -> 400', timeoutBadBody.status === 400);
+    const timeoutNoAuth = await req('POST', `${QQ}/${randomUUID()}/timeout`, {}, {});
+    check('E. POST /timeout sin sesión -> 401', timeoutNoAuth.status === 401);
+
+    // Cuenta/sesión FRESCA para el timeout -- alice ya tiene su sesión ACTIVE
+    // (openSession es idempotente por cuenta), así que se usa otra cuenta.
+    const timeoutU = await newSession('timeout');
+    const tOpen = await req('POST', QQ, timeoutU.authHeaders, {});
+    const tSessionId = tOpen.body?.sessionId as string;
+    trackedSessionIds.push(tSessionId);
+    await isolateEligibleUniverse(tSessionId, timeoutU.accountId, [qMain.questionVersionId, qForeign.questionVersionId]);
+    const tNext = await req('POST', `${QQ}/${tSessionId}/next`, timeoutU.authHeaders, {});
+    check('E. /next para el escenario de timeout -> QUESTION_PRESENTED', tNext.body?.outcome === 'QUESTION_PRESENTED');
+    const tPresentedIds = new Set((tNext.body?.answerOptions ?? []).map((o: { id: string }) => o.id));
+    const tPresented = tPresentedIds.has(qMain.correctOptionId) ? qMain : qForeign;
+
+    // H. /timeout dentro de la ventana -> NOT_EXPIRED + deadlineAt, sin consumir, SIN clave.
+    const timeoutEarly = await req('POST', `${QQ}/${tSessionId}/timeout`, timeoutU.authHeaders, {});
+    check('H. /timeout dentro de la ventana -> 200 NOT_EXPIRED', timeoutEarly.status === 200 && timeoutEarly.body?.outcome === 'NOT_EXPIRED');
+    check('H. NOT_EXPIRED devuelve deadlineAt y NUNCA correctAnswerOptionId', typeof timeoutEarly.body?.deadlineAt === 'string' && !timeoutEarly.raw.includes('correctAnswerOptionId'));
+
+    // LP antes del timeout.
+    const lpBefore = await pg.query(`SELECT COALESCE(SUM(point_amount),0)::int AS lp FROM league_point_ledger_entry WHERE account_id = $1`, [timeoutU.accountId]);
+
+    // Simula ventana expirada -- reloj del SERVIDOR (pg now()), nunca del cliente.
+    await pg.query(`UPDATE quick_question_session SET current_presented_at = now() - interval '46 seconds' WHERE id = $1`, [tSessionId]);
+    const attemptsBeforeTimeout = await pg.query('SELECT count(*)::int AS n FROM quick_question_attempt WHERE session_id = $1', [tSessionId]);
+
+    // E. /timeout tras expirar -> TIMED_OUT + correctAnswerOptionId real.
+    const timeoutDone = await req('POST', `${QQ}/${tSessionId}/timeout`, timeoutU.authHeaders, {});
+    check('E. /timeout tras expirar -> 200 TIMED_OUT', timeoutDone.status === 200 && timeoutDone.body?.outcome === 'TIMED_OUT');
+    check('E. TIMED_OUT revela correctAnswerOptionId = la alternativa correcta real', timeoutDone.body?.correctAnswerOptionId === tPresented.correctOptionId);
+
+    // 6 -- sin answer falso; 5 -- sin evento de reward.
+    const attemptsAfterTimeout = await pg.query('SELECT count(*)::int AS n FROM quick_question_attempt WHERE session_id = $1', [tSessionId]);
+    check('el timeout NO creó ningún quick_question_attempt', attemptsAfterTimeout.rows[0].n === attemptsBeforeTimeout.rows[0].n);
+    const timeoutEvents = await pg.query(
+      `SELECT count(*)::int AS n FROM outbox_event WHERE event_key = 'quick_question_answered' AND payload->>'quickQuestionSessionId' = $1`,
+      [tSessionId],
+    );
+    check('el timeout NO emitió quick_question_answered', timeoutEvents.rows[0].n === 0);
+
+    // 7 -- pregunta consumida.
+    const tSessRow = await pg.query('SELECT current_question_version_id FROM quick_question_session WHERE id = $1', [tSessionId]);
+    check('7. tras el timeout, current_question_version_id vuelve a null (consumida)', tSessRow.rows[0].current_question_version_id === null);
+
+    // E (replay). Segundo /timeout -> NO_PENDING_QUESTION, 200 estable.
+    const timeoutReplay = await req('POST', `${QQ}/${tSessionId}/timeout`, timeoutU.authHeaders, {});
+    check('E. replay de /timeout -> 200 NO_PENDING_QUESTION (estable, nunca 500)', timeoutReplay.status === 200 && timeoutReplay.body?.outcome === 'NO_PENDING_QUESTION');
+
+    // F. LP sin cambios.
+    const lpAfter = await pg.query(`SELECT COALESCE(SUM(point_amount),0)::int AS lp FROM league_point_ledger_entry WHERE account_id = $1`, [timeoutU.accountId]);
+    check('F. LP del ledger sin cambios tras el timeout (antes == después)', lpBefore.rows[0].lp === lpAfter.rows[0].lp);
+
+    // G. /next tras el timeout -> nueva presentación con deadlineAt fresca (no la vieja pending).
+    const tNextAfter = await req('POST', `${QQ}/${tSessionId}/next`, timeoutU.authHeaders, {});
+    check('G. /next tras el timeout -> 200', tNextAfter.status === 200);
+    check(
+      'G. /next tras el timeout NO devuelve la pending vieja -- QUESTION_PRESENTED con deadlineAt fresca o NO_QUESTIONS_AVAILABLE',
+      tNextAfter.body?.outcome === 'NO_QUESTIONS_AVAILABLE' ||
+        (tNextAfter.body?.outcome === 'QUESTION_PRESENTED' && tNextAfter.body?.deadlineAt !== tNext.body?.deadlineAt),
+    );
+
+    // D. answer() DESPUÉS de la deadline -> TIMED_OUT, sin intento, sin evento.
+    const lateU = await newSession('late');
+    const dOpen = await req('POST', QQ, lateU.authHeaders, {});
+    const dSessionId = dOpen.body?.sessionId as string;
+    trackedSessionIds.push(dSessionId);
+    await isolateEligibleUniverse(dSessionId, lateU.accountId, [qMain.questionVersionId, qForeign.questionVersionId]);
+    const dNext = await req('POST', `${QQ}/${dSessionId}/next`, lateU.authHeaders, {});
+    const dPresentedIds = new Set((dNext.body?.answerOptions ?? []).map((o: { id: string }) => o.id));
+    const dPresented = dPresentedIds.has(qMain.correctOptionId) ? qMain : qForeign;
+    await pg.query(`UPDATE quick_question_session SET current_presented_at = now() - interval '46 seconds' WHERE id = $1`, [dSessionId]);
+    const dAttemptsBefore = await pg.query('SELECT count(*)::int AS n FROM quick_question_attempt WHERE session_id = $1', [dSessionId]);
+    const lateAnswer = await req('POST', `${QQ}/${dSessionId}/answers`, lateU.authHeaders, {
+      answerOptionId: dPresented.correctOptionId,
+      operationId: randomUUID(),
+    });
+    check('D. answer() tras la deadline -> 200 outcome TIMED_OUT (no se acepta como respuesta)', lateAnswer.status === 200 && lateAnswer.body?.outcome === 'TIMED_OUT');
+    check('D. answer() tardío revela correctAnswerOptionId real', lateAnswer.body?.correctAnswerOptionId === dPresented.correctOptionId);
+    check('D. answer() tardío NO devuelve isCorrect (no es una respuesta)', !('isCorrect' in (lateAnswer.body ?? {})));
+    const dAttemptsAfter = await pg.query('SELECT count(*)::int AS n FROM quick_question_attempt WHERE session_id = $1', [dSessionId]);
+    check('D. answer() tardío NO creó intento', dAttemptsAfter.rows[0].n === dAttemptsBefore.rows[0].n);
+    const dEvents = await pg.query(
+      `SELECT count(*)::int AS n FROM outbox_event WHERE event_key = 'quick_question_answered' AND payload->>'quickQuestionSessionId' = $1`,
+      [dSessionId],
+    );
+    check('D. answer() tardío NO emitió quick_question_answered', dEvents.rows[0].n === 0);
+
+    // Cross-account sobre /timeout.
+    const bobTimeout = await req('POST', `${QQ}/${tSessionId}/timeout`, bob.authHeaders, {});
+    check('E. Bob -> /timeout sobre sesión de Alice -> 404', bobTimeout.status === 404);
 
     console.log('--- 10. Cross-account: Bob no puede operar sobre la sesión de Alice -> 404 uniforme ---');
     const bobNext = await req('POST', `${QQ}/${sessionId}/next`, bob.authHeaders, {});

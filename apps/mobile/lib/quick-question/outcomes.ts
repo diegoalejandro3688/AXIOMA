@@ -1,4 +1,4 @@
-import type { QuickQuestionNextResponse, AnswerQuickQuestionResponse } from '@axioma/contracts';
+import type { QuickQuestionNextResponse, AnswerQuickQuestionResponse, TimeoutQuickQuestionResponse } from '@axioma/contracts';
 // Import SOLO de tipo -- se elide en compilación, así este módulo NUNCA
 // arrastra en tiempo de ejecución `../api/client.ts`. Gateable con `tsx`
 // puro, mismo criterio que `lib/challenges/claim-outcome.ts`.
@@ -54,6 +54,34 @@ export function mapAnswerResult(result: ApiResult<AnswerQuickQuestionResponse>):
   if (result.kind === 'network') return { kind: 'network', message: result.message };
   if (result.status === 400) return { kind: 'invalid_option', message: result.message };
   if (result.status === 409) return { kind: 'conflict' };
+  return { kind: 'error', message: result.message };
+}
+
+/**
+ * Mapeo puro de `/timeout` (Incremento 9 -- resolución AUTORITATIVA del
+ * timeout). El servidor es la única autoridad temporal:
+ *  - `timed_out`: la ventana expiró de verdad -> revelar `correctAnswerOptionId`.
+ *  - `not_expired`: el reloj local iba adelantado -> re-sincronizar con `deadlineAt`.
+ *  - `no_pending`: nada pendiente (replay estable, ya resuelto).
+ *  - `session_closed` (409): sesión ya cerrada, estado terminal.
+ *  - `network`: ambiguo, el llamador puede reintentar (seguro).
+ */
+export type TimeoutOutcomeView =
+  | { kind: 'timed_out'; correctAnswerOptionId: string }
+  | { kind: 'not_expired'; deadlineAt: string }
+  | { kind: 'no_pending' }
+  | { kind: 'session_closed' }
+  | { kind: 'network'; message: string }
+  | { kind: 'error'; message: string };
+
+export function mapTimeoutResult(result: ApiResult<TimeoutQuickQuestionResponse>): TimeoutOutcomeView {
+  if (result.ok) {
+    if (result.data.outcome === 'TIMED_OUT') return { kind: 'timed_out', correctAnswerOptionId: result.data.correctAnswerOptionId };
+    if (result.data.outcome === 'NOT_EXPIRED') return { kind: 'not_expired', deadlineAt: result.data.deadlineAt };
+    return { kind: 'no_pending' };
+  }
+  if (result.kind === 'network') return { kind: 'network', message: result.message };
+  if (result.status === 409) return { kind: 'session_closed' };
   return { kind: 'error', message: result.message };
 }
 

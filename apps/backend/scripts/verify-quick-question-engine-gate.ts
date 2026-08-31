@@ -20,7 +20,7 @@ import { QuestionVersionRepository } from '../src/education/question-version.rep
 import { AnswerOptionRepository } from '../src/education/answer-option.repository';
 import { QuickQuestionSessionRepository } from '../src/gamification/quick-question-session.repository';
 import { QuickQuestionAttemptRepository } from '../src/gamification/quick-question-attempt.repository';
-import { QuickQuestionService } from '../src/gamification/quick-question.service';
+import { QuickQuestionService, QUICK_QUESTION_TIME_LIMIT_MS } from '../src/gamification/quick-question.service';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
 
 let failures = 0;
@@ -226,6 +226,8 @@ async function main() {
   const presentedAnswerOptionId = await answerOptionForQuestion(presentedQuestionId);
   const operationId1 = randomUUID();
   const answerResult1 = await service.answer(accountAlice, aliceSessionId, presentedAnswerOptionId, operationId1);
+  check('answer dentro de la ventana -> outcome ANSWERED (Incremento 9)', answerResult1.outcome === 'ANSWERED');
+  if (answerResult1.outcome !== 'ANSWERED') throw new Error('Se esperaba ANSWERED.');
   check('primer answer -> created=true', answerResult1.created === true);
   const presentedAnswerOptionRow = await pg.query('SELECT is_correct FROM answer_option WHERE id = $1', [presentedAnswerOptionId]);
   check('isCorrect refleja EXACTAMENTE AnswerOption.isCorrect real (nunca decidido de otra forma)', answerResult1.attempt.isCorrect === presentedAnswerOptionRow.rows[0].is_correct);
@@ -261,6 +263,7 @@ async function main() {
 
   console.log('--- 6. Replay idempotente: mismo operationId no duplica ni republica ---');
   const answerReplay = await service.answer(accountAlice, aliceSessionId, presentedAnswerOptionId, operationId1);
+  if (answerReplay.outcome !== 'ANSWERED') throw new Error('Se esperaba ANSWERED en el replay.');
   check('replay -> created=false', answerReplay.created === false);
   check('replay devuelve el MISMO attempt.id', answerReplay.attempt.id === answerResult1.attempt.id);
   check('replay devuelve el MISMO correctAnswerOptionId', answerReplay.correctAnswerOptionId === correctOptionRow.rows[0].id);
@@ -275,7 +278,8 @@ async function main() {
   const concurrentSameOpResults = await Promise.all(
     Array.from({ length: 3 }, () => service.answer(accountAlice, aliceSessionId, concurrentAnswerOptionId, sharedOperationId)),
   );
-  const distinctAttemptIds = new Set(concurrentSameOpResults.map((r) => r.attempt.id));
+  check('las 3 respuestas concurrentes son ANSWERED (dentro de la ventana)', concurrentSameOpResults.every((r) => r.outcome === 'ANSWERED'));
+  const distinctAttemptIds = new Set(concurrentSameOpResults.map((r) => (r.outcome === 'ANSWERED' ? r.attempt.id : 'x')));
   check('3 respuestas concurrentes con el MISMO operationId -> UN solo attempt.id, sin error', distinctAttemptIds.size === 1);
   const rowsForSharedOp = await pg.query('SELECT count(*)::int AS n FROM quick_question_attempt WHERE operation_id = $1', [sharedOperationId]);
   check('exactamente UNA fila real en base de datos para ese operationId', rowsForSharedOp.rows[0].n === 1);
@@ -408,7 +412,8 @@ async function main() {
     answerWithBrokenOutboxThrew = true;
   }
   check('answer() NUNCA propaga un fallo de publicación -- OutboxService lo atrapa internamente (ADR-0006)', !answerWithBrokenOutboxThrew);
-  check('el intento se creó normalmente pese al fallo de publicación', answerWithBrokenOutboxResult?.created === true);
+  if (answerWithBrokenOutboxResult && answerWithBrokenOutboxResult.outcome !== 'ANSWERED') throw new Error('Se esperaba ANSWERED (dentro de ventana).');
+  check('el intento se creó normalmente pese al fallo de publicación', answerWithBrokenOutboxResult?.outcome === 'ANSWERED' && answerWithBrokenOutboxResult.created === true);
 
   const brokenSessionAfter = await sessionRepo.findById(sessionForBrokenOutbox.session.id);
   check('currentQuestionVersionId sigue en null -- la sesión NO queda inconsistente por el fallo de publicación', brokenSessionAfter?.currentQuestionVersionId === null);
@@ -432,8 +437,124 @@ async function main() {
   );
   check(
     'incluso con el servicio SANO, reintentar con el MISMO operationId sigue siendo un replay idempotente (nunca se corrompe)',
-    replayAfterBrokenOutbox.created === false && replayAfterBrokenOutbox.attempt.id === answerWithBrokenOutboxResult?.attempt.id,
+    replayAfterBrokenOutbox.outcome === 'ANSWERED' &&
+      replayAfterBrokenOutbox.created === false &&
+      replayAfterBrokenOutbox.attempt.id === (answerWithBrokenOutboxResult as { attempt: { id: string } }).attempt.id,
   );
+
+  console.log('--- 12b. Incremento 9: deadline AUTORITATIVA + timeout server-side ---');
+  check('la constante autoritativa es 45 000 ms', QUICK_QUESTION_TIME_LIMIT_MS === 45_000);
+
+  const tSession = await service.openSession(randomUUID());
+  trackedSessionIds.push(tSession.session.id);
+  const acc = tSession.session.accountId;
+  const qT1 = await makePublishedQuestion();
+  const qT2 = await makePublishedQuestion();
+  const qT3 = await makePublishedQuestion();
+  trackedQuestionIds.push(qT1.questionVersionId, qT2.questionVersionId, qT3.questionVersionId);
+  // Aísla el universo elegible de ESTA sesión a las 3 fixtures (todas con
+  // alternativa) -- así `/next` nunca elige una `question_version` ajena sin
+  // answer_option, y la exclusión post-timeout es determinista.
+  await isolateEligibleUniverse(tSession.session.id, acc, [qT1.questionVersionId, qT2.questionVersionId, qT3.questionVersionId]);
+
+  // A. /next presenta con deadline autoritativa = presentedAt + 45 s.
+  const tNext1 = await service.next(acc, tSession.session.id);
+  if (tNext1.outcome !== 'QUESTION_PRESENTED') throw new Error('Se esperaba QUESTION_PRESENTED.');
+  const s1 = await sessionRepo.findById(tSession.session.id);
+  const expectedDeadline1 = new Date((s1!.currentPresentedAt as Date).getTime() + 45_000).getTime();
+  check('A. /next devuelve deadlineAt = currentPresentedAt + 45 s (reloj del servidor)', tNext1.deadlineAt.getTime() === expectedDeadline1);
+
+  // B. /next de nuevo dentro de la ventana -> MISMA pregunta, MISMA deadline (no se reinicia).
+  const tNext2 = await service.next(acc, tSession.session.id);
+  if (tNext2.outcome !== 'QUESTION_PRESENTED') throw new Error('Se esperaba QUESTION_PRESENTED en el segundo /next.');
+  check('B. pending dentro de ventana -> MISMA questionVersion', tNext2.questionVersion.id === tNext1.questionVersion.id);
+  check('B. la deadline NO se reinicia -- misma que la original', tNext2.deadlineAt.getTime() === tNext1.deadlineAt.getTime());
+  const s2 = await sessionRepo.findById(tSession.session.id);
+  check('B. currentPresentedAt NO cambió', (s2!.currentPresentedAt as Date).getTime() === (s1!.currentPresentedAt as Date).getTime());
+
+  // Captura de LP antes de cualquier timeout (F).
+  const lpBefore = await pg.query(
+    `SELECT COALESCE(SUM(le.point_amount), 0)::int AS lp
+       FROM league_point_ledger_entry le WHERE le.account_id = $1`,
+    [acc],
+  );
+
+  // H. timeout() antes de la deadline -> NOT_EXPIRED, sin consumir nada.
+  const tEarly = await service.timeout(acc, tSession.session.id);
+  check('H. timeout() dentro de la ventana -> NOT_EXPIRED (sin consumir)', tEarly.outcome === 'NOT_EXPIRED');
+  const sAfterEarly = await sessionRepo.findById(tSession.session.id);
+  check('H. la pregunta pendiente sigue intacta tras un timeout prematuro', sAfterEarly?.currentQuestionVersionId === tNext1.questionVersion.id);
+
+  // Simula que la ventana expiró: currentPresentedAt 46 s en el pasado (reloj del servidor, nunca del cliente).
+  await pg.query(`UPDATE quick_question_session SET current_presented_at = now() - interval '46 seconds' WHERE id = $1`, [tSession.session.id]);
+
+  const qT1CorrectRow = await pg.query('SELECT id FROM answer_option WHERE question_version_id = $1 AND is_correct = true', [tNext1.questionVersion.id]);
+  const attemptsBeforeTimeout = await pg.query('SELECT count(*)::int AS n FROM quick_question_attempt WHERE session_id = $1', [tSession.session.id]);
+
+  // E. timeout() explícito -> TIMED_OUT + correctAnswerOptionId real.
+  const tTimeout = await service.timeout(acc, tSession.session.id);
+  check('E. timeout() tras expirar -> TIMED_OUT', tTimeout.outcome === 'TIMED_OUT');
+  check('E. TIMED_OUT devuelve correctAnswerOptionId = la alternativa correcta real', tTimeout.outcome === 'TIMED_OUT' && tTimeout.correctAnswerOptionId === qT1CorrectRow.rows[0].id);
+
+  // 6 / no fake answer: NINGÚN intento se creó.
+  const attemptsAfterTimeout = await pg.query('SELECT count(*)::int AS n FROM quick_question_attempt WHERE session_id = $1', [tSession.session.id]);
+  check('el timeout NO creó ningún quick_question_attempt (sin answer falso)', attemptsAfterTimeout.rows[0].n === attemptsBeforeTimeout.rows[0].n);
+
+  // no event: NINGÚN quick_question_answered para esta sesión.
+  const timeoutEvents = await pg.query(
+    `SELECT count(*)::int AS n FROM outbox_event WHERE event_key = 'quick_question_answered' AND payload->>'quickQuestionSessionId' = $1`,
+    [tSession.session.id],
+  );
+  check('el timeout NO emitió quick_question_answered', timeoutEvents.rows[0].n === 0);
+
+  // Consumo: la pregunta pendiente quedó limpia.
+  const sAfterTimeout = await sessionRepo.findById(tSession.session.id);
+  check('7. tras el timeout, currentQuestionVersionId vuelve a null (pregunta consumida)', sAfterTimeout?.currentQuestionVersionId === null);
+
+  // E (replay). Segundo timeout() -> NO_PENDING_QUESTION, estable, sin 500.
+  const tTimeoutReplay = await service.timeout(acc, tSession.session.id);
+  check('E. replay de timeout() -> NO_PENDING_QUESTION (estable, nunca 500 ni doble efecto)', tTimeoutReplay.outcome === 'NO_PENDING_QUESTION');
+
+  // F. LP sin cambios tras el timeout.
+  // (el LeaguePointGrantScheduler no corre en el gate; basta con que no exista el evento -> nunca habrá grant)
+  const lpAfter = await pg.query(
+    `SELECT COALESCE(SUM(le.point_amount), 0)::int AS lp FROM league_point_ledger_entry le WHERE le.account_id = $1`,
+    [acc],
+  );
+  check('F. LP del ledger sin cambios: antes == después del timeout', lpBefore.rows[0].lp === lpAfter.rows[0].lp);
+
+  // G. /next tras el timeout -> NUEVA presentación (nueva deadline, nuevo
+  // presentedAt), NUNCA la misma pending con su deadline vieja. Con 3
+  // fixtures aisladas y una ya consumida, entrega OTRA.
+  const tNext3 = await service.next(acc, tSession.session.id);
+  if (tNext3.outcome !== 'QUESTION_PRESENTED') throw new Error('Se esperaba QUESTION_PRESENTED tras el timeout.');
+  check('G. /next tras el timeout NO devuelve la misma pending con la deadline vieja', tNext3.deadlineAt.getTime() !== tNext1.deadlineAt.getTime());
+  check('G. /next tras el timeout entrega OTRA pregunta (pool aislado, la consumida no reaparece como misma pending)', tNext3.questionVersion.id !== tNext1.questionVersion.id);
+  const s3 = await sessionRepo.findById(tSession.session.id);
+  check('G. currentPresentedAt es fresco (posterior a la presentación original)', (s3!.currentPresentedAt as Date).getTime() > (s1!.currentPresentedAt as Date).getTime());
+
+  // D. answer() DESPUÉS de la deadline -> TIMED_OUT, sin intento, sin evento.
+  await pg.query(`UPDATE quick_question_session SET current_presented_at = now() - interval '46 seconds' WHERE id = $1`, [tSession.session.id]);
+  const qT3CorrectRow = await pg.query('SELECT id FROM answer_option WHERE question_version_id = $1 AND is_correct = true', [tNext3.questionVersion.id]);
+  const lateAnswerOptionId = qT3CorrectRow.rows[0].id;
+  const attemptsBeforeLate = await pg.query('SELECT count(*)::int AS n FROM quick_question_attempt WHERE session_id = $1', [tSession.session.id]);
+  const lateAnswer = await service.answer(acc, tSession.session.id, lateAnswerOptionId, randomUUID());
+  check('D. answer() tras la deadline -> outcome TIMED_OUT (no se acepta como respuesta)', lateAnswer.outcome === 'TIMED_OUT');
+  check('D. TIMED_OUT del answer tardío devuelve correctAnswerOptionId real', lateAnswer.outcome === 'TIMED_OUT' && lateAnswer.correctAnswerOptionId === qT3CorrectRow.rows[0].id);
+  const attemptsAfterLate = await pg.query('SELECT count(*)::int AS n FROM quick_question_attempt WHERE session_id = $1', [tSession.session.id]);
+  check('D. answer() tardío NO creó ningún intento', attemptsAfterLate.rows[0].n === attemptsBeforeLate.rows[0].n);
+  const lateEvents = await pg.query(
+    `SELECT count(*)::int AS n FROM outbox_event WHERE event_key = 'quick_question_answered' AND payload->>'quickQuestionSessionId' = $1`,
+    [tSession.session.id],
+  );
+  check('D. answer() tardío NO emitió quick_question_answered', lateEvents.rows[0].n === 0);
+
+  // C. answer() DENTRO de la ventana sigue funcionando con la semántica de siempre.
+  const tNext4 = await service.next(acc, tSession.session.id);
+  if (tNext4.outcome !== 'QUESTION_PRESENTED') throw new Error('Se esperaba QUESTION_PRESENTED.');
+  const inWindowOption = await answerOptionForQuestion(tNext4.questionVersion.id);
+  const inWindowAnswer = await service.answer(acc, tSession.session.id, inWindowOption, randomUUID());
+  check('C. answer() dentro de la ventana -> ANSWERED, intento creado, semántica intacta', inWindowAnswer.outcome === 'ANSWERED' && inWindowAnswer.created === true);
 
   console.log('--- 13. Frontera de dominio: QuickQuestionService no escribe en PROGRESS ---');
   const { readFileSync } = await import('node:fs');

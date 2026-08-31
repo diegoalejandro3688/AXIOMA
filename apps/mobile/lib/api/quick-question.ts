@@ -2,10 +2,12 @@ import {
   quickQuestionSessionResponseSchema,
   quickQuestionNextResponseSchema,
   answerQuickQuestionResponseSchema,
+  timeoutQuickQuestionResponseSchema,
   closeQuickQuestionResponseSchema,
   type QuickQuestionSessionResponse,
   type QuickQuestionNextResponse,
   type AnswerQuickQuestionResponse,
+  type TimeoutQuickQuestionResponse,
   type CloseQuickQuestionResponse,
 } from '@axioma/contracts';
 import { apiRequest, type ApiResult } from './client';
@@ -37,6 +39,18 @@ export function nextQuickQuestion(sessionId: string): Promise<ApiResult<QuickQue
 /** `operationId` es responsabilidad del llamador -- ver `lib/quick-question/outcomes.ts` (`resolveAnswerOperationId`) para el criterio de reutilización ante reintento de red. */
 export function answerQuickQuestion(sessionId: string, answerOptionId: string, operationId: string): Promise<ApiResult<AnswerQuickQuestionResponse>> {
   return apiRequest('POST', `${BASE}/${sessionId}/answers`, { body: { answerOptionId, operationId }, schema: answerQuickQuestionResponseSchema });
+}
+
+/**
+ * Incremento 9 -- resolución AUTORITATIVA del timeout de la pregunta
+ * pendiente. El móvil la llama cuando su temporizador visual (derivado de
+ * `deadlineAt`) llega a 0. El servidor decide: `TIMED_OUT` (consume la
+ * pregunta, 0 LP, revela la correcta), `NOT_EXPIRED` (todavía dentro de la
+ * ventana -- re-sincroniza con `deadlineAt`) o `NO_PENDING_QUESTION`
+ * (replay estable). Segura de reintentar.
+ */
+export function timeoutQuickQuestion(sessionId: string): Promise<ApiResult<TimeoutQuickQuestionResponse>> {
+  return apiRequest('POST', `${BASE}/${sessionId}/timeout`, { body: {}, schema: timeoutQuickQuestionResponseSchema });
 }
 
 export function closeQuickQuestionSession(sessionId: string): Promise<ApiResult<CloseQuickQuestionResponse>> {

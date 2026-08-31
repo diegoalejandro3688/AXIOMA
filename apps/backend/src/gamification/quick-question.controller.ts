@@ -6,6 +6,8 @@ import {
   quickQuestionNextResponseSchema,
   answerQuickQuestionBodySchema,
   answerQuickQuestionResponseSchema,
+  timeoutQuickQuestionBodySchema,
+  timeoutQuickQuestionResponseSchema,
   closeQuickQuestionBodySchema,
   closeQuickQuestionResponseSchema,
   resourceContentBlocksSchema,
@@ -14,6 +16,7 @@ import {
   type QuickQuestionSessionResponse,
   type QuickQuestionNextResponse,
   type AnswerQuickQuestionResponse,
+  type TimeoutQuickQuestionResponse,
   type CloseQuickQuestionResponse,
 } from '@axioma/contracts';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
@@ -88,6 +91,9 @@ export class QuickQuestionController {
         content: answerOptionContentSchema.parse(option.content),
         displayOrder: option.displayOrder,
       })),
+      // Incremento 9 -- deadline autoritativa (`presentedAt + 45 s`). NUNCA
+      // la clave de respuesta.
+      deadlineAt: outcome.deadlineAt.toISOString(),
     });
   }
 
@@ -101,15 +107,48 @@ export class QuickQuestionController {
     const input = parseRequestBody(answerQuickQuestionBodySchema, body);
     const result = await this.quickQuestionService.answer(request.accountId, sessionId, input.answerOptionId, input.operationId);
 
+    if (result.outcome === 'TIMED_OUT') {
+      return answerQuickQuestionResponseSchema.parse({
+        outcome: 'TIMED_OUT',
+        correctAnswerOptionId: result.correctAnswerOptionId,
+      });
+    }
+
     const explanationContent = result.explanationContent
       ? await this.resolveBlocks(explanationContentSchema.parse(result.explanationContent))
       : null;
 
     return answerQuickQuestionResponseSchema.parse({
+      outcome: 'ANSWERED',
       isCorrect: result.attempt.isCorrect,
       correctAnswerOptionId: result.correctAnswerOptionId,
       explanationContent,
     });
+  }
+
+  /**
+   * Incremento 9 -- resolución AUTORITATIVA del timeout de la pregunta
+   * pendiente. El móvil lo llama cuando su temporizador visual llega a 0.
+   * `200` uniforme. NO crea intento, NO emite `quick_question_answered`
+   * (**0 LP**). Seguro ante reintento.
+   */
+  @Post(':sessionId/timeout')
+  @HttpCode(HttpStatus.OK)
+  async timeout(
+    @Req() request: AuthenticatedRequest,
+    @Param('sessionId') sessionId: string,
+    @Body() body: unknown,
+  ): Promise<TimeoutQuickQuestionResponse> {
+    parseRequestBody(timeoutQuickQuestionBodySchema, body);
+    const result = await this.quickQuestionService.timeout(request.accountId, sessionId);
+
+    if (result.outcome === 'TIMED_OUT') {
+      return timeoutQuickQuestionResponseSchema.parse({ outcome: 'TIMED_OUT', correctAnswerOptionId: result.correctAnswerOptionId });
+    }
+    if (result.outcome === 'NOT_EXPIRED') {
+      return timeoutQuickQuestionResponseSchema.parse({ outcome: 'NOT_EXPIRED', deadlineAt: result.deadlineAt.toISOString() });
+    }
+    return timeoutQuickQuestionResponseSchema.parse({ outcome: 'NO_PENDING_QUESTION' });
   }
 
   @Post(':sessionId/close')

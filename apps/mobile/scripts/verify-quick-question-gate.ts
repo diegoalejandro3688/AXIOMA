@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AnswerQuickQuestionResponse, QuickQuestionNextResponse } from '@axioma/contracts';
 import type { ApiResult } from '../lib/api/client';
-import { mapNextResult, mapAnswerResult, resolveAnswerOperationId } from '../lib/quick-question/outcomes';
+import { mapNextResult, mapAnswerResult, mapTimeoutResult, resolveAnswerOperationId } from '../lib/quick-question/outcomes';
 import {
   QUICK_QUESTION_TIME_LIMIT_SECONDS,
   QUICK_QUESTION_ATTENTION_THRESHOLD_SECONDS,
@@ -55,6 +55,7 @@ const questionPresented: QuickQuestionNextResponse = {
     { id: 'opt-1', content: { type: 'paragraph', order: 0, text: '4' }, displayOrder: 0 },
     { id: 'opt-2', content: { type: 'paragraph', order: 0, text: '5' }, displayOrder: 1 },
   ],
+  deadlineAt: '2026-08-31T00:00:45.000Z',
 };
 const noQuestionsAvailable: QuickQuestionNextResponse = { outcome: 'NO_QUESTIONS_AVAILABLE' };
 
@@ -89,6 +90,7 @@ function main() {
 
   console.log('--- 4. mapAnswerResult: éxito, alternativa inválida, conflicto, red, error ---');
   const answerOk: AnswerQuickQuestionResponse = {
+    outcome: 'ANSWERED',
     isCorrect: true,
     correctAnswerOptionId: '00000000-0000-0000-0000-000000000001',
     explanationContent: null,
@@ -160,15 +162,14 @@ function main() {
   // Timeout LOCAL (Incremento 8): sin clave -> NADA se marca como correcto.
   check('timeout local (correctAnswerOptionId === null) -> ninguna alternativa se marca como correcta', optionOutcome('a', null, null) === 'muted' && optionOutcome('b', null, null) === 'muted');
 
-  console.log('--- 11. Incremento 8: la pantalla real -- timer, freeze, revelado, acciones, sin reward de correctness ---');
-  check('el timer arranca al presentar la pregunta (deadlineTs se fija en el estado question), NUNCA durante loading/fetch', /status: 'question'[\s\S]{0,400}deadlineTs: Date\.now\(\) \+ QUICK_QUESTION_TIME_LIMIT_SECONDS/.test(screenSource));
+  console.log('--- 11. La pantalla real -- feedback, revelado, acciones, sin reward de correctness ---');
   check('la primera SELECCIÓN congela el temporizador (`frozen: true` en handleSelectOption)', /function handleSelectOption[\s\S]{0,500}frozen: true/.test(screenSource));
   check('el intervalo del temporizador se limpia (return () => clearInterval)', screenSource.includes('return () => clearInterval(id);'));
-  check('el temporizador no se reanuda tras un error de red de envío (decisión conservadora documentada)', /el temporizador NO se reanuda|no se reanuda/i.test(screenSource));
-  check('`correctAnswerOptionId` SÓLO sale de la respuesta de answer (outcome.data), NUNCA de /next', screenSource.includes('outcome.data.correctAnswerOptionId') && !/mapNextResult[\s\S]{0,200}correctAnswerOptionId/.test(screenSource));
+  check('el temporizador no se reanuda tras un error de red de envío (decisión conservadora documentada)', /el temporizador NO se reanuda|no se reanuda|ya lo congeló/i.test(screenSource));
+  check('`correctAnswerOptionId` SÓLO sale de answer/timeout (outcome.data), NUNCA de /next', screenSource.includes('outcome.data.correctAnswerOptionId') && !/mapNextResult[\s\S]{0,200}correctAnswerOptionId/.test(screenSource));
   check('el resultado revela la alternativa correcta vía `optionOutcome` + `correctAnswerOptionId`', screenSource.includes('optionOutcome(option.id, screen.correctAnswerOptionId'));
   check('feedback correcto/incorrecto/timeout vía `answerHeadline`', screenSource.includes('answerHeadline(screen.verdict)'));
-  check('alternativas BLOQUEADAS tras el resultado (disabled) -- sin segunda respuesta', /screen\.status === 'result'[\s\S]{0,1200}disabled\n/.test(screenSource) || /AnswerOptionRow[\s\S]{0,200}disabled\n/.test(screenSource));
+  check('alternativas BLOQUEADAS tras el resultado (disabled) -- sin segunda respuesta', /screen\.status === 'result'[\s\S]{0,1400}disabled\n/.test(screenSource));
   check('el revelado no depende SOLO del color: hay check / x-circle', screenSource.includes("name=\"check\"") && screenSource.includes("name=\"x-circle\""));
   check('acciones post-resultado: "Siguiente pregunta" + "Volver a Competir"', screenSource.includes('label="Siguiente pregunta"') && screenSource.includes('label="Volver a Competir"'));
   check('sin auto-next -- "Siguiente pregunta" es un onPress explícito (handleNextQuestion)', /label="Siguiente pregunta"[\s\S]{0,120}onPress=\{handleNextQuestion\}/.test(screenSource));
@@ -176,17 +177,27 @@ function main() {
     'NINGÚN affordance de reward por correctness todavía (Incremento 10): sin "+2", sin trofeo/🏆, sin "0 LP"',
     !/\+2\b/.test(screenSource) && !/🏆|LeagueTrophy|<Trophy/.test(screenSource) && !/\b0 LP\b/.test(screenSource) && !/\bpor acertar\b/.test(screenSource),
   );
-  const localTimeoutStart = screenSource.indexOf('const handleLocalTimeout');
-  const localTimeoutBody = screenSource.slice(localTimeoutStart, screenSource.indexOf('}, []);', localTimeoutStart));
-  check(
-    'el timeout local NO consume la pregunta ni llama a answer/next (queda AISLADO para el Incremento 9)',
-    localTimeoutStart > 0 &&
-      localTimeoutBody.includes("verdict: 'timeout'") &&
-      localTimeoutBody.includes('correctAnswerOptionId: null') &&
-      !localTimeoutBody.includes('answerQuickQuestion') &&
-      !localTimeoutBody.includes('nextQuickQuestion') &&
-      !localTimeoutBody.includes('closeQuickQuestionSession'),
-  );
+
+  console.log('--- 12. Incremento 9: mapTimeoutResult -- resolución AUTORITATIVA del timeout (helper puro) ---');
+  const timedOut = mapTimeoutResult(ok({ outcome: 'TIMED_OUT', correctAnswerOptionId: 'opt-1' }));
+  check('TIMED_OUT -> kind timed_out con correctAnswerOptionId', timedOut.kind === 'timed_out' && (timedOut as { correctAnswerOptionId: string }).correctAnswerOptionId === 'opt-1');
+  const notExpired = mapTimeoutResult(ok({ outcome: 'NOT_EXPIRED', deadlineAt: '2026-08-31T00:00:45.000Z' }));
+  check('NOT_EXPIRED -> kind not_expired con deadlineAt (re-sincronizar)', notExpired.kind === 'not_expired' && (notExpired as { deadlineAt: string }).deadlineAt === '2026-08-31T00:00:45.000Z');
+  check('NO_PENDING_QUESTION -> kind no_pending (replay estable)', mapTimeoutResult(ok({ outcome: 'NO_PENDING_QUESTION' })).kind === 'no_pending');
+  check('409 -> kind session_closed', mapTimeoutResult(http(409)).kind === 'session_closed');
+  check('sin red -> kind network (reintento seguro)', mapTimeoutResult(network()).kind === 'network');
+  check('500 -> kind error', mapTimeoutResult(http(500)).kind === 'error');
+
+  console.log('--- 13. Incremento 9: la pantalla -- deadline AUTORITATIVA + timeout server-side, sin autoridad de cliente ---');
+  check('el timer se DERIVA de la deadline autoritativa (`Date.parse(...deadlineAt)`), NUNCA `Date.now() + 45`', screenSource.includes('Date.parse(outcome.question.deadlineAt)') && !/deadlineTs: Date\.now\(\) \+ /.test(screenSource));
+  check('el timer arranca al presentar la pregunta (estado question), NUNCA durante loading/fetch', /outcome\.kind === 'question_presented'[\s\S]{0,600}status: 'question'/.test(screenSource));
+  check('al llegar a 0 el móvil pide la resolución AUTORITATIVA a `/timeout` (`timeoutQuickQuestion`), no decide por su cuenta', screenSource.includes('timeoutQuickQuestion(') && screenSource.includes('resolveTimeout(') && !screenSource.includes('handleLocalTimeout'));
+  check('mientras se confirma el timeout: estado `resolving_timeout` con las alternativas BLOQUEADAS', /resolving_timeout[\s\S]{0,900}state="disabled"/.test(screenSource));
+  check('timeout CONFIRMADO por el servidor -> se revela `correctAnswerOptionId` del response', /outcome\.kind === 'timed_out'[\s\S]{0,300}correctAnswerOptionId: outcome\.kind === 'timed_out' \? outcome\.correctAnswerOptionId/.test(screenSource) || screenSource.includes('outcome.correctAnswerOptionId'));
+  check('`NOT_EXPIRED` -> re-sincroniza `deadlineTs` con `Date.parse(outcome.deadlineAt)` (reloj del servidor manda)', screenSource.includes('Date.parse(outcome.deadlineAt)'));
+  check('una respuesta que el servidor marca `TIMED_OUT` se muestra como timeout, con revelado', /outcome\.data\.outcome === 'TIMED_OUT'[\s\S]{0,300}verdict: 'timeout'/.test(screenSource));
+  check('el intervalo NO decide el timeout: sólo llama a `resolveTimeout` (autoridad servidor)', /Date\.now\(\) >= deadlineTs[\s\S]{0,120}resolveTimeout\(/.test(screenSource));
+  check('la limitación del Incremento 8 desapareció -- ya NO se dice "la pregunta sigue disponible desde Siguiente pregunta"', !/sigue disponible desde "Siguiente pregunta"/.test(screenSource));
 
   console.log('');
   if (failures > 0) {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { entityId } from './common';
+import { entityId, isoDateTime } from './common';
 import { resourceContentBlocksResponseSchema, explanationContentResponseSchema, answerOptionPublicResponseSchema } from './education';
 
 /**
@@ -46,6 +46,16 @@ export const quickQuestionNextResponseSchema = z.discriminatedUnion('outcome', [
     outcome: z.literal('QUESTION_PRESENTED'),
     stemContent: resourceContentBlocksResponseSchema,
     answerOptions: z.array(answerOptionPublicResponseSchema).min(1),
+    /**
+     * COMPETITIVE V1 (Incremento 9) -- instante AUTORITATIVO en que expira la
+     * ventana de 45 s de esta pregunta (`currentPresentedAt + 45 s`,
+     * calculado con el reloj del SERVIDOR). Aditivo. El móvil deriva de
+     * aquí el tiempo restante real -- incluso al volver de segundo plano el
+     * temporizador NO se reinicia. Una pregunta pendiente representada por
+     * `/next` conserva SU `deadlineAt` original (no se concede otra
+     * ventana). NUNCA revela la alternativa correcta.
+     */
+    deadlineAt: isoDateTime,
   }),
   z.object({
     outcome: z.literal('NO_QUESTIONS_AVAILABLE'),
@@ -70,22 +80,72 @@ export const answerQuickQuestionBodySchema = z
 export type AnswerQuickQuestionBody = z.infer<typeof answerQuickQuestionBodySchema>;
 
 /**
- * `explanationContent` nullable -- defensivo: el esquema de EDUCATION exige
- * al menos un bloque hoy, pero esta respuesta no debe asumirlo para
- * siempre. `isCorrect` resuelto exclusivamente por el servidor.
+ * Unión discriminada por `outcome` (COMPETITIVE V1, Incremento 9):
  *
- * COMPETITIVE V1 (rediseño visual, Incremento 2) -- `correctAnswerOptionId`
- * es el id de la alternativa CORRECTA, presente SOLO en esta respuesta
- * (post-respuesta), para que el cliente pueda resaltarla. `/next` sigue sin
- * `isCorrect` en ninguna alternativa: la clave nunca se revela antes de
- * responder. No cambia la economía LP ni la semántica de `isCorrect`.
+ *  - `ANSWERED` -- la respuesta llegó DENTRO de la ventana de 45 s y se
+ *    procesó normalmente. `isCorrect` + `correctAnswerOptionId` +
+ *    `explanationContent` (nullable -- EDUCATION exige un bloque hoy pero
+ *    esta respuesta no lo asume). La clave (`correctAnswerOptionId`) SOLO
+ *    aparece aquí, nunca en `/next`. Economía LP sin cambios en este
+ *    incremento (sigue `QUICK_QUESTION_ANSWERED +2` por respuesta enviada;
+ *    Incremento 10 lo condiciona a acierto).
+ *
+ *  - `TIMED_OUT` -- la respuesta llegó DESPUÉS de la deadline autoritativa
+ *    del servidor: NO se acepta como respuesta (no crea intento, no emite
+ *    `quick_question_answered`, **0 LP**), se resuelve como timeout. Un
+ *    cliente viejo o modificado no puede responder tarde y obtener
+ *    recompensa. Devuelve `correctAnswerOptionId` para que el móvil revele
+ *    la correcta.
  */
-export const answerQuickQuestionResponseSchema = z.object({
-  isCorrect: z.boolean(),
-  correctAnswerOptionId: entityId,
-  explanationContent: explanationContentResponseSchema.nullable(),
-});
+export const answerQuickQuestionResponseSchema = z.discriminatedUnion('outcome', [
+  z.object({
+    outcome: z.literal('ANSWERED'),
+    isCorrect: z.boolean(),
+    correctAnswerOptionId: entityId,
+    explanationContent: explanationContentResponseSchema.nullable(),
+  }),
+  z.object({
+    outcome: z.literal('TIMED_OUT'),
+    correctAnswerOptionId: entityId,
+  }),
+]);
 export type AnswerQuickQuestionResponse = z.infer<typeof answerQuickQuestionResponseSchema>;
+
+// --- POST /gamification/me/quick-question/sessions/:sessionId/timeout ---
+
+export const timeoutQuickQuestionBodySchema = z.object({}).strict();
+export type TimeoutQuickQuestionBody = z.infer<typeof timeoutQuickQuestionBodySchema>;
+
+/**
+ * COMPETITIVE V1, Incremento 9 -- resolución AUTORITATIVA del timeout de la
+ * pregunta pendiente. El móvil lo llama cuando su temporizador visual
+ * (derivado de `deadlineAt`) llega a 0. `200` uniforme, mismo criterio que
+ * el resto del módulo.
+ *
+ *  - `TIMED_OUT` -- la ventana expiró: la pregunta queda CONSUMIDA (no
+ *    vuelve como pendiente), **0 LP**, sin intento ni evento de reward.
+ *    Devuelve `correctAnswerOptionId` para revelar la correcta. Seguro ante
+ *    reintento (el segundo intento cae en `NO_PENDING_QUESTION`).
+ *  - `NOT_EXPIRED` -- todavía dentro de la ventana: no se consume nada;
+ *    devuelve la `deadlineAt` autoritativa para que el móvil re-sincronice.
+ *  - `NO_PENDING_QUESTION` -- no hay pregunta pendiente (ya respondida, ya
+ *    expirada y consumida, o sesión sin pregunta) -- replay estable, nunca
+ *    un 500.
+ */
+export const timeoutQuickQuestionResponseSchema = z.discriminatedUnion('outcome', [
+  z.object({
+    outcome: z.literal('TIMED_OUT'),
+    correctAnswerOptionId: entityId,
+  }),
+  z.object({
+    outcome: z.literal('NOT_EXPIRED'),
+    deadlineAt: isoDateTime,
+  }),
+  z.object({
+    outcome: z.literal('NO_PENDING_QUESTION'),
+  }),
+]);
+export type TimeoutQuickQuestionResponse = z.infer<typeof timeoutQuickQuestionResponseSchema>;
 
 // --- POST /gamification/me/quick-question/sessions/:sessionId/close ---
 
