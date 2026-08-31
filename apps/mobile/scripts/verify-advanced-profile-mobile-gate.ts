@@ -117,29 +117,28 @@ function main() {
   // agregador (`view.competitiveHistory`), cero fetch nuevo.
   check('perfil/index.tsx renderiza CompetitiveHistorySection con history={view.competitiveHistory} (mismo dato del agregador)', /<CompetitiveHistorySection\s+history=\{view\.competitiveHistory\}\s*\/>/.test(perfilIndexSource));
 
-  // PROFILE-5B (decisión del Product Owner, 2026-08-22): `CosmeticsSection`
-  // se dividió en `useCosmeticsController` (fetch/estado, instanciado UNA
-  // vez en personalizacion.tsx para las 4 tabs) + `CosmeticSlotCard`
-  // (presentación pura de un slot) -- el bloque "Bloqueados" que antes
-  // vivía en el `.map` de `CosmeticsSection` ahora vive en
-  // `CosmeticSlotCard`, MISMO archivo (`cosmetics-section.tsx`), misma
-  // lógica exacta. El chequeo sigue apuntando al mismo archivo -- la
-  // invariante real ("bloqueados nunca son equipables, siempre muestran el
-  // requisito real") no cambió, solo el nombre del componente que la
-  // implementa dentro de ese archivo.
+  // PROFILE-PERSONALIZATION-REMODEL (2026-08-30): la remodelación visual
+  // reemplazó el acordeón `CosmeticSlotCard` por una presentación de grids/
+  // listas en `components/personalization/cosmetic-collection.tsx`. La
+  // invariante real -- "un cosmético bloqueado NUNCA es equipable y SIEMPRE
+  // muestra el requisito real" -- no cambió: vive ahora en el componente
+  // `LockedCosmeticCollection` de ese archivo (solo lectura: `View`, nunca
+  // `Pressable`/`onPress`/`equipCosmetic`). El chequeo se repunta a esa
+  // función, aislada del resto del archivo (que sí tiene `Pressable` para
+  // los elementos EQUIPABLES).
   console.log('--- 6. Personalización: ningún elemento locked es equipable (ni cosméticos ni títulos) ---');
-  const cosmeticsSectionSource = readSource('components', 'cosmetics-section.tsx');
-  const cosmeticsLockedBlockStart = cosmeticsSectionSource.indexOf('lockedForSlot.length > 0');
-  // PROFILE-5B: la indentación cambió al extraer `CosmeticSlotCard` (un
-  // nivel menos de anidamiento que el `.map(COSMETIC_SLOTS)` original) --
-  // se localiza el cierre real por su marcador estructural (`</Card>`, que
-  // ahora cierra el componente en vez de `</View>` del `.map`), no por un
-  // conteo de espacios frágil.
-  const cosmeticsLockedBlockEnd = cosmeticsSectionSource.indexOf('</Card>', cosmeticsLockedBlockStart);
-  const cosmeticsLockedBlock = cosmeticsSectionSource.slice(cosmeticsLockedBlockStart, cosmeticsLockedBlockEnd);
-  check('bloque "Bloqueados" de CosmeticsSection existe y es localizable', cosmeticsLockedBlockStart > -1 && cosmeticsLockedBlockEnd > cosmeticsLockedBlockStart);
+  const cosmeticCollectionSource = readSource('components', 'personalization', 'cosmetic-collection.tsx');
+  const cosmeticsLockedBlockStart = cosmeticCollectionSource.indexOf('export function LockedCosmeticCollection');
+  // Fin de la función: el siguiente `\nfunction ` a nivel de módulo.
+  const cosmeticsLockedBlockEnd = cosmeticCollectionSource.indexOf('\nfunction ', cosmeticsLockedBlockStart);
+  const cosmeticsLockedBlock = cosmeticCollectionSource.slice(cosmeticsLockedBlockStart, cosmeticsLockedBlockEnd);
+  check('componente "LockedCosmeticCollection" existe y es localizable', cosmeticsLockedBlockStart > -1 && cosmeticsLockedBlockEnd > cosmeticsLockedBlockStart);
   check('el bloque de cosméticos bloqueados NUNCA usa Pressable/onPress/equipCosmetic -- solo lectura, nunca equipable', !cosmeticsLockedBlock.includes('Pressable') && !cosmeticsLockedBlock.includes('onPress') && !cosmeticsLockedBlock.includes('equipCosmetic'));
   check('el bloque de cosméticos bloqueados muestra el requisito real (describeUnlockRequirements), nunca un texto hardcodeado', cosmeticsLockedBlock.includes('describeUnlockRequirements'));
+  // La lógica de fetch/estado/equipamiento (no optimista, bloqueo por slot)
+  // sigue en `useCosmeticsController` (`cosmetics-section.tsx`) sin cambio.
+  const cosmeticsControllerSource = readSource('components', 'cosmetics-section.tsx');
+  check('useCosmeticsController sigue bloqueando doble toque por slot y sin equipamiento optimista', cosmeticsControllerSource.includes('if (equippingSlot !== null) return;') && cosmeticsControllerSource.includes('outcome.data') && !cosmeticsControllerSource.includes('// optimist'));
 
   const titlesSectionSource = readSource('components', 'profile', 'titles-section.tsx');
   const titlesLockedBlockStart = titlesSectionSource.indexOf("locked.length > 0");
@@ -149,8 +148,8 @@ function main() {
   check('el bloque de títulos bloqueados muestra el requisito real (describeUnlockRequirements)', titlesLockedBlock.includes('describeUnlockRequirements'));
 
   console.log('--- 7. Doble toque bloqueado en equipamiento (cosméticos ya vigente desde Bloque III, títulos NUEVO en este incremento) ---');
-  check('CosmeticsSection sigue bloqueando doble toque por slot (Bloque III, sin regresión)', cosmeticsSectionSource.includes('if (equippingSlot !== null) return;'));
-  check('TitlesSection bloquea doble toque mientras un PATCH está en curso (mismo criterio, NUEVO en Incremento 8)', titlesSectionSource.includes('if (equipping) return;'));
+  check('useCosmeticsController sigue bloqueando doble toque por slot (Bloque III, sin regresión)', cosmeticsControllerSource.includes('if (equippingSlot !== null) return;'));
+  check('useTitlesController bloquea doble toque mientras un PATCH está en curso (mismo criterio, NUEVO en Incremento 8)', titlesSectionSource.includes('if (equipping) return;'));
   check('TitlesSection reconcilia con la respuesta REAL del servidor -- sin equipamiento optimista (mismo criterio que CosmeticsSection)', titlesSectionSource.includes('outcome.data') && !titlesSectionSource.includes('// optimist'));
 
   console.log('--- 8. Vista previa pública: NUNCA muestra académico/historial/inventario, NUNCA usa advanced-profile para completar huecos (decisión del Product Owner) ---');
