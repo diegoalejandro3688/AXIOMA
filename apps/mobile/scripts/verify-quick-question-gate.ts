@@ -13,6 +13,16 @@ import { join } from 'node:path';
 import type { AnswerQuickQuestionResponse, QuickQuestionNextResponse } from '@axioma/contracts';
 import type { ApiResult } from '../lib/api/client';
 import { mapNextResult, mapAnswerResult, resolveAnswerOperationId } from '../lib/quick-question/outcomes';
+import {
+  QUICK_QUESTION_TIME_LIMIT_SECONDS,
+  QUICK_QUESTION_ATTENTION_THRESHOLD_SECONDS,
+  QUICK_QUESTION_URGENCY_THRESHOLD_SECONDS,
+  timerLevel,
+  secondsRemainingUntil,
+  formatTimerSeconds,
+  answerHeadline,
+  optionOutcome,
+} from '../lib/quick-question/quick-question-feedback';
 
 let failures = 0;
 function check(label: string, condition: boolean) {
@@ -130,6 +140,53 @@ function main() {
   console.log('--- 8. Doble-toque bloqueado: envío de respuesta y "Siguiente pregunta" ---');
   check('handleSubmit verifica screen.submitting antes de proceder', /if \(screen\.status !== 'question' \|\| screen\.selectedOptionId === null \|\| screen\.submitting\) return;/.test(screenSource));
   check('handleNextQuestion verifica screen.loadingNext antes de proceder', /if \(screen\.status !== 'result' \|\| screen\.loadingNext\) return;/.test(screenSource));
+
+  console.log('--- 9. Incremento 8: temporizador VISUAL de 45 s (helpers puros) ---');
+  check('el límite visual es 45 segundos', QUICK_QUESTION_TIME_LIMIT_SECONDS === 45);
+  check('umbrales de urgencia: atención a 10 s, urgencia a 5 s', QUICK_QUESTION_ATTENTION_THRESHOLD_SECONDS === 10 && QUICK_QUESTION_URGENCY_THRESHOLD_SECONDS === 5);
+  check('45..11 s -> normal', timerLevel(45) === 'normal' && timerLevel(11) === 'normal');
+  check('10..6 s -> attention', timerLevel(10) === 'attention' && timerLevel(6) === 'attention');
+  check('5..1 s -> urgent', timerLevel(5) === 'urgent' && timerLevel(1) === 'urgent');
+  check('0 s -> expired', timerLevel(0) === 'expired' && timerLevel(-3) === 'expired');
+  check('secondsRemainingUntil nunca es negativo', secondsRemainingUntil(1000, 5000) === 0 && secondsRemainingUntil(10_000, 2_500) === 7.5);
+  check('formatTimerSeconds redondea hacia arriba y no baja de 0', formatTimerSeconds(7.2) === '8 s' && formatTimerSeconds(0) === '0 s' && formatTimerSeconds(-1) === '0 s');
+
+  console.log('--- 10. Incremento 8: feedback -- titulares y revelado por alternativa ---');
+  check('titulares: "Respuesta correcta" / "Respuesta incorrecta" / "Se acabó el tiempo"', answerHeadline('correct') === 'Respuesta correcta' && answerHeadline('incorrect') === 'Respuesta incorrecta' && answerHeadline('timeout') === 'Se acabó el tiempo');
+  // Respuesta correcta: la elegida ES la correcta.
+  check('respuesta correcta -> la alternativa correcta se resalta, las demás atenuadas', optionOutcome('a', 'a', 'a') === 'correct' && optionOutcome('b', 'a', 'a') === 'muted');
+  // Respuesta incorrecta: se revela la correcta y se marca la elegida como incorrecta.
+  check('respuesta incorrecta -> correcta revelada + elegida marcada incorrecta', optionOutcome('a', 'a', 'b') === 'correct' && optionOutcome('b', 'a', 'b') === 'incorrect' && optionOutcome('c', 'a', 'b') === 'muted');
+  // Timeout LOCAL (Incremento 8): sin clave -> NADA se marca como correcto.
+  check('timeout local (correctAnswerOptionId === null) -> ninguna alternativa se marca como correcta', optionOutcome('a', null, null) === 'muted' && optionOutcome('b', null, null) === 'muted');
+
+  console.log('--- 11. Incremento 8: la pantalla real -- timer, freeze, revelado, acciones, sin reward de correctness ---');
+  check('el timer arranca al presentar la pregunta (deadlineTs se fija en el estado question), NUNCA durante loading/fetch', /status: 'question'[\s\S]{0,400}deadlineTs: Date\.now\(\) \+ QUICK_QUESTION_TIME_LIMIT_SECONDS/.test(screenSource));
+  check('la primera SELECCIÓN congela el temporizador (`frozen: true` en handleSelectOption)', /function handleSelectOption[\s\S]{0,500}frozen: true/.test(screenSource));
+  check('el intervalo del temporizador se limpia (return () => clearInterval)', screenSource.includes('return () => clearInterval(id);'));
+  check('el temporizador no se reanuda tras un error de red de envío (decisión conservadora documentada)', /el temporizador NO se reanuda|no se reanuda/i.test(screenSource));
+  check('`correctAnswerOptionId` SÓLO sale de la respuesta de answer (outcome.data), NUNCA de /next', screenSource.includes('outcome.data.correctAnswerOptionId') && !/mapNextResult[\s\S]{0,200}correctAnswerOptionId/.test(screenSource));
+  check('el resultado revela la alternativa correcta vía `optionOutcome` + `correctAnswerOptionId`', screenSource.includes('optionOutcome(option.id, screen.correctAnswerOptionId'));
+  check('feedback correcto/incorrecto/timeout vía `answerHeadline`', screenSource.includes('answerHeadline(screen.verdict)'));
+  check('alternativas BLOQUEADAS tras el resultado (disabled) -- sin segunda respuesta', /screen\.status === 'result'[\s\S]{0,1200}disabled\n/.test(screenSource) || /AnswerOptionRow[\s\S]{0,200}disabled\n/.test(screenSource));
+  check('el revelado no depende SOLO del color: hay check / x-circle', screenSource.includes("name=\"check\"") && screenSource.includes("name=\"x-circle\""));
+  check('acciones post-resultado: "Siguiente pregunta" + "Volver a Competir"', screenSource.includes('label="Siguiente pregunta"') && screenSource.includes('label="Volver a Competir"'));
+  check('sin auto-next -- "Siguiente pregunta" es un onPress explícito (handleNextQuestion)', /label="Siguiente pregunta"[\s\S]{0,120}onPress=\{handleNextQuestion\}/.test(screenSource));
+  check(
+    'NINGÚN affordance de reward por correctness todavía (Incremento 10): sin "+2", sin trofeo/🏆, sin "0 LP"',
+    !/\+2\b/.test(screenSource) && !/🏆|LeagueTrophy|<Trophy/.test(screenSource) && !/\b0 LP\b/.test(screenSource) && !/\bpor acertar\b/.test(screenSource),
+  );
+  const localTimeoutStart = screenSource.indexOf('const handleLocalTimeout');
+  const localTimeoutBody = screenSource.slice(localTimeoutStart, screenSource.indexOf('}, []);', localTimeoutStart));
+  check(
+    'el timeout local NO consume la pregunta ni llama a answer/next (queda AISLADO para el Incremento 9)',
+    localTimeoutStart > 0 &&
+      localTimeoutBody.includes("verdict: 'timeout'") &&
+      localTimeoutBody.includes('correctAnswerOptionId: null') &&
+      !localTimeoutBody.includes('answerQuickQuestion') &&
+      !localTimeoutBody.includes('nextQuickQuestion') &&
+      !localTimeoutBody.includes('closeQuickQuestionSession'),
+  );
 
   console.log('');
   if (failures > 0) {
