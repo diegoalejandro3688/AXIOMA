@@ -6,6 +6,7 @@ import type { ChallengeSummary } from '@axioma/contracts';
 import { listChallenges, claimChallenge } from '../../../lib/api/challenges';
 import { getLeagueParticipation, joinLeague } from '../../../lib/api/league';
 import { groupChallenges, progressRatio, canClaim } from '../../../lib/challenges/group-challenges';
+import { challengeTypeLabel, formatCountdown, formatRewardXp, claimCtaLabel, isPastPeriod } from '../../../lib/challenges/challenge-card-view';
 import { describeParticipation, type LeagueParticipationView } from '../../../lib/league/participation-view';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
@@ -288,12 +289,28 @@ export default function CompetirScreen() {
               {section.title}
             </Text>
           )}
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+            const countdown = isPastPeriod(item) ? null : formatCountdown(item.periodEnd);
+            const rewardXp = formatRewardXp(item.rewardXpBonus);
+            return (
             <Card variant="outlined" style={styles.card}>
-              <Text variant="titleMedium">{item.name}</Text>
+              <View style={styles.cardHeader}>
+                <Text variant="titleMedium" style={styles.cardTitle}>
+                  {item.name}
+                </Text>
+                <Text variant="caption" color="secondary" style={styles.cardBadge}>
+                  {challengeTypeLabel(item.challengeType)}
+                </Text>
+              </View>
               {item.description ? (
                 <Text variant="bodySmall" color="secondary">
                   {item.description}
+                </Text>
+              ) : null}
+
+              {rewardXp ? (
+                <Text variant="label" color="primary">
+                  Recompensa: {rewardXp}
                 </Text>
               ) : null}
 
@@ -305,9 +322,16 @@ export default function CompetirScreen() {
                 {item.progressValue}/{item.targetValue}
               </Text>
 
-              <Text variant="label" color="secondary">
-                {STATUS_LABEL[item.challengeStatus]}
-              </Text>
+              <View style={styles.cardMetaRow}>
+                <Text variant="label" color="secondary">
+                  {STATUS_LABEL[item.challengeStatus]}
+                </Text>
+                {countdown ? (
+                  <Text variant="caption" color="muted">
+                    {countdown}
+                  </Text>
+                ) : null}
+              </View>
 
               {itemErrors[item.id] ? (
                 <Text variant="bodySmall" color="error">
@@ -317,7 +341,7 @@ export default function CompetirScreen() {
 
               {canClaim(item) ? (
                 <Button
-                  label="Reclamar"
+                  label={claimCtaLabel(item.rewardXpBonus)}
                   accessibilityLabel={`Reclamar recompensa de ${item.name}`}
                   onPress={() => handleClaim(item.id)}
                   loading={claimingId === item.id}
@@ -328,7 +352,8 @@ export default function CompetirScreen() {
                 />
               ) : null}
             </Card>
-          )}
+            );
+          }}
         />
       )}
     </View>
@@ -365,6 +390,18 @@ function createStyles(t: ThemeTokens) {
     list: { gap: spacing.space3, paddingBottom: 24 },
     sectionTitle: { marginTop: spacing.space3, marginBottom: spacing.space1, textTransform: 'uppercase' as const },
     card: { gap: spacing.space2 },
+    cardHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, gap: spacing.space2 },
+    cardTitle: { flex: 1 },
+    cardBadge: {
+      textTransform: 'uppercase' as const,
+      backgroundColor: t.color.accent.subtleBg,
+      color: t.color.accent.default,
+      borderRadius: 6,
+      paddingHorizontal: spacing.space2,
+      paddingVertical: 2,
+      overflow: 'hidden' as const,
+    },
+    cardMetaRow: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, gap: spacing.space2 },
     claimButton: { marginTop: spacing.space2 },
   };
 }

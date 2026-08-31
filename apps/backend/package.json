@@ -51,6 +51,8 @@
     "verify:challenge-progress-gate": "tsx scripts/run-gate.ts verify-challenge-progress-gate.ts",
     "verify:challenge-claim-gate": "tsx scripts/run-gate.ts verify-challenge-claim-gate.ts",
     "cosmetics:seed-v1": "tsx scripts/seed-cosmetics-v1.ts",
+    "challenges:seed-v1": "tsx scripts/seed-challenges-v1.ts",
+    "verify:challenges-v1-catalog-gate": "tsx scripts/run-gate.ts verify-challenges-v1-catalog-gate.ts",
     "verify:cosmetic-foundation-gate": "tsx scripts/run-gate.ts verify-cosmetic-foundation-gate.ts",
     "verify:cosmetic-equipment-gate": "tsx scripts/run-gate.ts verify-cosmetic-equipment-gate.ts",
     "verify:cosmetics-v1-catalog-gate": "tsx scripts/run-gate.ts verify-cosmetics-v1-catalog-gate.ts",

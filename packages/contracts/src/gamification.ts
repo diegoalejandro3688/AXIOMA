@@ -166,6 +166,14 @@ export const challengeSummarySchema = z.object({
   targetValue: z.number().int().positive(),
   progressValue: z.number().int().nonnegative(),
   challengeStatus: z.enum(['ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CLAIMED']),
+  /**
+   * DESAFÍOS V1 §20 -- vista previa del bono de XP que entrega el desafío al
+   * reclamarlo (10 / 20 / 30 / 100 para el contenido V1). `null` si la
+   * definición no tiene bundle de recompensa o no entrega XP. Derivado por
+   * el backend de los componentes `XP_BONUS` del bundle -- no expone el
+   * bundle interno. Los desafíos V1 nunca recompensan COSMETIC/TITLE/LP.
+   */
+  rewardXpBonus: z.number().int().positive().nullable(),
   periodStart: isoDateTime,
   periodEnd: isoDateTime,
   acceptedAt: isoDateTime,

@@ -14,6 +14,7 @@ import type { ChallengeSummary } from '@axioma/contracts';
 import type { ApiResult } from '../lib/api/client';
 import { groupChallenges, progressRatio, canClaim } from '../lib/challenges/group-challenges';
 import { mapClaimResult } from '../lib/challenges/claim-outcome';
+import { challengeTypeLabel, formatCountdown, formatRewardXp, claimCtaLabel, isPastPeriod } from '../lib/challenges/challenge-card-view';
 
 let failures = 0;
 function check(label: string, condition: boolean) {
@@ -37,6 +38,7 @@ function makeChallenge(overrides: Partial<ChallengeSummary> = {}): ChallengeSumm
     targetValue: 10,
     progressValue: 0,
     challengeStatus: 'ACCEPTED',
+    rewardXpBonus: 100,
     periodStart: '2026-08-01T00:00:00.000Z',
     periodEnd: '2026-08-08T00:00:00.000Z',
     acceptedAt: '2026-08-01T00:00:00.000Z',
@@ -100,6 +102,28 @@ function main() {
   const otherHttp: ApiResult<ChallengeSummary> = { ok: false, kind: 'http', status: 500, message: 'error inesperado' };
   const otherOutcome = mapClaimResult(otherHttp);
   check('otro status HTTP -> kind "error", status preservado', otherOutcome.kind === 'error' && otherOutcome.status === 500);
+
+  console.log('--- 5. DESAFÍOS V1 §18: etiqueta Diario / Semanal derivada de challengeType ---');
+  check('DAILY -> "Diario"', challengeTypeLabel('DAILY') === 'Diario');
+  check('WEEKLY -> "Semanal"', challengeTypeLabel('WEEKLY') === 'Semanal');
+
+  console.log('--- 6. DESAFÍOS V1 §19: cuenta regresiva local, sin negativos ---');
+  const t0 = new Date('2026-08-30T00:00:00.000Z');
+  check('faltan ~30 h -> "1 d 6 h restantes"', formatCountdown('2026-08-31T06:00:00.000Z', t0) === '1 d 6 h restantes');
+  check('faltan 6 h -> "6 h restantes"', formatCountdown('2026-08-30T06:00:00.000Z', t0) === '6 h restantes');
+  check('faltan 30 min -> "30 min restantes"', formatCountdown('2026-08-30T00:30:00.000Z', t0) === '30 min restantes');
+  check('período ya terminado -> null (nunca contador negativo)', formatCountdown('2026-08-29T00:00:00.000Z', t0) === null);
+  check('período termina exactamente ahora -> null', formatCountdown('2026-08-30T00:00:00.000Z', t0) === null);
+  check('isPastPeriod true cuando periodEnd <= now', isPastPeriod({ periodEnd: '2026-08-29T00:00:00.000Z' }, t0) === true);
+  check('isPastPeriod false cuando periodEnd > now', isPastPeriod({ periodEnd: '2026-08-31T00:00:00.000Z' }, t0) === false);
+
+  console.log('--- 7. DESAFÍOS V1 §20: vista previa de recompensa XP + copia del CTA ---');
+  check('rewardXpBonus 10 -> "+10 XP"', formatRewardXp(10) === '+10 XP');
+  check('rewardXpBonus 100 -> "+100 XP"', formatRewardXp(100) === '+100 XP');
+  check('rewardXpBonus null -> null', formatRewardXp(null) === null);
+  check('rewardXpBonus 0 -> null (no se previsualiza)', formatRewardXp(0) === null);
+  check('CTA con recompensa -> "Reclamar +20 XP"', claimCtaLabel(20) === 'Reclamar +20 XP');
+  check('CTA sin recompensa -> "Reclamar"', claimCtaLabel(null) === 'Reclamar');
 
   console.log('--- 9. Sin lógica duplicada del backend: el mapeo es puramente HTTP status -> intención de UI ---');
   // Verificación por diseño, no por inspección de texto: mapClaimResult no

@@ -4,7 +4,11 @@ import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { ChallengeService } from './challenge.service';
 import type { AccountChallenge, ChallengeDefinition } from '../generated/prisma/client';
 
-function toChallengeSummary(accountChallenge: AccountChallenge, definition: Pick<ChallengeDefinition, 'challengeKey' | 'name' | 'description' | 'challengeType'>): ChallengeSummary {
+function toChallengeSummary(
+  accountChallenge: AccountChallenge,
+  definition: Pick<ChallengeDefinition, 'challengeKey' | 'name' | 'description' | 'challengeType'>,
+  rewardXpBonus: number | null,
+): ChallengeSummary {
   return challengeSummarySchema.parse({
     id: accountChallenge.id,
     challengeKey: definition.challengeKey,
@@ -14,6 +18,7 @@ function toChallengeSummary(accountChallenge: AccountChallenge, definition: Pick
     targetValue: accountChallenge.targetValue,
     progressValue: accountChallenge.progressValue,
     challengeStatus: accountChallenge.challengeStatus,
+    rewardXpBonus,
     periodStart: accountChallenge.periodStart.toISOString(),
     periodEnd: accountChallenge.periodEnd.toISOString(),
     acceptedAt: accountChallenge.acceptedAt.toISOString(),
@@ -41,7 +46,7 @@ export class ChallengeController {
   async list(@Req() request: AuthenticatedRequest): Promise<ListChallengesResponse> {
     const rows = await this.challengeService.listForAccount(request.accountId);
     return listChallengesResponseSchema.parse({
-      challenges: rows.map((row) => toChallengeSummary(row, row.challengeDefinition)),
+      challenges: rows.map((row) => toChallengeSummary(row, row.challengeDefinition, row.rewardXpBonus)),
     });
   }
 
@@ -49,6 +54,7 @@ export class ChallengeController {
   @HttpCode(HttpStatus.OK)
   async claim(@Req() request: AuthenticatedRequest, @Param('accountChallengeId') accountChallengeId: string): Promise<ChallengeSummary> {
     const { accountChallenge, definition } = await this.challengeService.claim(request.accountId, accountChallengeId);
-    return toChallengeSummary(accountChallenge, definition);
+    const rewardXpBonus = definition.rewardBundleId ? await this.challengeService.resolveRewardXpBonus(definition.rewardBundleId) : null;
+    return toChallengeSummary(accountChallenge, definition, rewardXpBonus);
   }
 }
