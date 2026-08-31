@@ -67,7 +67,15 @@ function main() {
   check('kind === pending cuando no hay proyección todavía', pendingView.kind === 'pending');
 
   console.log('--- 4. describeMyPosition: contexto real -> known, con leagueName/rankPosition/metricValue exactos ---');
-  const knownView = describeMyPosition({ leagueName: 'Bronce', rankPosition: 7, metricValue: 340, calculatedAt: '2026-08-06T00:00:00.000Z', snapshotVersion: 1 });
+  const knownView = describeMyPosition({
+    leagueName: 'Bronce',
+    leagueTier: 1,
+    rankPosition: 7,
+    metricValue: 340,
+    competitiveZone: 'RETENTION',
+    calculatedAt: '2026-08-06T00:00:00.000Z',
+    snapshotVersion: 1,
+  });
   check('kind === known', knownView.kind === 'known');
   check('leagueName preservado', knownView.kind === 'known' && knownView.leagueName === 'Bronce');
   check('rankPosition preservado (nunca fabricado)', knownView.kind === 'known' && knownView.rankPosition === 7);

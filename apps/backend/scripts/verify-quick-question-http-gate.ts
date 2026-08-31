@@ -184,6 +184,7 @@ async function main() {
     const noIsCorrectLeaked = (next1.body?.answerOptions ?? []).every((option: Record<string, unknown>) => !('isCorrect' in option));
     check('NINGUNA alternativa expone isCorrect', noIsCorrectLeaked);
     check('la respuesta cruda tampoco contiene la cadena "isCorrect"', !next1.raw.includes('isCorrect'));
+    check('/next NUNCA expone correctAnswerOptionId (la clave solo aparece tras responder)', !next1.raw.includes('correctAnswerOptionId'));
     const presentedOptionIds = new Set((next1.body?.answerOptions ?? []).map((o: { id: string }) => o.id));
     check(
       'la pregunta presentada es UNA de las dos fixtures del universo aislado (selección server-side real, no asumida)',
@@ -224,6 +225,7 @@ async function main() {
     });
     check('POST /answers -> 200', answer1.status === 200);
     check('isCorrect: true (alternativa correcta real)', answer1.body?.isCorrect === true);
+    check('correctAnswerOptionId = la alternativa correcta real de la pregunta', answer1.body?.correctAnswerOptionId === presented.correctOptionId);
     check('explanationContent presente (no null, fixture con explicación)', Array.isArray(answer1.body?.explanationContent) && answer1.body.explanationContent.length > 0);
 
     const attemptRow = await pg.query(`SELECT id FROM quick_question_attempt WHERE operation_id = $1`, [operationId1]);
@@ -238,6 +240,7 @@ async function main() {
     });
     check('replay -> 200 (nunca 201, nunca error)', answerReplay.status === 200);
     check('replay devuelve el MISMO isCorrect', answerReplay.body?.isCorrect === answer1.body?.isCorrect);
+    check('replay devuelve el MISMO correctAnswerOptionId', answerReplay.body?.correctAnswerOptionId === answer1.body?.correctAnswerOptionId);
     const outboxCountAfterReplay = await pg.query(`SELECT count(*)::int AS n FROM outbox_event WHERE payload->>'quickQuestionAttemptId' = $1`, [attemptId]);
     check('SIN segunda publicación tras el replay -- sigue existiendo UN solo outbox_event', outboxCountAfterReplay.rows[0].n === 1);
     const attemptCountAfterReplay = await pg.query(`SELECT count(*)::int AS n FROM quick_question_attempt WHERE operation_id = $1`, [operationId1]);

@@ -364,11 +364,38 @@ export const setFeaturedAchievementsRequestSchema = z.object({
 });
 export type SetFeaturedAchievementsRequest = z.infer<typeof setFeaturedAchievementsRequestSchema>;
 
+/**
+ * COMPETITIVE V1 -- zona EN VIVO de ascenso/retención/descenso, derivada del
+ * ranking (`rankPosition` + tamaño del grupo + gramática `top/bottom-percent`
+ * del tier), NUNCA de la identidad. Autoridad del backend
+ * (`promotion-grammar.ts`, mismo helper que usa el cierre de grupo) -- el
+ * móvil nunca la calcula. Se usa tanto en el contexto competitivo propio
+ * (`competitiveContextSchema`) como en cada fila del ranking
+ * (`leaderboardRowSchema`, presentables Y redactadas -- `zone` no filtra ni
+ * revela identidad).
+ */
+export const competitiveZoneSchema = z.enum(['PROMOTION', 'RETENTION', 'DEMOTION']);
+export type CompetitiveZone = z.infer<typeof competitiveZoneSchema>;
+
 /** `null` si la cuenta no tiene participación activa en la temporada vigente -- NUNCA motivo de 404 (ADR-0021 §2). */
 export const competitiveContextSchema = z.object({
   leagueName: z.string(),
+  /**
+   * COMPETITIVE V1 (rediseño visual, Incremento 2) -- `tierOrder` del tier
+   * actual (1 = Bronce … 7 = Gran Maestro), dato de producto de
+   * `league_definition`. El móvil lo usa para el escudo real de la liga en
+   * la tarjeta de posición del ranking, SIN una segunda llamada.
+   */
+  leagueTier: z.number().int().positive(),
   rankPosition: z.number().int().positive(),
   metricValue: z.number().int(),
+  /**
+   * COMPETITIVE V1 (rediseño visual, Incremento 2) -- zona EN VIVO de la
+   * PROPIA posición, resuelta por el backend con la MISMA gramática que las
+   * filas del ranking y el cierre de grupo. El móvil la representa
+   * (↑ ascenso / — permanencia / ↓ descenso), nunca la calcula.
+   */
+  competitiveZone: competitiveZoneSchema,
   calculatedAt: isoDateTime,
   snapshotVersion: z.number().int().nonnegative(),
 });
@@ -394,17 +421,6 @@ export const meCompetitiveProfileResponseSchema = competitiveProfileResponseSche
   lifecycleStatus: z.enum(['ACTIVE', 'RETIRED']),
 });
 export type MeCompetitiveProfileResponse = z.infer<typeof meCompetitiveProfileResponseSchema>;
-
-/**
- * COMPETITIVE V1 -- zona EN VIVO de ascenso/retención/descenso de una fila,
- * derivada del ranking (`rankPosition` + tamaño del grupo + gramática
- * `top/bottom-percent` del tier), NUNCA de la identidad. Autoridad del
- * backend (`promotion-grammar.ts`, mismo helper que usa el cierre de
- * grupo) -- el móvil nunca la calcula. Presente en filas presentables Y
- * redactadas por esa razón (`zone` no filtra ni revela identidad).
- */
-export const competitiveZoneSchema = z.enum(['PROMOTION', 'RETENTION', 'DEMOTION']);
-export type CompetitiveZone = z.infer<typeof competitiveZoneSchema>;
 
 /**
  * Lista de ranking del propio grupo -- ver docs/adr/0021-perfil-competitivo-cross-cuenta.md,

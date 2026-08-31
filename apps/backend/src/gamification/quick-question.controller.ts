@@ -107,6 +107,7 @@ export class QuickQuestionController {
 
     return answerQuickQuestionResponseSchema.parse({
       isCorrect: result.attempt.isCorrect,
+      correctAnswerOptionId: result.correctAnswerOptionId,
       explanationContent,
     });
   }

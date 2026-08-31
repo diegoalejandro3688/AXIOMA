@@ -242,6 +242,13 @@ async function main() {
   check('competitive.rankPosition == 1 (única participante del grupo)', meVisible.body?.competitive?.rankPosition === 1);
   check('competitive.metricValue == 42 (el LP otorgado)', meVisible.body?.competitive?.metricValue === 42);
   check('competitive.calculatedAt/snapshotVersion presentes', typeof meVisible.body?.competitive?.calculatedAt === 'string' && typeof meVisible.body?.competitive?.snapshotVersion === 'number');
+  // COMPETITIVE V1 (rediseño visual, Incremento 2) -- leagueTier + competitiveZone
+  // de la PROPIA posición.
+  check('competitive.leagueTier == 10 (tierOrder del tier de la fixture)', meVisible.body?.competitive?.leagueTier === 10);
+  check(
+    'competitive.competitiveZone == RETENTION (única participante del grupo, G<3 -> sin zona de ascenso/descenso)',
+    meVisible.body?.competitive?.competitiveZone === 'RETENTION',
+  );
   check(
     'LEF V, Incremento 1: /me con PROFILE_BANNER equipado -> banner devuelve la URL firmada del assetReference equipado',
     expectSignedUrlForKey(meVisible.body?.banner, bannerCosmeticEquipped.assetReference),

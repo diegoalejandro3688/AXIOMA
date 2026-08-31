@@ -232,6 +232,17 @@ async function main() {
   const sessionAfterAnswer = await sessionRepo.findById(aliceSessionId);
   check('currentQuestionVersionId vuelve a null tras responder', sessionAfterAnswer?.currentQuestionVersionId === null);
 
+  // COMPETITIVE V1 (rediseño visual, Incremento 2) -- correctAnswerOptionId
+  // en la respuesta (post-respuesta, nunca antes), para resaltar la correcta.
+  const correctOptionRow = await pg.query(
+    'SELECT id FROM answer_option WHERE question_version_id = $1 AND is_correct = true',
+    [presentedQuestionId],
+  );
+  check(
+    'answer() devuelve correctAnswerOptionId = la alternativa correcta real de la pregunta',
+    answerResult1.correctAnswerOptionId === correctOptionRow.rows[0].id,
+  );
+
   const outboxRowForAttempt1 = await pg.query(
     `SELECT event_key, payload FROM outbox_event WHERE payload->>'quickQuestionAttemptId' = $1`,
     [answerResult1.attempt.id],
@@ -252,6 +263,7 @@ async function main() {
   const answerReplay = await service.answer(accountAlice, aliceSessionId, presentedAnswerOptionId, operationId1);
   check('replay -> created=false', answerReplay.created === false);
   check('replay devuelve el MISMO attempt.id', answerReplay.attempt.id === answerResult1.attempt.id);
+  check('replay devuelve el MISMO correctAnswerOptionId', answerReplay.correctAnswerOptionId === correctOptionRow.rows[0].id);
   const outboxRowsAfterReplay = await pg.query(`SELECT count(*)::int AS n FROM outbox_event WHERE payload->>'quickQuestionAttemptId' = $1`, [answerResult1.attempt.id]);
   check('el replay NO publicó un segundo outbox_event', outboxRowsAfterReplay.rows[0].n === 1);
 

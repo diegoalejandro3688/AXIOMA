@@ -30,7 +30,18 @@ export type NextOutcome =
   | { outcome: 'QUESTION_PRESENTED'; session: QuickQuestionSession; questionVersion: QuestionVersionWithAnswerOptions }
   | { outcome: 'NO_QUESTIONS_AVAILABLE'; session: QuickQuestionSession };
 
-export type AnswerOutcome = { attempt: QuickQuestionAttempt; created: boolean; explanationContent: Prisma.JsonValue | null };
+export type AnswerOutcome = {
+  attempt: QuickQuestionAttempt;
+  created: boolean;
+  explanationContent: Prisma.JsonValue | null;
+  /**
+   * COMPETITIVE V1 (rediseño visual, Incremento 2) -- id de la alternativa
+   * CORRECTA de la pregunta respondida, para que el cliente la resalte
+   * DESPUÉS de responder. Nunca se expone antes (`/next` sigue sin
+   * `isCorrect`). No cambia la economía LP ni `attempt.isCorrect`.
+   */
+  correctAnswerOptionId: string;
+};
 
 /**
  * Bloque IV, Incremento 4, sub-incremento 4.b ("Motor de sesión de Pregunta
@@ -150,7 +161,16 @@ export class QuickQuestionService {
           // su explicación de nuevo (nunca se re-crea el intento ni se
           // vuelve a publicar, ver `result.created` más abajo).
           const questionVersion = await this.questionVersionRepo.findByIdWithQuestionStatus(existing.questionVersionId, tx);
-          return { attempt: existing, created: false, explanationContent: questionVersion?.explanationContent ?? null };
+          const correctOption = await this.answerOptionRepo.findCorrectByQuestionVersionId(existing.questionVersionId, tx);
+          if (!correctOption) {
+            throw new ConflictException('La pregunta de este intento ya no está disponible.');
+          }
+          return {
+            attempt: existing,
+            created: false,
+            explanationContent: questionVersion?.explanationContent ?? null,
+            correctAnswerOptionId: correctOption.id,
+          };
         }
 
         if (session.status !== 'ACTIVE') {
@@ -175,6 +195,14 @@ export class QuickQuestionService {
           throw new ConflictException('La pregunta pendiente de esta sesión ya no está disponible.');
         }
 
+        // COMPETITIVE V1 (Incremento 2) -- alternativa correcta para revelarla
+        // en la respuesta. Una pregunta PUBLISHED siempre tiene una; si no,
+        // es un problema de integridad y se trata como "no disponible".
+        const correctOption = await this.answerOptionRepo.findCorrectByQuestionVersionId(session.currentQuestionVersionId, tx);
+        if (!correctOption) {
+          throw new ConflictException('La pregunta pendiente de esta sesión ya no está disponible.');
+        }
+
         const attempt = await this.attemptRepo.create(tx, {
           sessionId,
           accountId,
@@ -186,7 +214,7 @@ export class QuickQuestionService {
         });
         await this.sessionRepo.clearCurrentQuestion(tx, sessionId);
 
-        return { attempt, created: true, explanationContent: questionVersion.explanationContent };
+        return { attempt, created: true, explanationContent: questionVersion.explanationContent, correctAnswerOptionId: correctOption.id };
       },
       { timeout: 30_000, maxWait: 30_000 },
     );

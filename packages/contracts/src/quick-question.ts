@@ -73,9 +73,16 @@ export type AnswerQuickQuestionBody = z.infer<typeof answerQuickQuestionBodySche
  * `explanationContent` nullable -- defensivo: el esquema de EDUCATION exige
  * al menos un bloque hoy, pero esta respuesta no debe asumirlo para
  * siempre. `isCorrect` resuelto exclusivamente por el servidor.
+ *
+ * COMPETITIVE V1 (rediseño visual, Incremento 2) -- `correctAnswerOptionId`
+ * es el id de la alternativa CORRECTA, presente SOLO en esta respuesta
+ * (post-respuesta), para que el cliente pueda resaltarla. `/next` sigue sin
+ * `isCorrect` en ninguna alternativa: la clave nunca se revela antes de
+ * responder. No cambia la economía LP ni la semántica de `isCorrect`.
  */
 export const answerQuickQuestionResponseSchema = z.object({
   isCorrect: z.boolean(),
+  correctAnswerOptionId: entityId,
   explanationContent: explanationContentResponseSchema.nullable(),
 });
 export type AnswerQuickQuestionResponse = z.infer<typeof answerQuickQuestionResponseSchema>;

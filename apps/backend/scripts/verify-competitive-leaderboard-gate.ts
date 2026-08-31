@@ -321,6 +321,13 @@ async function main() {
   console.log('--- 10. competitiveContext presente y correcto para quien SÍ participa ---');
   check('competitiveContext.rankPosition == 1 (self)', fullPage.body?.competitiveContext?.rankPosition === 1);
   check('competitiveContext.metricValue == 100', fullPage.body?.competitiveContext?.metricValue === 100);
+  // COMPETITIVE V1 (rediseño visual, Incremento 2) -- leagueTier + competitiveZone
+  // de la PROPIA posición, resueltos por el backend (misma gramática que las filas).
+  check('competitiveContext.leagueTier == 10 (tierOrder del tier de la fixture)', fullPage.body?.competitiveContext?.leagueTier === 10);
+  check(
+    'competitiveContext.competitiveZone == PROMOTION (rank 1, G=10, top 20%, tier ni el más alto ni el más bajo)',
+    fullPage.body?.competitiveContext?.competitiveZone === 'PROMOTION',
+  );
 
   console.log('--- 11. Sin patrón N+1: el número de consultas SQL de una página NO escala con la cantidad de filas ---');
   // La instrumentación $on('query') solo ve las consultas de ESTA conexión

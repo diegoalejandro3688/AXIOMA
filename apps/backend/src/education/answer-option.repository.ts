@@ -21,4 +21,16 @@ export class AnswerOptionRepository {
   findById(id: string, tx?: Prisma.TransactionClient): Promise<AnswerOption | null> {
     return (tx ?? this.prisma).answerOption.findUnique({ where: { id } });
   }
+
+  /**
+   * Alternativa correcta de una versión de pregunta (SINGLE_CHOICE -> exactamente
+   * una). Uso interno de GAMIFICATION (Pregunta rápida): tras responder, la
+   * respuesta HTTP incluye `correctAnswerOptionId` para que el móvil pueda
+   * RESALTAR la correcta -- nunca antes de responder (`/next` sigue sin
+   * `isCorrect` en ninguna alternativa). `tx` opcional, mismo criterio que
+   * `findById`.
+   */
+  findCorrectByQuestionVersionId(questionVersionId: string, tx?: Prisma.TransactionClient): Promise<AnswerOption | null> {
+    return (tx ?? this.prisma).answerOption.findFirst({ where: { questionVersionId, isCorrect: true } });
+  }
 }

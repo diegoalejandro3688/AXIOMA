@@ -78,7 +78,11 @@ function main() {
   check('500 -> kind error', mapNextResult(http(500)).kind === 'error');
 
   console.log('--- 4. mapAnswerResult: éxito, alternativa inválida, conflicto, red, error ---');
-  const answerOk: AnswerQuickQuestionResponse = { isCorrect: true, explanationContent: null };
+  const answerOk: AnswerQuickQuestionResponse = {
+    isCorrect: true,
+    correctAnswerOptionId: '00000000-0000-0000-0000-000000000001',
+    explanationContent: null,
+  };
   check('200 -> kind ok', mapAnswerResult(ok(answerOk)).kind === 'ok');
   check('400 -> kind invalid_option', mapAnswerResult(http(400)).kind === 'invalid_option');
   check('409 -> kind conflict (SIEMPRE definitivo, nunca ambiguo)', mapAnswerResult(http(409)).kind === 'conflict');
