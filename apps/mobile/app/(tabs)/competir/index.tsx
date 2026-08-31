@@ -88,8 +88,8 @@ const LEAGUE_EMBLEM_SIZE = 108;
  *
  * Desafíos es SUBORDINADO a Liga y a Pregunta rápida: una sola tarjeta con
  * 1 preview DIARIO + 1 preview SEMANAL (selección determinista por
- * `challengeKey`) + "Ver todos los desafíos". La colección completa se
- * carga igual -- la pantalla completa (Incremento 7) la necesita. La
+ * `challengeKey`) + "Ver todos los desafíos" (navega a `competir/desafios`,
+ * la pantalla completa). La colección completa se carga igual. La
  * inscripción a liga se dispara SOLO desde el `onPress` explícito de
  * "Unirme a la liga", nunca desde un efecto (gate-verificado).
  */
@@ -399,9 +399,10 @@ export default function CompetirScreen() {
   /**
    * DESAFÍOS -- vista previa COMPACTA (subordinada a Liga y Pregunta
    * rápida): una sola tarjeta con 1 preview DIARIO + 1 SEMANAL
-   * (`selectHubChallenges`, determinista) + "Ver todos los desafíos".
-   * loading/error/empty viven DENTRO de esta tarjeta, nunca reemplazan la
-   * pantalla. El claim va por el MISMO `useChallengeClaim` (Incremento 5).
+   * (`selectHubChallenges`, determinista) + "Ver todos los desafíos" ->
+   * `competir/desafios`. loading/error/empty viven DENTRO de esta tarjeta,
+   * nunca reemplazan la pantalla. El claim va por el MISMO
+   * `useChallengeClaim` (Incremento 5).
    */
   function renderChallengesSection() {
     const preview = state.status === 'ready' ? selectHubChallenges(state.challenges) : { daily: null, weekly: null };
@@ -451,17 +452,16 @@ export default function CompetirScreen() {
               />
             ) : null}
 
-            {/*
-             * "Ver todos los desafíos": la pantalla completa se crea en el
-             * Incremento 7. Hasta entonces el CTA se muestra pero es un
-             * no-op EXPLÍCITO (deshabilitado) -- nunca navega a un destino
-             * inexistente.
-             */}
-            <Pressable disabled accessibilityRole="button" accessibilityState={{ disabled: true }} style={styles.seeAll}>
-              <Text variant="label" color="muted">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Ver todos los desafíos"
+              onPress={() => router.push('/(tabs)/competir/desafios')}
+              style={styles.seeAll}
+            >
+              <Text variant="label" style={{ color: tokens.color.accent.strong }}>
                 Ver todos los desafíos
               </Text>
-              <Icon name="chevron-right" size={16} color="muted" />
+              <Icon name="chevron-right" size={16} color="accent" />
             </Pressable>
           </>
         )}

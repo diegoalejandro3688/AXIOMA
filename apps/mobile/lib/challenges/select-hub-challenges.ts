@@ -26,3 +26,22 @@ export function selectHubChallenges(challenges: readonly ChallengeSummary[]): Hu
   };
   return { daily: firstByKey('DAILY'), weekly: firstByKey('WEEKLY') };
 }
+
+export interface ChallengeSections {
+  daily: ChallengeSummary[];
+  weekly: ChallengeSummary[];
+}
+
+/**
+ * DESAFÍOS -- particiona la colección para la pantalla completa: por tipo,
+ * cada grupo ordenado de forma ESTABLE por `challengeKey` ascendente.
+ * MISMO criterio que `selectHubChallenges`: nunca `acceptedAt`, progreso,
+ * dificultad, recompensa, estado ni azar. NO recorta -- el backend es la
+ * autoridad sobre qué desafíos (y cuántos) devuelve para el período
+ * actual, incluidos los ya COMPLETED/CLAIMED. No muta la entrada.
+ */
+export function challengeSections(challenges: readonly ChallengeSummary[]): ChallengeSections {
+  const byKey = (a: ChallengeSummary, b: ChallengeSummary) => (a.challengeKey < b.challengeKey ? -1 : a.challengeKey > b.challengeKey ? 1 : 0);
+  const ofType = (type: ChallengeSummary['challengeType']) => challenges.filter((c) => c.challengeType === type).slice().sort(byKey);
+  return { daily: ofType('DAILY'), weekly: ofType('WEEKLY') };
+}

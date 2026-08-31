@@ -84,10 +84,12 @@ function main() {
   check('los previews usan `<ChallengeRow variant="compact"`', hubSource.includes('variant="compact"'));
   check('encabezado "Desafíos" en una única tarjeta compacta (`challengesCard`)', hubSource.includes('challengesCard') && /variant="label"[\s\S]{0,120}Desafíos/.test(hubSource));
   check(
-    'CTA "Ver todos los desafíos" presente pero SIN navegar a una pantalla inexistente (deshabilitado, Incremento 7 la crea)',
+    'CTA "Ver todos los desafíos" (Incremento 7): Pressable REAL con accessibilityRole y navegación a /(tabs)/competir/desafios -- sin el no-op temporal',
     hubSource.includes('Ver todos los desafíos') &&
-      !hubSource.includes("router.push('/(tabs)/competir/desafios')") &&
-      /<Pressable disabled[\s\S]{0,220}Ver todos los desafíos/.test(hubSource),
+      hubSource.includes("router.push('/(tabs)/competir/desafios')") &&
+      /<Pressable[\s\S]{0,260}Ver todos los desafíos/.test(hubSource) &&
+      !/<Pressable disabled[\s\S]{0,120}Ver todos los desafíos/.test(hubSource) &&
+      /accessibilityRole="button"[\s\S]{0,200}Ver todos los desafíos/.test(hubSource),
   );
   check('loading/error/empty de Desafíos viven DENTRO de la tarjeta, sin `LoadingState`/`ErrorState` de pantalla completa para la colección', !hubSource.includes('LoadingState') && !hubSource.includes('ErrorState'));
 

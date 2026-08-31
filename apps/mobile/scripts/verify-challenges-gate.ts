@@ -10,12 +10,14 @@
 // Esto NO reemplaza la verificación manual en Browser/simulador de la
 // PANTALLA (renderizado real, tema claro/oscuro, gestos) -- ver el
 // checklist en docs/adr/BLOCK-III-DEFINITION.md §4.18.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ChallengeSummary } from '@axioma/contracts';
 import type { ApiResult } from '../lib/api/client';
 import { groupChallenges, progressRatio, canClaim } from '../lib/challenges/group-challenges';
 import { mapClaimResult } from '../lib/challenges/claim-outcome';
 import { challengeTypeLabel, challengeStatusLabel, formatCountdown, formatRewardXp, claimCtaLabel, isPastPeriod } from '../lib/challenges/challenge-card-view';
-import { selectHubChallenges } from '../lib/challenges/select-hub-challenges';
+import { selectHubChallenges, challengeSections } from '../lib/challenges/select-hub-challenges';
 
 let failures = 0;
 function check(label: string, condition: boolean) {
@@ -147,6 +149,39 @@ function main() {
   check('sin WEEKLY -> weekly === null', selectHubChallenges([dailyA, dailyB]).weekly === null);
   check('colección vacía -> ambos null, sin lanzar', (() => { const r = selectHubChallenges([]); return r.daily === null && r.weekly === null; })());
   check('no muta la colección de entrada', (() => { const input = [dailyB, dailyA]; selectHubChallenges(input); return input[0] === dailyB && input[1] === dailyA; })());
+
+  console.log('--- 8b. Incremento 7: challengeSections -- pantalla completa, orden ESTABLE por challengeKey, separado por tipo ---');
+  const sections = challengeSections([weeklyZ, dailyB, weeklyM, dailyC, dailyA]);
+  check('DIARIOS ordenados por challengeKey ASC (a, b, c), no por progreso ni orden de entrada', sections.daily.map((c) => c.challengeKey).join(',') === 'daily-a,daily-b,daily-c');
+  check('SEMANAL ordenado por challengeKey ASC (m, z)', sections.weekly.map((c) => c.challengeKey).join(',') === 'weekly-m,weekly-z');
+  check('orden de entrada distinto -> MISMO resultado (determinista)', challengeSections([dailyC, dailyA, dailyB]).daily.map((c) => c.challengeKey).join(',') === 'daily-a,daily-b,daily-c');
+  check('NO recorta -- todos los DAILY del período se conservan', sections.daily.length === 3);
+  check('COMPLETED y CLAIMED siguen presentes (no se filtran por estado)', (() => {
+    const done = makeChallenge({ challengeType: 'DAILY', challengeKey: 'daily-done', challengeStatus: 'COMPLETED', progressValue: 10 });
+    const claimedRow = makeChallenge({ challengeType: 'DAILY', challengeKey: 'daily-claimed', challengeStatus: 'CLAIMED', progressValue: 10, claimedAt: '2026-08-04T00:00:00.000Z' });
+    const r = challengeSections([done, claimedRow, dailyA]);
+    return r.daily.some((c) => c.challengeStatus === 'COMPLETED') && r.daily.some((c) => c.challengeStatus === 'CLAIMED');
+  })());
+  check('sin desafíos de un tipo -> array vacío, sin lanzar', challengeSections([dailyA]).weekly.length === 0 && challengeSections([]).daily.length === 0);
+  check('no muta la colección de entrada', (() => { const input = [weeklyZ, weeklyM]; challengeSections(input); return input[0] === weeklyZ && input[1] === weeklyM; })());
+
+  console.log('--- 8c. Incremento 7: la pantalla completa competir/desafios.tsx reutiliza todo, sin duplicar ---');
+  const screenSrc = readFileSync(join(__dirname, '..', 'app', '(tabs)', 'competir', 'desafios.tsx'), 'utf8');
+  const rowSrc = readFileSync(join(__dirname, '..', 'components', 'challenges', 'challenge-row.tsx'), 'utf8');
+  const layoutSrc = readFileSync(join(__dirname, '..', 'app', '(tabs)', 'competir', '_layout.tsx'), 'utf8');
+  const hubSrc = readFileSync(join(__dirname, '..', 'app', '(tabs)', 'competir', 'index.tsx'), 'utf8');
+  check('existe competir/desafios.tsx', screenSrc.length > 0);
+  check('está registrada como Stack.Screen "desafios" en competir/_layout.tsx', layoutSrc.includes('name="desafios"'));
+  check('el CTA del hub navega a /(tabs)/competir/desafios (ruta real, ya activa)', hubSrc.includes("router.push('/(tabs)/competir/desafios')"));
+  check('la pantalla usa `listChallenges` (misma colección, sin endpoint nuevo)', screenSrc.includes('listChallenges'));
+  check('la pantalla usa `useChallengeClaim` y NO reimplementa claim (`claimChallenge` nunca aparece)', screenSrc.includes('useChallengeClaim') && !screenSrc.includes('claimChallenge'));
+  check('la pantalla ordena vía `challengeSections` (challengeKey), NUNCA `acceptedAt`', screenSrc.includes('challengeSections(') && !/acceptedAt/.test(screenSrc));
+  check('la pantalla usa `<ChallengeRow variant="full"`', screenSrc.includes('variant="full"'));
+  check('secciones DIARIOS + SEMANAL, sin tabs/filtros/historial/streaks/refresh', /Diarios/i.test(screenSrc) && /Semanal/i.test(screenSrc) && !/\b(Tabs|filtro|filtros|historial|streak|racha|Refresh|Actualizar manualmente)\b/i.test(screenSrc));
+  check('la pantalla NO muestra dificultad ni rareza', !/\b(EASY|MEDIUM|HARD|ADVANCED)\b/.test(screenSrc) && !/dificultad|rareza|rarity/i.test(screenSrc));
+  check('COMPLETED/CLAIMED representables -- la pantalla no filtra por estado', !/filter\([^)]*challengeStatus|challengeStatus !== 'CLAIMED'|!== 'COMPLETED'/.test(screenSrc));
+  check('back nativo (header de _layout, como Ranking) -- sin navegación custom', !screenSrc.includes('router.back') || !screenSrc.includes('customBack'));
+  check('DIARIO azul / SEMANAL violeta viene de la MISMA primitive (challenge-row), no redefinido en la pantalla', rowSrc.includes('academic.violet') && !screenSrc.includes('academic.violet'));
 
   console.log('--- 9. Sin lógica duplicada del backend: el mapeo es puramente HTTP status -> intención de UI ---');
   // Verificación por diseño, no por inspección de texto: mapClaimResult no

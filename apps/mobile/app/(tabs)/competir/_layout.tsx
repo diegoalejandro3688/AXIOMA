@@ -38,6 +38,7 @@ export default function CompetirLayout() {
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="ranking" options={{ title: 'Ranking' }} />
+      <Stack.Screen name="desafios" options={{ title: 'Desafíos' }} />
       <Stack.Screen name="perfil/[username]" options={{ title: 'Perfil' }} />
       <Stack.Screen name="quick-question" options={{ title: 'Pregunta rápida' }} />
     </Stack>
