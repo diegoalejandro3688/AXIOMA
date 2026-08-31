@@ -10,6 +10,7 @@ import {
 import {
   BackArrowIcon,
   CheckIcon,
+  ClockIcon,
   ChevronRightIcon,
   ChevronUpIcon,
   ChevronDownIcon,
@@ -54,6 +55,7 @@ export const iconRegistry = {
   eye: EyeIcon,
   'eye-off': EyeOffIcon,
   check: CheckIcon,
+  clock: ClockIcon,
   'x-circle': XCircleIcon,
   info: InfoIcon,
   'more-horizontal': MoreHorizontalIcon,

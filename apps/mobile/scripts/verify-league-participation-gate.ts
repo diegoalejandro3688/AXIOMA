@@ -162,6 +162,20 @@ function main() {
   // E/F: unión sigue siendo solo-botón (ya cubierto en secciones 5/6, reafirmado aquí).
   check('E/F. unirse sigue siendo solo por botón, sin auto-enrolamiento (reafirmación)', joinCallSites === 1 && !anyEffectCallsJoin);
 
+  console.log('--- 8c. COMPETITIVE V1 (Incremento 11, pulido QA físico): LP vivo inmediato al foco + sin aritmética optimista ---');
+  check(
+    'el hub refresca el estado de Liga al recuperar el foco (`useFocusEffect` -> `loadLeague({ silent: true })`)',
+    /useFocusEffect\([\s\S]{0,220}loadLeague\(\{ silent: true \}\)/.test(hubSource),
+  );
+  check('el refresco silencioso NO vuelve a "loading"/"unknown" ni pisa la pantalla con error (conserva lo último bueno)', hubSource.includes('opts?: { silent?: boolean }') && /if \(!silent\) \{\s*setLeagueState\(\{ status: 'loading' \}\)/.test(hubSource));
+  check('§8: un refresco silencioso fallido CONSERVA la última posición conocida (no la reemplaza por pending)', /else if \(!silent\) setMyContext\(null\)/.test(hubSource));
+  check(
+    'NINGUNA aritmética optimista de LP en el hub -- nunca suma +2 localmente (el saldo es autoritativo del backend)',
+    !/leaguePoints\s*\+/.test(hubSource) && !/\+\s*2\b/.test(hubSource) && !/setMyContext\([^)]*\+/.test(hubSource),
+  );
+  check('la copy de Pregunta rápida en el hub habla de LP por acertar, NUNCA de XP', hubSource.includes('Responde correctamente y gana LP') && !/gana XP/.test(hubSource) && !/y gana XP/.test(hubSource));
+  check('el LP mostrado sigue saliendo del saldo VIVO `view.leaguePoints` (no del ranking, no local)', hubSource.includes('lpValue(view.leaguePoints)'));
+
   console.log('');
   if (failures > 0) {
     console.error(`${failures} verificación(es) fallaron.`);

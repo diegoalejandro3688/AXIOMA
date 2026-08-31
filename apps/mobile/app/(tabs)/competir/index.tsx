@@ -73,7 +73,7 @@ const LEAGUE_ZONE: Record<CompetitiveZone, { label: string; icon: IconName | nul
  * y fácil de ajustar tras el QA en dispositivo físico -- no un valor "de
  * diseño final".
  */
-const LEAGUE_EMBLEM_SIZE = 108;
+const LEAGUE_EMBLEM_SIZE = 92;
 
 /**
  * Competir -- hub. Tarjeta de Liga (COMPETITIVE V1, rediseño visual: escudo
@@ -115,18 +115,36 @@ export default function CompetirScreen() {
   // Cuenta regresiva a nivel de minuto -- sin ticker por segundo.
   const [now, setNow] = useState(() => new Date());
 
-  const loadLeague = useCallback(async () => {
-    setLeagueState({ status: 'loading' });
-    setMyContext('unknown');
-    setFinalizedSeason(null);
+  /**
+   * COMPETITIVE V1 (Incremento 11) -- `silent` refresca en segundo plano al
+   * recuperar el foco del hub (p. ej. al volver de Pregunta rápida): NO
+   * vuelve a "loading"/"unknown", NO borra una posición ya conocida y NO
+   * pisa la pantalla con un error si el refresco falla -- conserva lo último
+   * bueno mientras el backend (autoridad) responde. El LP mostrado
+   * (`view.leaguePoints`) es el saldo VIVO de la participación, así que este
+   * refresco basta para verlo actualizado; nunca se suma nada localmente.
+   */
+  const loadLeague = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    if (!silent) {
+      setLeagueState({ status: 'loading' });
+      setMyContext('unknown');
+      setFinalizedSeason(null);
+    }
     const result = await getLeagueParticipation();
     if (!result.ok) {
-      setLeagueState({ status: 'error', message: result.message });
+      if (!silent) setLeagueState({ status: 'error', message: result.message });
       return;
     }
     const view = describeParticipation(result.data);
     setLeagueState({ status: 'ready', view });
-    if (view.kind !== 'enrolled') return;
+    if (view.kind !== 'enrolled') {
+      if (silent) {
+        setMyContext('unknown');
+        setFinalizedSeason(null);
+      }
+      return;
+    }
 
     if (isFinalParticipation(view.status)) {
       // Temporada finalizada: la posición final vive en la instantánea
@@ -138,16 +156,19 @@ export default function CompetirScreen() {
       // final y muestra escudo + outcome + LP.
       const history = await getLeagueHistory();
       const match = history.ok ? history.data.seasons.find((s) => s.seasonStartsAt === view.season.startsAt) : undefined;
-      setFinalizedSeason(match ?? null);
+      if (match || !silent) setFinalizedSeason(match ?? null);
       return;
     }
 
     // Temporada en curso: reutiliza el endpoint YA existente
     // (`me/competitive-profile`) para rango + zona -- nunca recalcula
-    // ranking en el cliente. 404/ error -> `null` (pending), no un error de
-    // pantalla.
+    // ranking en el cliente. En la carga normal, 404/error -> `null`
+    // (pending), no un error de pantalla. En un refresco `silent`, un fallo
+    // CONSERVA la última posición conocida (§8: no reemplazarla por
+    // "Actualizando posición…").
     const profile = await getMyCompetitiveProfile();
-    setMyContext(profile.ok ? profile.data.competitive : null);
+    if (profile.ok) setMyContext(profile.data.competitive);
+    else if (!silent) setMyContext(null);
   }, []);
 
   const load = useCallback(async () => {
@@ -182,7 +203,16 @@ export default function CompetirScreen() {
     const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);
   }, []);
-  useFocusEffect(useCallback(() => setNow(new Date()), []));
+  // Al recuperar el foco: adelanta la cuenta regresiva y refresca en
+  // segundo plano el estado de Liga (LP vivo + posición) -- el hub queda
+  // montado en el stack de tabs y de otro modo no se re-consultaría al
+  // volver de Pregunta rápida.
+  useFocusEffect(
+    useCallback(() => {
+      setNow(new Date());
+      void loadLeague({ silent: true });
+    }, [loadLeague]),
+  );
 
   async function handleJoinLeague() {
     if (joining) return;
@@ -228,7 +258,7 @@ export default function CompetirScreen() {
   function lpValue(points: number) {
     return (
       <View style={styles.lpValueRow}>
-        <LeagueTrophy size={22} />
+        <LeagueTrophy size={26} />
         <Text variant="titleLarge" weight="bold">
           {points}
         </Text>
@@ -491,7 +521,7 @@ export default function CompetirScreen() {
           Pregunta rápida
         </Text>
         <Text variant="bodySmall" color="onInverse" style={styles.quickQuestionDescription}>
-          Responde preguntas y gana XP
+          Responde correctamente y gana LP
         </Text>
         <View style={styles.quickQuestionButton}>
           <Text variant="titleMedium" weight="semibold" color="onAccent">
@@ -522,7 +552,9 @@ function createStyles(t: ThemeTokens) {
     scroll: { flex: 1, backgroundColor: t.color.background.default },
     container: { padding: 16, gap: spacing.space3, paddingBottom: 32 },
     subtitle: { marginTop: -spacing.space2, marginBottom: spacing.space1 },
-    leagueCard: { gap: spacing.space3, paddingVertical: 20 },
+    // Incremento 11 (pulido QA físico) -- card más compacta: menos padding
+    // vertical y menos gap entre bloques, sin quitar ninguna información.
+    leagueCard: { gap: spacing.space2, paddingVertical: 14 },
     // Identidad de liga: superficie con tinte MUY sutil + hairline de acento.
     // El fondo sigue siendo una surface ZETRYND; el color de la liga solo
     // aparece como identidad discreta (el escudo carga la identidad visual).
@@ -540,7 +572,7 @@ function createStyles(t: ThemeTokens) {
     leagueTopText: { flex: 1, gap: 2 },
     leagueKicker: { textTransform: 'uppercase' as const, letterSpacing: 0.6 },
     leagueName: { textTransform: 'uppercase' as const },
-    leagueStatsRow: { flexDirection: 'row' as const, gap: spacing.space6, alignItems: 'flex-end' as const },
+    leagueStatsRow: { flexDirection: 'row' as const, gap: spacing.space5, alignItems: 'flex-end' as const },
     leagueStat: { gap: 2 },
     leagueStatPending: { paddingBottom: 2 },
     lpValueRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4 },
@@ -581,7 +613,7 @@ function createStyles(t: ThemeTokens) {
     // DESAFÍOS -- tarjeta compacta subordinada: menos altura que la
     // implementación anterior (varias cards + secciones), sin competir con
     // la tarjeta de Liga.
-    challengesCard: { gap: spacing.space2, paddingVertical: spacing.space3 },
+    challengesCard: { gap: spacing.space1, paddingVertical: spacing.space2 },
     challengesTitle: { textTransform: 'uppercase' as const, letterSpacing: 0.6 },
     seeAll: {
       flexDirection: 'row' as const,

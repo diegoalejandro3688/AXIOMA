@@ -1,5 +1,5 @@
 import { View } from 'react-native';
-import { Text } from '../ui';
+import { Text, Icon } from '../ui';
 import { useTheme, radii } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 import { formatTimerSeconds, timerLevel, type TimerLevel } from '../../lib/quick-question/quick-question-feedback';
@@ -32,8 +32,11 @@ export function QuickQuestionTimer({ secondsRemaining, frozen = false }: QuickQu
       accessibilityLabel={`Tiempo restante: ${formatTimerSeconds(secondsRemaining)}`}
       style={{
         alignSelf: 'flex-end',
-        minWidth: 62,
+        minWidth: 74,
+        flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
         borderRadius: radii.full,
         borderWidth: 1,
         borderColor: palette.border,
@@ -43,6 +46,8 @@ export function QuickQuestionTimer({ secondsRemaining, frozen = false }: QuickQu
         opacity: frozen ? 0.55 : 1,
       }}
     >
+      {/* Icono de reloj subordinado al número -- vectorial del registro del proyecto. */}
+      <Icon name="clock" size={13} color={palette.text} />
       <Text variant="label" weight="bold" style={{ color: palette.text, fontVariant: ['tabular-nums'] }}>
         {formatTimerSeconds(secondsRemaining)}
       </Text>

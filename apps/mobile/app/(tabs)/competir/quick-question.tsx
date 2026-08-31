@@ -452,7 +452,7 @@ export default function QuickQuestionScreen() {
        */}
       {screen.verdict === 'correct' ? (
         <View style={styles.rewardRow}>
-          <LeagueTrophy size={20} accessibilityLabel="League Points" />
+          <LeagueTrophy size={22} accessibilityLabel="League Points" />
           <Text variant="bodySmall" weight="bold" color="secondary">
             +{QUICK_QUESTION_CORRECT_LP}
           </Text>

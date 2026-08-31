@@ -348,6 +348,23 @@ export function TargetIcon({ size = 24, color }: NavIconProps) {
 }
 
 /**
+ * COMPETITIVE V1 (Incremento 11, pulido de QA físico) -- reloj lineal para
+ * el pill del temporizador de Pregunta rápida (`[reloj] 39 s`). No existía
+ * un icono de tiempo en el registro; se añade aquí siguiendo la convención
+ * ya documentada en este archivo ("no crear archivos nuevos... añádela
+ * dentro de theme/icons/ existente si faltaba un icono"). Mismo lenguaje:
+ * caja 24x24, trazo 2px, color heredado por prop. Subordinado al número.
+ */
+export function ClockIcon({ size = 24, color }: NavIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="8.5" stroke={color} strokeWidth={2} />
+      <Path d="M12 7.5V12l3.5 2" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+/**
  * STUDY-2 -- modalidad "Ensayo" (portapapeles/documento con lápiz,
  * evocando un examen/simulacro).
  */

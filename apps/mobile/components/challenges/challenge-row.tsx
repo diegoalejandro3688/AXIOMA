@@ -67,12 +67,12 @@ export function ChallengeRow({ challenge, claiming, claimDisabled, error, onClai
   const showStatusHint = !compact && !claimed && !claimable;
 
   const body = (
-    <View style={styles.row}>
+    <View style={[styles.row, compact && styles.rowCompact]}>
       <View style={[compact ? styles.tileSm : styles.tileLg, { backgroundColor: identity.tileBg }]}>
-        <Icon name={identity.icon} size={compact ? 18 : 20} color={identity.accent} />
+        <Icon name={identity.icon} size={compact ? 16 : 20} color={identity.accent} />
       </View>
 
-      <View style={styles.body}>
+      <View style={[styles.body, compact && styles.bodyCompact]}>
         <View style={styles.topLine}>
           <Text variant="micro" weight="bold" style={[styles.type, { color: identity.accent }]}>
             {challengeTypeLabel(challenge.challengeType).toUpperCase()}
@@ -147,9 +147,13 @@ export function ChallengeRow({ challenge, claiming, claimDisabled, error, onClai
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: spacing.space3, paddingVertical: spacing.space2 },
-  tileSm: { width: 34, height: 34, borderRadius: radii.medium, alignItems: 'center', justifyContent: 'center' },
+  // Incremento 11 -- SOLO `variant="compact"` (hub) se aprieta un poco más;
+  // `variant="full"` (pantalla de Desafíos) queda visualmente idéntico.
+  rowCompact: { gap: spacing.space2, paddingVertical: spacing.space1 },
+  tileSm: { width: 30, height: 30, borderRadius: radii.medium, alignItems: 'center', justifyContent: 'center' },
   tileLg: { width: 40, height: 40, borderRadius: radii.medium, alignItems: 'center', justifyContent: 'center' },
   body: { flex: 1, gap: 4 },
+  bodyCompact: { gap: 3 },
   topLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.space2 },
   type: { textTransform: 'uppercase', letterSpacing: 0.6 },
   metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.space2 },

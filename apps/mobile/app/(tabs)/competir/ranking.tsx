@@ -273,7 +273,7 @@ function ZoneIndicator({ zone, styles }: { zone: CompetitiveZone; styles: Return
 function RowLp({ value }: { value: number }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-      <LeagueTrophy size={16} />
+      <LeagueTrophy size={20} />
       <Text variant="titleMedium" weight="bold">
         {value}
       </Text>

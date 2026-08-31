@@ -185,6 +185,16 @@ function main() {
   check('`correctAnswerOptionId` sigue saliendo SÓLO de answer/timeout (Incremento 2), nunca de /next', screenSource.includes('outcome.data.correctAnswerOptionId') && !/mapNextResult[\s\S]{0,200}correctAnswerOptionId/.test(screenSource));
   check('la recompensa se muestra SÓLO en el estado result (tras confirmar), nunca antes de responder', !/status: 'question'[\s\S]{0,400}LeagueTrophy/.test(screenSource));
 
+  console.log('--- 11c. Incremento 11: pill del temporizador con icono de reloj vectorial ya existente ---');
+  const timerSource = readSource('components', 'competitive', 'quick-question-timer.tsx');
+  check('el pill usa un icono vectorial del registro del proyecto (`<Icon name="clock"`), no un asset nuevo', timerSource.includes('<Icon name="clock"'));
+  check('el icono es pequeño y subordinado al número (size <= 16)', /<Icon name="clock" size=\{(?:[0-9]|1[0-6])\}/.test(timerSource));
+  check('se conserva accessibilityRole="timer"', timerSource.includes('accessibilityRole="timer"'));
+  check('se conserva el ancho estable (`minWidth`) y los tabular-nums', timerSource.includes('minWidth') && timerSource.includes("fontVariant: ['tabular-nums']"));
+  check('los estados de urgencia siguen por `timerLevel` (sin cambios de lógica temporal)', timerSource.includes('timerLevel(secondsRemaining)') && timerSource.includes('levelPalette'));
+  const clockRegistrySource = readSource('theme', 'icons', 'index.ts');
+  check("'clock' está registrado en iconRegistry", /clock:\s*ClockIcon/.test(clockRegistrySource));
+
   console.log('--- 12. Incremento 9: mapTimeoutResult -- resolución AUTORITATIVA del timeout (helper puro) ---');
   const timedOut = mapTimeoutResult(ok({ outcome: 'TIMED_OUT', correctAnswerOptionId: 'opt-1' }));
   check('TIMED_OUT -> kind timed_out con correctAnswerOptionId', timedOut.kind === 'timed_out' && (timedOut as { correctAnswerOptionId: string }).correctAnswerOptionId === 'opt-1');
