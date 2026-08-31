@@ -14,6 +14,25 @@ export function challengeTypeLabel(challengeType: ChallengeSummary['challengeTyp
 }
 
 /**
+ * §17/§20 -- etiqueta del ESTADO del desafío para la fila. Extraída SIN
+ * cambios del mapa `STATUS_LABEL` que vivía inline en `competir/index.tsx`
+ * (Bloque III 4.d), para que `ChallengeRow` sea reutilizable entre el hub y
+ * la futura pantalla completa de Desafíos.
+ */
+export function challengeStatusLabel(status: ChallengeSummary['challengeStatus']): string {
+  switch (status) {
+    case 'ACCEPTED':
+      return 'Por empezar';
+    case 'IN_PROGRESS':
+      return 'En progreso';
+    case 'COMPLETED':
+      return 'Completado -- reclama tu recompensa';
+    case 'CLAIMED':
+      return 'Reclamado';
+  }
+}
+
+/**
  * §19 -- cuenta regresiva local hasta `periodEnd`. `null` cuando el período
  * ya terminó (nunca se muestra un contador negativo) -- la tarjeta debe
  * tratar ese caso como estado finalizado. Redondea hacia abajo; muestra

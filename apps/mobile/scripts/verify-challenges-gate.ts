@@ -14,7 +14,7 @@ import type { ChallengeSummary } from '@axioma/contracts';
 import type { ApiResult } from '../lib/api/client';
 import { groupChallenges, progressRatio, canClaim } from '../lib/challenges/group-challenges';
 import { mapClaimResult } from '../lib/challenges/claim-outcome';
-import { challengeTypeLabel, formatCountdown, formatRewardXp, claimCtaLabel, isPastPeriod } from '../lib/challenges/challenge-card-view';
+import { challengeTypeLabel, challengeStatusLabel, formatCountdown, formatRewardXp, claimCtaLabel, isPastPeriod } from '../lib/challenges/challenge-card-view';
 
 let failures = 0;
 function check(label: string, condition: boolean) {
@@ -106,6 +106,12 @@ function main() {
   console.log('--- 5. DESAFÍOS V1 §18: etiqueta Diario / Semanal derivada de challengeType ---');
   check('DAILY -> "Diario"', challengeTypeLabel('DAILY') === 'Diario');
   check('WEEKLY -> "Semanal"', challengeTypeLabel('WEEKLY') === 'Semanal');
+
+  console.log('--- 5b. Incremento 5 (refactor): challengeStatusLabel -- extraído SIN cambios del mapa inline del hub ---');
+  check('ACCEPTED -> "Por empezar"', challengeStatusLabel('ACCEPTED') === 'Por empezar');
+  check('IN_PROGRESS -> "En progreso"', challengeStatusLabel('IN_PROGRESS') === 'En progreso');
+  check('COMPLETED -> "Completado -- reclama tu recompensa"', challengeStatusLabel('COMPLETED') === 'Completado -- reclama tu recompensa');
+  check('CLAIMED -> "Reclamado"', challengeStatusLabel('CLAIMED') === 'Reclamado');
 
   console.log('--- 6. DESAFÍOS V1 §19: cuenta regresiva local, sin negativos ---');
   const t0 = new Date('2026-08-30T00:00:00.000Z');

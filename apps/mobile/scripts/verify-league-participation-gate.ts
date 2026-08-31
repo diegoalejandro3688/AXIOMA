@@ -70,8 +70,13 @@ function main() {
   check('NINGÚN useEffect del hub invoca joinLeague() -- solo el onPress explícito del botón', !anyEffectCallsJoin);
   const joinCallSites = (hubSource.match(/joinLeague\(\)/g) ?? []).length;
   check('joinLeague() aparece EXACTAMENTE una vez en el archivo (dentro de handleJoinLeague, el onPress)', joinCallSites === 1);
-  const handleJoinBlock = hubSource.slice(hubSource.indexOf('async function handleJoinLeague'), hubSource.indexOf('async function handleClaim'));
+  const handleJoinBlock = hubSource.slice(hubSource.indexOf('async function handleJoinLeague'), hubSource.indexOf('function leagueHeader'));
   check('esa única llamada vive dentro de handleJoinLeague (el manejador del onPress)', handleJoinBlock.includes('joinLeague()'));
+
+  console.log('--- 6c. COMPETITIVE V1 (Incremento 5): la lógica de claim de Desafíos está extraída, no duplicada en el hub ---');
+  check('el hub usa el hook compartido `useChallengeClaim` y el componente `<ChallengeRow>`', hubSource.includes('useChallengeClaim(') && hubSource.includes('<ChallengeRow'));
+  check('el hub ya NO llama `claimChallenge(` inline ni mantiene estado de claim propio (setClaimingId/setItemErrors/itemErrors)', !hubSource.includes('claimChallenge(') && !hubSource.includes('setClaimingId') && !hubSource.includes('setItemErrors') && !hubSource.includes('itemErrors'));
+  check('el hub sigue siendo dueño de la colección: `onClaimed` aplica la fila real, `onReconcile` recarga', hubSource.includes('onClaimed: applyClaimed') && hubSource.includes('onReconcile: load'));
 
   console.log('--- 7. COMPETITIVE V1: cuenta regresiva de temporada (§7) ---');
   const base = new Date('2026-08-31T00:00:00.000Z');
