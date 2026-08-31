@@ -73,7 +73,7 @@ const LEAGUE_ZONE: Record<CompetitiveZone, { label: string; icon: IconName | nul
  * y fácil de ajustar tras el QA en dispositivo físico -- no un valor "de
  * diseño final".
  */
-const LEAGUE_EMBLEM_SIZE = 92;
+const LEAGUE_EMBLEM_SIZE = 78;
 
 /**
  * Competir -- hub. Tarjeta de Liga (COMPETITIVE V1, rediseño visual: escudo
@@ -552,9 +552,12 @@ function createStyles(t: ThemeTokens) {
     scroll: { flex: 1, backgroundColor: t.color.background.default },
     container: { padding: 16, gap: spacing.space3, paddingBottom: 32 },
     subtitle: { marginTop: -spacing.space2, marginBottom: spacing.space1 },
-    // Incremento 11 (pulido QA físico) -- card más compacta: menos padding
-    // vertical y menos gap entre bloques, sin quitar ninguna información.
-    leagueCard: { gap: spacing.space2, paddingVertical: 14 },
+    // Incremento 11 + micro-parche final (pulido QA físico, Samsung A54) --
+    // card más compacta en altura: menos padding vertical y menos gap entre
+    // bloques, escudo 92->78. NO se quita ninguna información y la jerarquía
+    // (nombre protagonista, escudo identidad, rank+LP stats, zona, countdown,
+    // CTA) se conserva -- no es una fila horizontal comprimida.
+    leagueCard: { gap: 6, paddingVertical: 8 },
     // Identidad de liga: superficie con tinte MUY sutil + hairline de acento.
     // El fondo sigue siendo una surface ZETRYND; el color de la liga solo
     // aparece como identidad discreta (el escudo carga la identidad visual).
