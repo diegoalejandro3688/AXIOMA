@@ -1,19 +1,17 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, SectionList, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import type { ChallengeSummary, CompetitiveContext, CompetitiveZone, SeasonHistoryEntry } from '@axioma/contracts';
 import { listChallenges } from '../../../lib/api/challenges';
 import { getLeagueParticipation, joinLeague, getLeagueHistory } from '../../../lib/api/league';
 import { getMyCompetitiveProfile } from '../../../lib/api/competitive';
-import { groupChallenges } from '../../../lib/challenges/group-challenges';
+import { selectHubChallenges } from '../../../lib/challenges/select-hub-challenges';
 import { describeParticipation, type LeagueParticipationView } from '../../../lib/league/participation-view';
 import { seasonCountdown } from '../../../lib/league/season-countdown';
 import { leagueVisual } from '../../../lib/league/league-visual';
 import { describeMyPosition } from '../../../lib/leaderboard/paginate-leaderboard';
-import { LoadingState } from '../../../components/loading-state';
-import { ErrorState } from '../../../components/error-state';
-import { Text, Card, Button, Icon } from '../../../components/ui';
+import { Text, Card, Button, Icon, Divider } from '../../../components/ui';
 import { QuickQuestionIllustration } from '../../../components/competitive/quick-question-illustration';
 import { LeagueEmblem } from '../../../components/competitive/league-emblem';
 import { LeagueTrophy } from '../../../components/competitive/league-trophy';
@@ -80,16 +78,20 @@ const LEAGUE_EMBLEM_SIZE = 108;
 /**
  * Competir -- hub. Tarjeta de Liga (COMPETITIVE V1, rediseño visual: escudo
  * real, nombre prominente, posición, LP con trofeo, zona en vivo, cuenta
- * regresiva; y estado de temporada finalizada con escudo + posición final +
- * LP final + outcome) + Pregunta rápida + Desafíos (Bloque III 4.d, CERRADO
- * -- sin cambios de comportamiento).
+ * regresiva; y estado de temporada finalizada) + Pregunta rápida + vista
+ * previa COMPACTA de Desafíos.
  *
- * Una sola superficie de scroll: encabezado, tarjeta de Liga y Pregunta
- * rápida viajan en `ListHeaderComponent` de la misma `SectionList` de
- * Desafíos. La sección de Liga y la de Desafíos son INDEPENDIENTES -- un
- * fallo en una no bloquea la otra. La inscripción se dispara SOLO desde el
- * `onPress` explícito de "Unirme a la liga", nunca desde un efecto
- * (gate-verificado).
+ * Un solo `ScrollView`. Las tres secciones son INDEPENDIENTES -- un fallo en
+ * una no bloquea las otras: Liga y Desafíos renderizan su propio
+ * loading/error/empty DENTRO de su tarjeta, nunca en lugar de toda la
+ * pantalla.
+ *
+ * Desafíos es SUBORDINADO a Liga y a Pregunta rápida: una sola tarjeta con
+ * 1 preview DIARIO + 1 preview SEMANAL (selección determinista por
+ * `challengeKey`) + "Ver todos los desafíos". La colección completa se
+ * carga igual -- la pantalla completa (Incremento 7) la necesita. La
+ * inscripción a liga se dispara SOLO desde el `onPress` explícito de
+ * "Unirme a la liga", nunca desde un efecto (gate-verificado).
  */
 export default function CompetirScreen() {
   const tokens = useTheme();
@@ -394,85 +396,113 @@ export default function CompetirScreen() {
     );
   }
 
-  function renderHeader() {
+  /**
+   * DESAFÍOS -- vista previa COMPACTA (subordinada a Liga y Pregunta
+   * rápida): una sola tarjeta con 1 preview DIARIO + 1 SEMANAL
+   * (`selectHubChallenges`, determinista) + "Ver todos los desafíos".
+   * loading/error/empty viven DENTRO de esta tarjeta, nunca reemplazan la
+   * pantalla. El claim va por el MISMO `useChallengeClaim` (Incremento 5).
+   */
+  function renderChallengesSection() {
+    const preview = state.status === 'ready' ? selectHubChallenges(state.challenges) : { daily: null, weekly: null };
+    const { daily, weekly } = preview;
+    const empty = state.status === 'ready' && !daily && !weekly;
+
     return (
-      <View style={styles.headerBlock}>
-        <Text variant="heading1" accessibilityRole="header">
-          Competir
-        </Text>
-        <Text variant="bodySmall" color="secondary" style={styles.subtitle}>
-          Compite, sube de liga y demuestra lo que sabes.
-        </Text>
-
-        {renderLeagueSection()}
-
-        <Card
-          variant="brand"
-          accessibilityLabel="Jugar Pregunta rápida"
-          onPress={() => router.push('/(tabs)/competir/quick-question')}
-          style={styles.quickQuestionCard}
-        >
-          <QuickQuestionIllustration />
-          <Text variant="titleLarge" color="onInverse">
-            Pregunta rápida
-          </Text>
-          <Text variant="bodySmall" color="onInverse" style={styles.quickQuestionDescription}>
-            Responde preguntas y gana XP
-          </Text>
-          <View style={styles.quickQuestionButton}>
-            <Text variant="titleMedium" weight="semibold" color="onAccent">
-              Comenzar
-            </Text>
-            <Icon name="chevron-right" size={18} color={tokens.color.text.onAccent} />
-          </View>
-        </Card>
-
+      <Card variant="surface" style={styles.challengesCard}>
         <Text variant="label" color="secondary" style={styles.challengesTitle}>
           Desafíos
         </Text>
-      </View>
-    );
-  }
 
-  if (state.status === 'loading') return <LoadingState message="Cargando…" />;
-  if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
-
-  const grouped = groupChallenges(state.challenges);
-  const sections = [
-    { key: 'active', title: 'Activos', data: grouped.active },
-    { key: 'completed', title: 'Completados', data: grouped.completed },
-    { key: 'claimed', title: 'Reclamados', data: grouped.claimed },
-  ].filter((section) => section.data.length > 0);
-
-  return (
-    <SectionList
-      style={styles.scroll}
-      sections={sections}
-      keyExtractor={(item) => item.id}
-      contentContainerStyle={[styles.container, { paddingTop: insets.top + 16 }]}
-      ListHeaderComponent={renderHeader()}
-      ListEmptyComponent={
-        <Card variant="outlined" style={styles.challengesEmptyCard}>
+        {state.status === 'loading' ? (
+          <ActivityIndicator color={tokens.color.accent.default} />
+        ) : state.status === 'error' ? (
+          <>
+            <Text variant="bodySmall" color="error">
+              {state.message}
+            </Text>
+            <Button label="Reintentar" onPress={load} variant="tertiary" size="small" />
+          </>
+        ) : empty ? (
           <Text variant="bodySmall" color="secondary">
             Todavía no tienes desafíos asignados. Sigue estudiando y aparecerán aquí.
           </Text>
-        </Card>
-      }
-      renderSectionHeader={({ section }) => (
-        <Text variant="label" color="secondary" style={styles.sectionTitle}>
-          {section.title}
+        ) : (
+          <>
+            {daily ? (
+              <ChallengeRow
+                variant="compact"
+                challenge={daily}
+                claiming={claimingId === daily.id}
+                claimDisabled={claiming}
+                error={claimErrors[daily.id]}
+                onClaim={() => claim(daily.id)}
+              />
+            ) : null}
+            {daily && weekly ? <Divider /> : null}
+            {weekly ? (
+              <ChallengeRow
+                variant="compact"
+                challenge={weekly}
+                claiming={claimingId === weekly.id}
+                claimDisabled={claiming}
+                error={claimErrors[weekly.id]}
+                onClaim={() => claim(weekly.id)}
+              />
+            ) : null}
+
+            {/*
+             * "Ver todos los desafíos": la pantalla completa se crea en el
+             * Incremento 7. Hasta entonces el CTA se muestra pero es un
+             * no-op EXPLÍCITO (deshabilitado) -- nunca navega a un destino
+             * inexistente.
+             */}
+            <Pressable disabled accessibilityRole="button" accessibilityState={{ disabled: true }} style={styles.seeAll}>
+              <Text variant="label" color="muted">
+                Ver todos los desafíos
+              </Text>
+              <Icon name="chevron-right" size={16} color="muted" />
+            </Pressable>
+          </>
+        )}
+      </Card>
+    );
+  }
+
+  return (
+    <ScrollView style={styles.scroll} contentContainerStyle={[styles.container, { paddingTop: insets.top + 16 }]}>
+      <Text variant="heading1" accessibilityRole="header">
+        Competir
+      </Text>
+      <Text variant="bodySmall" color="secondary" style={styles.subtitle}>
+        Compite, sube de liga y demuestra lo que sabes.
+      </Text>
+
+      {renderLeagueSection()}
+
+      <Card
+        variant="brand"
+        accessibilityLabel="Jugar Pregunta rápida"
+        onPress={() => router.push('/(tabs)/competir/quick-question')}
+        style={styles.quickQuestionCard}
+      >
+        <QuickQuestionIllustration />
+        <Text variant="titleLarge" color="onInverse">
+          Pregunta rápida
         </Text>
-      )}
-      renderItem={({ item }) => (
-        <ChallengeRow
-          challenge={item}
-          claiming={claimingId === item.id}
-          claimDisabled={claiming}
-          error={claimErrors[item.id]}
-          onClaim={() => claim(item.id)}
-        />
-      )}
-    />
+        <Text variant="bodySmall" color="onInverse" style={styles.quickQuestionDescription}>
+          Responde preguntas y gana XP
+        </Text>
+        <View style={styles.quickQuestionButton}>
+          <Text variant="titleMedium" weight="semibold" color="onAccent">
+            Comenzar
+          </Text>
+          <Icon name="chevron-right" size={18} color={tokens.color.text.onAccent} />
+        </View>
+      </Card>
+
+      {renderChallengesSection()}
+    </ScrollView>
   );
 }
 
@@ -491,8 +521,7 @@ function createStyles(t: ThemeTokens) {
   return {
     scroll: { flex: 1, backgroundColor: t.color.background.default },
     container: { padding: 16, gap: spacing.space3, paddingBottom: 32 },
-    headerBlock: { gap: spacing.space3 },
-    subtitle: { marginTop: -spacing.space2 },
+    subtitle: { marginTop: -spacing.space2, marginBottom: spacing.space1 },
     leagueCard: { gap: spacing.space3, paddingVertical: 20 },
     // Identidad de liga: superficie con tinte MUY sutil + hairline de acento.
     // El fondo sigue siendo una surface ZETRYND; el color de la liga solo
@@ -549,8 +578,17 @@ function createStyles(t: ThemeTokens) {
       paddingVertical: spacing.space2,
       paddingHorizontal: spacing.space4,
     },
-    challengesTitle: { textTransform: 'uppercase' as const, marginTop: spacing.space2 },
-    challengesEmptyCard: { gap: spacing.space2 },
-    sectionTitle: { marginTop: spacing.space3, marginBottom: spacing.space1, textTransform: 'uppercase' as const, backgroundColor: t.color.background.default },
+    // DESAFÍOS -- tarjeta compacta subordinada: menos altura que la
+    // implementación anterior (varias cards + secciones), sin competir con
+    // la tarjeta de Liga.
+    challengesCard: { gap: spacing.space2, paddingVertical: spacing.space3 },
+    challengesTitle: { textTransform: 'uppercase' as const, letterSpacing: 0.6 },
+    seeAll: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      alignSelf: 'flex-start' as const,
+      gap: 2,
+      marginTop: spacing.space1,
+    },
   };
 }

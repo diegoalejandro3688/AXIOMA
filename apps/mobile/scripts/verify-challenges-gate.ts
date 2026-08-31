@@ -15,6 +15,7 @@ import type { ApiResult } from '../lib/api/client';
 import { groupChallenges, progressRatio, canClaim } from '../lib/challenges/group-challenges';
 import { mapClaimResult } from '../lib/challenges/claim-outcome';
 import { challengeTypeLabel, challengeStatusLabel, formatCountdown, formatRewardXp, claimCtaLabel, isPastPeriod } from '../lib/challenges/challenge-card-view';
+import { selectHubChallenges } from '../lib/challenges/select-hub-challenges';
 
 let failures = 0;
 function check(label: string, condition: boolean) {
@@ -130,6 +131,22 @@ function main() {
   check('rewardXpBonus 0 -> null (no se previsualiza)', formatRewardXp(0) === null);
   check('CTA con recompensa -> "Reclamar +20 XP"', claimCtaLabel(20) === 'Reclamar +20 XP');
   check('CTA sin recompensa -> "Reclamar"', claimCtaLabel(null) === 'Reclamar');
+
+  console.log('--- 8. Incremento 6: selectHubChallenges -- vista previa DETERMINISTA por challengeKey ---');
+  const dailyB = makeChallenge({ challengeType: 'DAILY', challengeKey: 'daily-b', name: 'Daily B' });
+  const dailyA = makeChallenge({ challengeType: 'DAILY', challengeKey: 'daily-a', name: 'Daily A', progressValue: 9 });
+  const dailyC = makeChallenge({ challengeType: 'DAILY', challengeKey: 'daily-c', name: 'Daily C' });
+  const weeklyZ = makeChallenge({ challengeType: 'WEEKLY', challengeKey: 'weekly-z', name: 'Weekly Z' });
+  const weeklyM = makeChallenge({ challengeType: 'WEEKLY', challengeKey: 'weekly-m', name: 'Weekly M', rewardXpBonus: 100 });
+  // Orden de entrada barajado -- NUNCA debe influir (no se usa acceptedAt ni orden de llegada).
+  const pickAll = selectHubChallenges([dailyB, weeklyZ, dailyC, weeklyM, dailyA]);
+  check('DAILY seleccionado = el primero por challengeKey ASC (daily-a), no por progreso ni orden de entrada', pickAll.daily?.challengeKey === 'daily-a');
+  check('WEEKLY seleccionado = el primero por challengeKey ASC (weekly-m), no por recompensa ni orden de entrada', pickAll.weekly?.challengeKey === 'weekly-m');
+  check('orden de entrada distinto -> MISMA selección (determinista)', selectHubChallenges([dailyA, dailyC, dailyB, weeklyM, weeklyZ]).daily?.challengeKey === 'daily-a');
+  check('sin DAILY -> daily === null (esa fila no se renderiza)', selectHubChallenges([weeklyM, weeklyZ]).daily === null);
+  check('sin WEEKLY -> weekly === null', selectHubChallenges([dailyA, dailyB]).weekly === null);
+  check('colección vacía -> ambos null, sin lanzar', (() => { const r = selectHubChallenges([]); return r.daily === null && r.weekly === null; })());
+  check('no muta la colección de entrada', (() => { const input = [dailyB, dailyA]; selectHubChallenges(input); return input[0] === dailyB && input[1] === dailyA; })());
 
   console.log('--- 9. Sin lógica duplicada del backend: el mapeo es puramente HTTP status -> intención de UI ---');
   // Verificación por diseño, no por inspección de texto: mapClaimResult no

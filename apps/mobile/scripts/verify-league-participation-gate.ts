@@ -78,6 +78,27 @@ function main() {
   check('el hub ya NO llama `claimChallenge(` inline ni mantiene estado de claim propio (setClaimingId/setItemErrors/itemErrors)', !hubSource.includes('claimChallenge(') && !hubSource.includes('setClaimingId') && !hubSource.includes('setItemErrors') && !hubSource.includes('itemErrors'));
   check('el hub sigue siendo dueño de la colección: `onClaimed` aplica la fila real, `onReconcile` recarga', hubSource.includes('onClaimed: applyClaimed') && hubSource.includes('onReconcile: load'));
 
+  console.log('--- 6d. DESAFÍOS (Incremento 6): vista previa COMPACTA en el hub -- 1 DIARIO + 1 SEMANAL + "Ver todos" ---');
+  check('el hub selecciona de forma DETERMINISTA con `selectHubChallenges`, no agrupa toda la colección', hubSource.includes('selectHubChallenges(') && !hubSource.includes('groupChallenges'));
+  check('la vieja `SectionList` de Desafíos + secciones ya NO existen en el hub', !hubSource.includes('SectionList') && !hubSource.includes('renderSectionHeader') && !hubSource.includes("title: 'Activos'"));
+  check('los previews usan `<ChallengeRow variant="compact"`', hubSource.includes('variant="compact"'));
+  check('encabezado "Desafíos" en una única tarjeta compacta (`challengesCard`)', hubSource.includes('challengesCard') && /variant="label"[\s\S]{0,120}Desafíos/.test(hubSource));
+  check(
+    'CTA "Ver todos los desafíos" presente pero SIN navegar a una pantalla inexistente (deshabilitado, Incremento 7 la crea)',
+    hubSource.includes('Ver todos los desafíos') &&
+      !hubSource.includes("router.push('/(tabs)/competir/desafios')") &&
+      /<Pressable disabled[\s\S]{0,220}Ver todos los desafíos/.test(hubSource),
+  );
+  check('loading/error/empty de Desafíos viven DENTRO de la tarjeta, sin `LoadingState`/`ErrorState` de pantalla completa para la colección', !hubSource.includes('LoadingState') && !hubSource.includes('ErrorState'));
+
+  console.log('--- 6e. DESAFÍOS (Incremento 6): <ChallengeRow> es una sola primitive con variante compact, sin dificultad pública ---');
+  const rowSource = readFileSync(join(__dirname, '..', 'components', 'challenges', 'challenge-row.tsx'), 'utf8');
+  check('<ChallengeRow> soporta `variant` compact | full sobre la MISMA primitive', /ChallengeRowVariant\s*=\s*'full'\s*\|\s*'compact'/.test(rowSource) && rowSource.includes("variant === 'compact'"));
+  check('la variante compacta muestra tipo (DIARIO/SEMANAL) + progreso + X/Y actividades + recompensa + cuenta regresiva', rowSource.includes('toUpperCase()') && rowSource.includes('actividades') && rowSource.includes('formatRewardXp') && rowSource.includes('formatCountdown') && rowSource.includes('<Progress'));
+  check('el claim de la fila compacta va por el MISMO `onClaim` (nada de lógica propia)', rowSource.includes('onClaim') && !rowSource.includes('claimChallenge'));
+  check('NINGUNA variante muestra dificultad ni rareza', !/\b(EASY|MEDIUM|HARD|ADVANCED)\b/.test(rowSource) && !/dificultad|rareza|rarity/i.test(rowSource));
+  check('identidad de tipo por acento (DIARIO azul / SEMANAL violeta), no toda la fila de color', rowSource.includes('academic.violet') && rowSource.includes('accent.default') && rowSource.includes('typeIdentity'));
+
   console.log('--- 7. COMPETITIVE V1: cuenta regresiva de temporada (§7) ---');
   const base = new Date('2026-08-31T00:00:00.000Z');
   const d6h12 = seasonCountdown('2026-09-06T12:00:00.000Z', base);
@@ -123,7 +144,7 @@ function main() {
   console.log('--- 8b. COMPETITIVE V1 (parche final de QA): LP VIVO vs POSICIÓN calculada, dos fuentes ---');
   // La tarjeta lee LP del saldo de la participación (`view.leaguePoints`) y
   // la posición del `CompetitiveContext` -- nunca los LP del leaderboard.
-  const cardBlock = hubSource.slice(hubSource.indexOf('view.kind === \'enrolled\''), hubSource.indexOf('function renderHeader'));
+  const cardBlock = hubSource.slice(hubSource.indexOf('view.kind === \'enrolled\''), hubSource.indexOf('function renderChallengesSection'));
   check('A/D. la tarjeta muestra los LP desde `view.leaguePoints` (saldo vivo de la participación)', cardBlock.includes('view.leaguePoints'));
   check('C/D. la tarjeta NO usa `position.metricValue` como los LP mostrados (evita el valor rezagado del último cálculo)', !cardBlock.includes('position.metricValue') && !cardBlock.includes('.metricValue}'));
   check('B. la posición se muestra desde `position.rankPosition` solo cuando `position.kind === \'known\'`', cardBlock.includes("position.kind === 'known'") && cardBlock.includes('position.rankPosition'));
