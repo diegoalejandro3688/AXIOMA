@@ -6,3 +6,12 @@ declare module '*.png' {
   const value: number;
   export default value;
 }
+
+// COMPETITIVE V1 (rediseño visual) -- escudos de liga y trofeo LP se
+// distribuyen como `.webp` (1024x1024 RGBA). Metro incluye `webp` en su
+// `assetExts` por defecto; esta declaración es solo para que `tsc` acepte
+// el `import` estático, igual que `*.png`.
+declare module '*.webp' {
+  const value: number;
+  export default value;
+}
