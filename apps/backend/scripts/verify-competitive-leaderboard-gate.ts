@@ -113,7 +113,19 @@ async function main() {
   const season = await seasonRepo.create({ seasonKey: `cple-gate-${suffix}`, name: 'Temporada CPLE', startsAt: seasonStart, endsAt: seasonEnd });
   await pg.query("UPDATE game_season SET status = 'ACTIVE' WHERE id = $1", [season.id]);
   await pg.query("UPDATE league_definition SET status = 'RETIRED', retired_at = now() WHERE status = 'ACTIVE'");
-  const tier = await leagueDefinitionRepo.create({ leagueKey: `cple-tier-${suffix}`, name: 'Liga CPLE', tierOrder: 10, participantGroupSize: 40 });
+  // COMPETITIVE V1 -- `tier` es un tier MEDIO real (below @9 / above @11 ACTIVE),
+  // con la gramática productiva `top/bottom-percent:20`, para que la zona EN
+  // VIVO produzca PROMOTION/DEMOTION reales (no todo RETENTION por borde de tier).
+  await leagueDefinitionRepo.create({ leagueKey: `cple-below-${suffix}`, name: 'Below', tierOrder: 9, participantGroupSize: 40 });
+  await leagueDefinitionRepo.create({ leagueKey: `cple-above-${suffix}`, name: 'Above', tierOrder: 11, participantGroupSize: 40 });
+  const tier = await leagueDefinitionRepo.create({
+    leagueKey: `cple-tier-${suffix}`,
+    name: 'Liga CPLE',
+    tierOrder: 10,
+    participantGroupSize: 40,
+    promotionRule: 'top-percent:20',
+    demotionRule: 'bottom-percent:20',
+  });
   const groupRow = await pg.query(
     `INSERT INTO league_group (id, game_season_id, league_definition_id, group_number, capacity, assignment_policy_version, status)
      VALUES ($1, $2, $3, 1, 40, 'v1-lowest-tier', 'OPEN') RETURNING id`,
@@ -245,8 +257,24 @@ async function main() {
   check('8 filas redactadas (privateOther, retiredOther, anonOther, 5 sin perfil)', redactedRows.length === 8);
   for (const row of redactedRows) {
     const keys = Object.keys(row).sort();
-    check(`fila redactada (rank ${row.rankPosition}) contiene EXACTAMENTE presentable/isCurrentUser/rankPosition/metricValue -- incluye la verificación LEF V de que "banner" nunca aparece en una fila redactada`, JSON.stringify(keys) === JSON.stringify(['isCurrentUser', 'metricValue', 'presentable', 'rankPosition']));
+    // COMPETITIVE V1 -- `competitiveZone` SÍ puede aparecer en una fila
+    // redactada: es dato DERIVADO DEL RANKING (posición + tamaño de grupo +
+    // gramática de tier), nunca de la identidad. `banner`/`username`/etc.
+    // siguen prohibidos.
+    check(`fila redactada (rank ${row.rankPosition}) contiene EXACTAMENTE presentable/isCurrentUser/rankPosition/metricValue/competitiveZone -- "banner" nunca aparece en una fila redactada`, JSON.stringify(keys) === JSON.stringify(['competitiveZone', 'isCurrentUser', 'metricValue', 'presentable', 'rankPosition']));
+    check(`fila redactada (rank ${row.rankPosition}): competitiveZone es un valor válido`, ['PROMOTION', 'RETENTION', 'DEMOTION'].includes(row.competitiveZone as string));
   }
+
+  console.log('--- 5b. COMPETITIVE V1: zona EN VIVO mirror EXACTO de la gramática de cierre (10 participantes, tier medio Bronce, top/bottom 20%) ---');
+  // G = 10 -> promoteCount = max(1, floor(10*20/100)) = 2 ; demoteCount = 2 ; 6 RETENTION.
+  const zoneByPosition = new Map(rows.map((r) => [r.rankPosition as number, r.competitiveZone as string]));
+  check('rank 1 -> PROMOTION', zoneByPosition.get(1) === 'PROMOTION');
+  check('rank 2 -> PROMOTION', zoneByPosition.get(2) === 'PROMOTION');
+  check('rank 3 -> RETENTION (fuera de la zona de ascenso)', zoneByPosition.get(3) === 'RETENTION');
+  check('rank 8 -> RETENTION (fuera de la zona de descenso)', zoneByPosition.get(8) === 'RETENTION');
+  check('rank 9 -> DEMOTION', zoneByPosition.get(9) === 'DEMOTION');
+  check('rank 10 -> DEMOTION', zoneByPosition.get(10) === 'DEMOTION');
+  check('exactamente 2 filas PROMOTION y 2 DEMOTION (mismo count que decideOutcomes para G=10)', rows.filter((r) => r.competitiveZone === 'PROMOTION').length === 2 && rows.filter((r) => r.competitiveZone === 'DEMOTION').length === 2);
 
   console.log('--- 6. Sin identificadores internos correlacionables en NINGUNA fila (ADR-0021) ---');
   const forbiddenIds = [self.accountId, accountVisible, accountPrivateOther, accountRetiredOther, accountAnonymizedOther, groupId, season.id, tier.id, leaderboardDefinition.id, ...bulkAccountIds];
@@ -322,7 +350,7 @@ async function main() {
     objectStorageDirect,
   );
   const contextServiceDirect = new CompetitiveContextService(participationRepo, entryRepo, leaderboardDefinitionRepo, leagueGroupRepoDirect, leagueDefinitionRepo);
-  const leaderboardServiceDirect = new CompetitiveLeaderboardService(participationRepo, entryRepo, leaderboardDefinitionRepo, identityServiceDirect, contextServiceDirect);
+  const leaderboardServiceDirect = new CompetitiveLeaderboardService(participationRepo, entryRepo, leaderboardDefinitionRepo, identityServiceDirect, contextServiceDirect, leagueGroupRepoDirect, leagueDefinitionRepo);
 
   queryCount = 0;
   await leaderboardServiceDirect.resolvePage(self.accountId, { limit: 3 });

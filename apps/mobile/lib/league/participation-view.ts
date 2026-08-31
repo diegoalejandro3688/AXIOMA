@@ -6,7 +6,15 @@ import type { GetLeagueParticipationResponse, PostLeagueParticipationResponse } 
 // -- mismo criterio que `lib/challenges/claim-outcome.ts`.
 
 export type LeagueParticipationView =
-  | { kind: 'enrolled'; leagueName: string; status: string }
+  | {
+      kind: 'enrolled';
+      leagueName: string;
+      /** COMPETITIVE V1 -- `tierOrder` (1 = Bronce … 7 = Gran Maestro), para el arte/insignia de liga. */
+      leagueTier: number;
+      status: string;
+      /** COMPETITIVE V1 -- ventana de la temporada, ISO strings, para la cuenta regresiva. */
+      season: { startsAt: string; endsAt: string };
+    }
   | { kind: 'not_enrolled' }
   | { kind: 'no_active_season' };
 
@@ -21,7 +29,13 @@ export function describeParticipation(
   response: GetLeagueParticipationResponse | PostLeagueParticipationResponse,
 ): LeagueParticipationView {
   if (response.outcome === 'ENROLLED') {
-    return { kind: 'enrolled', leagueName: response.leagueName, status: response.status };
+    return {
+      kind: 'enrolled',
+      leagueName: response.leagueName,
+      leagueTier: response.leagueTier,
+      status: response.status,
+      season: { startsAt: response.season.startsAt, endsAt: response.season.endsAt },
+    };
   }
   if (response.outcome === 'NOT_ENROLLED') {
     return { kind: 'not_enrolled' };

@@ -49,6 +49,17 @@ export class LeagueGroupRepository {
     return tx.seasonLeagueParticipation.count({ where: { leagueGroupId } });
   }
 
+  /**
+   * COMPETITIVE V1 -- `G` real del grupo para la zona EN VIVO del ranking
+   * (`CompetitiveLeaderboardService`). Sin `tx` -- lectura, ningún camino de
+   * escritura la usa. Cuenta EXACTAMENTE lo mismo que `ranked.length` en el
+   * cierre (`SeasonLeagueParticipationRepository.findAllByGroupId`), sin
+   * ningún filtro de visibilidad (ADR-0020 §1/§2).
+   */
+  countParticipantsForGroup(leagueGroupId: string): Promise<number> {
+    return this.prisma.seasonLeagueParticipation.count({ where: { leagueGroupId } });
+  }
+
   markFull(tx: Prisma.TransactionClient, id: string): Promise<LeagueGroup> {
     return tx.leagueGroup.update({ where: { id }, data: { status: 'FULL' } });
   }

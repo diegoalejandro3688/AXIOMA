@@ -8,6 +8,7 @@ import { LeaderboardCalculationService, TIE_BREAK_RULE_VERSION, RANKING_METRIC_V
 import { LeaderboardSnapshotRepository } from './leaderboard-snapshot.repository';
 import { LeaderboardSnapshotEntryRepository } from './leaderboard-snapshot-entry.repository';
 import { SeasonLeagueParticipationRepository } from './season-league-participation.repository';
+import { computeZoneCounts, resolveCompetitiveZone, MINIMUM_PARTICIPANTS_FOR_PROMOTION, type CompetitiveZone } from './promotion-grammar';
 
 /**
  * Namespace de advisory lock DISTINTO a los ya en uso (19 ADR-0019, 20
@@ -19,22 +20,12 @@ import { SeasonLeagueParticipationRepository } from './season-league-participati
  */
 const LEADERBOARD_FINALIZATION_LOCK_NAMESPACE = 22;
 
-/** Grupos con menos participantes que este mínimo cierran 100% RETAINED -- ADR-0020 §4, Gate 21. */
-const MINIMUM_PARTICIPANTS_FOR_PROMOTION = 3;
-
-function parseTopPercent(rule: string | null): number | null {
-  const match = rule ? /^top-percent:(\d+)$/.exec(rule) : null;
-  if (!match) return null;
-  const percent = Number(match[1]);
-  return percent >= 1 && percent <= 100 ? percent : null;
-}
-
-function parseBottomPercent(rule: string | null): number | null {
-  const match = rule ? /^bottom-percent:(\d+)$/.exec(rule) : null;
-  if (!match) return null;
-  const percent = Number(match[1]);
-  return percent >= 1 && percent <= 100 ? percent : null;
-}
+/** COMPETITIVE V1 -- la gramática de zonas (percentajes, mínimo de participantes, bordes de tier) vive en `promotion-grammar.ts`, compartida con la zona EN VIVO del ranking. */
+const ZONE_TO_OUTCOME: Record<CompetitiveZone, PromotionOutcome> = {
+  PROMOTION: 'PROMOTED',
+  RETENTION: 'RETAINED',
+  DEMOTION: 'DEMOTED',
+};
 
 function computeContentHash(ranked: RankedParticipant[], outcomes: Map<string, PromotionOutcome>): string {
   // Serialización canónica ordenada por rankPosition -- nunca por orden de
@@ -179,16 +170,11 @@ export class LeaderboardFinalizationService {
       return outcomes;
     }
 
-    const promotionPercent = parseTopPercent(leagueDefinition.promotionRule);
-    const demotionPercent = parseBottomPercent(leagueDefinition.demotionRule);
-
-    const promoteCount = promotionPercent != null ? Math.max(1, Math.floor((G * promotionPercent) / 100)) : 0;
-    let demoteCount = demotionPercent != null ? Math.max(1, Math.floor((G * demotionPercent) / 100)) : 0;
-
-    // Tope de solapamiento -- la zona de ascenso tiene prioridad de asignación (ADR-0020 §4, punto 5).
-    if (promoteCount + demoteCount > G) {
-      demoteCount = Math.max(0, G - promoteCount);
-    }
+    const { promoteCount, demoteCount } = computeZoneCounts({
+      participantCount: G,
+      promotionRule: leagueDefinition.promotionRule,
+      demotionRule: leagueDefinition.demotionRule,
+    });
 
     const highestTier = await this.leagueDefinitionRepo.findHighestActiveTier(tx);
     const lowestTier = await this.leagueDefinitionRepo.findLowestActiveTier(tx);
@@ -196,14 +182,15 @@ export class LeaderboardFinalizationService {
     const isLowestTier = lowestTier?.id === leagueDefinition.id;
 
     for (const r of ranked) {
-      let outcome: PromotionOutcome = 'RETAINED';
-      if (promoteCount > 0 && r.rankPosition <= promoteCount) {
-        // Tiers extremos -- sin tier superior al que ascender (ADR-0020 §4, punto 8).
-        outcome = isHighestTier ? 'RETAINED' : 'PROMOTED';
-      } else if (demoteCount > 0 && r.rankPosition > G - demoteCount) {
-        outcome = isLowestTier ? 'RETAINED' : 'DEMOTED';
-      }
-      outcomes.set(r.seasonLeagueParticipationId, outcome);
+      const zone = resolveCompetitiveZone({
+        rankPosition: r.rankPosition,
+        participantCount: G,
+        promoteCount,
+        demoteCount,
+        isHighestTier,
+        isLowestTier,
+      });
+      outcomes.set(r.seasonLeagueParticipationId, ZONE_TO_OUTCOME[zone]);
     }
 
     return outcomes;

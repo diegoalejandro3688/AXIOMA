@@ -11,7 +11,14 @@ import { parseRequestBody } from '../platform/validation/parse-request-body';
 import { LeagueEnrollmentService, type EnrolledParticipationView } from './league-enrollment.service';
 
 function toEnrolledPayload(view: EnrolledParticipationView) {
-  return { outcome: 'ENROLLED' as const, leagueName: view.leagueName, joinedAt: view.joinedAt.toISOString(), status: view.participationStatus };
+  return {
+    outcome: 'ENROLLED' as const,
+    leagueName: view.leagueName,
+    leagueTier: view.leagueTier,
+    joinedAt: view.joinedAt.toISOString(),
+    status: view.participationStatus,
+    season: { startsAt: view.season.startsAt.toISOString(), endsAt: view.season.endsAt.toISOString() },
+  };
 }
 
 /**

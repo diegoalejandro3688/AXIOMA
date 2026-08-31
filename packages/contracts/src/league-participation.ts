@@ -23,11 +23,33 @@ import { isoDateTime } from './common';
 export const leagueParticipationBodySchema = z.object({}).strict();
 export type LeagueParticipationBody = z.infer<typeof leagueParticipationBodySchema>;
 
+/**
+ * COMPETITIVE V1 -- fechas de la temporada ACTIVE, para que el hub móvil
+ * renderice la cuenta regresiva de 7 días sin una segunda llamada. SOLO
+ * `startsAt`/`endsAt` (datos de producto) -- NUNCA el `id` de `game_season`
+ * ni ningún identificador interno (mismo criterio "sin IDs" que
+ * `competitiveContextSchema`, ADR-0021 §2/§3).
+ */
+export const enrolledSeasonWindowSchema = z.object({
+  startsAt: isoDateTime,
+  endsAt: isoDateTime,
+});
+export type EnrolledSeasonWindow = z.infer<typeof enrolledSeasonWindowSchema>;
+
 /** Forma compartida entre GET y POST cuando la cuenta SÍ tiene una participación resuelta. */
 export const enrolledLeagueParticipationSchema = z.object({
   outcome: z.literal('ENROLLED'),
   leagueName: z.string(),
+  /**
+   * COMPETITIVE V1 -- `tierOrder` del tier actual (1 = Bronce … 7 = Gran
+   * Maestro). Dato de producto de `league_definition` (nunca un id interno)
+   * -- el móvil lo usa para el arte/insignia de liga, SIN inferir la liga
+   * del marco equipado (que puede ser de otra liga -- ADR-COSMETICS).
+   */
+  leagueTier: z.number().int().positive(),
   joinedAt: isoDateTime,
+  /** COMPETITIVE V1 -- ventana de la temporada de esta participación. */
+  season: enrolledSeasonWindowSchema,
   // Enum completo de season_league_participation_status (ADR-0020 §4/§7) --
   // una cuenta puede estar ENROLLED con cualquiera de estos cinco valores
   // (p. ej. tras el cierre de una temporada, antes de inscribirse en la

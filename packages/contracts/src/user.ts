@@ -396,12 +396,23 @@ export const meCompetitiveProfileResponseSchema = competitiveProfileResponseSche
 export type MeCompetitiveProfileResponse = z.infer<typeof meCompetitiveProfileResponseSchema>;
 
 /**
+ * COMPETITIVE V1 -- zona EN VIVO de ascenso/retención/descenso de una fila,
+ * derivada del ranking (`rankPosition` + tamaño del grupo + gramática
+ * `top/bottom-percent` del tier), NUNCA de la identidad. Autoridad del
+ * backend (`promotion-grammar.ts`, mismo helper que usa el cierre de
+ * grupo) -- el móvil nunca la calcula. Presente en filas presentables Y
+ * redactadas por esa razón (`zone` no filtra ni revela identidad).
+ */
+export const competitiveZoneSchema = z.enum(['PROMOTION', 'RETENTION', 'DEMOTION']);
+export type CompetitiveZone = z.infer<typeof competitiveZoneSchema>;
+
+/**
  * Lista de ranking del propio grupo -- ver docs/adr/0021-perfil-competitivo-cross-cuenta.md,
  * sub-incremento 3.c. Unión discriminada por `presentable`: una fila
  * redactada contiene ÚNICAMENTE `presentable: false`, `isCurrentUser`,
- * `rankPosition`, `metricValue` -- ninguna otra clave, ni con valor
- * `null` (mismo criterio que la redacción de perfil individual). Nunca
- * incluye `accountId`/`publicProfileId`/`seasonLeagueParticipationId`/
+ * `rankPosition`, `metricValue`, `competitiveZone` -- ninguna otra clave, ni
+ * con valor `null` (mismo criterio que la redacción de perfil individual).
+ * Nunca incluye `accountId`/`publicProfileId`/`seasonLeagueParticipationId`/
  * `groupId` -- ni una fila presentable ni una redactada.
  */
 export const leaderboardRowSchema = z.discriminatedUnion('presentable', [
@@ -410,6 +421,7 @@ export const leaderboardRowSchema = z.discriminatedUnion('presentable', [
     isCurrentUser: z.boolean(),
     rankPosition: z.number().int().positive(),
     metricValue: z.number().int(),
+    competitiveZone: competitiveZoneSchema,
     username: z.string(),
     avatar: z.string().nullable(),
     banner: z.string().nullable(),
@@ -424,6 +436,7 @@ export const leaderboardRowSchema = z.discriminatedUnion('presentable', [
     isCurrentUser: z.boolean(),
     rankPosition: z.number().int().positive(),
     metricValue: z.number().int(),
+    competitiveZone: competitiveZoneSchema,
   }),
 ]);
 export type LeaderboardRow = z.infer<typeof leaderboardRowSchema>;

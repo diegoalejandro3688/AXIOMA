@@ -26,7 +26,15 @@ const ASSIGNMENT_POLICY_VERSION = 'v1-lowest-tier';
 export type EnrollmentOutcome = { participation: SeasonLeagueParticipation; created: boolean } | { outcome: 'NO_ACTIVE_SEASON' };
 
 /** Vista sin IDs internos de una participación ya resuelta -- ver `describeParticipation`. */
-export type EnrolledParticipationView = { leagueName: string; joinedAt: Date; participationStatus: SeasonLeagueParticipation['participationStatus'] };
+export type EnrolledParticipationView = {
+  leagueName: string;
+  /** COMPETITIVE V1 -- `tierOrder` del tier actual (1..7). Dato de producto, nunca un id interno. */
+  leagueTier: number;
+  joinedAt: Date;
+  participationStatus: SeasonLeagueParticipation['participationStatus'];
+  /** COMPETITIVE V1 -- ventana de la temporada (solo fechas, nunca el id de `game_season`). */
+  season: { startsAt: Date; endsAt: Date };
+};
 
 export type ParticipationStatusOutcome =
   | ({ kind: 'ENROLLED' } & EnrolledParticipationView)
@@ -206,8 +214,18 @@ export class LeagueEnrollmentService {
    * que `competitiveContextSchema` (ADR-0021 §2/§3).
    */
   async describeParticipation(participation: SeasonLeagueParticipation): Promise<EnrolledParticipationView> {
-    const league = await this.leagueDefinitionRepo.findById(participation.leagueDefinitionId);
+    const [league, season] = await Promise.all([
+      this.leagueDefinitionRepo.findById(participation.leagueDefinitionId),
+      this.seasonRepo.findById(participation.gameSeasonId),
+    ]);
     if (!league) throw new Error(`Participación ${participation.id} referencia un leagueDefinitionId inexistente.`);
-    return { leagueName: league.name, joinedAt: participation.joinedAt, participationStatus: participation.participationStatus };
+    if (!season) throw new Error(`Participación ${participation.id} referencia un gameSeasonId inexistente.`);
+    return {
+      leagueName: league.name,
+      leagueTier: league.tierOrder,
+      joinedAt: participation.joinedAt,
+      participationStatus: participation.participationStatus,
+      season: { startsAt: season.startsAt, endsAt: season.endsAt },
+    };
   }
 }

@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LeaderboardRow } from '@axioma/contracts';
-import { mergeLeaderboardPages, describeMyPosition } from '../lib/leaderboard/paginate-leaderboard';
+import { mergeLeaderboardPages, describeMyPosition, describeZone } from '../lib/leaderboard/paginate-leaderboard';
 
 let failures = 0;
 function check(label: string, condition: boolean) {
@@ -28,6 +28,7 @@ function presentableRow(rankPosition: number, overrides: Partial<Extract<Leaderb
     isCurrentUser: false,
     rankPosition,
     metricValue: 1000 - rankPosition,
+    competitiveZone: 'RETENTION',
     username: `user-${rankPosition}`,
     avatar: null,
     banner: null,
@@ -41,7 +42,7 @@ function presentableRow(rankPosition: number, overrides: Partial<Extract<Leaderb
 }
 
 function redactedRow(rankPosition: number, overrides: Partial<Extract<LeaderboardRow, { presentable: false }>> = {}): LeaderboardRow {
-  return { presentable: false, isCurrentUser: false, rankPosition, metricValue: 1000 - rankPosition, ...overrides };
+  return { presentable: false, isCurrentUser: false, rankPosition, metricValue: 1000 - rankPosition, competitiveZone: 'RETENTION', ...overrides };
 }
 
 function main() {
@@ -102,6 +103,15 @@ function main() {
   );
   check('nextCursor === null oculta el control "Ver más"', rankingSource.includes('state.nextCursor !== null ?'));
   check('etiqueta "puntos de liga" presente (distinta de XP)', rankingSource.includes('puntos de liga'));
+
+  console.log('--- 7. COMPETITIVE V1: zonas EN VIVO (§15/§36) -- ascenso/descenso con insignia, retención neutra ---');
+  check('describeZone(PROMOTION) -> insignia "promotion" con etiqueta "Ascenso"', (() => { const b = describeZone('PROMOTION'); return b?.kind === 'promotion' && b.label === 'Ascenso'; })());
+  check('describeZone(DEMOTION) -> insignia "demotion" con etiqueta "Descenso"', (() => { const b = describeZone('DEMOTION'); return b?.kind === 'demotion' && b.label === 'Descenso'; })());
+  check('describeZone(RETENTION) -> null (fila neutra, sin insignia)', describeZone('RETENTION') === null);
+  check('la pantalla usa la ZONA que decide el backend (`competitiveZone`), nunca la deriva del rank', rankingSource.includes('row.competitiveZone') && !/rankPosition <= 6|rankPosition > 24|1.{0,3}6.{0,3}promo/i.test(rankingSource));
+  check('el indicador de zona (ZoneIndicator) se renderiza en la fila presentable Y en la redactada', (rankingSource.match(/<ZoneIndicator /g) ?? []).length >= 2);
+  check('el resalte del usuario actual (isCurrentUser) sigue presente', rankingSource.includes('row.isCurrentUser') && rankingSource.includes('rowHighlighted'));
+  check('la fila redactada sigue sin navegar (sin Pressable/onPress en su rama)', !redactedBranch.includes('Pressable') && !redactedBranch.includes('onPress'));
 
   console.log('');
   if (failures > 0) {

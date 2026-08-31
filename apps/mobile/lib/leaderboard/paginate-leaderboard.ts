@@ -1,4 +1,4 @@
-import type { CompetitiveContext, LeaderboardRow } from '@axioma/contracts';
+import type { CompetitiveContext, CompetitiveZone, LeaderboardRow } from '@axioma/contracts';
 // Import SOLO de tipo -- se elide en compilación, así este módulo NUNCA
 // arrastra en tiempo de ejecución `../api/client.ts` (que sí importa
 // `expo-secure-store`, no evaluable fuera de Expo/RN). Gateable con `tsx`
@@ -34,4 +34,18 @@ export type MyPositionView =
 export function describeMyPosition(context: CompetitiveContext | null): MyPositionView {
   if (!context) return { kind: 'pending' };
   return { kind: 'known', leagueName: context.leagueName, rankPosition: context.rankPosition, metricValue: context.metricValue };
+}
+
+/**
+ * COMPETITIVE V1 -- insignia visual de zona para una fila del ranking. La
+ * ZONA la decide el backend (`promotion-grammar.ts`); esto solo traduce el
+ * enum a la presentación restringida acordada (§15): ascenso/descenso llevan
+ * insignia + flecha, RETENCIÓN no lleva insignia (fila neutra).
+ */
+export type ZoneBadge = { kind: 'promotion'; label: string } | { kind: 'demotion'; label: string } | null;
+
+export function describeZone(zone: CompetitiveZone): ZoneBadge {
+  if (zone === 'PROMOTION') return { kind: 'promotion', label: 'Ascenso' };
+  if (zone === 'DEMOTION') return { kind: 'demotion', label: 'Descenso' };
+  return null;
 }

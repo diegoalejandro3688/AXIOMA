@@ -3,12 +3,12 @@ import { FlatList, Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { LeaderboardRow } from '@axioma/contracts';
 import { getLeaderboardPage } from '../../../lib/api/competitive';
-import { mergeLeaderboardPages, describeMyPosition } from '../../../lib/leaderboard/paginate-leaderboard';
+import { mergeLeaderboardPages, describeMyPosition, describeZone } from '../../../lib/leaderboard/paginate-leaderboard';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
 import { EmptyState } from '../../../components/empty-state';
-import { Text, Card, Button, Avatar } from '../../../components/ui';
-import { useThemedStyles, radii } from '../../../theme';
+import { Text, Card, Button, Avatar, Icon } from '../../../components/ui';
+import { useThemedStyles, useTheme, radii } from '../../../theme';
 import type { ThemeTokens } from '../../../theme';
 
 type ScreenState =
@@ -176,9 +176,12 @@ function LeaderboardRowCard({ row, styles, router }: { row: LeaderboardRow; styl
         <Text variant="titleMedium" weight="bold" color="secondary" style={styles.rankPosition}>
           #{row.rankPosition}
         </Text>
-        <Text variant="body" color="muted" style={styles.redactedLabel}>
-          Perfil privado
-        </Text>
+        <View style={styles.redactedMiddle}>
+          <Text variant="body" color="muted" style={styles.redactedLabel}>
+            Perfil privado
+          </Text>
+          <ZoneIndicator zone={row.competitiveZone} styles={styles} />
+        </View>
         <Text variant="titleMedium" weight="bold">
           {row.metricValue}
         </Text>
@@ -229,22 +232,47 @@ function PresentableLeaderboardRow({
         accessibilityLabel={`Avatar de ${row.username}`}
       />
       <View style={styles.rowInfo}>
-        <Text variant="titleMedium" weight="semibold">
+        <Text variant="titleMedium" weight="semibold" numberOfLines={1}>
           {row.username}
         </Text>
         {row.equippedTitle ? (
-          <Text variant="bodySmall" color="secondary">
+          <Text variant="bodySmall" color="secondary" numberOfLines={1}>
             {row.equippedTitle.displayText}
           </Text>
         ) : null}
-        <Text variant="caption" color="muted">
-          Nivel {row.levelNumber}
-        </Text>
+        <View style={styles.rowMetaRow}>
+          <Text variant="caption" color="muted">
+            Nivel {row.levelNumber}
+          </Text>
+          <ZoneIndicator zone={row.competitiveZone} styles={styles} />
+        </View>
       </View>
       <Text variant="titleMedium" weight="bold">
         {row.metricValue}
       </Text>
     </Pressable>
+  );
+}
+
+/**
+ * COMPETITIVE V1 -- indicador de zona restringido (§15): ascenso/descenso
+ * llevan flecha + etiqueta corta; RETENCIÓN no muestra nada (fila neutra).
+ * La zona la decide el backend (`competitiveZone`), este componente solo la
+ * presenta con tokens del tema.
+ */
+function ZoneIndicator({ zone, styles }: { zone: import('@axioma/contracts').CompetitiveZone; styles: ReturnType<typeof createStyles> }) {
+  const tokens = useTheme();
+  const badge = describeZone(zone);
+  if (!badge) return null;
+  const isPromotion = badge.kind === 'promotion';
+  const color = isPromotion ? tokens.color.state.success.text : tokens.color.state.warning.text;
+  return (
+    <View style={styles.zoneChip}>
+      <Icon name={isPromotion ? 'chevron-up' : 'chevron-down'} size={12} color={color} />
+      <Text variant="micro" weight="bold" style={{ color }}>
+        {badge.label}
+      </Text>
+    </View>
   );
 }
 
@@ -265,10 +293,23 @@ function createStyles(t: ThemeTokens) {
       padding: 16,
     },
     rowInfo: { flex: 1, gap: 2 },
+    rowMetaRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, flexWrap: 'wrap' as const },
+    redactedMiddle: { flex: 1, gap: 2 },
+    zoneChip: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 2,
+      borderRadius: radii.full,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      backgroundColor: t.color.background.default,
+      borderWidth: 1,
+      borderColor: t.color.border.default,
+    },
     rowHighlighted: { borderColor: t.color.accent.default, backgroundColor: t.color.accent.subtleBg },
     rowTopThree: { borderColor: t.color.accent.default, borderWidth: 2 },
     rankPosition: { minWidth: 36 },
-    redactedLabel: { flex: 1, fontStyle: 'italic' as const },
+    redactedLabel: { fontStyle: 'italic' as const },
     footer: { gap: 8, paddingTop: 8, alignItems: 'center' as const },
     loadMoreError: { textAlign: 'center' as const },
   };
