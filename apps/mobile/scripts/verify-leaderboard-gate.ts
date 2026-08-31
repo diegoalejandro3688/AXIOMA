@@ -79,7 +79,7 @@ function main() {
   check('kind === known', knownView.kind === 'known');
   check('leagueName preservado', knownView.kind === 'known' && knownView.leagueName === 'Bronce');
   check('rankPosition preservado (nunca fabricado)', knownView.kind === 'known' && knownView.rankPosition === 7);
-  check('metricValue preservado ("puntos de liga" en la UI)', knownView.kind === 'known' && knownView.metricValue === 340);
+  check('metricValue preservado (LP, se muestra junto al trofeo en la UI)', knownView.kind === 'known' && knownView.metricValue === 340);
 
   console.log('--- 5. Frontera estática: cursor NUNCA decodificado ni inspeccionado ---');
   const competitiveApiSource = readFileSync(join(__dirname, '..', 'lib', 'api', 'competitive.ts'), 'utf8');
@@ -110,7 +110,24 @@ function main() {
     handleLoadMoreBody.includes('loadMoreError: result.message') && !handleLoadMoreBody.includes('<ErrorState'),
   );
   check('nextCursor === null oculta el control "Ver más"', rankingSource.includes('state.nextCursor !== null ?'));
-  check('etiqueta "puntos de liga" presente (distinta de XP)', rankingSource.includes('puntos de liga'));
+  check(
+    'COMPETITIVE V1 (Incremento 4): los LP se representan con el trofeo (`<LeagueTrophy`), nunca como texto "N puntos de liga" / "N LP"',
+    rankingSource.includes('<LeagueTrophy') && !rankingSource.includes('puntos de liga') && !/\bmetricValue\}\s*LP\b/.test(rankingSource),
+  );
+
+  console.log('--- 6b. COMPETITIVE V1 (rediseño visual, Incremento 4): identidad coherente con la tarjeta de Liga ---');
+  check('tarjeta superior "TU POSICIÓN" con escudo real de la liga', rankingSource.includes('TU POSICIÓN') && rankingSource.includes('<LeagueEmblem') && rankingSource.includes('tier={ctx.leagueTier}'));
+  check('acento/tinte MUY sutil de `leagueVisual(ctx.leagueTier, scheme)` -- misma identidad que la Liga card', rankingSource.includes('leagueVisual(ctx.leagueTier, scheme)'));
+  check('rango propio: "#N" real o "Actualizando posición…", NUNCA #0', rankingSource.includes('#{myPosition.rankPosition}') && rankingSource.includes('Actualizando posición') && !/#\{?0\}/.test(rankingSource));
+  check('la ZONA de la tarjeta superior sale de `ctx.competitiveZone` del backend -- nunca calculada', rankingSource.includes('ctx.competitiveZone') && !/computeZoneCounts|resolveCompetitiveZone|parseTopPercent|parseBottomPercent/.test(rankingSource));
+  check('las tres zonas de la tarjeta superior tienen copy (ascenso / permanencia / descenso)', /Zona de ascenso/.test(rankingSource) && /Zona de permanencia/.test(rankingSource) && /Zona de descenso/.test(rankingSource));
+  const topThreeStyle = rankingSource.slice(rankingSource.indexOf('rowTopThree: {'), rankingSource.indexOf('}', rankingSource.indexOf('rowTopThree: {')));
+  check(
+    'Top 3 con más presencia visual, gateado por `row.rankPosition <= 3`, con acento SOBRIO (accent, NUNCA oro/warning por ser #1)',
+    rankingSource.includes('row.rankPosition <= 3') && topThreeStyle.includes('accent') && !topThreeStyle.includes('warning') && !/gold|dorado/i.test(topThreeStyle),
+  );
+  check('resalte del usuario actual: badge "Tú" además del borde', rankingSource.includes('youBadge') && /['"]Tú['"]|>\s*Tú\s*</.test(rankingSource));
+  check('las filas 4+ usan trofeo pequeño + metricValue (`RowLp`)', rankingSource.includes('function RowLp') && rankingSource.includes('<RowLp value={row.metricValue}'));
 
   console.log('--- 7. COMPETITIVE V1: zonas EN VIVO (§15/§36) -- ascenso/descenso con insignia, retención neutra ---');
   check('describeZone(PROMOTION) -> insignia "promotion" con etiqueta "Ascenso"', (() => { const b = describeZone('PROMOTION'); return b?.kind === 'promotion' && b.label === 'Ascenso'; })());
