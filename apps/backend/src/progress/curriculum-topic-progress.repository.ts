@@ -55,16 +55,29 @@ export class CurriculumTopicProgressRepository {
   }
 
   /**
-   * LEF Bloque V, Incremento 3 -- TODAS las filas de progreso de la cuenta,
-   * con `subjectId` incluido (una sola consulta, sin N+1) para agrupar por
-   * materia en la capa de servicio (mismo criterio de "agregar en TS sobre
-   * un lote ya acotado" que `CompetitiveProfileIdentityService`). El número
-   * de filas está acotado por el catálogo total de temas -- nunca crece sin
-   * límite.
+   * PROFILE-01 ("Progreso por materia" en Perfil) -- filas de progreso de la
+   * cuenta SOBRE RECURSOS CANÓNICOS únicamente (`curriculum_topic` hijo con
+   * `learning_resource_version` PUBLISHED -- misma definición que
+   * `CurriculumTopicRepository.countCanonicalResourceTopicsGroupedBySubjectId`).
+   * Con `subjectId` incluido (una sola consulta, sin N+1) para agrupar por
+   * materia en la capa de servicio.
+   *
+   * El filtro en la consulta -- no en TS -- es lo que garantiza que una fila
+   * de progreso sobre un topic RAÍZ legacy (p. ej. `M1.NUMEROS.PORCENTAJES`,
+   * COMPLETED en varias cuentas de dev por "Continuar estudiando" antes del
+   * fix de Study) NUNCA incremente el numerador de "completados". Antes (LEF
+   * Bloque V, Incremento 3) se traían TODAS las filas y se agrupaban sin
+   * distinguir recurso de unidad/legacy.
    */
-  findAllByAccountIdWithSubject(accountId: string): Promise<CurriculumTopicProgressWithSubject[]> {
+  findCanonicalResourceProgressByAccount(accountId: string): Promise<CurriculumTopicProgressWithSubject[]> {
     return this.prisma.curriculumTopicProgress.findMany({
-      where: { accountId },
+      where: {
+        accountId,
+        curriculumTopic: {
+          parentId: { not: null },
+          learningResourceVersions: { some: { editorialStatus: 'PUBLISHED' } },
+        },
+      },
       include: { curriculumTopic: { select: { subjectId: true } } },
     });
   }

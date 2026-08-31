@@ -90,14 +90,31 @@ export class CurriculumTopicRepository {
   }
 
   /**
-   * LEF Bloque V, Incremento 3 ("Resumen académico privado") -- total de
-   * temas por materia, para toda la base de temas (independiente de
-   * progreso de cualquier cuenta). Es el DENOMINADOR de "temas
-   * completados/N" en el resumen -- una sola consulta agregada, sin N+1
-   * por materia.
+   * PROFILE-01 ("Progreso por materia" en Perfil) -- DENOMINADOR: número de
+   * RECURSOS CANÓNICOS por materia. Un recurso canónico es un `curriculum_topic`
+   * HIJO (`parentId != null`) con una `learning_resource_version` PUBLISHED --
+   * exactamente la misma definición de "Recurso" ya establecida en Study
+   * (`findCanonicalUnitRootsBySubjectId`, STUDY CONTENT MOBILE REACHABILITY),
+   * y la que el catálogo V1 reconcilia en 16/8/14/33/27 (98 total).
+   *
+   * Excluye por construcción: unidades raíz, topics raíz legacy del seed
+   * (`M1.NUMEROS.PORCENTAJES` es raíz; `C1.BIOLOGIA.CELULA` /
+   * `L1.LECTURA.INFERENCIA` / `H1.CHILE.SIGLO20.ISI` son raíz), hijos legacy
+   * sin lección publicada (los 3 de `M1.NUMEROS.PORCENTAJES`), y drift.
+   *
+   * Antes (LEF Bloque V, Incremento 3) esto contaba TODAS las filas de
+   * `curriculum_topic` -- unidades + hijos + legacy -- de ahí los denominadores
+   * inflados (24/12/18/37/31). Una sola consulta agregada, sin N+1 por materia.
    */
-  async countAllGroupedBySubjectId(): Promise<Map<string, number>> {
-    const rows = await this.prisma.curriculumTopic.groupBy({ by: ['subjectId'], _count: { _all: true } });
+  async countCanonicalResourceTopicsGroupedBySubjectId(): Promise<Map<string, number>> {
+    const rows = await this.prisma.curriculumTopic.groupBy({
+      by: ['subjectId'],
+      where: {
+        parentId: { not: null },
+        learningResourceVersions: { some: { editorialStatus: 'PUBLISHED' } },
+      },
+      _count: { _all: true },
+    });
     return new Map(rows.map((r) => [r.subjectId, r._count._all]));
   }
 }

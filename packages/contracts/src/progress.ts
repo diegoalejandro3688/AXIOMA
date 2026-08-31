@@ -112,12 +112,16 @@ export type ResponseConflictBody = z.infer<typeof responseConflictBodySchema>;
 // --- GET /progress/me/summary -- LEF Bloque V, Incremento 3 ("Resumen académico privado", docs/adr/LEF-BLOCK-V-DEFINITION.md §11) ---
 
 /**
- * Progreso de UNA materia -- `topicsStarted`/`topicsCompleted` son conteos
- * reales de `curriculum_topic_progress` (nunca estimados); `totalTopics` es
- * el tamaño real del catálogo para esa materia, independiente de si la
- * cuenta ya empezó algo. Toda materia ACTIVA aparece siempre, incluso con
- * 0/0 -- comportamiento determinista para una cuenta nueva (LEF-BLOCK-V-DEFINITION.md,
- * invariante "comportamiento determinista para cuentas nuevas/sin actividad").
+ * Progreso de UNA materia, en RECURSOS CANÓNICOS (PROFILE-01). Un recurso
+ * canónico es un `curriculum_topic` hijo con `learning_resource_version`
+ * PUBLISHED -- misma definición que Study; excluye unidades raíz, topics
+ * legacy y drift. `topicsStarted`/`topicsCompleted` son conteos reales de
+ * `curriculum_topic_progress` sobre esos recursos (nunca estimados);
+ * `totalTopics` es el número de recursos canónicos de la materia (catálogo
+ * V1: 16/8/14/33/27), independiente de si la cuenta empezó algo. Toda
+ * materia ACTIVA aparece siempre, incluso con 0/0 -- comportamiento
+ * determinista para una cuenta nueva. (Los nombres `*Topics` se conservan
+ * por compatibilidad de contrato -- un recurso canónico ES un topic.)
  */
 export const subjectProgressSummarySchema = z.object({
   subjectKey: z.string(),

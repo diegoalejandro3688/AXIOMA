@@ -557,7 +557,14 @@ async function main() {
     // `listPublishedQuestions` siguen byte-idénticos.
     ['education/question-version.repository.ts', 'lector 1/2/3 -- QuestionVersionRepository'],
     ['education/learning-resource-version.repository.ts', 'lector 1 -- LearningResourceVersionRepository'],
-    ['progress/progress.service.ts', 'lector 2 -- ProgressService'],
+    // `progress/progress.service.ts` se excluye de la comprobación de archivo
+    // completo: PROFILE-01 cambió `getAcademicSummary` para que "Progreso por
+    // materia" cuente RECURSOS canónicos (topic hijo con lección publicada),
+    // no `curriculum_topic` en bruto, con su propio gate
+    // (`verify:profile-subject-progress-gate` + `verify:academic-summary-gate`).
+    // Ese cambio NO toca el predicado de completitud que el invariante 19
+    // protege (`countPublishedByTopicId` -> `shouldComplete`): se verifica
+    // abajo, por método, que ese bloque sigue byte-idéntico.
     ['gamification/quick-question.service.ts', 'lector 3 -- QuickQuestionService'],
     ['ai/ai-academic-context-builder.service.ts', 'lector 4 -- AiAcademicContextBuilder'],
   ] as const;
@@ -580,6 +587,15 @@ async function main() {
     check(
       'lector 1 -- EducationService.getPublishedResource: predicado PUBLISHED byte-idéntico (invariante 19)',
       /const version = await this\.resourceVersionRepo\.findLatestPublishedByTopicId\(topicId\);\s*if \(!version\) throw new NotFoundException\('No hay ningún recurso publicado para este tema\.'\);/.test(eduSvc),
+    );
+    // Invariante 19 para `progress/progress.service.ts` (lector 2) -- el
+    // predicado de COMPLETITUD de un tema (cuántas preguntas publicadas tiene
+    // y cuántas respondió la cuenta), no la agregación por materia de Perfil
+    // (que PROFILE-01 cambia a propósito a recursos canónicos).
+    const progressSvc = readFileSync(join(srcDir, 'progress', 'progress.service.ts'), 'utf8');
+    check(
+      'lector 2 -- ProgressService: predicado de completitud (countPublishedByTopicId + shouldComplete) byte-idéntico (invariante 19)',
+      /this\.questionVersionRepo\.countPublishedByTopicId\(topicId\),\s*this\.responseRepo\.countDistinctByAccountAndTopic\(accountId, topicId\),\s*\]\);\s*const shouldComplete = totalPublished > 0 && answeredCount >= totalPublished;/.test(progressSvc),
     );
     check(
       'lector 1 -- EducationService.listPublishedQuestions: predicado PUBLISHED byte-idéntico (invariante 19)',

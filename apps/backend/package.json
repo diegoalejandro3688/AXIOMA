@@ -18,6 +18,7 @@
     "verify:curriculum-topic-count": "tsx scripts/verify-curriculum-topic-count.ts",
     "verify:content-source-gate": "tsx scripts/verify-content-source-gate.ts",
     "verify:study-content-mobile-reachability-gate": "tsx scripts/verify-study-content-mobile-reachability-gate.ts",
+    "verify:profile-subject-progress-gate": "tsx scripts/verify-profile-subject-progress-gate.ts",
     "verify:ensayo-source-gate": "tsx scripts/verify-ensayo-source-gate.ts",
     "verify:ensayo-import-gate": "tsx scripts/run-gate.ts verify-ensayo-import-gate.ts",
     "content:import": "tsx scripts/import-content.ts",

@@ -46,7 +46,7 @@ export function SubjectProgressSection({ summary }: { summary: AcademicSummaryRe
                 value={ratio}
                 color={subjectToneColor(tokens, tone)}
                 height={6}
-                accessibilityLabel={`${subject.subjectName}: ${subject.topicsCompleted} de ${subject.totalTopics} temas completados`}
+                accessibilityLabel={`${subject.subjectName}: ${subject.topicsCompleted} de ${subject.totalTopics} recursos completados`}
               />
             </View>
             <Text variant="caption" color="secondary" style={styles.subjectFraction}>

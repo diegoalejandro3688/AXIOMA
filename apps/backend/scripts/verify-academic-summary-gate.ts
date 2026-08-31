@@ -55,21 +55,56 @@ async function main() {
      VALUES ($1, $2, 'Materia de prueba resumen académico', 'Prueba', 'ACTIVE', 999, now(), now())`,
     [subjectId, `acad-sum-subject-${suffix}`],
   );
-  // 3 temas en la materia -- 2 con progreso conocido, 1 nunca tocado.
+  // PROFILE-01 -- "Progreso por materia" cuenta RECURSOS CANÓNICOS: topic
+  // HIJO (`parent_id != null`) con una `learning_resource_version` PUBLISHED.
+  // La fixture reproduce esa jerarquía real:
+  //   - `unitRoot`         -- unidad raíz (con lección publicada) -> NUNCA cuenta (es raíz)
+  //   - topicCompleted/InProgress/Untouched -- hijos con lección publicada -> 3 recursos canónicos
+  //   - `legacyChild`      -- hijo SIN lección publicada (solo pregunta) -> NUNCA cuenta
+  const unitRoot = randomUUID();
   const topicCompleted = randomUUID();
   const topicInProgress = randomUUID();
   const topicUntouched = randomUUID();
+  const legacyChild = randomUUID();
+  await pg.query(
+    `INSERT INTO curriculum_topic (id, code, name, "order", subject_id, created_at, updated_at)
+     VALUES ($1, $2, $2, 0, $3, now(), now())`,
+    [unitRoot, `acad-sum-unit-${suffix}`, subjectId],
+  );
   for (const [id, code, order] of [
     [topicCompleted, `acad-sum-topic-completed-${suffix}`, 1],
     [topicInProgress, `acad-sum-topic-inprogress-${suffix}`, 2],
     [topicUntouched, `acad-sum-topic-untouched-${suffix}`, 3],
+    [legacyChild, `acad-sum-topic-legacychild-${suffix}`, 4],
   ] as const) {
     await pg.query(
-      `INSERT INTO curriculum_topic (id, code, name, "order", subject_id, created_at, updated_at)
-       VALUES ($1, $2, $2, $3, $4, now(), now())`,
-      [id, code, order, subjectId],
+      `INSERT INTO curriculum_topic (id, code, name, "order", parent_id, subject_id, created_at, updated_at)
+       VALUES ($1, $2, $2, $3, $4, $5, now(), now())`,
+      [id, code, order, unitRoot, subjectId],
     );
   }
+
+  // Lección PUBLISHED (DRAFT -> PUBLISHED, orden válido) sobre la unidad raíz
+  // y los 3 recursos canónicos -- NUNCA sobre `legacyChild`.
+  async function makePublishedLesson(topicId: string, label: string) {
+    const lrId = randomUUID();
+    const lrvId = randomUUID();
+    await pg.query(
+      `INSERT INTO learning_resource (id, resource_key, primary_subject_id, resource_type, status, created_at, updated_at)
+       VALUES ($1, $2, $3, 'LESSON', 'ACTIVE', now(), now())`,
+      [lrId, `acad-sum-lr-${label}-${suffix}`, subjectId],
+    );
+    await pg.query(
+      `INSERT INTO learning_resource_version (id, learning_resource_id, curriculum_topic_id, title, content_blocks, editorial_status, created_at, updated_at)
+       VALUES ($1, $2, $3, 'Lección', '[{"type":"paragraph","order":0,"text":"x"}]', 'DRAFT', now(), now())`,
+      [lrvId, lrId, topicId],
+    );
+    await pg.query(`UPDATE learning_resource_version SET editorial_status = 'PUBLISHED', published_at = now() WHERE id = $1`, [lrvId]);
+  }
+  await makePublishedLesson(unitRoot, 'unit');
+  await makePublishedLesson(topicCompleted, 'completed');
+  await makePublishedLesson(topicInProgress, 'inprogress');
+  await makePublishedLesson(topicUntouched, 'untouched');
 
   async function makePublishedQuestion(topicId: string, label: string, correctText: string, wrongText: string) {
     const questionId = randomUUID();
@@ -116,7 +151,15 @@ async function main() {
   await makePublishedQuestion(topicInProgress, 'inprogress2', 'correcta', 'incorrecta'); // nunca respondida
   // topicUntouched: 1 pregunta publicada, nunca respondida -- topicsStarted debe seguir en 0 para este tema.
   await makePublishedQuestion(topicUntouched, 'untouched1', 'correcta', 'incorrecta');
+  // legacyChild: pregunta publicada pero SIN lección publicada -- reproduce
+  // los hijos legacy de `M1.NUMEROS.PORCENTAJES`. NO es un recurso canónico:
+  // no debe contar en el denominador ni (si se respondiera) en el numerador.
+  const qLegacy = await makePublishedQuestion(legacyChild, 'legacychild1', 'correcta', 'incorrecta');
+  // unitRoot: pregunta publicada + lección publicada, pero es RAÍZ -> tampoco cuenta.
+  const qUnitRoot = await makePublishedQuestion(unitRoot, 'unitroot1', 'correcta', 'incorrecta');
 
+  // 3 recursos canónicos (topicCompleted/InProgress/Untouched) -- NUNCA la
+  // unidad raíz ni el hijo legacy.
   const expectedTotalTopics = 3;
   check('fixtures creados sin errores', true);
 
@@ -154,6 +197,8 @@ async function main() {
     [qCompleted1.versionId, topicCompleted],
     [qCompleted2.versionId, topicCompleted],
     [qInProgress1.versionId, topicInProgress],
+    [qUnitRoot.versionId, unitRoot],
+    [qLegacy.versionId, legacyChild],
   ]);
   function topicOf(versionId: string): string {
     return topicByVersion.get(versionId)!;
@@ -176,7 +221,27 @@ async function main() {
   const aliceOurSubject = (aliceSummary.body?.progressBySubject ?? []).find((s: { subjectKey: string }) => s.subjectKey === `acad-sum-subject-${suffix}`);
   check('3. topicsStarted == 2 (completed + inProgress, NO el untouched)', aliceOurSubject?.topicsStarted === 2);
   check('3. topicsCompleted == 1 (solo topicCompleted)', aliceOurSubject?.topicsCompleted === 1);
-  check('3. totalTopics == 3 (denominador real del catálogo de esa materia, incluye el untouched)', aliceOurSubject?.totalTopics === expectedTotalTopics);
+  check('3. totalTopics == 3 (RECURSOS canónicos -- incluye el untouched, NUNCA la unidad raíz ni el hijo legacy)', aliceOurSubject?.totalTopics === expectedTotalTopics);
+  // PROFILE-01, F -- IN_PROGRESS NUNCA cuenta como completado: `topicInProgress`
+  // tiene 1 de 2 respuestas y NO incrementa `topicsCompleted` (sigue en 1).
+  check('F. un recurso IN_PROGRESS no incrementa topicsCompleted', aliceOurSubject?.topicsCompleted === 1 && aliceOurSubject?.topicsStarted === 2);
+
+  console.log('--- PROFILE-01: la unidad RAÍZ y un hijo LEGACY (sin lección publicada) nunca cuentan, ni completados ---');
+  const carol = await createSession('carol');
+  // carol COMPLETA la unidad raíz (1/1) y el hijo legacy (1/1) -- ambos
+  // generan una fila `curriculum_topic_progress` COMPLETED.
+  await answer(carol.headers, qUnitRoot.versionId, qUnitRoot.correctOptionId);
+  await answer(carol.headers, qLegacy.versionId, qLegacy.correctOptionId);
+  const carolProgressRows = await pg.query(
+    `SELECT status FROM curriculum_topic_progress WHERE account_id = $1 AND curriculum_topic_id = ANY($2::uuid[]) ORDER BY curriculum_topic_id`,
+    [carol.accountId, [unitRoot, legacyChild]],
+  );
+  check('carol tiene 2 filas de progreso COMPLETED (raíz + hijo legacy) en las tablas fuente', carolProgressRows.rows.length === 2 && carolProgressRows.rows.every((r: { status: string }) => r.status === 'COMPLETED'));
+  const carolSummary = await req('GET', '/progress/me/summary', carol.headers);
+  const carolOurSubject = (carolSummary.body?.progressBySubject ?? []).find((s: { subjectKey: string }) => s.subjectKey === `acad-sum-subject-${suffix}`);
+  check('B/C. topicsCompleted == 0 pese a haber COMPLETADO la unidad raíz y el hijo legacy', carolOurSubject?.topicsCompleted === 0);
+  check('B/C. topicsStarted == 0 (raíz y hijo legacy no son recursos canónicos)', carolOurSubject?.topicsStarted === 0);
+  check('B/C. totalTopics == 3 (raíz y hijo legacy no entran en el denominador)', carolOurSubject?.totalTopics === expectedTotalTopics);
 
   // Verificación cruzada directa contra las tablas fuente -- nunca confiar solo en el propio cálculo del endpoint.
   const sourceCount = await pg.query(`SELECT COUNT(*) FROM student_response WHERE account_id = $1`, [alice.accountId]);

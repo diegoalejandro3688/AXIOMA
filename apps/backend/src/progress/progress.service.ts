@@ -145,12 +145,17 @@ export class ProgressService {
    * nueva: todas las consultas devuelven conjuntos vacíos/0, nunca un error.
    */
   async getAcademicSummary(accountId: string): Promise<AcademicSummaryResponse> {
+    // PROFILE-01 -- "Progreso por materia" = RECURSOS canónicos completados /
+    // total de recursos canónicos de la materia. Tanto el numerador
+    // (`progressRows`) como el denominador (`topicCountsBySubject`) operan
+    // EXCLUSIVAMENTE sobre recursos canónicos (topic hijo con lección
+    // PUBLISHED) -- nunca unidades raíz, topics legacy ni drift.
     const [correctness, mostRecent, progressRows, subjects, topicCountsBySubject] = await Promise.all([
       this.responseRepo.countByAccountGroupedByCorrectness(accountId),
       this.responseRepo.findMostRecentByAccountId(accountId),
-      this.topicProgressRepo.findAllByAccountIdWithSubject(accountId),
+      this.topicProgressRepo.findCanonicalResourceProgressByAccount(accountId),
       this.subjectRepo.findAllActive(),
-      this.topicRepo.countAllGroupedBySubjectId(),
+      this.topicRepo.countCanonicalResourceTopicsGroupedBySubjectId(),
     ]);
 
     const startedBySubject = new Map<string, number>();
