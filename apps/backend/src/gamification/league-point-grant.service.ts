@@ -8,6 +8,7 @@ import { GameSeasonRepository } from './game-season.repository';
 import { LeagueGroupRepository } from './league-group.repository';
 import { LeaguePointRuleRepository } from './league-point-rule.repository';
 import { LeaguePointLedgerEntryRepository } from './league-point-ledger-entry.repository';
+import { QuickQuestionAttemptRepository } from './quick-question-attempt.repository';
 
 const GRANT_BATCH_SIZE = 100;
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
@@ -54,6 +55,13 @@ export type LeagueGrantOutcome =
   | { outcome: 'NOT_PARTICIPATING' }
   | { outcome: 'OUT_OF_WINDOW' }
   | { outcome: 'NO_ACTIVE_RULE' }
+  /**
+   * COMPETITIVE V1, Incremento 10 -- la actividad existe y es válida, pero su
+   * recompensa de LP no corresponde por CORRECTNESS. Hoy sólo se produce para
+   * `QUICK_QUESTION_ANSWERED` con un intento incorrecto. No se escribe fila
+   * de ledger (preferencia: nunca un OTORGAMIENTO de monto 0).
+   */
+  | { outcome: 'NOT_REWARDABLE' }
   | { outcome: 'DAILY_CAP_REACHED' }
   | { outcome: 'CLOSED_CONCURRENTLY' };
 
@@ -102,6 +110,7 @@ export class LeaguePointGrantService {
     private readonly groupRepo: LeagueGroupRepository,
     private readonly ruleRepo: LeaguePointRuleRepository,
     private readonly ledgerRepo: LeaguePointLedgerEntryRepository,
+    private readonly quickQuestionAttemptRepo: QuickQuestionAttemptRepository,
   ) {}
 
   async grantPending(): Promise<{ granted: number; skipped: number; failed: number }> {
@@ -139,6 +148,25 @@ export class LeaguePointGrantService {
 
     const rule = await this.ruleRepo.findApplicableRule(activity.activityType, at);
     if (!rule) return { outcome: 'NO_ACTIVE_RULE' };
+
+    // COMPETITIVE V1, Incremento 10 -- ÚNICA excepción de correctness en el
+    // otorgamiento de LP, ACOTADA EXCLUSIVAMENTE a `QUICK_QUESTION_ANSWERED`
+    // (decisión de producto: la Pregunta rápida premia el ACIERTO, no la
+    // participación). Las demás fuentes siguen siendo incondicionales:
+    // `RESPUESTA_VALIDADA` +1 y `TEMA_COMPLETADO` +5 son "actividad validada",
+    // nunca "respuesta correcta" -- misma semántica que XP.
+    //
+    // `isCorrect` ya vive en `quick_question_attempt` (NOT NULL). El hecho de
+    // dominio "el usuario respondió una Pregunta rápida" se CONSERVA: el evento
+    // `quick_question_answered` y la `validated_gamification_activity` se emiten
+    // igual para una respuesta incorrecta (XP y señales de desafío los usan);
+    // sólo la RECOMPENSA de LP queda condicionada aquí. Sin columna nueva: se
+    // lee el intento de forma transitoria por su id (`sourceEntityId`, fijado
+    // por `GamificationService.sourceEntityFor`).
+    if (activity.activityType === 'QUICK_QUESTION_ANSWERED') {
+      const attempt = await this.quickQuestionAttemptRepo.findById(activity.sourceEntityId);
+      if (!attempt || !attempt.isCorrect) return { outcome: 'NOT_REWARDABLE' };
+    }
 
     const idempotencyKey = `league-grant:${participation.id}:${activity.id}`;
 

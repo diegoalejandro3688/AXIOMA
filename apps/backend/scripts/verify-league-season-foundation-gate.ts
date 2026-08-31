@@ -16,6 +16,7 @@ import { SeasonLeagueParticipationRepository } from '../src/gamification/season-
 import { LeaguePointRuleRepository } from '../src/gamification/league-point-rule.repository';
 import { LeaguePointLedgerEntryRepository } from '../src/gamification/league-point-ledger-entry.repository';
 import { ValidatedGamificationActivityRepository } from '../src/gamification/validated-gamification-activity.repository';
+import { QuickQuestionAttemptRepository } from '../src/gamification/quick-question-attempt.repository';
 import { LeagueEnrollmentService } from '../src/gamification/league-enrollment.service';
 import { LeaguePointGrantService } from '../src/gamification/league-point-grant.service';
 import { SeasonTransitionService } from '../src/gamification/season-transition.service';
@@ -101,7 +102,8 @@ async function main() {
     bundleRepo,
     rewardWorker,
   );
-  const grantService = new LeaguePointGrantService(txRunner, activityRepo, participationRepo, seasonRepo, leagueGroupRepo, ruleRepo, ledgerRepo);
+  const quickQuestionAttemptRepo = new QuickQuestionAttemptRepository(prisma);
+  const grantService = new LeaguePointGrantService(txRunner, activityRepo, participationRepo, seasonRepo, leagueGroupRepo, ruleRepo, ledgerRepo, quickQuestionAttemptRepo);
   const transitionService = new SeasonTransitionService(prisma, seasonRepo, leagueGroupRepo, participationRepo);
 
   const suffix = Date.now();

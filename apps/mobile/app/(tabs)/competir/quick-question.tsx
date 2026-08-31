@@ -22,10 +22,12 @@ import {
   answerHeadline,
   optionOutcome,
   secondsRemainingUntil,
+  QUICK_QUESTION_CORRECT_LP,
   type AnswerVerdict,
   type OptionOutcome,
 } from '../../../lib/quick-question/quick-question-feedback';
 import { ContentBlockRenderer } from '../../../components/content-block-renderer';
+import { LeagueTrophy } from '../../../components/competitive/league-trophy';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
 import { Text, Button, AnswerOption, Icon } from '../../../components/ui';
@@ -442,11 +444,24 @@ export default function QuickQuestionScreen() {
         {answerHeadline(screen.verdict)}
       </Text>
 
-      {screen.verdict === 'timeout' ? (
-        <Text variant="bodySmall" color="secondary">
-          No respondiste a tiempo.
+      {/*
+       * Economía real (Incremento 10): sólo la Pregunta rápida ACERTADA
+       * concede League Points; una respuesta incorrecta o un timeout no
+       * conceden ninguno. El backend es la autoridad del otorgamiento --
+       * esto sólo refleja honestamente el resultado, sin mensaje castigador.
+       */}
+      {screen.verdict === 'correct' ? (
+        <View style={styles.rewardRow}>
+          <LeagueTrophy size={20} accessibilityLabel="League Points" />
+          <Text variant="bodySmall" weight="bold" color="secondary">
+            +{QUICK_QUESTION_CORRECT_LP}
+          </Text>
+        </View>
+      ) : (
+        <Text variant="bodySmall" color="muted">
+          {screen.verdict === 'timeout' ? 'No respondiste a tiempo · Sin LP' : 'Sin LP'}
         </Text>
-      ) : null}
+      )}
 
       <ContentBlockRenderer blocks={screen.question.stemContent} />
 
@@ -546,6 +561,7 @@ function createStyles(t: ThemeTokens) {
     centeredInline: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
     infoMessage: { textAlign: 'center' as const },
     options: { gap: 10 },
+    rewardRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
     primaryButton: { marginTop: 4 },
     exitButton: { alignSelf: 'center' as const },
   };

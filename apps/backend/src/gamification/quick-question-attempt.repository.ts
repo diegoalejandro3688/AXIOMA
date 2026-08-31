@@ -45,6 +45,16 @@ export class QuickQuestionAttemptRepository {
     return (tx ?? this.prisma).quickQuestionAttempt.findUnique({ where: { operationId } });
   }
 
+  /**
+   * Lectura por id -- COMPETITIVE V1, Incremento 10. `LeaguePointGrantService`
+   * la usa para leer `isCorrect` de forma transitoria (sin columna nueva en
+   * `validated_gamification_activity`) al condicionar EXCLUSIVAMENTE la
+   * recompensa de LP de `QUICK_QUESTION_ANSWERED`. Nunca muta nada.
+   */
+  findById(id: string, tx?: Prisma.TransactionClient): Promise<QuickQuestionAttempt | null> {
+    return (tx ?? this.prisma).quickQuestionAttempt.findUnique({ where: { id } });
+  }
+
   findBySessionAndQuestionVersion(sessionId: string, questionVersionId: string): Promise<QuickQuestionAttempt | null> {
     return this.prisma.quickQuestionAttempt.findUnique({
       where: { sessionId_questionVersionId: { sessionId, questionVersionId } },

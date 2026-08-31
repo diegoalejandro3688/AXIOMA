@@ -14,6 +14,14 @@
 /** Límite VISUAL de la pregunta rápida, en segundos. Solo UI en el Incremento 8. */
 export const QUICK_QUESTION_TIME_LIMIT_SECONDS = 45;
 
+/**
+ * COMPETITIVE V1, Incremento 10 -- LP que otorga una Pregunta rápida
+ * ACERTADA. El backend sigue siendo la AUTORIDAD real del otorgamiento
+ * (`LeaguePointGrantService`); esta constante sólo evita esparcir el número
+ * por el feedback. Una respuesta incorrecta o un timeout otorgan 0 LP.
+ */
+export const QUICK_QUESTION_CORRECT_LP = 2;
+
 /** 10..6 s restantes -- mayor atención visual. */
 export const QUICK_QUESTION_ATTENTION_THRESHOLD_SECONDS = 10;
 

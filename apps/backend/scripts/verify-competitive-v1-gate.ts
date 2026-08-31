@@ -29,6 +29,7 @@ import { SeasonLeagueParticipationRepository } from '../src/gamification/season-
 import { LeaguePointRuleRepository } from '../src/gamification/league-point-rule.repository';
 import { LeaguePointLedgerEntryRepository } from '../src/gamification/league-point-ledger-entry.repository';
 import { ValidatedGamificationActivityRepository } from '../src/gamification/validated-gamification-activity.repository';
+import { QuickQuestionAttemptRepository } from '../src/gamification/quick-question-attempt.repository';
 import { LeagueEnrollmentService } from '../src/gamification/league-enrollment.service';
 import { LeaguePointGrantService } from '../src/gamification/league-point-grant.service';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
@@ -81,6 +82,15 @@ async function main() {
   // Los 3 tipos DEBEN existir en el mapeo del ingestor (`GamificationService.activityTypeFor`).
   const gamServiceSource = readFileSync(join(__dirname, '..', 'src', 'gamification', 'gamification.service.ts'), 'utf8');
   check('los 3 activityType existen en GamificationService.activityTypeFor', ['RESPUESTA_VALIDADA', 'QUICK_QUESTION_ANSWERED', 'TEMA_COMPLETADO'].every((t) => gamServiceSource.includes(`'${t}'`)));
+
+  console.log('--- §10 (Incremento 10). Correctness de LP: ACOTADA a QUICK_QUESTION_ANSWERED, productor intacto ---');
+  const grantSource = readFileSync(join(__dirname, '..', 'src', 'gamification', 'league-point-grant.service.ts'), 'utf8');
+  check("la excepción de correctness sólo mira activity.activityType === 'QUICK_QUESTION_ANSWERED'", grantSource.includes("activity.activityType === 'QUICK_QUESTION_ANSWERED'"));
+  check('RESPUESTA_VALIDADA / TEMA_COMPLETADO NO aparecen en el filtro de correctness (siguen incondicionales)', !grantSource.includes("=== 'RESPUESTA_VALIDADA'") && !grantSource.includes("=== 'TEMA_COMPLETADO'"));
+  check('la QQ incorrecta se resuelve como NOT_REWARDABLE (nunca un OTORGAMIENTO de monto 0)', grantSource.includes("outcome: 'NOT_REWARDABLE'") && !/pointAmount:\s*0/.test(grantSource));
+  const qqServiceSource = readFileSync(join(__dirname, '..', 'src', 'gamification', 'quick-question.service.ts'), 'utf8');
+  const publishGuard = qqServiceSource.slice(qqServiceSource.indexOf('if (result.outcome'), qqServiceSource.indexOf('this.outbox.publish'));
+  check('§3: el productor NO cambió -- quick_question_answered se publica para TODA respuesta creada, sin condicionar por isCorrect', publishGuard.includes("result.outcome === 'ANSWERED' && result.created") && !publishGuard.includes('isCorrect'));
 
   console.log('--- §33. Zonas: G=30, tier medio -> 1-6 PROMOTION / 7-24 RETENTION / 25-30 DEMOTION ---');
   const counts30 = computeZoneCounts({ participantCount: 30, promotionRule: 'top-percent:20', demotionRule: 'bottom-percent:20' });
@@ -152,7 +162,8 @@ async function main() {
     new InventoryItemRepository(prisma),
   );
   const enrollmentService = new LeagueEnrollmentService(prisma, seasonRepo, leagueDefinitionRepo, leagueGroupRepo, participationRepo, bundleRepo, rewardWorker);
-  const grantService = new LeaguePointGrantService(txRunner, activityRepo, participationRepo, seasonRepo, leagueGroupRepo, ruleRepo, ledgerRepo);
+  const quickQuestionAttemptRepo = new QuickQuestionAttemptRepository(prisma);
+  const grantService = new LeaguePointGrantService(txRunner, activityRepo, participationRepo, seasonRepo, leagueGroupRepo, ruleRepo, ledgerRepo, quickQuestionAttemptRepo);
 
   const suffix = Date.now();
   const now = new Date();
@@ -181,12 +192,12 @@ async function main() {
   check('cuenta inscrita', 'participation' in enroll && enroll.created === true);
   const participationId = 'participation' in enroll ? enroll.participation.id : '';
 
-  async function grantOne(activityType: string, dedupe: string) {
+  async function grantOne(activityType: string, dedupe: string, source?: { type: string; id: string }) {
     const activity = await activityRepo.create({
       accountId: account,
-      sourceDomain: 'PROGRESS',
-      sourceEntityType: 'StudentResponse',
-      sourceEntityId: randomUUID(),
+      sourceDomain: source ? 'GAMIFICATION' : 'PROGRESS',
+      sourceEntityType: source?.type ?? 'StudentResponse',
+      sourceEntityId: source?.id ?? randomUUID(),
       activityType,
       validationStatus: 'PENDING',
       occurredAt: new Date(now.getTime() + 60 * 1000),
@@ -197,13 +208,72 @@ async function main() {
     return { activity, outcome: await grantService.grantForActivity(activity) };
   }
 
+  /**
+   * Incremento 10 -- crea un `quick_question_attempt` REAL (con su sesión,
+   * pregunta publicada y alternativas) para probar la condición de correctness
+   * del otorgamiento de LP por el pipeline real. La sesión cuelga de una cuenta
+   * desechable: `LeaguePointGrantService` sólo lee `attempt.isCorrect` por id,
+   * nunca compara la cuenta del intento con la de la actividad.
+   */
+  async function makeQuickQuestionAttempt(isCorrect: boolean): Promise<string> {
+    const topicRow = await pg.query(`SELECT subject_id FROM curriculum_topic WHERE code = 'M1.NUMEROS.PORCENTAJES'`);
+    if (topicRow.rowCount === 0) throw new Error('Fixture de currículo no encontrada -- ¿seed ejecutado?');
+    const subjectId = topicRow.rows[0].subject_id as string;
+    const topicId = randomUUID();
+    await pg.query(
+      `INSERT INTO curriculum_topic (id, code, name, "order", subject_id, created_at, updated_at)
+       VALUES ($1, $2, 'Tema aislado del gate competitive-v1 (Incr 10)', 905, $3, now(), now())`,
+      [topicId, `GATE.CV1.QQ.${suffix}-${Math.random().toString(36).slice(2, 8)}`, subjectId],
+    );
+    const questionId = randomUUID();
+    const questionVersionId = randomUUID();
+    const chosenOptionId = randomUUID();
+    const otherOptionId = randomUUID();
+    await pg.query(
+      `INSERT INTO question (id, question_key, primary_subject_id, question_type, status, created_at, updated_at)
+       VALUES ($1, $2, $3, 'SINGLE_CHOICE', 'ACTIVE', now(), now())`,
+      [questionId, `GATE.CV1.QQ.${randomUUID()}`, subjectId],
+    );
+    await pg.query(
+      `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, created_at, updated_at)
+       VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"x"}]', '[{"type":"paragraph","order":0,"text":"x"}]', 'DRAFT', now(), now())`,
+      [questionVersionId, questionId, topicId],
+    );
+    // La alternativa ELEGIDA en el intento: correcta o incorrecta según el
+    // parámetro. La OTRA lleva el is_correct complementario -> siempre hay
+    // exactamente una correcta.
+    await pg.query(
+      `INSERT INTO answer_option (id, question_version_id, content, display_order, is_correct, created_at)
+       VALUES ($1, $2, '{"type":"paragraph","order":0,"text":"elegida"}', 0, $3, now())`,
+      [chosenOptionId, questionVersionId, isCorrect],
+    );
+    await pg.query(
+      `INSERT INTO answer_option (id, question_version_id, content, display_order, is_correct, created_at)
+       VALUES ($1, $2, '{"type":"paragraph","order":0,"text":"otra"}', 1, $3, now())`,
+      [otherOptionId, questionVersionId, !isCorrect],
+    );
+    await pg.query(`UPDATE question_version SET editorial_status = 'PUBLISHED', published_at = now() WHERE id = $1`, [questionVersionId]);
+
+    const attemptAccountId = randomUUID();
+    const sessionId = randomUUID();
+    await pg.query(`INSERT INTO quick_question_session (id, account_id, status, started_at) VALUES ($1, $2, 'ACTIVE', now())`, [sessionId, attemptAccountId]);
+    const attemptId = randomUUID();
+    await pg.query(
+      `INSERT INTO quick_question_attempt (id, session_id, account_id, question_version_id, answer_option_id, is_correct, presented_at, responded_at, operation_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, now(), now(), $7, now())`,
+      [attemptId, sessionId, attemptAccountId, questionVersionId, chosenOptionId, isCorrect, randomUUID()],
+    );
+    return attemptId;
+  }
+
   console.log('--- §37 CASE A: RESPUESTA_VALIDADA -> +1 LP (ledger + balance) ---');
   const a = await grantOne('RESPUESTA_VALIDADA', `compv1-a-${suffix}`);
   check('LP_GRANTED, pointAmount = 1', a.outcome.outcome === 'LP_GRANTED' && a.outcome.entry.pointAmount === 1);
 
-  console.log('--- §37 CASE B: QUICK_QUESTION_ANSWERED -> +2 LP ---');
-  const b = await grantOne('QUICK_QUESTION_ANSWERED', `compv1-b-${suffix}`);
-  check('LP_GRANTED, pointAmount = 2', b.outcome.outcome === 'LP_GRANTED' && b.outcome.entry.pointAmount === 2);
+  console.log('--- §37 CASE B: QUICK_QUESTION_ANSWERED ACERTADA -> +2 LP (Incremento 10) ---');
+  const correctAttemptId = await makeQuickQuestionAttempt(true);
+  const b = await grantOne('QUICK_QUESTION_ANSWERED', `compv1-b-${suffix}`, { type: 'QuickQuestionAttempt', id: correctAttemptId });
+  check('QQ correcta -> LP_GRANTED, pointAmount = 2', b.outcome.outcome === 'LP_GRANTED' && b.outcome.entry.pointAmount === 2);
 
   console.log('--- §37 CASE C: TEMA_COMPLETADO -> +5 LP ---');
   const c = await grantOne('TEMA_COMPLETADO', `compv1-c-${suffix}`);
@@ -211,6 +281,23 @@ async function main() {
 
   const balance = await participationRepo.findById(participationId);
   check('balance leaguePoints de la participación = 1 + 2 + 5 = 8', balance?.leaguePoints === 8);
+
+  console.log('--- §37 CASE B2: QUICK_QUESTION_ANSWERED FALLADA -> 0 LP, sin fila, hecho de dominio preservado (Incremento 10) ---');
+  const incorrectAttemptId = await makeQuickQuestionAttempt(false);
+  const bWrong = await grantOne('QUICK_QUESTION_ANSWERED', `compv1-bw-${suffix}`, { type: 'QuickQuestionAttempt', id: incorrectAttemptId });
+  check('QQ incorrecta -> NOT_REWARDABLE', bWrong.outcome.outcome === 'NOT_REWARDABLE');
+  const wrongLedgerRows = await pg.query('SELECT count(*)::int AS n FROM league_point_ledger_entry WHERE validated_activity_id = $1', [bWrong.activity.id]);
+  check('QQ incorrecta -> 0 filas en league_point_ledger_entry (nunca un OTORGAMIENTO de monto 0)', wrongLedgerRows.rows[0].n === 0);
+  const balanceAfterWrong = await participationRepo.findById(participationId);
+  check('el balance de LP NO cambió por la QQ incorrecta (sigue en 8)', balanceAfterWrong?.leaguePoints === 8);
+  const wrongActivityStillThere = await activityRepo.findById(bWrong.activity.id);
+  check('§H: la validated_gamification_activity de la QQ incorrecta SIGUE existiendo (hecho de dominio preservado para XP / señales de desafío)', wrongActivityStillThere !== null);
+
+  console.log('--- §37 CASE B3: QQ ACERTADA -- reintento idempotente, un solo +2 (nunca +4) ---');
+  const bReplay = await grantService.grantForActivity(b.activity);
+  check('reintento de la QQ acertada -> misma entrada', bReplay.outcome === 'LP_GRANTED' && b.outcome.outcome === 'LP_GRANTED' && bReplay.entry.id === b.outcome.entry.id);
+  const bLedgerRows = await pg.query('SELECT count(*)::int AS n FROM league_point_ledger_entry WHERE validated_activity_id = $1', [b.activity.id]);
+  check('sigue habiendo UNA sola fila de ledger para la QQ acertada (idempotencia intacta)', bLedgerRows.rows[0].n === 1);
 
   console.log('--- §37 CASE D: reintento del mismo grant -> idempotente, sin duplicar ---');
   const retry = await grantService.grantForActivity(a.activity);

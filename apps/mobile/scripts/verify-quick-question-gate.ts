@@ -17,6 +17,7 @@ import {
   QUICK_QUESTION_TIME_LIMIT_SECONDS,
   QUICK_QUESTION_ATTENTION_THRESHOLD_SECONDS,
   QUICK_QUESTION_URGENCY_THRESHOLD_SECONDS,
+  QUICK_QUESTION_CORRECT_LP,
   timerLevel,
   secondsRemainingUntil,
   formatTimerSeconds,
@@ -169,14 +170,20 @@ function main() {
   check('`correctAnswerOptionId` SÓLO sale de answer/timeout (outcome.data), NUNCA de /next', screenSource.includes('outcome.data.correctAnswerOptionId') && !/mapNextResult[\s\S]{0,200}correctAnswerOptionId/.test(screenSource));
   check('el resultado revela la alternativa correcta vía `optionOutcome` + `correctAnswerOptionId`', screenSource.includes('optionOutcome(option.id, screen.correctAnswerOptionId'));
   check('feedback correcto/incorrecto/timeout vía `answerHeadline`', screenSource.includes('answerHeadline(screen.verdict)'));
-  check('alternativas BLOQUEADAS tras el resultado (disabled) -- sin segunda respuesta', /screen\.status === 'result'[\s\S]{0,1400}disabled\n/.test(screenSource));
+  check('alternativas BLOQUEADAS tras el resultado (disabled) -- sin segunda respuesta', /screen\.status === 'result'[\s\S]{0,2200}disabled\n/.test(screenSource));
   check('el revelado no depende SOLO del color: hay check / x-circle', screenSource.includes("name=\"check\"") && screenSource.includes("name=\"x-circle\""));
   check('acciones post-resultado: "Siguiente pregunta" + "Volver a Competir"', screenSource.includes('label="Siguiente pregunta"') && screenSource.includes('label="Volver a Competir"'));
   check('sin auto-next -- "Siguiente pregunta" es un onPress explícito (handleNextQuestion)', /label="Siguiente pregunta"[\s\S]{0,120}onPress=\{handleNextQuestion\}/.test(screenSource));
-  check(
-    'NINGÚN affordance de reward por correctness todavía (Incremento 10): sin "+2", sin trofeo/🏆, sin "0 LP"',
-    !/\+2\b/.test(screenSource) && !/🏆|LeagueTrophy|<Trophy/.test(screenSource) && !/\b0 LP\b/.test(screenSource) && !/\bpor acertar\b/.test(screenSource),
-  );
+
+  console.log('--- 11b. Incremento 10: feedback de economía real (correcta = +2 LP, incorrecta/timeout = sin LP) ---');
+  check('la constante de LP por acierto es 2 y vive en el helper compartido, no dispersa en la pantalla', QUICK_QUESTION_CORRECT_LP === 2);
+  check('respuesta CORRECTA -> representación del trofeo (`<LeagueTrophy`) + `+{QUICK_QUESTION_CORRECT_LP}` (nunca un "+2" mágico)', /verdict === 'correct'[\s\S]{0,400}<LeagueTrophy[\s\S]{0,200}\+\{QUICK_QUESTION_CORRECT_LP\}/.test(screenSource) && !/\+2\b/.test(screenSource));
+  check('el trofeo del feedback es compacto (size <= 24), no protagonista', /<LeagueTrophy size=\{(?:1\d|2[0-4])\}/.test(screenSource));
+  check('respuesta INCORRECTA / TIMEOUT -> "Sin LP" (secundario/muted), NUNCA un trofeo ni "+2"', screenSource.includes("'Sin LP'") && /color="muted"[\s\S]{0,120}Sin LP|Sin LP/.test(screenSource));
+  check('sin recompensa positiva en incorrecta: el `<LeagueTrophy` sólo aparece en la rama `verdict === \'correct\'`', (screenSource.match(/<LeagueTrophy/g) ?? []).length === 1);
+  check('sin mensajes castigadores -- no se usa "0 LP" ni "por fallar" ni "por acertar"', !/\b0 LP\b/.test(screenSource) && !/\bpor fallar\b/.test(screenSource) && !/\bpor acertar\b/.test(screenSource));
+  check('`correctAnswerOptionId` sigue saliendo SÓLO de answer/timeout (Incremento 2), nunca de /next', screenSource.includes('outcome.data.correctAnswerOptionId') && !/mapNextResult[\s\S]{0,200}correctAnswerOptionId/.test(screenSource));
+  check('la recompensa se muestra SÓLO en el estado result (tras confirmar), nunca antes de responder', !/status: 'question'[\s\S]{0,400}LeagueTrophy/.test(screenSource));
 
   console.log('--- 12. Incremento 9: mapTimeoutResult -- resolución AUTORITATIVA del timeout (helper puro) ---');
   const timedOut = mapTimeoutResult(ok({ outcome: 'TIMED_OUT', correctAnswerOptionId: 'opt-1' }));
