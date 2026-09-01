@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import type { CurriculumTopicResponse, TopicProgressResponse, TopicProgressStatus } from '@axioma/contracts';
 import { listRootTopics, listChildTopics } from '../../../../lib/api/education';
 import { getTopicsProgressBatch } from '../../../../lib/api/progress';
@@ -15,6 +14,7 @@ import { useThemedStyles, useTheme, radii, spacing } from '../../../../theme';
 import type { ThemeTokens } from '../../../../theme';
 import type { ChipVariant } from '../../../../components/ui';
 import { subjectIcon, subjectToneBackground, subjectToneColor } from '../../../../lib/academic/subject-icon';
+import { UnitMotif, resolveUnitMotif } from '../../../../lib/academic/unit-motif';
 
 type ScreenState =
   | { status: 'loading' }
@@ -187,38 +187,6 @@ export default function UnidadesScreen() {
   );
 }
 
-/**
- * STUDY-3 -- selecciona un motivo académico abstracto a partir de
- * `topic.code` (identificador curricular estable, ej.
- * `M1.NUMEROS.PORCENTAJES`), NUNCA a partir de `topic.name` (texto visible,
- * frágil ante renombres editoriales). Busca un segmento reconocido del
- * código contra un catálogo pequeño de áreas curriculares conocidas; si
- * ninguno coincide (materia/unidad futura sin área mapeada todavía), cae en
- * un motivo genérico -- la pantalla nunca depende de que las 4 áreas de hoy
- * sigan siendo las únicas que existan. No introduce metadata nueva en
- * `CurriculumTopicResponse` ni conocimiento acoplado al contenido: es
- * puramente presentacional y degrada con seguridad.
- */
-const CURRICULUM_AREA_MOTIF: Record<string, UnitMotifKey> = {
-  NUMEROS: 'percentage',
-  PORCENTAJES: 'percentage',
-  ALGEBRA: 'algebra',
-  FUNCIONES: 'algebra',
-  GEOMETRIA: 'geometry',
-  DATOS: 'data',
-  ESTADISTICA: 'data',
-  PROBABILIDAD: 'data',
-};
-
-function resolveUnitMotif(code: string): UnitMotifKey {
-  const segments = code.toUpperCase().split(/[.\-_]/);
-  for (const segment of segments) {
-    const motif = CURRICULUM_AREA_MOTIF[segment];
-    if (motif) return motif;
-  }
-  return 'generic';
-}
-
 function topicStatusLabel(status: TopicProgressResponse['status']): string {
   switch (status) {
     case 'COMPLETED':
@@ -240,61 +208,6 @@ function statusChipVariant(status: TopicProgressResponse['status']): ChipVariant
   if (status === 'COMPLETED') return 'success';
   if (status === 'IN_PROGRESS') return 'accent';
   return 'neutral';
-}
-
-type UnitMotifKey = 'percentage' | 'algebra' | 'geometry' | 'data' | 'generic';
-
-/**
- * STUDY-3 -- motivo académico abstracto por unidad, mismo lenguaje que
- * `SubjectDecoration` (`estudio/index.tsx`, STUDY-1B/1C): trazo fino
- * (1.5-1.75px), sin relleno salvo acentos puntuales, color heredado por
- * prop (nunca hex propio). Vive local a esta pantalla -- sin consumidores
- * fuera de aquí, igual que su precedente.
- */
-function UnitMotif({ motif, color, size = 24 }: { motif: UnitMotifKey; color: string; size?: number }) {
-  switch (motif) {
-    case 'percentage':
-      return (
-        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-          <Circle cx="7" cy="7" r="3" stroke={color} strokeWidth={1.75} />
-          <Circle cx="17" cy="17" r="3" stroke={color} strokeWidth={1.75} />
-          <Line x1="5" y1="19" x2="19" y2="5" stroke={color} strokeWidth={1.75} strokeLinecap="round" />
-        </Svg>
-      );
-    case 'algebra':
-      return (
-        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-          <Line x1="3" y1="20" x2="3" y2="4" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
-          <Line x1="3" y1="20" x2="21" y2="20" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
-          <Path d="M4.5 16c2-6 4.5-10 7-10s2.5 8 4.5 8 2-3 4-3" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" />
-        </Svg>
-      );
-    case 'geometry':
-      return (
-        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-          <Path d="M12 4 20.5 19H3.5Z" stroke={color} strokeWidth={1.75} strokeLinejoin="round" />
-          <Circle cx="12" cy="4" r="1.3" fill={color} stroke="none" />
-          <Circle cx="20.5" cy="19" r="1.3" fill={color} stroke="none" />
-          <Circle cx="3.5" cy="19" r="1.3" fill={color} stroke="none" />
-        </Svg>
-      );
-    case 'data':
-      return (
-        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-          <Line x1="3" y1="20" x2="21" y2="20" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
-          <Rect x="5" y="12" width="3" height="8" stroke={color} strokeWidth={1.5} />
-          <Rect x="10.5" y="7" width="3" height="13" stroke={color} strokeWidth={1.5} />
-          <Rect x="16" y="15" width="3" height="5" stroke={color} strokeWidth={1.5} />
-        </Svg>
-      );
-    default:
-      return (
-        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-          <Circle cx="12" cy="12" r="7.5" stroke={color} strokeWidth={1.5} />
-          <Line x1="8.5" y1="12" x2="15.5" y2="12" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
-        </Svg>
-      );
-  }
 }
 
 function createStyles(t: ThemeTokens) {
