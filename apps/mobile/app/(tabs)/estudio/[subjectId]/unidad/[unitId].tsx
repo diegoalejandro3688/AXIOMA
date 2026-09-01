@@ -14,6 +14,7 @@ import type { ChipVariant } from '../../../../../components/ui';
 import { useThemedStyles, useTheme, radii, spacing } from '../../../../../theme';
 import type { ThemeTokens } from '../../../../../theme';
 import { subjectIcon, subjectToneBackground, subjectToneColor } from '../../../../../lib/academic/subject-icon';
+import { UnitMotif, resolveUnitMotif } from '../../../../../lib/academic/unit-motif';
 
 type ScreenState =
   | { status: 'loading' }
@@ -109,14 +110,30 @@ export default function UnidadRecursosScreen() {
     }
   }
 
+  // Identidad de UNIDAD en el header -- mismo `UnitMotif` aprobado en A1
+  // (`unidades.tsx`), heredado por el `topic.code` CANÓNICO de un Recurso ya
+  // cargado (`M1.NUMEROS.PORCENTAJES` -> prefijo `M1.NUMEROS`), vía la
+  // herencia por prefijo documentada y cubierta por `verify:unit-motif-gate`.
+  // Cero requests nuevas, sin route param decorativo, sin matching por
+  // `name`. Color heredado de la materia (`accentColor`), discreto, no crea
+  // una segunda card. Los Recursos siguen SIN icono individual.
+  const unitMotif = resolveUnitMotif(state.resources[0].code);
+
   return (
     <View style={styles.container}>
-      <Text variant="heading2" accessibilityRole="header">
-        {unitName || name || 'Unidad'}
-      </Text>
-      <Text variant="bodySmall" color="secondary">
-        Elige un recurso para estudiar.
-      </Text>
+      <View style={styles.header}>
+        <View style={[styles.headerMotifTile, { backgroundColor: accentBackground }]}>
+          <UnitMotif motif={unitMotif} color={accentColor} size={22} />
+        </View>
+        <View style={styles.headerText}>
+          <Text variant="heading2" accessibilityRole="header">
+            {unitName || name || 'Unidad'}
+          </Text>
+          <Text variant="bodySmall" color="secondary">
+            Elige un recurso para estudiar.
+          </Text>
+        </View>
+      </View>
       <FlatList
         data={state.resources}
         keyExtractor={(resource) => resource.id}
@@ -172,6 +189,18 @@ function statusChipVariant(status: TopicProgressResponse['status']): ChipVariant
 function createStyles(t: ThemeTokens) {
   return {
     container: { flex: 1, padding: 16, gap: 16, backgroundColor: t.color.background.default },
+    // Header con identidad de unidad -- el motivo NO compite con el nombre:
+    // tile 36 (menor que las 44 de la lista), motivo 22, alineado al bloque
+    // de texto por el centro.
+    header: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.space3 },
+    headerMotifTile: {
+      width: 36,
+      height: 36,
+      borderRadius: radii.small,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
+    headerText: { flex: 1, gap: 2 },
     list: { gap: spacing.space2 },
     resourceCard: {
       flexDirection: 'row' as const,
