@@ -78,6 +78,14 @@ export async function apiRequest<T = void>(
     } catch {
       // Cuerpo de error no-JSON o vacío -- se conserva el mensaje genérico.
     }
+    // 429: el backend devuelve el mensaje crudo de `@nestjs/throttler`
+    // ("ThrottlerException: Too Many Requests"). El usuario final nunca debe
+    // ver internals de Nest -- se sustituye por un mensaje humano y
+    // accionable, consistente con el mensaje de red de más arriba. `status`
+    // y `code` se conservan intactos para el llamador.
+    if (response.status === 429) {
+      message = 'Hiciste varias solicitudes en poco tiempo. Espera un momento e inténtalo nuevamente.';
+    }
     // `body` completo se conserva (no solo `error.*`) -- algunos endpoints
     // (ej. 409 de PROGRESS, ADR-0014) incluyen datos adicionales junto al
     // envelope de error estándar (`existingResponse`), que el llamador

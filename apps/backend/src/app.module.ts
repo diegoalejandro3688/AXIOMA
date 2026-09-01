@@ -24,7 +24,22 @@ import { CoverageMatrixModule } from './editorial/coverage-matrix.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    // Rate limit GLOBAL por IP (`@nestjs/throttler`, tracker por defecto = IP).
+    // El endpoint de auth mantiene su propio `@Throttle` estricto (10/60 s).
+    //
+    // `limit` alineado con la navegación REAL aprobada (hotfix Estudio/429,
+    // 2026-09-01): la pantalla Inicio dispara ~32 solicitudes por carga --
+    // 4 planas + ~28 de `pickContinueTarget` (Hotfix 2.1: inspecciona TODAS
+    // las materias -> 1 `listSubjects` + por materia `listRootTopics` +
+    // `listChildTopics` por unidad (17 en total) + `getTopicsProgressBatch`).
+    // Ese refresco se repite en cada foco de la tab (Incremento 2). Con el
+    // límite anterior (100/60 s) tres visitas normales a Inicio en un minuto
+    // ya lo agotaban y rompían la siguiente navegación (Estudio -> Unidades
+    // devolvía 429). 300/60 s cubre navegación intensa real con margen y
+    // sigue cortando un loop/abuso de verdad (300 en segundos). NO subir
+    // para tapar un fan-out duplicado del cliente -- aquí las solicitudes son
+    // legítimas y la amplificación está congelada por decisión de producto.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
     ScheduleModule.forRoot(),
     PrismaModule,
     EducationModule,
