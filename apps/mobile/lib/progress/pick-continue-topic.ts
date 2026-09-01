@@ -1,4 +1,4 @@
-import type { CurriculumTopicResponse, SubjectResponse, TopicProgressResponse } from '@axioma/contracts';
+import type { CurriculumTopicResponse, StudentResponseSummary, SubjectResponse, TopicProgressResponse } from '@axioma/contracts';
 import { listChildTopics, listRootTopics, listSubjects } from '../api/education';
 import { getTopicsProgressBatch } from '../api/progress';
 import { resolveContinuationEntry } from './resolve-continuation';
@@ -12,36 +12,56 @@ export type ContinueTarget =
 export type PickContinueResult = { ok: true; target: ContinueTarget } | { ok: false; message: string };
 
 /**
+ * Recencia AUTORITATIVA de un recurso EN CURSO -- máximo `respondedAt` de sus
+ * respuestas (ms epoch). El backend YA ordena `responses` ASC por
+ * `respondedAt` (`student-response.repository.ts`), pero aquí NO se confía en
+ * la posición del array (HOTFIX 2.1 §H): se toma el máximo timestamp
+ * explícito. Un recurso con `responses.length > 0` y `status != COMPLETED`
+ * siempre tiene al menos un `respondedAt` parseable -> nunca devuelve 0 para
+ * un candidato real.
+ */
+function latestResponseAt(responses: StudentResponseSummary[]): number {
+  let max = 0;
+  for (const response of responses) {
+    const parsed = Date.parse(response.respondedAt);
+    if (Number.isFinite(parsed) && parsed > max) max = parsed;
+  }
+  return max;
+}
+
+/**
  * Deriva el destino real de "Continuar estudiando" (Home) desde
  * EDUCATION/PROGRESS -- nunca hardcodeado.
  *
  * STUDY CONTENT MOBILE REACHABILITY -- el destino resuelve a un
- * `curriculum_topic` de RECURSO (hijo de una Unidad): son los únicos nodos
- * con recurso publicado + preguntas y contra los que PROGRESS registra
- * respuestas.
+ * `curriculum_topic` de RECURSO (hijo de una Unidad): los únicos nodos con
+ * recurso publicado + preguntas y contra los que PROGRESS registra respuestas.
  *
- * INICIO Increment 2 -- recorre TODAS las materias canónicas, no sólo la
- * primera. El orden de materia tiene prioridad ENTRE materias: se usa el
- * orden canónico que ya devuelve `GET /education/subjects` (`displayOrder`
- * ASC en el backend) y, dentro de cada materia, la semántica de continuidad
- * existente (ADR-0014):
+ * HOTFIX 2.1 -- la tarjeta principal sigue la ACTIVIDAD DE ESTUDIO MÁS
+ * RECIENTE, no el orden de materia. Regla:
  *
- *   1. primer Recurso EN CURSO  (`status != COMPLETED` y `responses > 0`) -> `entry: 'exercise'`
- *   2. si no, primer Recurso SIN COMENZAR (sin progreso o `responses == 0`) -> `entry: 'resource'`
+ *   1. Recorre TODAS las materias canónicas (orden `GET /education/subjects`,
+ *      = `displayOrder` ASC) y, dentro de cada una, unidades y recursos en
+ *      orden canónico. Reúne cada recurso EN CURSO: `status != COMPLETED` y
+ *      `responses.length > 0` (semántica ADR-0014, `resolveContinuationEntry`).
+ *   2. Entre los recursos en curso, elige el de `max(respondedAt)` más
+ *      reciente. Empate exacto -> el primero en el recorrido canónico.
+ *      `entry: 'exercise'`.
+ *   3. Si NO hay ningún recurso en curso en ninguna materia -> el PRIMER
+ *      recurso SIN COMENZAR en orden canónico (materia -> unidad -> recurso).
+ *      `entry: 'resource'`.
+ *   4. Todas las materias con contenido completadas -> `all-completed` GLOBAL.
+ *   5. Sin contenido en ninguna materia -> `no-content`.
+ *   6. Un fallo real de EDUCATION/PROGRESS -> `ok: false`. NUNCA se
+ *      reinterpreta una materia no consultada o fallida como "completada".
  *
- * Sólo si la materia actual está completamente terminada (o no tiene
- * destino accionable) se pasa a la siguiente. Materias sin unidades o sin
- * recursos se saltan. Si TODAS las materias con contenido están
- * completadas -> `all-completed` GLOBAL. Sin contenido en ninguna -> `no-content`.
- *
- * Correctitud ante fallo (Increment 2): un fallo real de EDUCATION/PROGRESS
- * (materias, unidades, hijos o progreso) devuelve `ok: false` -- NUNCA se
- * interpreta una materia no consultada como "completada" ni se recomienda
- * un destino con datos incompletos.
+ * Esto REEMPLAZA la regla del Incremento 2 (orden de materia primero). Al
+ * requerir comparar recencia GLOBALMENTE, se inspeccionan todas las materias
+ * antes de decidir (coste reportado en el informe del hotfix).
  *
  * Disciplina de red: el progreso se pide en UNA sola llamada batch
- * (`GET /progress/topics?topicIds=...`) POR MATERIA inspeccionada -- nunca
- * `GET /progress/topics/:id` por recurso.
+ * (`GET /progress/topics?topicIds=...`) POR MATERIA con recursos -- nunca
+ * `GET /progress/topics/:id` por recurso, nunca un endpoint nuevo.
  */
 export async function pickContinueTarget(): Promise<PickContinueResult> {
   const subjectsResult = await listSubjects();
@@ -51,14 +71,18 @@ export async function pickContinueTarget(): Promise<PickContinueResult> {
   const subjects = subjectsResult.data;
   if (subjects.length === 0) return { ok: true, target: { kind: 'no-content' } };
 
+  // Candidatos, recogidos en orden de recorrido canónico.
+  const inProgress: Array<{ subject: SubjectResponse; topic: CurriculumTopicResponse; recency: number; order: number }> = [];
+  let firstUntouched: { subject: SubjectResponse; topic: CurriculumTopicResponse } | null = null;
   let anyContent = false;
+  let canonicalOrder = 0;
 
   for (const subject of subjects) {
     // `listRootTopics` devuelve sólo Unidades canónicas (filtro de superficie
     // en EDUCATION). Sus hijos son los Recursos reales.
     const unitsResult = await listRootTopics(subject.id);
     if (!unitsResult.ok) return { ok: false, message: unitsResult.message };
-    if (unitsResult.data.length === 0) continue; // materia sin unidades -> siguiente
+    if (unitsResult.data.length === 0) continue; // materia sin unidades
 
     const childrenLists = await Promise.all(unitsResult.data.map((unit) => listChildTopics(unit.id)));
     const firstChildrenError = childrenLists.find((result) => !result.ok);
@@ -67,7 +91,7 @@ export async function pickContinueTarget(): Promise<PickContinueResult> {
     // Recursos en orden canónico: unidades por `order`, y dentro de cada
     // unidad los hijos en el orden que devuelve la API (ya por `order`).
     const resources = childrenLists.flatMap((result) => (result.ok ? result.data : []));
-    if (resources.length === 0) continue; // materia con unidades pero sin recursos -> siguiente
+    if (resources.length === 0) continue; // unidades sin recursos
 
     anyContent = true;
 
@@ -79,18 +103,34 @@ export async function pickContinueTarget(): Promise<PickContinueResult> {
     const progressByTopic = new Map<string, TopicProgressResponse>(
       progressResult.data.map((progress) => [progress.curriculumTopicId, progress]),
     );
-    const withProgress = resources.map((topic) => ({
-      topic,
-      progress: progressByTopic.get(topic.id) ?? null,
-    }));
 
-    const inProgress = withProgress.find(({ progress }) => progress && resolveContinuationEntry(progress) === 'exercise');
-    if (inProgress) return { ok: true, target: { kind: 'topic', subject, topic: inProgress.topic, entry: 'exercise' } };
+    for (const topic of resources) {
+      canonicalOrder += 1;
+      const progress = progressByTopic.get(topic.id) ?? null;
+      const entry = progress ? resolveContinuationEntry(progress) : 'resource';
 
-    const notStarted = withProgress.find(({ progress }) => !progress || resolveContinuationEntry(progress) === 'resource');
-    if (notStarted) return { ok: true, target: { kind: 'topic', subject, topic: notStarted.topic, entry: 'resource' } };
+      if (entry === 'completed') continue; // un recurso COMPLETED nunca se selecciona
+      if (entry === 'exercise' && progress) {
+        inProgress.push({ subject, topic, recency: latestResponseAt(progress.responses), order: canonicalOrder });
+        continue;
+      }
+      // Sin progreso, o `entry === 'resource'` -> SIN COMENZAR.
+      if (!firstUntouched) firstUntouched = { subject, topic };
+    }
+  }
 
-    // Materia completamente terminada -> continuar con la siguiente materia.
+  if (inProgress.length > 0) {
+    // Recencia máxima; empate exacto -> menor `order` (primero en el recorrido).
+    const best = inProgress.reduce((current, candidate) =>
+      candidate.recency > current.recency || (candidate.recency === current.recency && candidate.order < current.order)
+        ? candidate
+        : current,
+    );
+    return { ok: true, target: { kind: 'topic', subject: best.subject, topic: best.topic, entry: 'exercise' } };
+  }
+
+  if (firstUntouched) {
+    return { ok: true, target: { kind: 'topic', subject: firstUntouched.subject, topic: firstUntouched.topic, entry: 'resource' } };
   }
 
   return { ok: true, target: anyContent ? { kind: 'all-completed' } : { kind: 'no-content' } };
