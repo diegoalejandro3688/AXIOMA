@@ -13,7 +13,7 @@ import { LoadingState } from '../../components/loading-state';
 import { ErrorState } from '../../components/error-state';
 import { Text, Icon, Card, Progress, LevelBadge } from '../../components/ui';
 import { HomeMathIllustration } from '../../components/home/home-math-illustration';
-import { useTheme, useThemedStyles } from '../../theme';
+import { useTheme, useThemedStyles, spacing, radii } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
 type ScreenState =
@@ -25,6 +25,10 @@ type ScreenState =
       target: ContinueTarget;
       streak: StreakResponse | null;
       level: LevelProgressResponse | null;
+      // COMPETITIVE row removed from Inicio (product decision, INICIO Increment 1
+      // -- visual only). The fetch/state are RETAINED for now: dropping the
+      // `getMyCompetitiveProfile()` call is a separate dead-code cleanup for the
+      // next functional increment (see report), not a visual change.
       competitive: CompetitiveContext | null;
       dailyChallenges: ChallengeSummary[];
     };
@@ -37,16 +41,17 @@ type ScreenState =
  * `user/public-profile/me/competitive-profile`) -- estos tres, y el
  * resumen de Desafíos, se tratan como secciones INDEPENDIENTES de "Continuar
  * estudiando": si cualquiera de ellas falla o no tiene datos (sin racha
- * todavía, sin participación de liga activa, sin desafíos asignados), se
- * muestra un estado honesto en esa sección -- nunca bloquea la pantalla ni
- * inventa un valor. Solo `pickContinueTarget()` (el card principal) sigue
- * siendo obligatorio para que Inicio cargue -- mismo criterio que antes de
- * HOME-1.
+ * todavía, sin desafíos asignados), se muestra un estado honesto en esa
+ * sección -- nunca bloquea la pantalla ni inventa un valor. Solo
+ * `pickContinueTarget()` (el card principal) sigue siendo obligatorio para
+ * que Inicio cargue -- mismo criterio que antes de HOME-1.
  *
- * "Materia"/"Unidad" visibles en el card principal y el progreso hacia la
- * siguiente liga quedan diferidos a HOME-2 (requieren auditar la jerarquía
- * curricular y extender `CompetitiveContext`, respectivamente -- ver
- * HOME-AUDIT).
+ * INICIO Increment 1 (visual only) -- jerarquía: encabezado (saludo + racha)
+ * como SOPORTE, tarjeta "Continuar estudiando" como bloque DOMINANTE, y
+ * Nivel/XP + Desafíos como tarjetas SECUNDARIAS coherentes. Sin cambios de
+ * comportamiento: misma carga, misma lógica de continuidad, mismas rutas,
+ * mismo filtrado de desafíos, sin focus refresh. La fila de Liga se retiró
+ * de la presentación (decisión de producto).
  */
 export default function InicioScreen() {
   const router = useRouter();
@@ -101,112 +106,92 @@ export default function InicioScreen() {
   }
 
   const greetingName = state.profile?.displayName ?? 'estudiante';
+  const isActionable = state.target.kind === 'topic';
+  const kicker = continueKicker(state.target);
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={[styles.container, { paddingTop: insets.top + 18 }]}>
-      <View style={styles.headerRow}>
-        <Text variant="heading2" accessibilityRole="header">
+    <ScrollView style={styles.scroll} contentContainerStyle={[styles.container, { paddingTop: insets.top + spacing.space4 }]}>
+      {/* SOPORTE -- saludo (título de pantalla) + racha compacta, sin competir con el título. */}
+      <View style={styles.header}>
+        <Text variant="heading1" accessibilityRole="header" numberOfLines={1} style={styles.greeting}>
           Hola, {greetingName}
         </Text>
         {state.streak ? (
-          <View style={styles.streakShell} accessibilityLabel={`Racha de ${state.streak.currentStreak} días`}>
-            <Icon name="flame" size={14} color={tokens.color.accent.strong} />
-            <Text variant="micro" style={{ color: tokens.color.accent.strong }}>
+          <View style={styles.streakPill} accessibilityLabel={`Racha de ${state.streak.currentStreak} días`}>
+            <Icon name="flame" size={13} color={tokens.color.accent.strong} />
+            <Text variant="micro" weight="semibold" style={{ color: tokens.color.accent.strong }}>
               Racha de {state.streak.currentStreak} días
             </Text>
           </View>
         ) : (
-          <View style={styles.streakShellDisabled} accessibilityLabel="Racha no disponible">
-            <Icon name="flame" size={14} color={tokens.color.action.disabledText} />
-            <Text variant="micro" style={{ color: tokens.color.action.disabledText }}>
+          <View style={styles.streakPillMuted} accessibilityLabel="Racha no disponible">
+            <Icon name="flame" size={13} color={tokens.color.action.disabledText} />
+            <Text variant="micro" weight="semibold" style={{ color: tokens.color.action.disabledText }}>
               Sin datos
             </Text>
           </View>
         )}
       </View>
 
+      {/* SECUNDARIO -- Nivel / XP como una sola unidad. */}
       {state.level ? (
-        <View style={styles.levelBlock} accessibilityLabel="Nivel y experiencia">
-          <LevelBadge levelNumber={state.level.currentLevel.levelNumber} size={40} />
-          <View style={styles.levelMiddle}>
-            <Text variant="caption" color="secondary">
-              Nivel {state.level.currentLevel.levelNumber}
+        <Card variant="outlined" style={styles.statusCard}>
+          <View style={styles.statusRow} accessibilityLabel="Nivel y experiencia">
+            <View style={styles.statusLeft}>
+              <LevelBadge levelNumber={state.level.currentLevel.levelNumber} size={36} />
+              <Text variant="titleMedium">Nivel {state.level.currentLevel.levelNumber}</Text>
+            </View>
+            <Text variant="caption" color="secondary" style={styles.statusXp}>
+              {state.level.xpForNextLevel !== null
+                ? `${state.level.xpIntoLevel} / ${state.level.xpForNextLevel} XP`
+                : `${state.level.lifetimeXp} XP`}
             </Text>
-            <Progress
-              value={state.level.progressRatio}
-              accessibilityLabel={`Progreso de nivel: ${Math.round(state.level.progressRatio * 100)}%`}
-            />
           </View>
-          <Text variant="caption" color="secondary">
-            {state.level.xpForNextLevel !== null
-              ? `${state.level.xpIntoLevel} / ${state.level.xpForNextLevel} XP`
-              : `${state.level.lifetimeXp} XP`}
-          </Text>
-        </View>
+          <Progress
+            value={state.level.progressRatio}
+            accessibilityLabel={`Progreso de nivel: ${Math.round(state.level.progressRatio * 100)}%`}
+          />
+        </Card>
       ) : (
-        <View style={styles.levelShell} accessibilityLabel="Nivel y experiencia no disponibles">
-          <Text variant="caption" style={{ color: tokens.color.action.disabledText }}>
-            Nivel y XP -- sin datos
+        <Card variant="outlined" style={styles.statusCard}>
+          <Text variant="caption" style={{ color: tokens.color.action.disabledText }} accessibilityLabel="Nivel y experiencia no disponibles">
+            Nivel y XP — sin datos
           </Text>
-        </View>
+        </Card>
       )}
 
-      <Card variant="brand" style={styles.goalCard}>
+      {/* PRIMARIO -- Continuar estudiando. Bloque dominante. */}
+      <Card variant="brand" style={styles.continueCard}>
         <HomeMathIllustration />
-        <Text variant="label" color="onInverse" style={styles.goalLabel}>
-          {goalLabel(state.target)}
-        </Text>
-        <Text variant="heading3" color="onInverse" style={styles.goalTitle} accessibilityRole="header">
+        {kicker ? (
+          <Text variant="label" color="onInverse" style={styles.continueKicker}>
+            {kicker}
+          </Text>
+        ) : null}
+        <Text variant="heading3" color="onInverse" numberOfLines={2} style={styles.continueTitle} accessibilityRole="header">
           {goalTitle(state.target)}
         </Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Continuar estudiando"
-          disabled={state.target.kind !== 'topic'}
-          style={[styles.continueButton, state.target.kind !== 'topic' && styles.continueButtonDisabled]}
+          disabled={!isActionable}
+          style={[styles.continueButton, !isActionable && styles.continueButtonDisabled]}
           onPress={goToTarget}
         >
           <View style={styles.continueButtonContent}>
             <Text
               variant="titleMedium"
-              color={state.target.kind === 'topic' ? 'onAccent' : undefined}
-              style={state.target.kind === 'topic' ? undefined : { color: tokens.color.action.disabledText }}
+              color={isActionable ? 'onAccent' : undefined}
+              style={isActionable ? undefined : { color: tokens.color.action.disabledText }}
             >
               {continueButtonLabel(state.target)}
             </Text>
-            {state.target.kind === 'topic' ? <Icon name="chevron-right" size={20} color="onAccent" /> : null}
+            {isActionable ? <Icon name="chevron-right" size={20} color="onAccent" /> : null}
           </View>
         </Pressable>
       </Card>
 
-      {state.competitive ? (
-        <View style={styles.leagueRow} accessibilityLabel={`Liga: ${state.competitive.leagueName}, puesto ${state.competitive.rankPosition}`}>
-          <View style={styles.leagueIconWrap}>
-            <Icon name="shield" size={16} color="secondary" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text variant="titleMedium">{state.competitive.leagueName}</Text>
-            <Text variant="caption" color="secondary">
-              Puesto {state.competitive.rankPosition}
-            </Text>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.leagueShell} accessibilityLabel="Sin liga activa">
-          <View style={styles.leagueIconWrap}>
-            <Icon name="shield" size={16} color={tokens.color.action.disabledText} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text variant="titleMedium" style={{ color: tokens.color.action.disabledText }}>
-              Liga
-            </Text>
-            <Text variant="caption" style={{ color: tokens.color.action.disabledText }}>
-              Sin liga activa
-            </Text>
-          </View>
-        </View>
-      )}
-
+      {/* SECUNDARIO -- Desafíos de hoy (solo lectura, menos peso que "Continuar"). */}
       <Card variant="outlined" style={styles.challengesCard}>
         <View style={styles.challengesHeader}>
           <Text variant="titleMedium" accessibilityRole="header">
@@ -215,13 +200,14 @@ export default function InicioScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Ver todos los desafíos"
+            hitSlop={8}
             style={styles.seeAllButton}
             onPress={() => router.push('/(tabs)/competir')}
           >
-            <Text variant="titleMedium" color="primary" style={{ color: tokens.color.accent.default }}>
+            <Text variant="label" style={{ color: tokens.color.accent.default }}>
               Ver todos
             </Text>
-            <Icon name="chevron-right" size={18} color="accent" />
+            <Icon name="chevron-right" size={16} color="accent" />
           </Pressable>
         </View>
         {state.dailyChallenges.length === 0 ? (
@@ -233,8 +219,10 @@ export default function InicioScreen() {
             {state.dailyChallenges.map((challenge) => (
               <View key={challenge.id} style={styles.challengeRow}>
                 <View style={styles.challengeRowHeader}>
-                  <Text variant="bodySmall">{challenge.name}</Text>
-                  <Text variant="bodySmall" color="secondary">
+                  <Text variant="bodySmall" numberOfLines={1} style={styles.challengeName}>
+                    {challenge.name}
+                  </Text>
+                  <Text variant="caption" color="muted" style={styles.challengeCount}>
                     {challenge.progressValue} / {challenge.targetValue}
                   </Text>
                 </View>
@@ -252,9 +240,16 @@ export default function InicioScreen() {
   );
 }
 
-function goalLabel(target: ContinueTarget): string {
-  if (target.kind === 'topic') return target.entry === 'exercise' ? 'Continúa donde quedaste' : 'Objetivo de hoy';
-  return 'Objetivo de hoy';
+/**
+ * Kicker del card principal -- refleja el estado REAL (ADR-0014): "Continúa
+ * donde quedaste" si hay respuestas registradas, "Sigue estudiando" si el
+ * recurso está sin comenzar. `null` para "todo completado" / "sin contenido"
+ * (ahí el título ya lo explica y el botón está deshabilitado). NO es un
+ * objetivo diario -- ese concepto no existe.
+ */
+function continueKicker(target: ContinueTarget): string | null {
+  if (target.kind !== 'topic') return null;
+  return target.entry === 'exercise' ? 'Continúa donde quedaste' : 'Sigue estudiando';
 }
 
 function goalTitle(target: ContinueTarget): string {
@@ -271,82 +266,73 @@ function continueButtonLabel(target: ContinueTarget): string {
 function createStyles(t: ThemeTokens) {
   return {
     scroll: { flex: 1, backgroundColor: t.color.background.default },
-    container: { padding: 18, gap: 16, paddingBottom: 32 },
-    headerRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const },
-    streakShell: {
+    container: { padding: spacing.space4, gap: spacing.space4, paddingBottom: spacing.space8 },
+
+    // SOPORTE -- encabezado
+    header: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.space3 },
+    greeting: { flex: 1, minWidth: 0 },
+    streakPill: {
+      flexShrink: 0,
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
-      gap: 4,
+      gap: spacing.space1,
       backgroundColor: t.color.accent.subtleBg,
-      paddingVertical: 4,
-      paddingHorizontal: 10,
-      borderRadius: 20,
+      paddingVertical: spacing.space1,
+      paddingHorizontal: spacing.space2,
+      borderRadius: radii.full,
     },
-    streakShellDisabled: {
+    streakPillMuted: {
+      flexShrink: 0,
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
-      gap: 4,
+      gap: spacing.space1,
       backgroundColor: t.color.action.disabledBackground,
-      paddingVertical: 4,
-      paddingHorizontal: 10,
-      borderRadius: 20,
+      paddingVertical: spacing.space1,
+      paddingHorizontal: spacing.space2,
+      borderRadius: radii.full,
     },
-    levelBlock: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12 },
-    levelMiddle: { flex: 1, gap: 6 },
-    levelShell: {
-      backgroundColor: t.color.action.disabledBackground,
-      borderRadius: 8,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      alignSelf: 'flex-start' as const,
+
+    // SECUNDARIO -- Nivel / XP (una sola unidad)
+    statusCard: { gap: spacing.space3 },
+    statusRow: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, gap: spacing.space3 },
+    statusLeft: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.space2, flexShrink: 1, minWidth: 0 },
+    statusXp: { flexShrink: 0 },
+
+    // PRIMARIO -- Continuar estudiando
+    // `paddingVertical` fijo: la base del Card ya trae `padding: spacing.space4` (16)
+    // horizontal; este valor SOLO sube/baja el borde vertical -- 27px validado en
+    // dispositivo físico (HOME-ASSET-2), se conserva.
+    continueCard: { gap: spacing.space1, overflow: 'hidden' as const, paddingVertical: 27 },
+    continueKicker: { opacity: 0.75 },
+    continueTitle: { marginBottom: spacing.space3 },
+    // Botón habilitado: fondo `accent.default` (azul brillante) -> texto `onAccent`
+    // (navy oscuro). NUNCA `text.primary`/`background.inverse` -- fue el bug real de
+    // contraste en oscuro (validación Android).
+    continueButton: {
+      backgroundColor: t.color.accent.default,
+      borderRadius: radii.medium,
+      paddingVertical: spacing.space3,
+      paddingHorizontal: spacing.space4,
+      alignItems: 'center' as const,
     },
-    // `paddingVertical` (base del Card ya trae `padding: spacing.space4`=16 -- esto
-    // SOLO sube/baja el borde, el horizontal sigue en 16) añade ~22px de alto total
-    // (11px arriba + 11px abajo), repartido parejo -- validación física HOME-ASSET-2.
-    goalCard: { gap: 4, overflow: 'hidden' as const, paddingVertical: 27 },
-    // Ambos usan `text.onInverse` (texto pensado para esta superficie fija),
-    // nunca `accent.default`/`text.primary` -- ese fue el bug real de
-    // contraste en oscuro (ver hallazgo de validación Android).
-    goalLabel: { opacity: 0.75 },
-    goalTitle: { marginBottom: 12 },
-    // Botón habilitado: fondo `accent.default` (azul brillante) -> texto
-    // `onAccent` (navy oscuro), NUNCA `text.primary`/`background.inverse`.
-    continueButton: { backgroundColor: t.color.accent.default, borderRadius: 10, padding: 12, alignItems: 'center' as const },
     continueButtonDisabled: { backgroundColor: t.color.action.disabledBackground },
-    continueButtonContent: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
-    leagueRow: {
+    continueButtonContent: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.space2 },
+
+    // SECUNDARIO -- Desafíos de hoy
+    challengesCard: { gap: spacing.space3 },
+    challengesHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, gap: spacing.space3 },
+    seeAllButton: {
+      flexShrink: 0,
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
-      gap: 10,
-      backgroundColor: t.color.background.surface,
-      borderWidth: 1,
-      borderColor: t.color.border.default,
-      borderRadius: 16,
-      padding: 14,
+      gap: spacing.space1,
+      paddingVertical: spacing.space2,
+      paddingLeft: spacing.space2,
     },
-    leagueShell: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 10,
-      backgroundColor: t.color.action.disabledBackground,
-      borderWidth: 1,
-      borderColor: t.color.action.disabledBorder,
-      borderRadius: 16,
-      padding: 14,
-    },
-    leagueIconWrap: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: t.color.background.surface,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-    },
-    challengesCard: { gap: 10 },
-    challengesHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const },
-    seeAllButton: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 2 },
-    challengesList: { gap: 10 },
-    challengeRow: { gap: 4 },
-    challengeRowHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const },
+    challengesList: { gap: spacing.space3 },
+    challengeRow: { gap: spacing.space1 },
+    challengeRowHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, gap: spacing.space3 },
+    challengeName: { flex: 1, minWidth: 0 },
+    challengeCount: { flexShrink: 0 },
   };
 }
