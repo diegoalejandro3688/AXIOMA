@@ -10,7 +10,7 @@ import { groupChallenges, progressRatio as challengeProgressRatio } from '../../
 import { pickContinueTarget, type ContinueTarget } from '../../lib/progress/pick-continue-topic';
 import { LoadingState } from '../../components/loading-state';
 import { Text, Icon, Card, Progress, LevelBadge } from '../../components/ui';
-import { HomeKnowledgeIllustration } from '../../components/home/home-knowledge-illustration';
+import { HomeContinueIllustration } from '../../components/home/home-continue-illustration';
 import { useTheme, useThemedStyles, spacing, radii } from '../../theme';
 import type { ThemeTokens, IconName } from '../../theme';
 
@@ -175,6 +175,9 @@ export default function InicioScreen() {
   }
 
   const greetingName = state.profile?.displayName ?? 'estudiante';
+  // Materia canónica del destino (para la ilustración del card). `null` en
+  // all-completed / no-content / no disponible -> ilustración neutra.
+  const continueSubjectKey = target?.kind === 'topic' ? target.subject.subjectKey : null;
   const continuationUnavailable = continuation.kind === 'unavailable';
   const isActionable = target?.kind === 'topic';
   const kicker = target ? continueKicker(target) : null;
@@ -249,7 +252,7 @@ export default function InicioScreen() {
           continuidad NO tapa el resto de Inicio: el card entra en un estado
           "no disponible" local con "Reintentar" (Increment 2). */}
       <Card variant="brand" style={styles.continueCard}>
-        <HomeKnowledgeIllustration />
+        <HomeContinueIllustration subjectKey={continueSubjectKey} />
         {kicker ? (
           <Text variant="label" color="onInverse" style={styles.continueKicker}>
             {kicker}
