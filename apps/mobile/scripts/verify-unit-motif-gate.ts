@@ -1,16 +1,14 @@
-// Gate de "motivo de Unidad" (Estudio A0) -- verifica el CONTRATO del
-// resolver `resolveUnitMotif(code)` tras extraerlo de
-// `app/(tabs)/estudio/[subjectId]/unidades.tsx` a
-// `lib/academic/unit-motif.ts` (fuente única, canónica).
+// Gate de "motivo de Unidad" (Estudio A1) -- congela el CONTRATO del resolver
+// `resolveUnitMotif(code)` de `lib/academic/unit-motif-map.ts`.
 //
-// A0 es un refactor de ZERO VISUAL CHANGE: este gate congela la resolución
-// EXACTA de los 17 unit codes de catálogo V1 (M1/M2/Lenguaje/Ciencias/
-// Historia) tal como se comportaba ANTES del refactor, de modo que A1
-// (iconografía nueva) no pueda alterar M1/M2 sin que el gate lo note.
+// A1 introdujo iconografía propia para las 13 unidades que en A0 caían en
+// `generic` (M2 x4, Lenguaje x3, Ciencias x3, Historia x3) y migró el
+// resolver de matching AMBIGUO por segmentos de palabra a un mapa EXPLÍCITO
+// por unit code canónico. Este gate protege ese contrato: cada unidad V1
+// tiene motivo propio, M1 no cambió, y no hay vuelta al matching por palabra.
 //
-// Node puro -- `lib/academic/unit-motif-map.ts` NO importa `react-native-svg`
-// (el componente vive aparte en `unit-motif.tsx`), así que se importa
-// directamente, sin stubs ni monkeypatch de `_resolveFilename`.
+// Node puro -- `unit-motif-map.ts` NO importa `react-native-svg`, se importa
+// directo sin stubs. NO se renderiza SVG (sin infraestructura frágil).
 import { resolveUnitMotif, type UnitMotifKind } from '../lib/academic/unit-motif-map';
 
 let failures = 0;
@@ -23,58 +21,91 @@ function check(label: string, condition: boolean) {
   }
 }
 
-// --- Contrato congelado: los 17 unit codes de catálogo V1 (manifest real) ---
-const EXPECTED: ReadonlyArray<readonly [string, UnitMotifKind]> = [
-  // Matemática M1 -- APPROVED, referencia visual. Motivo propio por área.
+// --- Catálogo V1 autoritativo: 17 unit codes -> motivo esperado (contrato A1) ---
+const M1: ReadonlyArray<readonly [string, UnitMotifKind]> = [
   ['M1.NUMEROS', 'percentage'],
   ['M1.ALGEBRA_FUNCIONES', 'algebra'],
   ['M1.GEOMETRIA', 'geometry'],
   ['M1.PROBABILIDAD_ESTADISTICA', 'data'],
-  // Matemática M2 -- HOY reutiliza los motivos de M1 (incl. `NUMEROS ->
-  // percentage`, semánticamente flojo). A0 lo CONGELA tal cual; A1 decidirá.
-  ['M2.NUMEROS', 'percentage'],
-  ['M2.ALGEBRA_FUNCIONES', 'algebra'],
-  ['M2.GEOMETRIA', 'geometry'],
-  ['M2.PROBABILIDAD_ESTADISTICA', 'data'],
-  // Lenguaje -- sin área mapeada -> generic (fallback).
-  ['LENGUAJE.LOCALIZAR', 'generic'],
-  ['LENGUAJE.INTERPRETAR', 'generic'],
-  ['LENGUAJE.EVALUAR', 'generic'],
-  // Ciencias -- sin área mapeada -> generic (fallback).
-  ['CIENCIAS.BIOLOGIA', 'generic'],
-  ['CIENCIAS.FISICA', 'generic'],
-  ['CIENCIAS.QUIMICA', 'generic'],
-  // Historia -- sin área mapeada -> generic (fallback).
-  ['HISTORIA.MUNDO_AMERICA_CHILE', 'generic'],
-  ['HISTORIA.FORMACION_CIUDADANA', 'generic'],
-  ['HISTORIA.SISTEMA_ECONOMICO', 'generic'],
 ];
+const M2: ReadonlyArray<readonly [string, UnitMotifKind]> = [
+  ['M2.NUMEROS', 'realNumbers'],
+  ['M2.ALGEBRA_FUNCIONES', 'functionTransform'],
+  ['M2.GEOMETRIA', 'vectorGeometry'],
+  ['M2.PROBABILIDAD_ESTADISTICA', 'distribution'],
+];
+const LENGUAJE: ReadonlyArray<readonly [string, UnitMotifKind]> = [
+  ['LENGUAJE.LOCALIZAR', 'locate'],
+  ['LENGUAJE.INTERPRETAR', 'interpret'],
+  ['LENGUAJE.EVALUAR', 'evaluate'],
+];
+const CIENCIAS: ReadonlyArray<readonly [string, UnitMotifKind]> = [
+  ['CIENCIAS.BIOLOGIA', 'cell'],
+  ['CIENCIAS.FISICA', 'wave'],
+  ['CIENCIAS.QUIMICA', 'molecule'],
+];
+const HISTORIA: ReadonlyArray<readonly [string, UnitMotifKind]> = [
+  ['HISTORIA.MUNDO_AMERICA_CHILE', 'globe'],
+  ['HISTORIA.FORMACION_CIUDADANA', 'citizenship'],
+  ['HISTORIA.SISTEMA_ECONOMICO', 'exchange'],
+];
+const ALL_V1 = [...M1, ...M2, ...LENGUAJE, ...CIENCIAS, ...HISTORIA];
 
-console.log('--- Resolución de los 17 unit codes de catálogo V1 (contrato A0) ---');
-for (const [code, expected] of EXPECTED) {
+console.log('--- 1. Resolución exacta de los 17 unit codes de catálogo V1 ---');
+for (const [code, expected] of ALL_V1) {
   check(`${code} -> ${expected}`, resolveUnitMotif(code) === expected);
 }
 
-console.log('--- Propiedades estructurales del resolver ---');
-// Case-insensitive (el resolver hace `.toUpperCase()`).
-check('minúsculas resuelven igual (m1.numeros)', resolveUnitMotif('m1.numeros') === 'percentage');
-// Segmentación por `.`, `-` y `_` indistintamente.
-check('separadores . - _ equivalentes', resolveUnitMotif('M1-NUMEROS') === 'percentage' && resolveUnitMotif('M1_NUMEROS') === 'percentage');
-// Orden de resolución: primer segmento reconocido gana.
-check('primer segmento reconocido gana (GEOMETRIA antes que NUMEROS)', resolveUnitMotif('X.GEOMETRIA.NUMEROS') === 'geometry');
-// Código con sub-tema (nivel recurso) sigue resolviendo por el área.
-check('code de recurso (3 segmentos) resuelve por área', resolveUnitMotif('M1.NUMEROS.PORCENTAJES') === 'percentage');
-// Fallback: código sin ningún segmento de área conocido -> generic.
-check('code sin área conocida -> generic', resolveUnitMotif('FUTURA.MATERIA.SIN_AREA') === 'generic');
+console.log('--- 2. Ninguna unidad V1 usa el fallback `generic` ---');
+for (const [code] of ALL_V1) {
+  check(`${code} != generic`, resolveUnitMotif(code) !== 'generic');
+}
+
+console.log('--- 3. Matemática M1 conserva EXACTAMENTE sus 4 motivos APPROVED ---');
+check('M1.NUMEROS === percentage', resolveUnitMotif('M1.NUMEROS') === 'percentage');
+check('M1.ALGEBRA_FUNCIONES === algebra', resolveUnitMotif('M1.ALGEBRA_FUNCIONES') === 'algebra');
+check('M1.GEOMETRIA === geometry', resolveUnitMotif('M1.GEOMETRIA') === 'geometry');
+check('M1.PROBABILIDAD_ESTADISTICA === data', resolveUnitMotif('M1.PROBABILIDAD_ESTADISTICA') === 'data');
+
+console.log('--- 4. M2 tiene 4 motivos propios, distintos del M1 correspondiente ---');
+for (let i = 0; i < 4; i += 1) {
+  const m1Kind = M1[i][1];
+  const [m2Code, m2Kind] = M2[i];
+  check(`${m2Code} (${m2Kind}) != M1 (${m1Kind})`, resolveUnitMotif(m2Code) !== m1Kind);
+}
+check('los 4 motivos de M2 son distintos entre sí', new Set(M2.map(([, k]) => k)).size === 4);
+
+console.log('--- 5-7. Lenguaje / Ciencias / Historia: 3 motivos propios cada una ---');
+check('Lenguaje: 3 motivos distintos', new Set(LENGUAJE.map(([, k]) => k)).size === 3);
+check('Ciencias: 3 motivos distintos', new Set(CIENCIAS.map(([, k]) => k)).size === 3);
+check('Historia: 3 motivos distintos', new Set(HISTORIA.map(([, k]) => k)).size === 3);
+
+console.log('--- 8. Los 17 motivos V1 son todos únicos (una identidad por unidad) ---');
+check('17 unit codes -> 17 motivos distintos', new Set(ALL_V1.map(([, k]) => k)).size === 17);
+
+console.log('--- 9. unknown / vacío -> generic ---');
+check('code fuera del catálogo -> generic', resolveUnitMotif('FUTURA.MATERIA.NUEVA_UNIDAD') === 'generic');
 check('code vacío -> generic', resolveUnitMotif('') === 'generic');
-// Alias de segmento del mapa original (deben seguir existiendo).
-check('PORCENTAJES -> percentage', resolveUnitMotif('X.PORCENTAJES') === 'percentage');
-check('FUNCIONES -> algebra', resolveUnitMotif('X.FUNCIONES') === 'algebra');
-check('DATOS -> data', resolveUnitMotif('X.DATOS') === 'data');
-check('ESTADISTICA -> data', resolveUnitMotif('X.ESTADISTICA') === 'data');
+check('materia sin unidad conocida -> generic', resolveUnitMotif('LENGUAJE.REDACTAR') === 'generic');
+
+console.log('--- 10. case-insensitive (propiedad conservada de A0) ---');
+check('m2.numeros -> realNumbers', resolveUnitMotif('m2.numeros') === 'realNumbers');
+check('Ciencias.Biologia -> cell', resolveUnitMotif('Ciencias.Biologia') === 'cell');
+
+console.log('--- 11. Descendientes: un Recurso hereda el motivo de su Unidad por prefijo ---');
+check('M1.NUMEROS.PORCENTAJES -> percentage (hereda de M1.NUMEROS)', resolveUnitMotif('M1.NUMEROS.PORCENTAJES') === 'percentage');
+check('M2.NUMEROS.NUMEROS_REALES_LOGARITMOS -> realNumbers', resolveUnitMotif('M2.NUMEROS.NUMEROS_REALES_LOGARITMOS') === 'realNumbers');
+check('CIENCIAS.BIOLOGIA.CELULA -> cell', resolveUnitMotif('CIENCIAS.BIOLOGIA.CELULA') === 'cell');
+check('herencia por prefijo canónico, no por segmento libre (M2.GEOMETRIA.X hereda vectorGeometry, no geometry)', resolveUnitMotif('M2.GEOMETRIA.HOMOTECIA') === 'vectorGeometry');
+
+console.log('--- 12. NO hay matching ambiguo por palabra suelta ---');
+check('X.NUMEROS (materia inventada) -> generic, NO percentage/realNumbers', resolveUnitMotif('X.NUMEROS') === 'generic');
+check('OTRA.GEOMETRIA -> generic', resolveUnitMotif('OTRA.GEOMETRIA') === 'generic');
+check('ALGO.PROBABILIDAD.ESTADISTICA -> generic', resolveUnitMotif('ALGO.PROBABILIDAD.ESTADISTICA') === 'generic');
+check('segmento suelto NUMEROS -> generic', resolveUnitMotif('NUMEROS') === 'generic');
 
 if (failures > 0) {
-  console.error(`\nGate de motivo de Unidad: ${failures} verificación(es) fallaron.`);
+  console.error(`\nGate de motivo de Unidad (A1): ${failures} verificación(es) fallaron.`);
   process.exit(1);
 }
-console.log('\nGate de motivo de Unidad (Estudio A0): todas las verificaciones pasaron.');
+console.log('\nGate de motivo de Unidad (Estudio A1): todas las verificaciones pasaron.');
