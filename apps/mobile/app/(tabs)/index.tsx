@@ -12,9 +12,21 @@ import { pickContinueTarget, type ContinueTarget } from '../../lib/progress/pick
 import { LoadingState } from '../../components/loading-state';
 import { ErrorState } from '../../components/error-state';
 import { Text, Icon, Card, Progress, LevelBadge } from '../../components/ui';
-import { HomeMathIllustration } from '../../components/home/home-math-illustration';
+import { HomeKnowledgeIllustration } from '../../components/home/home-knowledge-illustration';
 import { useTheme, useThemedStyles, spacing, radii } from '../../theme';
-import type { ThemeTokens } from '../../theme';
+import type { ThemeTokens, IconName } from '../../theme';
+
+/**
+ * INICIO Increment 1.1 -- variedad visual entre los 2 previews de Desafíos.
+ * Regla presentacional mínima por POSICIÓN (el contrato de `ChallengeSummary`
+ * no expone dificultad/categoría; en Inicio todos son DAILY). Los glifos son
+ * geométricos y neutros (diana / escalera) -- variedad visual, NO semántica
+ * de negocio, sin iconos de recompensa/competición.
+ */
+const CHALLENGE_PREVIEW_ICONS: readonly IconName[] = ['study-mode-practice', 'study-mode-units'];
+
+/** Máximo de previews de Desafíos en Inicio (decisión de producto Increment 1.1). */
+const HOME_CHALLENGE_PREVIEW_LIMIT = 2;
 
 type ScreenState =
   | { status: 'loading' }
@@ -162,7 +174,7 @@ export default function InicioScreen() {
 
       {/* PRIMARIO -- Continuar estudiando. Bloque dominante. */}
       <Card variant="brand" style={styles.continueCard}>
-        <HomeMathIllustration />
+        <HomeKnowledgeIllustration />
         {kicker ? (
           <Text variant="label" color="onInverse" style={styles.continueKicker}>
             {kicker}
@@ -211,26 +223,34 @@ export default function InicioScreen() {
           </Pressable>
         </View>
         {state.dailyChallenges.length === 0 ? (
-          <Text variant="bodySmall" color="secondary">
+          <Text variant="bodySmall" color="secondary" style={styles.challengesEmpty}>
             Todavía no tienes desafíos diarios asignados.
           </Text>
         ) : (
           <View style={styles.challengesList}>
-            {state.dailyChallenges.map((challenge) => (
+            {/* Presentación: como mucho 2 previews de la MISMA colección ya
+                filtrada (`dailyChallenges` = activos DAILY). Sin nuevo
+                algoritmo de selección, sin tocar orden/semántica. */}
+            {state.dailyChallenges.slice(0, HOME_CHALLENGE_PREVIEW_LIMIT).map((challenge, index) => (
               <View key={challenge.id} style={styles.challengeRow}>
-                <View style={styles.challengeRowHeader}>
-                  <Text variant="bodySmall" numberOfLines={1} style={styles.challengeName}>
-                    {challenge.name}
-                  </Text>
-                  <Text variant="caption" color="muted" style={styles.challengeCount}>
-                    {challenge.progressValue} / {challenge.targetValue}
-                  </Text>
+                <View style={styles.challengeIconTile}>
+                  <Icon name={CHALLENGE_PREVIEW_ICONS[index] ?? CHALLENGE_PREVIEW_ICONS[0]} size={16} color="accent" />
                 </View>
-                <Progress
-                  value={challengeProgressRatio(challenge)}
-                  accessibilityLabel={`${challenge.name}: ${challenge.progressValue} de ${challenge.targetValue}`}
-                  height={6}
-                />
+                <View style={styles.challengeContent}>
+                  <View style={styles.challengeRowHeader}>
+                    <Text variant="bodySmall" weight="medium" numberOfLines={1} style={styles.challengeName}>
+                      {challenge.name}
+                    </Text>
+                    <Text variant="caption" color="muted" style={styles.challengeCount}>
+                      {challenge.progressValue} / {challenge.targetValue}
+                    </Text>
+                  </View>
+                  <Progress
+                    value={challengeProgressRatio(challenge)}
+                    accessibilityLabel={`${challenge.name}: ${challenge.progressValue} de ${challenge.targetValue}`}
+                    height={6}
+                  />
+                </View>
               </View>
             ))}
           </View>
@@ -318,7 +338,8 @@ function createStyles(t: ThemeTokens) {
     continueButtonDisabled: { backgroundColor: t.color.action.disabledBackground },
     continueButtonContent: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.space2 },
 
-    // SECUNDARIO -- Desafíos de hoy
+    // SECUNDARIO -- Desafíos de hoy. Personalidad propia (icono + fila con
+    // aire), calma / hábito -- nunca la tarjeta-juego de Competir.
     challengesCard: { gap: spacing.space3 },
     challengesHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, gap: spacing.space3 },
     seeAllButton: {
@@ -329,8 +350,18 @@ function createStyles(t: ThemeTokens) {
       paddingVertical: spacing.space2,
       paddingLeft: spacing.space2,
     },
-    challengesList: { gap: spacing.space3 },
-    challengeRow: { gap: spacing.space1 },
+    challengesEmpty: { paddingVertical: spacing.space1 },
+    challengesList: { gap: spacing.space4 },
+    challengeRow: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: spacing.space3 },
+    challengeIconTile: {
+      width: 32,
+      height: 32,
+      borderRadius: radii.small,
+      backgroundColor: t.color.accent.subtleBg,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
+    challengeContent: { flex: 1, minWidth: 0, gap: spacing.space2, paddingTop: spacing.space1 },
     challengeRowHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, gap: spacing.space3 },
     challengeName: { flex: 1, minWidth: 0 },
     challengeCount: { flexShrink: 0 },
