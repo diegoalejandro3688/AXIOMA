@@ -159,10 +159,12 @@ export default function InicioScreen() {
                 : `${state.level.lifetimeXp} XP`}
             </Text>
           </View>
-          <Progress
-            value={state.level.progressRatio}
-            accessibilityLabel={`Progreso de nivel: ${Math.round(state.level.progressRatio * 100)}%`}
-          />
+          <View style={styles.progressTrack}>
+            <Progress
+              value={state.level.progressRatio}
+              accessibilityLabel={`Progreso de nivel: ${Math.round(state.level.progressRatio * 100)}%`}
+            />
+          </View>
         </Card>
       ) : (
         <Card variant="outlined" style={styles.statusCard}>
@@ -245,11 +247,13 @@ export default function InicioScreen() {
                       {challenge.progressValue} / {challenge.targetValue}
                     </Text>
                   </View>
-                  <Progress
-                    value={challengeProgressRatio(challenge)}
-                    accessibilityLabel={`${challenge.name}: ${challenge.progressValue} de ${challenge.targetValue}`}
-                    height={6}
-                  />
+                  <View style={styles.progressTrack}>
+                    <Progress
+                      value={challengeProgressRatio(challenge)}
+                      accessibilityLabel={`${challenge.name}: ${challenge.progressValue} de ${challenge.targetValue}`}
+                      height={6}
+                    />
+                  </View>
                 </View>
               </View>
             ))}
@@ -310,6 +314,20 @@ function createStyles(t: ThemeTokens) {
       paddingVertical: spacing.space1,
       paddingHorizontal: spacing.space2,
       borderRadius: radii.full,
+    },
+
+    // Contorno del riel de progreso -- INICIO Increment 1.2. La primitiva
+    // `Progress` pinta su riel con `action.disabledBackground`, que en oscuro
+    // es EXACTAMENTE `background.surface` (#0A1D30) -> el riel vacío se
+    // funde con la tarjeta y a 0 % la barra desaparece. Este contorno de
+    // 1px (`border.default`) define el riel a cualquier valor SIN falsear el
+    // relleno (0 % sigue siendo 0 px). Subtle en claro (#D3D1C7), visible en
+    // oscuro (#17324D sobre #0A1D30).
+    progressTrack: {
+      borderRadius: radii.full,
+      borderWidth: 1,
+      borderColor: t.color.border.default,
+      overflow: 'hidden' as const,
     },
 
     // SECUNDARIO -- Nivel / XP (una sola unidad)
