@@ -27,10 +27,13 @@ import homeHistory from '../../assets/home/home-history.webp';
  *
  * REGLA de jerarquía: 1) texto  2) CTA  3) jerarquía del card  4) artwork.
  * El asset va en la capa de FONDO (primer hijo del card), `pointerEvents="none"`,
- * sin nodo de accesibilidad, sesgado abajo-derecha y recortado por el borde
- * (`overflow: 'hidden'` del `continueCard`). Debe reconocerse la ilustración
- * sin "buscarla", pero la lectura gana de inmediato. Ajuste fino de
- * opacidad/posición -> QA físico Samsung.
+ * sin nodo de accesibilidad, anclado abajo-derecha y recortado por el borde
+ * (`overflow: 'hidden'` del `continueCard`). `bottom`/`width`/`height`/
+ * `resizeMode` son compartidos; el desplazamiento horizontal (`right`) y la
+ * opacidad se calibran POR MATERIA en `continuationVisualFor` (QA físico
+ * Samsung): Matemática queda anclada como está; Lenguaje/Historia entran más
+ * en la card para que su composición se reconozca sin "buscarla" -- la
+ * lectura sigue ganando de inmediato.
  *
  * COLOR: no hay token global que encaje para una superficie de marca
  * invariante-al-tema en ciruela/sepia; añadir un token global para dos cards
@@ -54,6 +57,8 @@ export interface ContinuationVisual {
   artwork: number | null;
   /** Opacidad de la capa de artwork (ignorada si `artwork === null`). */
   opacity: number;
+  /** Desplazamiento horizontal del box del artwork (px, negativo = recortado por la derecha). */
+  right: number;
   /** Fondo local del `continueCard`, o `null` -> conservar el navy de `Card variant="brand"`. */
   cardBackground: string | null;
 }
@@ -63,24 +68,24 @@ export function continuationVisualFor(subjectKey: string | null): ContinuationVi
     case 'matematica':
     case 'matematica-m2':
       // APPROVED/CLOSED -- exactamente igual que antes.
-      return { artwork: homeMath, opacity: 0.16, cardBackground: null };
+      return { artwork: homeMath, opacity: 0.16, right: -64, cardBackground: null };
     case 'lenguaje':
-      return { artwork: homeLanguage, opacity: 0.3, cardBackground: CARD_SURFACE_LANGUAGE };
+      return { artwork: homeLanguage, opacity: 0.37, right: -40, cardBackground: CARD_SURFACE_LANGUAGE };
     case 'historia':
-      return { artwork: homeHistory, opacity: 0.28, cardBackground: CARD_SURFACE_HISTORY };
+      return { artwork: homeHistory, opacity: 0.3, right: -24, cardBackground: CARD_SURFACE_HISTORY };
     default:
       // ciencias / desconocida / null -> fallback neutro, navy actual.
-      return { artwork: null, opacity: 0, cardBackground: null };
+      return { artwork: null, opacity: 0, right: -64, cardBackground: null };
   }
 }
 
 export function HomeContinueIllustration({ subjectKey }: { subjectKey: string | null }) {
-  const { artwork, opacity } = continuationVisualFor(subjectKey);
+  const { artwork, opacity, right } = continuationVisualFor(subjectKey);
   if (artwork !== null) {
     return (
       <View
         pointerEvents="none"
-        style={{ position: 'absolute', right: -64, bottom: -48, width: 208, height: 208, opacity }}
+        style={{ position: 'absolute', right, bottom: -48, width: 208, height: 208, opacity }}
       >
         <Image source={artwork} resizeMode="contain" style={{ width: '100%', height: '100%' }} accessible={false} />
       </View>
