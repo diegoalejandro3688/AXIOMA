@@ -3,6 +3,7 @@ import { HomeKnowledgeIllustration } from './home-knowledge-illustration';
 import homeMath from '../../assets/home/home-math.webp';
 import homeLanguage from '../../assets/home/home-language.webp';
 import homeHistory from '../../assets/home/home-history.webp';
+import homeScience from '../../assets/home/home-science.webp';
 
 /**
  * INICIO -- tratamiento visual del card "Continuar estudiando" DEPENDIENTE de
@@ -13,7 +14,7 @@ import homeHistory from '../../assets/home/home-history.webp';
  * `continuationVisualFor(subjectKey)` es la ÚNICA fuente de verdad -- la usan
  * tanto este componente (artwork + opacidad) como `index.tsx` (fondo local
  * del card). Devuelve `cardBackground: null` para NO tocar el navy de marca
- * (`Card variant="brand"`): Matemática, Ciencias y los estados sin materia.
+ * (`Card variant="brand"`): Matemática y los estados sin materia.
  *
  * Assets (`assets/home/*.webp`, 1024x1024 RGBA con transparencia real; no se
  * convierten ni se recomprimen):
@@ -21,7 +22,8 @@ import homeHistory from '../../assets/home/home-history.webp';
  *     (APPROVED/CLOSED -- opacidad 0.16, superficie navy actual, sin cambios)
  *   - Lenguaje (`'lenguaje'`) -> `home-language.webp` + superficie ciruela/vino profunda
  *   - Historia (`'historia'`) -> `home-history.webp` + superficie sepia/café profunda
- *   - Ciencias (`'ciencias'`), materia desconocida, y los estados SIN materia
+ *   - Ciencias (`'ciencias'`) -> `home-science.webp` + superficie verde salvia profunda
+ *   - Materia desconocida y los estados SIN materia
  *     (all-completed / no-content / no disponible -> `subjectKey === null`)
  *     -> ilustración neutra aprobada `HomeKnowledgeIllustration`, superficie navy.
  *
@@ -51,6 +53,8 @@ import homeHistory from '../../assets/home/home-history.webp';
 const CARD_SURFACE_LANGUAGE = '#2A1526';
 /** Superficie profunda de marca para Historia -- sepia/café cálido, no amarillento, invariante al tema. */
 const CARD_SURFACE_HISTORY = '#2A2015';
+/** Superficie profunda de marca para Ciencias -- verde salvia/hoja apagado, fresco, no petróleo ni institucional, invariante al tema. */
+const CARD_SURFACE_SCIENCE = '#294637';
 
 export interface ContinuationVisual {
   /** Módulo de imagen (Metro) del artwork, o `null` -> ilustración neutra. */
@@ -73,8 +77,10 @@ export function continuationVisualFor(subjectKey: string | null): ContinuationVi
       return { artwork: homeLanguage, opacity: 0.37, right: -28, cardBackground: CARD_SURFACE_LANGUAGE };
     case 'historia':
       return { artwork: homeHistory, opacity: 0.3, right: -24, cardBackground: CARD_SURFACE_HISTORY };
+    case 'ciencias':
+      return { artwork: homeScience, opacity: 0.24, right: -28, cardBackground: CARD_SURFACE_SCIENCE };
     default:
-      // ciencias / desconocida / null -> fallback neutro, navy actual.
+      // desconocida / null / all-completed / no-content / unavailable -> fallback neutro, navy actual.
       return { artwork: null, opacity: 0, right: -64, cardBackground: null };
   }
 }
