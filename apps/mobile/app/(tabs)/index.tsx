@@ -1,16 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import type { UserProfileResponse, LevelProgressResponse, StreakResponse, CompetitiveContext, ChallengeSummary } from '@axioma/contracts';
+import { useFocusEffect, useRouter } from 'expo-router';
+import type { UserProfileResponse, LevelProgressResponse, StreakResponse, ChallengeSummary } from '@axioma/contracts';
 import { getProfile } from '../../lib/api/user';
 import { getLevel, getStreak } from '../../lib/api/progression';
-import { getMyCompetitiveProfile } from '../../lib/api/competitive';
 import { listChallenges } from '../../lib/api/challenges';
 import { groupChallenges, progressRatio as challengeProgressRatio } from '../../lib/challenges/group-challenges';
 import { pickContinueTarget, type ContinueTarget } from '../../lib/progress/pick-continue-topic';
 import { LoadingState } from '../../components/loading-state';
-import { ErrorState } from '../../components/error-state';
 import { Text, Icon, Card, Progress, LevelBadge } from '../../components/ui';
 import { HomeKnowledgeIllustration } from '../../components/home/home-knowledge-illustration';
 import { useTheme, useThemedStyles, spacing, radii } from '../../theme';
@@ -28,42 +26,52 @@ const CHALLENGE_PREVIEW_ICONS: readonly IconName[] = ['study-mode-practice', 'st
 /** Máximo de previews de Desafíos en Inicio (decisión de producto Increment 1.1). */
 const HOME_CHALLENGE_PREVIEW_LIMIT = 2;
 
+/** Ruta canónica de la pantalla completa de Desafíos (registrada en `competir/_layout.tsx`, Competir Incremento 7). */
+const HOME_CHALLENGES_ROUTE = '/(tabs)/competir/desafios' as const;
+
+/**
+ * Continuidad de estudio -- resultado real de `pickContinueTarget()` o, si la
+ * consulta a EDUCATION/PROGRESS falla, `unavailable` (estado LOCAL del card,
+ * nunca un error de pantalla completa -- INICIO Increment 2).
+ */
+type ContinuationView = { kind: 'target'; target: ContinueTarget } | { kind: 'unavailable' };
+
 type ScreenState =
   | { status: 'loading' }
-  | { status: 'error'; message: string }
   | {
       status: 'ready';
+      /** Un refresco silencioso (al recuperar el foco) está en curso. */
+      refreshing: boolean;
       profile: UserProfileResponse | null;
-      target: ContinueTarget;
+      continuation: ContinuationView;
       streak: StreakResponse | null;
       level: LevelProgressResponse | null;
-      // COMPETITIVE row removed from Inicio (product decision, INICIO Increment 1
-      // -- visual only). The fetch/state are RETAINED for now: dropping the
-      // `getMyCompetitiveProfile()` call is a separate dead-code cleanup for the
-      // next functional increment (see report), not a visual change.
-      competitive: CompetitiveContext | null;
       dailyChallenges: ChallengeSummary[];
     };
 
 /**
  * Inicio -- ver ADR-0009 (semánticamente distinto de los otros 4 módulos).
  *
- * HOME-1: racha, nivel/XP y liga ya se resuelven con datos REALES
- * (`gamification/me/streak`, `gamification/me/level`,
- * `user/public-profile/me/competitive-profile`) -- estos tres, y el
- * resumen de Desafíos, se tratan como secciones INDEPENDIENTES de "Continuar
- * estudiando": si cualquiera de ellas falla o no tiene datos (sin racha
- * todavía, sin desafíos asignados), se muestra un estado honesto en esa
- * sección -- nunca bloquea la pantalla ni inventa un valor. Solo
- * `pickContinueTarget()` (el card principal) sigue siendo obligatorio para
- * que Inicio cargue -- mismo criterio que antes de HOME-1.
+ * Secciones INDEPENDIENTES: racha, nivel/XP, resumen de Desafíos y
+ * "Continuar estudiando" se resuelven cada una por su cuenta. Si cualquiera
+ * falla o no tiene datos, muestra un estado honesto EN ESA sección --
+ * ninguna bloquea la pantalla ni inventa un valor. Tras INICIO Increment 2,
+ * un fallo de continuidad tampoco tapa el resto: el card entra en un estado
+ * "no disponible" local con "Reintentar". No queda ningún estado fatal a
+ * nivel de pantalla -> se eliminó el `ErrorState` global.
  *
- * INICIO Increment 1 (visual only) -- jerarquía: encabezado (saludo + racha)
- * como SOPORTE, tarjeta "Continuar estudiando" como bloque DOMINANTE, y
- * Nivel/XP + Desafíos como tarjetas SECUNDARIAS coherentes. Sin cambios de
- * comportamiento: misma carga, misma lógica de continuidad, mismas rutas,
- * mismo filtrado de desafíos, sin focus refresh. La fila de Liga se retiró
- * de la presentación (decisión de producto).
+ * CICLO DE VIDA (Increment 2): un ÚNICO `useFocusEffect`. El primer foco
+ * (montaje) hace la carga inicial con `LoadingState`; cada foco posterior
+ * hace un refresco SILENCIOSO -- Expo Router retiene las pantallas de tab,
+ * así que sin esto Inicio quedaría congelado tras estudiar y volver. Un
+ * contador de generación descarta respuestas obsoletas (foco solapado /
+ * respuesta lenta que llega tarde) y `mountedRef` evita `setState` tras
+ * desmontar. Sin polling, sin aritmética optimista.
+ *
+ * Increment 1 / 1.1 / 1.2 (visual, aprobado y congelado): jerarquía
+ * saludo+racha [soporte] / "Continuar" [dominante] / Nivel-XP + Desafíos
+ * [secundario]; ilustración neutra; 2 previews de Desafíos; contorno de riel
+ * de progreso.
  */
 export default function InicioScreen() {
   const router = useRouter();
@@ -72,54 +80,117 @@ export default function InicioScreen() {
   const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
 
-  const load = useCallback(async () => {
-    setState({ status: 'loading' });
-    const [profileResult, targetResult, streakResult, levelResult, competitiveResult, challengesResult] = await Promise.all([
+  const mountedRef = useRef(true);
+  const loadGenerationRef = useRef(0);
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    const generation = ++loadGenerationRef.current;
+
+    setState((prev) => {
+      if (!silent) return { status: 'loading' };
+      return prev.status === 'ready' ? { ...prev, refreshing: true } : prev;
+    });
+
+    const [profileResult, targetResult, streakResult, levelResult, challengesResult] = await Promise.all([
       getProfile(),
       pickContinueTarget(),
       getStreak(),
       getLevel(),
-      getMyCompetitiveProfile(),
       listChallenges(),
     ]);
 
-    if (!targetResult.ok) {
-      setState({ status: 'error', message: targetResult.message });
-      return;
-    }
+    // Descarta una respuesta obsoleta (otro foco disparó una carga más nueva)
+    // o que llega tras desmontar.
+    if (!mountedRef.current || generation !== loadGenerationRef.current) return;
 
-    const profile = profileResult.ok ? profileResult.data : null;
-    const streak = streakResult.ok ? streakResult.data : null;
-    const level = levelResult.ok ? levelResult.data : null;
-    // 404 (sin public_profile todavía) se trata igual que "sin participación" -- estado informativo, no error (mismo criterio que el resto de autoconsultas competitivas).
-    const competitive = competitiveResult.ok ? competitiveResult.data.competitive : null;
-    const dailyChallenges = challengesResult.ok
+    const freshProfile = profileResult.ok ? profileResult.data : undefined;
+    const freshStreak = streakResult.ok ? streakResult.data : undefined;
+    const freshLevel = levelResult.ok ? levelResult.data : undefined;
+    const freshChallenges = challengesResult.ok
       ? groupChallenges(challengesResult.data.challenges).active.filter((c) => c.challengeType === 'DAILY')
-      : [];
+      : undefined;
 
-    setState({ status: 'ready', profile, target: targetResult.target, streak, level, competitive, dailyChallenges });
+    setState((prev) => {
+      const prevReady = prev.status === 'ready' ? prev : null;
+
+      // En un refresco SILENCIOSO, una sección que falla CONSERVA su último
+      // dato bueno (`prevReady?.x`); en la carga inicial cae a su estado
+      // honesto (`null` / `[]`). Continuidad: igual, pero su fallback en la
+      // carga inicial es el card "no disponible".
+      const continuation: ContinuationView = targetResult.ok
+        ? { kind: 'target', target: targetResult.target }
+        : silent && prevReady
+          ? prevReady.continuation
+          : { kind: 'unavailable' };
+
+      return {
+        status: 'ready',
+        refreshing: false,
+        profile: freshProfile ?? (silent ? (prevReady?.profile ?? null) : null),
+        streak: freshStreak ?? (silent ? (prevReady?.streak ?? null) : null),
+        level: freshLevel ?? (silent ? (prevReady?.level ?? null) : null),
+        dailyChallenges: freshChallenges ?? (silent ? (prevReady?.dailyChallenges ?? []) : []),
+        continuation,
+      };
+    });
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Un ÚNICO hook de ciclo de vida: primer foco -> carga inicial (con
+  // LoadingState); focos posteriores -> refresco silencioso. Sin `useEffect`
+  // de carga en paralelo -> nunca dos peticiones en el primer render.
+  useFocusEffect(
+    useCallback(() => {
+      if (initializedRef.current) {
+        void load({ silent: true });
+      } else {
+        initializedRef.current = true;
+        void load({ silent: false });
+      }
+    }, [load]),
+  );
 
   if (state.status === 'loading') return <LoadingState message="Cargando tu progreso…" />;
-  if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
+
+  const continuation = state.continuation;
+  const target = continuation.kind === 'target' ? continuation.target : null;
 
   function goToTarget() {
-    if (state.status !== 'ready') return;
-    if (state.target.kind !== 'topic') return;
-    const screen = state.target.entry === 'resource' ? 'recurso' : 'ejercicio';
+    if (state.status !== 'ready' || state.continuation.kind !== 'target') return;
+    const t = state.continuation.target;
+    if (t.kind !== 'topic') return;
+    const screen = t.entry === 'resource' ? 'recurso' : 'ejercicio';
     router.push({
       pathname: `/(tabs)/estudio/topic/[topicId]/${screen}`,
-      params: { topicId: state.target.topic.id, subjectId: state.target.subject.id, name: state.target.subject.name },
+      params: { topicId: t.topic.id, subjectId: t.subject.id, name: t.subject.name },
     });
   }
 
   const greetingName = state.profile?.displayName ?? 'estudiante';
-  const isActionable = state.target.kind === 'topic';
-  const kicker = continueKicker(state.target);
+  const continuationUnavailable = continuation.kind === 'unavailable';
+  const isActionable = target?.kind === 'topic';
+  const kicker = target ? continueKicker(target) : null;
+  const continueTitle = continuationUnavailable
+    ? 'No pudimos cargar tu progreso de estudio.'
+    : target
+      ? goalTitle(target)
+      : 'Todavía no hay contenido disponible.';
+  const ctaEnabled = continuationUnavailable ? !state.refreshing : isActionable;
+  const ctaLabel = continuationUnavailable
+    ? state.refreshing
+      ? 'Actualizando…'
+      : 'Reintentar'
+    : target
+      ? continueButtonLabel(target)
+      : 'Sin acción disponible';
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={[styles.container, { paddingTop: insets.top + spacing.space4 }]}>
@@ -174,7 +245,9 @@ export default function InicioScreen() {
         </Card>
       )}
 
-      {/* PRIMARIO -- Continuar estudiando. Bloque dominante. */}
+      {/* PRIMARIO -- Continuar estudiando. Bloque dominante. Un fallo de
+          continuidad NO tapa el resto de Inicio: el card entra en un estado
+          "no disponible" local con "Reintentar" (Increment 2). */}
       <Card variant="brand" style={styles.continueCard}>
         <HomeKnowledgeIllustration />
         {kicker ? (
@@ -183,22 +256,22 @@ export default function InicioScreen() {
           </Text>
         ) : null}
         <Text variant="heading3" color="onInverse" numberOfLines={2} style={styles.continueTitle} accessibilityRole="header">
-          {goalTitle(state.target)}
+          {continueTitle}
         </Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Continuar estudiando"
-          disabled={!isActionable}
-          style={[styles.continueButton, !isActionable && styles.continueButtonDisabled]}
-          onPress={goToTarget}
+          accessibilityLabel={continuationUnavailable ? 'Reintentar' : 'Continuar estudiando'}
+          disabled={!ctaEnabled}
+          style={[styles.continueButton, !ctaEnabled && styles.continueButtonDisabled]}
+          onPress={continuationUnavailable ? () => void load({ silent: true }) : goToTarget}
         >
           <View style={styles.continueButtonContent}>
             <Text
               variant="titleMedium"
-              color={isActionable ? 'onAccent' : undefined}
-              style={isActionable ? undefined : { color: tokens.color.action.disabledText }}
+              color={ctaEnabled ? 'onAccent' : undefined}
+              style={ctaEnabled ? undefined : { color: tokens.color.action.disabledText }}
             >
-              {continueButtonLabel(state.target)}
+              {ctaLabel}
             </Text>
             {isActionable ? <Icon name="chevron-right" size={20} color="onAccent" /> : null}
           </View>
@@ -216,7 +289,7 @@ export default function InicioScreen() {
             accessibilityLabel="Ver todos los desafíos"
             hitSlop={8}
             style={styles.seeAllButton}
-            onPress={() => router.push('/(tabs)/competir')}
+            onPress={() => router.push(HOME_CHALLENGES_ROUTE)}
           >
             <Text variant="label" style={{ color: tokens.color.accent.default }}>
               Ver todos
@@ -278,7 +351,9 @@ function continueKicker(target: ContinueTarget): string | null {
 
 function goalTitle(target: ContinueTarget): string {
   if (target.kind === 'topic') return target.topic.name;
-  if (target.kind === 'all-completed') return `¡Completaste todo el contenido de ${target.subject.name}!`;
+  // `all-completed` es GLOBAL (todas las materias con contenido) -- nunca se
+  // nombra una sola materia (INICIO Increment 2).
+  if (target.kind === 'all-completed') return '¡Completaste todo el contenido disponible!';
   return 'Todavía no hay contenido disponible.';
 }
 
