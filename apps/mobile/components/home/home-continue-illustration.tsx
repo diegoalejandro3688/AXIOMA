@@ -70,7 +70,7 @@ export function continuationVisualFor(subjectKey: string | null): ContinuationVi
       // APPROVED/CLOSED -- exactamente igual que antes.
       return { artwork: homeMath, opacity: 0.16, right: -64, cardBackground: null };
     case 'lenguaje':
-      return { artwork: homeLanguage, opacity: 0.37, right: -40, cardBackground: CARD_SURFACE_LANGUAGE };
+      return { artwork: homeLanguage, opacity: 0.37, right: -28, cardBackground: CARD_SURFACE_LANGUAGE };
     case 'historia':
       return { artwork: homeHistory, opacity: 0.3, right: -24, cardBackground: CARD_SURFACE_HISTORY };
     default:
