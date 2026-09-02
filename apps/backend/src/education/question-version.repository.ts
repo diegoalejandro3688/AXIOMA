@@ -116,4 +116,94 @@ export class QuestionVersionRepository {
       include: { answerOptions: { orderBy: { displayOrder: 'asc' } } },
     });
   }
+
+  /**
+   * ESTUDIO / PRÁCTICA LIBRE V1 -- selección aleatoria server-side de UNA
+   * pregunta elegible de una MATERIA para el modo Práctica libre. ADITIVO:
+   * NO altera `findRandomEligible` (global, de Pregunta rápida), que
+   * conserva exactamente su comportamiento.
+   *
+   * "Elegible" = mismo pool CANÓNICO que Study / PROFILE-01:
+   *   - `question_version.editorial_status = 'PUBLISHED'`;
+   *   - `question.status = 'ACTIVE'` (una pregunta retirada nunca se sirve);
+   *   - su `curriculum_topic` es un RECURSO canónico: `parent_id IS NOT NULL`
+   *     (nunca una unidad raíz ni un topic raíz legacy del seed) con al
+   *     menos una `learning_resource_version` PUBLISHED;
+   *   - ese recurso pertenece a la materia pedida (`subject_id`);
+   *   - `id` no está en `excludeQuestionVersionIds` (las ya vistas en la
+   *     ejecución actual del cliente).
+   * Quedan fuera por construcción: otras materias, topics legacy, fixtures/
+   * zztest (sus recursos no tienen `learning_resource_version` PUBLISHED en
+   * el catálogo real), versiones no publicadas, preguntas retiradas.
+   *
+   * `ORDER BY random()` -- mismo criterio y volumen (~980 preguntas/materia
+   * máx. 330) que `findRandomEligible`; sin seed, sin ponderación.
+   */
+  async findRandomPracticeQuestionForSubject(
+    subjectId: string,
+    excludeQuestionVersionIds: string[],
+  ): Promise<QuestionVersionWithDetails | null> {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT qv."id"
+      FROM "question_version" qv
+      JOIN "curriculum_topic" resource ON resource."id" = qv."curriculum_topic_id"
+      JOIN "question" q ON q."id" = qv."question_id"
+      WHERE qv."editorial_status" = 'PUBLISHED'
+        AND q."status" = 'ACTIVE'
+        AND resource."parent_id" IS NOT NULL
+        AND resource."subject_id" = ${subjectId}::uuid
+        AND EXISTS (
+          SELECT 1 FROM "learning_resource_version" lrv
+          WHERE lrv."curriculum_topic_id" = resource."id"
+            AND lrv."editorial_status" = 'PUBLISHED'
+        )
+        AND qv."id" != ALL(${excludeQuestionVersionIds}::uuid[])
+      ORDER BY random()
+      LIMIT 1
+    `;
+    const chosenId = rows[0]?.id;
+    if (!chosenId) return null;
+    return this.findEligiblePracticeQuestionById(chosenId, subjectId);
+  }
+
+  /**
+   * ESTUDIO / PRÁCTICA LIBRE V1 -- recupera UNA pregunta por id SOLO si
+   * cumple exactamente el mismo predicado de elegibilidad canónica que
+   * `findRandomPracticeQuestionForSubject` para `subjectId`. Devuelve `null`
+   * si no es elegible (materia distinta, no publicada, no canónica,
+   * retirada). Usado por el endpoint `.../answer` para validar la pregunta
+   * antes de determinar la corrección, y para hidratar la pregunta ya
+   * elegida al azar (incluye `question` + `answerOptions`, mismo shape que
+   * `findPublishedByTopicId`).
+   */
+  async findEligiblePracticeQuestionById(
+    questionVersionId: string,
+    subjectId: string,
+  ): Promise<QuestionVersionWithDetails | null> {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT qv."id"
+      FROM "question_version" qv
+      JOIN "curriculum_topic" resource ON resource."id" = qv."curriculum_topic_id"
+      JOIN "question" q ON q."id" = qv."question_id"
+      WHERE qv."id" = ${questionVersionId}::uuid
+        AND qv."editorial_status" = 'PUBLISHED'
+        AND q."status" = 'ACTIVE'
+        AND resource."parent_id" IS NOT NULL
+        AND resource."subject_id" = ${subjectId}::uuid
+        AND EXISTS (
+          SELECT 1 FROM "learning_resource_version" lrv
+          WHERE lrv."curriculum_topic_id" = resource."id"
+            AND lrv."editorial_status" = 'PUBLISHED'
+        )
+      LIMIT 1
+    `;
+    if (!rows[0]?.id) return null;
+    return this.prisma.questionVersion.findUnique({
+      where: { id: questionVersionId },
+      include: {
+        question: { select: { id: true, questionKey: true, questionType: true } },
+        answerOptions: { orderBy: { displayOrder: 'asc' } },
+      },
+    });
+  }
 }

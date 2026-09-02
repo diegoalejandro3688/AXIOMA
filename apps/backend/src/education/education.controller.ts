@@ -1,11 +1,16 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
-import type {
-  SubjectResponse,
-  CurriculumTopicResponse,
-  LearningResourceResponse,
-  QuestionResponse,
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  practiceQuestionSampleRequestSchema,
+  practiceQuestionAnswerRequestSchema,
+  type SubjectResponse,
+  type CurriculumTopicResponse,
+  type LearningResourceResponse,
+  type QuestionResponse,
+  type PracticeQuestionSampleResponse,
+  type PracticeQuestionAnswerResponse,
 } from '@axioma/contracts';
 import { AuthGuard } from '../auth/auth.guard';
+import { parseRequestBody } from '../platform/validation/parse-request-body';
 import { EducationService } from './education.service';
 
 /**
@@ -45,5 +50,36 @@ export class EducationController {
   @Get('topics/:topicId/questions')
   listPublishedQuestions(@Param('topicId') topicId: string): Promise<QuestionResponse[]> {
     return this.educationService.listPublishedQuestions(topicId);
+  }
+
+  /**
+   * ESTUDIO / PRÁCTICA LIBRE V1 -- lane STATELESS de práctica. POST (no GET)
+   * porque `excludeQuestionVersionIds` puede crecer a cientos durante una
+   * ejecución continua y no cabe en la URL; sigue siendo lectura pura sin
+   * side effects (no crea sesión ni escribe nada). Ver
+   * `EducationService.samplePracticeQuestion`.
+   */
+  @Post('subjects/:subjectId/practice-questions/sample')
+  samplePracticeQuestion(
+    @Param('subjectId') subjectId: string,
+    @Body() body: unknown,
+  ): Promise<PracticeQuestionSampleResponse> {
+    const input = parseRequestBody(practiceQuestionSampleRequestSchema, body);
+    return this.educationService.samplePracticeQuestion(subjectId, input.excludeQuestionVersionIds ?? []);
+  }
+
+  /**
+   * ESTUDIO / PRÁCTICA LIBRE V1 -- valida una respuesta de práctica libre.
+   * CERO escritura: no `student_response`, no progreso, no XP/LP, no Outbox.
+   * Ver `EducationService.answerPracticeQuestion`.
+   */
+  @Post('subjects/:subjectId/practice-questions/:questionVersionId/answer')
+  answerPracticeQuestion(
+    @Param('subjectId') subjectId: string,
+    @Param('questionVersionId') questionVersionId: string,
+    @Body() body: unknown,
+  ): Promise<PracticeQuestionAnswerResponse> {
+    const input = parseRequestBody(practiceQuestionAnswerRequestSchema, body);
+    return this.educationService.answerPracticeQuestion(subjectId, questionVersionId, input.answerOptionId);
   }
 }

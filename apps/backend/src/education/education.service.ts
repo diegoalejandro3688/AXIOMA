@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   subjectResponseSchema,
   curriculumTopicResponseSchema,
@@ -7,11 +7,15 @@ import {
   resourceContentBlocksSchema,
   explanationContentSchema,
   answerOptionContentSchema,
+  practiceQuestionSampleResponseSchema,
+  practiceQuestionAnswerResponseSchema,
   type SubjectResponse,
   type CurriculumTopicResponse,
   type LearningResourceResponse,
   type QuestionResponse,
   type ResourceContentBlockResponse,
+  type PracticeQuestionSampleResponse,
+  type PracticeQuestionAnswerResponse,
 } from '@axioma/contracts';
 import type { z } from 'zod';
 import type { resourceContentBlockSchema } from '@axioma/contracts';
@@ -20,6 +24,7 @@ import { SubjectRepository } from './subject.repository';
 import { CurriculumTopicRepository } from './curriculum-topic.repository';
 import { LearningResourceVersionRepository } from './learning-resource-version.repository';
 import { QuestionVersionRepository } from './question-version.repository';
+import { AnswerOptionRepository } from './answer-option.repository';
 import type { Subject, CurriculumTopic } from '../generated/prisma/client';
 import type { LearningResourceVersionWithResource } from './learning-resource-version.repository';
 import type { QuestionVersionWithDetails } from './question-version.repository';
@@ -49,6 +54,7 @@ export class EducationService {
     private readonly topicRepo: CurriculumTopicRepository,
     private readonly resourceVersionRepo: LearningResourceVersionRepository,
     private readonly questionVersionRepo: QuestionVersionRepository,
+    private readonly answerOptionRepo: AnswerOptionRepository,
     private readonly objectStorage: ObjectStorageService,
   ) {}
 
@@ -85,6 +91,65 @@ export class EducationService {
     await this.getTopicOrThrow(topicId);
     const versions = await this.questionVersionRepo.findPublishedByTopicId(topicId);
     return Promise.all(versions.map((version) => this.toQuestionResponse(version)));
+  }
+
+  /**
+   * ESTUDIO / PRÁCTICA LIBRE V1 -- STATELESS. Selecciona una pregunta
+   * aleatoria elegible de la materia (pool canónico publicado, ver
+   * `QuestionVersionRepository.findRandomPracticeQuestionForSubject`),
+   * excluyendo las ya vistas por el cliente en la ejecución actual. NO
+   * escribe nada: sin `student_response`, sin progreso, sin Outbox, sin XP.
+   * `question: null` cuando el `exclude` set ya cubre todo el pool (nunca
+   * un 404 por pool agotado).
+   */
+  async samplePracticeQuestion(
+    subjectId: string,
+    excludeQuestionVersionIds: string[],
+  ): Promise<PracticeQuestionSampleResponse> {
+    await this.getSubjectOrThrow(subjectId);
+    const version = await this.questionVersionRepo.findRandomPracticeQuestionForSubject(
+      subjectId,
+      [...new Set(excludeQuestionVersionIds)],
+    );
+    return practiceQuestionSampleResponseSchema.parse({
+      question: version ? await this.toQuestionResponse(version) : null,
+    });
+  }
+
+  /**
+   * ESTUDIO / PRÁCTICA LIBRE V1 -- STATELESS. Valida una respuesta y
+   * devuelve SOLO `isCorrect` (server-authoritative). NO crea
+   * `student_response`, NO toca `curriculum_topic_progress`, NO completa
+   * recurso/unidad, NO emite `student_response_recorded` /
+   * `curriculum_topic_completed`, NO publica al Outbox, NO otorga XP/LP, NO
+   * avanza desafíos. CERO escritura en base de datos.
+   *
+   * Rechaza (404/400) si la pregunta no es elegible para práctica libre de
+   * ESA materia (no publicada, no canónica, retirada, de otra materia) o si
+   * la alternativa no pertenece a la pregunta.
+   */
+  async answerPracticeQuestion(
+    subjectId: string,
+    questionVersionId: string,
+    answerOptionId: string,
+  ): Promise<PracticeQuestionAnswerResponse> {
+    await this.getSubjectOrThrow(subjectId);
+
+    const eligible = await this.questionVersionRepo.findEligiblePracticeQuestionById(questionVersionId, subjectId);
+    if (!eligible) {
+      throw new NotFoundException('La pregunta no está disponible para práctica libre en esta materia.');
+    }
+
+    const option = await this.answerOptionRepo.findById(answerOptionId);
+    if (!option || option.questionVersionId !== questionVersionId) {
+      throw new BadRequestException('La alternativa no pertenece a esta pregunta.');
+    }
+
+    return practiceQuestionAnswerResponseSchema.parse({
+      questionVersionId,
+      answerOptionId,
+      isCorrect: option.isCorrect,
+    });
   }
 
   private async getSubjectOrThrow(subjectId: string): Promise<Subject> {

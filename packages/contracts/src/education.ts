@@ -178,3 +178,41 @@ export const questionResponseSchema = z.object({
   publishedAt: isoDateTime,
 });
 export type QuestionResponse = z.infer<typeof questionResponseSchema>;
+
+// --- Práctica libre (STATELESS) -- ESTUDIO / PRÁCTICA LIBRE V1 ---
+//
+// Lane de práctica SEPARADO del académico. Responder una pregunta por estos
+// endpoints NO crea `student_response`, NO toca `curriculum_topic_progress`
+// / progreso de Recursos-Unidades / "Continuar estudiando" de Inicio, NO
+// emite `student_response_recorded` / `curriculum_topic_completed`, NO
+// otorga XP ni LP, NO avanza desafíos, NO publica al Outbox. Es lectura
+// pura + validación de corrección. No hay sesión persistida: el cliente
+// lleva en memoria las `questionVersionId` ya vistas y las envía como
+// `excludeQuestionVersionIds` para no repetir dentro de la ejecución.
+
+/** Cota superior holgada sobre el catálogo V1 (máx. ~330 preguntas por materia). */
+export const MAX_PRACTICE_EXCLUDE_IDS = 2000;
+
+export const practiceQuestionSampleRequestSchema = z.object({
+  excludeQuestionVersionIds: z.array(entityId).max(MAX_PRACTICE_EXCLUDE_IDS).default([]),
+});
+export type PracticeQuestionSampleRequest = z.infer<typeof practiceQuestionSampleRequestSchema>;
+
+/** `question: null` = no quedan preguntas elegibles fuera del `exclude` set (pool agotado). Nunca un 404. */
+export const practiceQuestionSampleResponseSchema = z.object({
+  question: questionResponseSchema.nullable(),
+});
+export type PracticeQuestionSampleResponse = z.infer<typeof practiceQuestionSampleResponseSchema>;
+
+export const practiceQuestionAnswerRequestSchema = z.object({
+  answerOptionId: entityId,
+});
+export type PracticeQuestionAnswerRequest = z.infer<typeof practiceQuestionAnswerRequestSchema>;
+
+/** Resultado mínimo, server-authoritative. Sin `topicStatus` (no hay progreso), sin explicación extra (ya viaja en `QuestionResponse`). */
+export const practiceQuestionAnswerResponseSchema = z.object({
+  questionVersionId: entityId,
+  answerOptionId: entityId,
+  isCorrect: z.boolean(),
+});
+export type PracticeQuestionAnswerResponse = z.infer<typeof practiceQuestionAnswerResponseSchema>;
