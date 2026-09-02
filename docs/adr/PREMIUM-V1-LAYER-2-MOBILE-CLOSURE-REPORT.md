@@ -258,17 +258,16 @@ Todos **verdes** en `24348dc`. Ninguno fue debilitado para obtener verde.
 |---|---|
 | C2.2 | FREE: U1/U2 normales; U3+ locked con `<PremiumBadge>`; modo Recursos locked; recursos de U1/U2 accesibles vía Unidades. Regresión de Inicio detectada aquí ("No pudimos cargar tu progreso de estudio.") y corregida en `1bfa586`, re-verificada. |
 | C2.3 | FREE: lista de Ensayos visible con badges; tap → pre-start; "Comenzar" → paywall `exams`, sin error genérico. PREMIUM: cards normales; "Comenzar" crea intento; runner funciona. PREMIUM → FREE con ACTIVE + cache: "Continuar" funciona, sin paywall. PREMIUM → FREE con ACTIVE sin cache: "Comenzar" reanuda el mismo intento, sin paywall. Completado: resultado/revisión accesibles tras downgrade. Consistencia light/dark del badge/atenuación. |
-| C2.4 | FREE bajo cuota → Tutor normal, sin upsell. FREE límite diario alcanzado → estado bloqueado + `Amplía tu Tutor IA`. FREE límite de conversación → mismo upsell. CTA → paywall `ai_quota`; cerrar → queda en el Tutor. PREMIUM bajo cuota → normal. PREMIUM su propio límite → bloqueado sin upsell. loading/error de entitlement → sin upsell falso. |
+| C2.4 | FREE bajo cuota → Tutor normal, sin upsell. FREE límite diario alcanzado → estado bloqueado + `Amplía tu Tutor IA`. FREE límite de conversación → mismo upsell. CTA → paywall `ai_quota`; cerrar → queda en el Tutor. PREMIUM bajo cuota → normal. PREMIUM su propio límite → bloqueado sin upsell. El caso *entitlement `loading`/`error` → sin upsell falso* **no se probó en dispositivo**: queda cubierto de forma behavioral por `verify:ai-premium-gating-gate` (tabla de verdad de `shouldShowAiLimitUpsell`: `loading`/`error` → nunca upsell). |
 
-### M.1 Smoke pass final (C2.5)
+### M.1 Evidencia de la Capa 2 en el cierre (C2.5)
 
-Verificación superficial de humo (sin recrear los flujos largos ya validados en C2.2/C2.3/C2.4):
+C2.5 **no** ejecutó una pasada de QA física propia. Consolida:
 
-- **FREE**: Inicio carga; U1/U2 accesibles; U3+ locked; Recursos locked; Práctica libre funciona; lista de Ensayos visible + paywall al crear intento; Tutor normal bajo cuota / upsell al bloquearse.
-- **PREMIUM**: U3+ desbloqueadas; Recursos accesible; Ensayos normal / crear intento disponible; Tutor sin upsell falso.
-- Sin regresión visual obvia en claro/oscuro donde fue práctico comprobarlo.
+1. La **QA incremental en Samsung `R5CW71R7MTP` ya aprobada** para C2.2, C2.3 y C2.4 (tabla anterior) — incluidos los escenarios profundos de downgrade / intento ACTIVE / camino de escritura, validados en su momento y **no** recreados aquí.
+2. La **corrida global de gates** en `24348dc` (§L): todos los gates Premium + los gates de regresión directamente afectados + `typecheck` + `lint` + `git diff --check`, todos verdes, ninguno debilitado.
 
-Los escenarios profundos de downgrade / ACTIVE / camino de escritura se validaron en la QA de C2.2/C2.3 y **no** se recrearon innecesariamente.
+El cierre de C2.5 es **documentación + auditoría**; no añade comportamiento ni requiere verificación de dispositivo adicional.
 
 ---
 
@@ -294,7 +293,9 @@ Otros diferidos menores:
 
 ## O. No-goals (confirmados)
 
-Sin Billing · sin ciclo de suscripción · sin UI de suscripción en Perfil · sin cambios de modelo/proveedor/inteligencia del Tutor · sin nuevas herramientas del Tutor · sin rediseño del streaming · sin rediseño visual del Tutor ni de las tarjetas · sin cambios en `Card` global · sin assets nuevos · sin backend / contratos / endpoints / Prisma / migraciones · sin compra ni simulación de compra · sin paywall automático · sin override interno expuesto en la UI de producto · sin cambios en Estudio/Ensayos salvo el allowlist de gates y el fix de regresión de Inicio.
+Sin Billing · sin ciclo de suscripción · sin UI de suscripción en Perfil · sin cambios de modelo/proveedor/inteligencia del Tutor · sin nuevas herramientas del Tutor · sin rediseño del streaming · sin rediseño visual del Tutor ni de las tarjetas · sin cambios en `Card` global · sin assets nuevos · sin backend / contratos / endpoints / Prisma / migraciones · sin compra ni simulación de compra · sin paywall automático · sin override interno expuesto en la UI de producto.
+
+**Específico de C2.5**: sin cambios de producto adicionales en Estudio / Ensayos / Tutor IA / Inicio durante C2.5 — el cierre fue exclusivamente documentación + auditoría (el único artefacto de C2.5 es este reporte, commit `969dd2e`). Los cambios de producto de la Capa 2 son los de C2.0–C2.4 documentados en §D.
 
 ---
 
