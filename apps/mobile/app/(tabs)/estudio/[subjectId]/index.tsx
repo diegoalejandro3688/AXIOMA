@@ -41,7 +41,7 @@ const STUDY_MODE_TILES: StudyModeTile[] = [
     label: 'Recursos',
     description: 'Material de apoyo para reforzar tus conocimientos.',
     icon: 'study-mode-resources',
-    enabled: false,
+    enabled: true,
   },
   {
     key: 'practica-libre',
@@ -59,8 +59,12 @@ const STUDY_MODE_TILES: StudyModeTile[] = [
   },
 ];
 
-const TILE_ROUTE: Record<string, '/(tabs)/estudio/[subjectId]/unidades' | '/(tabs)/estudio/ensayos'> = {
+const TILE_ROUTE: Record<
+  string,
+  '/(tabs)/estudio/[subjectId]/unidades' | '/(tabs)/estudio/[subjectId]/recursos' | '/(tabs)/estudio/ensayos'
+> = {
   unidades: '/(tabs)/estudio/[subjectId]/unidades',
+  recursos: '/(tabs)/estudio/[subjectId]/recursos',
   ensayo: '/(tabs)/estudio/ensayos',
 };
 
