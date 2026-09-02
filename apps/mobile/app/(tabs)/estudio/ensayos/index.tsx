@@ -8,8 +8,9 @@ import { LoadingState } from '../../../../components/loading-state';
 import { ErrorState } from '../../../../components/error-state';
 import { EmptyState } from '../../../../components/empty-state';
 import { Text, Card, Icon } from '../../../../components/ui';
-import { useThemedStyles, spacing, radii } from '../../../../theme';
+import { useThemedStyles, useTheme, spacing, radii } from '../../../../theme';
 import type { ThemeTokens } from '../../../../theme';
+import { subjectIcon, subjectToneBackground, subjectToneColor } from '../../../../lib/academic/subject-icon';
 
 type ScreenState =
   | { status: 'loading' }
@@ -24,12 +25,25 @@ type ScreenState =
  * materia sin tocar esta pantalla.
  *
  * NO muestra: puntaje PAES, dificultad global, candado premium, XP/LP.
+ *
+ * INCREMENTO E (visual) -- la card hereda la identidad de materia (tono +
+ * icono de ensayo `study-mode-essay`) con los MISMOS helpers que Unidades/
+ * Recursos (`subjectIcon(name)` + `subjectTone*`), sin colores locales ni
+ * `UnitMotif` (un ensayo completo no es una unidad curricular). Sin cambios
+ * de datos, requests ni funcionalidad.
  */
 export default function EnsayosListScreen() {
   const { subjectId, name } = useLocalSearchParams<{ subjectId?: string; name?: string }>();
   const router = useRouter();
+  const tokens = useTheme();
   const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
+
+  // Tono de la materia -- mismo criterio que Unidades/Recursos: viene del
+  // nombre visible (`name`, route param), nunca del `subjectId` crudo.
+  const { tone } = subjectIcon(name ?? '');
+  const examIconColor = subjectToneColor(tokens, tone);
+  const examIconBackground = subjectToneBackground(tokens, tone);
 
   const load = useCallback(async () => {
     setState({ status: 'loading' });
@@ -76,11 +90,19 @@ export default function EnsayosListScreen() {
               })
             }
           >
+            <View style={[styles.iconTile, { backgroundColor: examIconBackground }]}>
+              <Icon name="study-mode-essay" size={22} color={examIconColor} />
+            </View>
             <View style={styles.cardBody}>
               <Text variant="titleMedium">{item.title}</Text>
               <Text variant="bodySmall" color="secondary">
                 {item.questionCount} preguntas · {formatDuration(item.durationSeconds)}
               </Text>
+              {name ? (
+                <Text variant="bodySmall" color="secondary">
+                  {name}
+                </Text>
+              ) : null}
             </View>
             <Icon name="chevron-right" size={20} color="muted" />
           </Card>
@@ -92,7 +114,7 @@ export default function EnsayosListScreen() {
 
 function createStyles(t: ThemeTokens) {
   return {
-    container: { flex: 1, padding: 16, gap: 16, backgroundColor: t.color.background.default },
+    container: { flex: 1, padding: spacing.space4, gap: spacing.space4, backgroundColor: t.color.background.default },
     list: { gap: spacing.space2 },
     card: {
       flexDirection: 'row' as const,
@@ -100,6 +122,15 @@ function createStyles(t: ThemeTokens) {
       gap: spacing.space3,
       borderRadius: radii.medium,
     },
-    cardBody: { flex: 1, gap: 4 },
+    // Tile de identidad -- mismo tamaño/radio que las tiles de Unidades y
+    // Recursos; el icono no debe dominar la card (título = elemento principal).
+    iconTile: {
+      width: 44,
+      height: 44,
+      borderRadius: radii.medium,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
+    cardBody: { flex: 1, gap: 2 },
   };
 }

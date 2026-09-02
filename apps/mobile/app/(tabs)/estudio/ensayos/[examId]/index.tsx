@@ -9,9 +9,11 @@ import { isTerminal } from '../../../../../lib/exams/attempt-state';
 import { getRememberedAttempt, rememberActiveAttempt, forgetActiveAttempt } from '../../../../../lib/exams/attempt-cache';
 import { LoadingState } from '../../../../../components/loading-state';
 import { ErrorState } from '../../../../../components/error-state';
-import { Text, Card, Button } from '../../../../../components/ui';
-import { useThemedStyles, spacing } from '../../../../../theme';
+import { Text, Card, Button, Divider, Icon } from '../../../../../components/ui';
+import type { IconName } from '../../../../../theme';
+import { useThemedStyles, useTheme, spacing } from '../../../../../theme';
 import type { ThemeTokens } from '../../../../../theme';
+import { subjectIcon, subjectToneColor } from '../../../../../lib/academic/subject-icon';
 
 type ScreenState =
   | { status: 'loading' }
@@ -23,14 +25,25 @@ type ScreenState =
  * Distingue "Comenzar" de "Continuar" mirando una cache LOCAL de id de intento
  * (`lib/exams/attempt-cache`) y validándola contra el backend -- ver el
  * comentario de ese módulo: mirar la intro NUNCA debe crear un intento.
+ *
+ * INCREMENTO E (visual) -- jerarquía: eyebrow de materia -> título -> card de
+ * 2 métricas (Preguntas / Duración) -> sección "Antes de comenzar" con 3
+ * reglas escaneables -> CTA. La regla del tiempo se mantiene explícita. Cero
+ * cambios de datos, requests, `handleStart`/`handleResume`, navegación ni CTA.
  */
 export default function EnsayoIntroScreen() {
   const { examId, name } = useLocalSearchParams<{ examId: string; name?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const tokens = useTheme();
   const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
   const [starting, setStarting] = useState(false);
+
+  // Acento de materia MUY DISCRETO: solo tiñe el eyebrow y los iconos de las
+  // reglas. Mismo helper que Unidades/Recursos, sin color local.
+  const { tone } = subjectIcon(name ?? '');
+  const subjectAccent = subjectToneColor(tokens, tone);
 
   const load = useCallback(async () => {
     setState({ status: 'loading' });
@@ -88,30 +101,58 @@ export default function EnsayoIntroScreen() {
 
   const { exam, resumeAttemptId } = state;
   return (
-    <View style={[styles.screen, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 16 }]}>
+    <View style={[styles.screen, { paddingTop: insets.top + spacing.space3, paddingBottom: insets.bottom + spacing.space4 }]}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text variant="heading2" accessibilityRole="header">
-          {exam.title}
-        </Text>
+        <View style={styles.titleBlock}>
+          {name ? (
+            <Text variant="label" style={[styles.eyebrow, { color: subjectAccent }]}>
+              {name}
+            </Text>
+          ) : null}
+          <Text variant="heading2" accessibilityRole="header">
+            {exam.title}
+          </Text>
+        </View>
 
-        <Card variant="outlined" style={styles.factCard}>
-          <Text variant="bodySmall">{exam.questionCount} preguntas</Text>
-          <Text variant="bodySmall">Duración: {formatDuration(exam.durationSeconds)}</Text>
-          {name ? <Text variant="bodySmall" color="secondary">{name}</Text> : null}
+        <Card variant="outlined" style={styles.metricsCard}>
+          <View style={styles.metric}>
+            <Text variant="titleLarge">{exam.questionCount}</Text>
+            <Text variant="caption" color="secondary">
+              Preguntas
+            </Text>
+          </View>
+          <Divider orientation="vertical" />
+          <View style={styles.metric}>
+            <Text variant="titleLarge">{formatDuration(exam.durationSeconds)}</Text>
+            <Text variant="caption" color="secondary">
+              Duración
+            </Text>
+          </View>
         </Card>
 
-        <Text variant="body" color="secondary">
-          Es una simulación completa: responde en el orden que quieras y ajusta tus respuestas hasta que decidas entregar.
-        </Text>
-
-        <Card variant="subtle" style={styles.noteCard}>
-          <Text variant="bodySmall" color="secondary">
-            El tiempo sigue corriendo aunque cierres la app. No hay pausa.
+        <View style={styles.rules}>
+          <Text variant="label" color="secondary" style={styles.rulesHeading}>
+            Antes de comenzar
           </Text>
-          <Text variant="bodySmall" color="secondary">
-            Puedes navegar entre las preguntas y cambiar cualquier respuesta antes de entregar.
-          </Text>
-        </Card>
+          <RuleRow
+            icon="clock"
+            iconColor={subjectAccent}
+            title="El tiempo no se pausa"
+            body="Sigue corriendo aunque cierres la app."
+          />
+          <RuleRow
+            icon="study-mode-units"
+            iconColor={subjectAccent}
+            title="Navega libremente"
+            body="Responde en el orden que quieras y cambia tus respuestas."
+          />
+          <RuleRow
+            icon="check"
+            iconColor={subjectAccent}
+            title="Entrega cuando estés listo"
+            body="Puedes revisar todo antes de finalizar."
+          />
+        </View>
       </ScrollView>
 
       {resumeAttemptId ? (
@@ -130,12 +171,48 @@ export default function EnsayoIntroScreen() {
   );
 }
 
+/** Fila de regla del pre-start -- componente LOCAL (2 pantallas no justifican uno global). */
+function RuleRow({
+  icon,
+  iconColor,
+  title,
+  body,
+}: {
+  icon: IconName;
+  iconColor: string;
+  title: string;
+  body: string;
+}) {
+  const styles = useThemedStyles(createStyles);
+  return (
+    <View style={styles.ruleRow}>
+      <Icon name={icon} size={18} color={iconColor} />
+      <View style={styles.ruleText}>
+        <Text variant="titleMedium">{title}</Text>
+        <Text variant="bodySmall" color="secondary">
+          {body}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 function createStyles(t: ThemeTokens) {
   return {
-    screen: { flex: 1, paddingHorizontal: 16, backgroundColor: t.color.background.default },
-    content: { gap: 16, paddingBottom: 24 },
-    factCard: { gap: spacing.space1 },
-    noteCard: { gap: spacing.space2 },
-    cta: { marginTop: 8 },
+    screen: { flex: 1, paddingHorizontal: spacing.space4, backgroundColor: t.color.background.default },
+    content: { gap: spacing.space5, paddingBottom: spacing.space6 },
+    titleBlock: { gap: spacing.space1 },
+    eyebrow: { textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+    metricsCard: {
+      flexDirection: 'row' as const,
+      alignItems: 'stretch' as const,
+      gap: spacing.space4,
+    },
+    metric: { flex: 1, gap: spacing.space1 },
+    rules: { gap: spacing.space3 },
+    rulesHeading: { textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+    ruleRow: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: spacing.space3 },
+    ruleText: { flex: 1, gap: 2 },
+    cta: { marginTop: spacing.space2 },
   };
 }
