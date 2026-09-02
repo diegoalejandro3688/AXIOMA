@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import {
   practiceQuestionSampleRequestSchema,
   practiceQuestionAnswerRequestSchema,
@@ -9,7 +9,7 @@ import {
   type PracticeQuestionSampleResponse,
   type PracticeQuestionAnswerResponse,
 } from '@axioma/contracts';
-import { AuthGuard } from '../auth/auth.guard';
+import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { parseRequestBody } from '../platform/validation/parse-request-body';
 import { EducationService } from './education.service';
 
@@ -37,19 +37,25 @@ export class EducationController {
     return this.educationService.listRootTopics(subjectId);
   }
 
+  /**
+   * PREMIUM V1 (C1.3) -- `children`/`resource`/`questions` de un tema bajo
+   * una unidad en posición ≥ 2 requieren tier PREMIUM (403 `PREMIUM_REQUIRED`
+   * para cuentas FREE). Las 2 primeras unidades y sus recursos permanecen
+   * libres. `subjects/:id/topics` (lista de unidades) NO se gatea.
+   */
   @Get('topics/:topicId/children')
-  listChildTopics(@Param('topicId') topicId: string): Promise<CurriculumTopicResponse[]> {
-    return this.educationService.listChildTopics(topicId);
+  listChildTopics(@Req() request: AuthenticatedRequest, @Param('topicId') topicId: string): Promise<CurriculumTopicResponse[]> {
+    return this.educationService.listChildTopics(topicId, request.accountId);
   }
 
   @Get('topics/:topicId/resource')
-  getPublishedResource(@Param('topicId') topicId: string): Promise<LearningResourceResponse> {
-    return this.educationService.getPublishedResource(topicId);
+  getPublishedResource(@Req() request: AuthenticatedRequest, @Param('topicId') topicId: string): Promise<LearningResourceResponse> {
+    return this.educationService.getPublishedResource(topicId, request.accountId);
   }
 
   @Get('topics/:topicId/questions')
-  listPublishedQuestions(@Param('topicId') topicId: string): Promise<QuestionResponse[]> {
-    return this.educationService.listPublishedQuestions(topicId);
+  listPublishedQuestions(@Req() request: AuthenticatedRequest, @Param('topicId') topicId: string): Promise<QuestionResponse[]> {
+    return this.educationService.listPublishedQuestions(topicId, request.accountId);
   }
 
   /**

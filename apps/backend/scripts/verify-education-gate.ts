@@ -38,7 +38,24 @@ async function newSession(label: string) {
     body: JSON.stringify({ idToken }),
   });
   const body = (await res.json()) as { sessionId: string; accountId: string };
-  return { authHeaders: { authorization: `Bearer ${idToken}`, 'x-session-id': body.sessionId } };
+  return {
+    accountId: body.accountId,
+    authHeaders: { authorization: `Bearer ${idToken}`, 'x-session-id': body.sessionId },
+  };
+}
+
+/**
+ * PREMIUM V1 (C1.3) -- el contenido de una unidad en posición ≥ 2 requiere
+ * tier PREMIUM. Este gate crea sus propias unidades y lee su contenido, así
+ * que su sesión de prueba se marca PREMIUM vía el override interno (mismo
+ * mecanismo que verify-premium-*-gate). El enforcement en sí lo cubre
+ * verify:premium-content-access-gate; aquí solo se evita el falso negativo.
+ */
+async function setTierPremium(accountId: string) {
+  const r = await req('POST', `/_internal/entitlement/set-tier-override?accountId=${accountId}&tier=PREMIUM`, {
+    'x-internal-ops-key': process.env.INTERNAL_OPS_KEY ?? '',
+  });
+  if (r.status !== 200 && r.status !== 201) throw new Error(`set-tier-override -> ${r.status} ${r.raw}`);
 }
 
 /** Falla si la query NO lanza (esperábamos que el trigger la rechazara). */
@@ -55,7 +72,8 @@ async function main() {
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
 
-  const { authHeaders } = await newSession('a');
+  const { authHeaders, accountId } = await newSession('a');
+  await setTierPremium(accountId);
 
   // --- 1. Endpoints de lectura: sin sesión -> 401 ---
   console.log('--- 1. Sin sesión -> 401 en todos los endpoints de lectura ---');
@@ -465,6 +483,11 @@ async function main() {
   // El caso "desde cero" (base efímera vacía) lo ejercita el propio job de CI
   // al aplicar `prisma migrate deploy` contra una base sin datos previos --
   // ver ci.yml, job db-migrations (backfill trivial, 0 filas que propagar).
+
+  // PREMIUM V1 (C1.3) -- limpia el override de tier de la sesión de prueba.
+  await req('POST', `/_internal/entitlement/set-tier-override?accountId=${accountId}`, {
+    'x-internal-ops-key': process.env.INTERNAL_OPS_KEY ?? '',
+  });
 
   await pg.end();
 

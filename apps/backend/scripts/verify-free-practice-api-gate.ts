@@ -145,6 +145,20 @@ function makeService(over: Partial<Record<string, unknown>> = {}) {
     },
   };
   const objectStorage = { getSignedReadUrl: async () => 'never-called' };
+  // PREMIUM V1 (C1.3) -- Práctica libre NUNCA se gatea: estos dos colaboradores
+  // no deben ser tocados por `samplePracticeQuestion`/`answerPracticeQuestion`.
+  const entitlementService = {
+    getEntitlement: async () => {
+      calls.push({ method: 'entitlementService.getEntitlement', args: [] });
+      return { tier: 'FREE' as const };
+    },
+  };
+  const premiumContentPolicy = {
+    classifyTopic: async () => {
+      calls.push({ method: 'premiumContentPolicy.classifyTopic', args: [] });
+      return 'FREE_UNIT' as const;
+    },
+  };
   return new EducationService(
     subjectRepo as never,
     topicRepo as never,
@@ -152,6 +166,8 @@ function makeService(over: Partial<Record<string, unknown>> = {}) {
     questionVersionRepo as never,
     answerOptionRepo as never,
     objectStorage as never,
+    entitlementService as never,
+    premiumContentPolicy as never,
   );
 }
 
@@ -207,6 +223,14 @@ async function expectThrow(label: string, fn: () => Promise<unknown>, name: stri
   // D.8 -- CERO llamadas de escritura en toda la orquestación
   const writeish = calls.filter((c) => /create|update|delete|upsert|enqueue|publish|record|grant/i.test(c.method));
   check('orquestación: CERO llamadas a métodos de escritura', writeish.length === 0);
+
+  // D.9 -- PREMIUM V1 (C1.3): Práctica libre NUNCA consulta entitlement ni la
+  // policy de contenido premium. `calls` acumula todas las invocaciones de
+  // esta corrida completa.
+  check(
+    'práctica libre: CERO llamadas a entitlementService.getEntitlement / premiumContentPolicy.classifyTopic',
+    calls.filter((c) => /entitlementService|premiumContentPolicy/.test(c.method)).length === 0,
+  );
 
   // ----------------------------------------------------------------------
   console.log('--- E. Contratos ---');

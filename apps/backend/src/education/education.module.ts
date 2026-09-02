@@ -2,6 +2,9 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { AdministrationModule } from '../administration/administration.module';
 import { ObjectStorageModule } from '../platform/object-storage/object-storage.module';
+// PREMIUM V1 -- Capa 1 (C1.3): gate de contenido de unidades premium.
+import { EntitlementModule } from '../entitlement/entitlement.module';
+import { PremiumContentPolicy } from './premium-content-policy.service';
 import { CurriculumTopicRepository } from './curriculum-topic.repository';
 import { SubjectRepository } from './subject.repository';
 import { LearningResourceRepository } from './learning-resource.repository';
@@ -34,9 +37,10 @@ import { ContentCoverageService } from './content-coverage.service';
   // ADMINISTRATION no importa nada de EDUCATION, de modo que no hay ciclo. El
   // controller HTTP editorial vive en su propio módulo (`editorial/`)
   // precisamente para no crear uno.
-  imports: [AuthModule, ObjectStorageModule, AdministrationModule],
+  imports: [AuthModule, ObjectStorageModule, AdministrationModule, EntitlementModule],
   controllers: [EducationController],
   providers: [
+    PremiumContentPolicy,
     CurriculumTopicRepository,
     SubjectRepository,
     LearningResourceRepository,
@@ -56,6 +60,9 @@ import { ContentCoverageService } from './content-coverage.service';
     ContentCoverageService,
   ],
   exports: [
+    // PREMIUM V1 (C1.3): estructural, sin noción de tier -- lo consume
+    // ProgressModule en C1.4 para gatear escritura sobre temas premium.
+    PremiumContentPolicy,
     CurriculumTopicRepository,
     SubjectRepository,
     LearningResourceRepository,

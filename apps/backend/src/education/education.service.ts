@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  PREMIUM_REQUIRED_CODE,
   subjectResponseSchema,
   curriculumTopicResponseSchema,
   learningResourceResponseSchema,
@@ -25,6 +26,8 @@ import { CurriculumTopicRepository } from './curriculum-topic.repository';
 import { LearningResourceVersionRepository } from './learning-resource-version.repository';
 import { QuestionVersionRepository } from './question-version.repository';
 import { AnswerOptionRepository } from './answer-option.repository';
+import { EntitlementService } from '../entitlement/entitlement.service';
+import { PremiumContentPolicy } from './premium-content-policy.service';
 import type { Subject, CurriculumTopic } from '../generated/prisma/client';
 import type { LearningResourceVersionWithResource } from './learning-resource-version.repository';
 import type { QuestionVersionWithDetails } from './question-version.repository';
@@ -56,6 +59,8 @@ export class EducationService {
     private readonly questionVersionRepo: QuestionVersionRepository,
     private readonly answerOptionRepo: AnswerOptionRepository,
     private readonly objectStorage: ObjectStorageService,
+    private readonly entitlementService: EntitlementService,
+    private readonly premiumContentPolicy: PremiumContentPolicy,
   ) {}
 
   async listSubjects(): Promise<SubjectResponse[]> {
@@ -74,23 +79,50 @@ export class EducationService {
     return topics.map(toTopicResponse);
   }
 
-  async listChildTopics(topicId: string): Promise<CurriculumTopicResponse[]> {
+  async listChildTopics(topicId: string, accountId: string): Promise<CurriculumTopicResponse[]> {
     await this.getTopicOrThrow(topicId);
+    await this.assertUnitContentAccessible(accountId, topicId);
     const topics = await this.topicRepo.findChildren(topicId);
     return topics.map(toTopicResponse);
   }
 
-  async getPublishedResource(topicId: string): Promise<LearningResourceResponse> {
+  async getPublishedResource(topicId: string, accountId: string): Promise<LearningResourceResponse> {
     await this.getTopicOrThrow(topicId);
+    await this.assertUnitContentAccessible(accountId, topicId);
     const version = await this.resourceVersionRepo.findLatestPublishedByTopicId(topicId);
     if (!version) throw new NotFoundException('No hay ningún recurso publicado para este tema.');
     return this.toResourceResponse(version);
   }
 
-  async listPublishedQuestions(topicId: string): Promise<QuestionResponse[]> {
+  async listPublishedQuestions(topicId: string, accountId: string): Promise<QuestionResponse[]> {
     await this.getTopicOrThrow(topicId);
+    await this.assertUnitContentAccessible(accountId, topicId);
     const versions = await this.questionVersionRepo.findPublishedByTopicId(topicId);
     return Promise.all(versions.map((version) => this.toQuestionResponse(version)));
+  }
+
+  /**
+   * PREMIUM V1 (C1.3) -- gate de acceso al contenido de una unidad.
+   *
+   * Precondición: `topicId` ya pasó `getTopicOrThrow` (existe). El único
+   * caso que produce 403 es un tema existente clasificado `PREMIUM_UNIT`
+   * con una cuenta `FREE` (guardrail 1). `EntitlementService` SOLO se
+   * consulta para `PREMIUM_UNIT` -- `FREE_UNIT`, `NON_CANONICAL` y
+   * `UNKNOWN_TOPIC` no requieren lookup de tier (guardrail 2). El contenido
+   * de las primeras 2 unidades permanece libre (invariante FREE UNIT ->
+   * FREE CONTENT).
+   */
+  private async assertUnitContentAccessible(accountId: string, topicId: string): Promise<void> {
+    const klass = await this.premiumContentPolicy.classifyTopic(topicId);
+    if (klass !== 'PREMIUM_UNIT') return;
+
+    const { tier } = await this.entitlementService.getEntitlement(accountId);
+    if (tier === 'FREE') {
+      throw new ForbiddenException({
+        code: PREMIUM_REQUIRED_CODE,
+        message: 'Esta unidad es parte de ZETRYND Premium.',
+      });
+    }
   }
 
   /**
