@@ -7,6 +7,8 @@ import { listPublishedQuestions } from '../../../../../lib/api/education';
 import { getTopicProgress } from '../../../../../lib/api/progress';
 import { submitResponseViaOutbox } from '../../../../../lib/progress/submit-response';
 import { syncPendingOperations } from '../../../../../lib/offline/sync-worker';
+import { isPremiumRequiredError } from '../../../../../lib/entitlement/premium-error';
+import { PremiumLockedScreen } from '../../../../../components/premium/premium-locked-screen';
 import { LoadingState } from '../../../../../components/loading-state';
 import { ErrorState } from '../../../../../components/error-state';
 import { EmptyState } from '../../../../../components/empty-state';
@@ -25,6 +27,7 @@ interface AnsweredState {
 type ScreenState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
+  | { status: 'premium' }
   | { status: 'ready'; questions: QuestionResponse[]; topicStatus: TopicProgressResponse['status']; answers: Record<string, AnsweredState> };
 
 /**
@@ -65,6 +68,14 @@ export default function EjercicioScreen() {
       getTopicProgress(topicId),
     ]);
 
+    // PREMIUM V1 (C2.2) -- deep-link / ruta restaurada al ejercicio de una
+    // unidad >= 2 con la cuenta en FREE: `403 PREMIUM_REQUIRED` en la lectura.
+    // El path de escritura (`submitResponseViaOutbox`) no aplica: una cuenta
+    // FREE nunca llega a responder aquí.
+    if (isPremiumRequiredError(questionsResult) || isPremiumRequiredError(progressResult)) {
+      setState({ status: 'premium' });
+      return;
+    }
     if (!questionsResult.ok) {
       setState({ status: 'error', message: questionsResult.message });
       return;
@@ -164,6 +175,7 @@ export default function EjercicioScreen() {
   }
 
   if (state.status === 'loading') return <LoadingState message="Cargando preguntas…" />;
+  if (state.status === 'premium') return <PremiumLockedScreen origin="unit" onBack={backToUnidades} />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
   if (state.questions.length === 0) {
     return <EmptyState message="Todavía no hay preguntas publicadas para esta unidad." actionLabel="Volver a la unidad" onAction={backToUnidades} />;

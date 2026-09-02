@@ -31,6 +31,7 @@
     "verify:premium-paywall-gate": "tsx scripts/verify-premium-paywall-gate.ts",
     "verify:unit-motif-gate": "tsx scripts/verify-unit-motif-gate.ts",
     "verify:recursos-catalog-gate": "tsx scripts/verify-recursos-catalog-gate.ts",
+    "verify:study-premium-gating-gate": "tsx scripts/verify-study-premium-gating-gate.ts",
     "verify:free-practice-gate": "tsx scripts/verify-free-practice-gate.ts"
   },
   "dependencies": {

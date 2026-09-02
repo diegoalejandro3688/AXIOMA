@@ -5,6 +5,9 @@ import { useThemedStyles, useTheme, radii } from '../../../../theme';
 import type { IconName, ThemeTokens } from '../../../../theme';
 import { Text, Card, ListRow, Divider, Icon } from '../../../../components/ui';
 import { subjectIcon, subjectToneBackground, subjectToneColor } from '../../../../lib/academic/subject-icon';
+import { useEntitlement } from '../../../../lib/entitlement/entitlement-provider';
+import { usePaywall } from '../../../../lib/entitlement/paywall-context';
+import { PremiumBadge } from '../../../../components/premium/premium-badge';
 
 /**
  * Detalle de materia -- 4 accesos del wireframe aprobado (Unidades, Recursos,
@@ -77,6 +80,15 @@ export default function SubjectDetailScreen() {
   const router = useRouter();
   const tokens = useTheme();
   const styles = useThemedStyles(createStyles);
+  const { isFree } = useEntitlement();
+  const { open } = usePaywall();
+
+  // PREMIUM V1 (C2.2) -- el modo independiente "Recursos" es Premium. FREE
+  // confirmado: la tile queda visible con `<PremiumBadge>` y el tap abre el
+  // paywall (origin `resources`) en vez de navegar. PREMIUM / entitlement no
+  // resuelto (loading|error): navega normal -- `recursos.tsx` decide su
+  // propio loading/error/lock. Ninguna otra tile se gatea.
+  const resourcesLocked = isFree;
 
   // Mismo mapeo por nombre real de materia que Materias (UI-3) -- reutilizado
   // desde `lib/academic/subject-icon.ts`, nunca duplicado. Solo se usa el
@@ -95,35 +107,48 @@ export default function SubjectDetailScreen() {
         Elige cómo quieres estudiar
       </Text>
       <Card variant="outlined" style={styles.card}>
-        {STUDY_MODE_TILES.map((tile, index) => (
-          <Fragment key={tile.key}>
-            {index > 0 ? <Divider /> : null}
-            <ListRow
-              title={tile.label}
-              description={tile.description}
-              leading={
-                <View style={[styles.iconTile, { backgroundColor: tileBackground }]}>
-                  <Icon name={tile.icon} size={18} color={tileIconColor} />
-                </View>
-              }
-              navigable={tile.enabled}
-              trailing={
-                tile.enabled ? undefined : (
-                  <Text variant="caption" color="muted">
-                    Próximamente
-                  </Text>
-                )
-              }
-              disabled={!tile.enabled}
-              accessibilityLabel={tile.enabled ? tile.label : `${tile.label}, próximamente`}
-              onPress={
-                tile.enabled && TILE_ROUTE[tile.key]
-                  ? () => router.push({ pathname: TILE_ROUTE[tile.key], params: { subjectId, name: name ?? '' } })
-                  : undefined
-              }
-            />
-          </Fragment>
-        ))}
+        {STUDY_MODE_TILES.map((tile, index) => {
+          const locked = tile.key === 'recursos' && resourcesLocked;
+          return (
+            <Fragment key={tile.key}>
+              {index > 0 ? <Divider /> : null}
+              <ListRow
+                title={tile.label}
+                description={tile.description}
+                leading={
+                  <View style={[styles.iconTile, { backgroundColor: tileBackground }]}>
+                    <Icon name={tile.icon} size={18} color={tileIconColor} />
+                  </View>
+                }
+                navigable={tile.enabled}
+                trailing={
+                  !tile.enabled ? (
+                    <Text variant="caption" color="muted">
+                      Próximamente
+                    </Text>
+                  ) : locked ? (
+                    <PremiumBadge />
+                  ) : undefined
+                }
+                disabled={!tile.enabled}
+                accessibilityLabel={
+                  !tile.enabled
+                    ? `${tile.label}, próximamente`
+                    : locked
+                      ? `${tile.label}, contenido Premium`
+                      : tile.label
+                }
+                onPress={
+                  !tile.enabled || !TILE_ROUTE[tile.key]
+                    ? undefined
+                    : locked
+                      ? () => open('resources')
+                      : () => router.push({ pathname: TILE_ROUTE[tile.key], params: { subjectId, name: name ?? '' } })
+                }
+              />
+            </Fragment>
+          );
+        })}
       </Card>
     </View>
   );

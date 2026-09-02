@@ -6,9 +6,11 @@ import { listChildTopics } from '../../../../../lib/api/education';
 import { getTopicsProgressBatch } from '../../../../../lib/api/progress';
 import { resolveContinuationEntry } from '../../../../../lib/progress/resolve-continuation';
 import { resourceFlowNav } from '../../../../../lib/study/study-navigation';
+import { isPremiumRequiredError } from '../../../../../lib/entitlement/premium-error';
 import { LoadingState } from '../../../../../components/loading-state';
 import { ErrorState } from '../../../../../components/error-state';
 import { EmptyState } from '../../../../../components/empty-state';
+import { PremiumLockedScreen } from '../../../../../components/premium/premium-locked-screen';
 import { Text, Card, Chip, Icon } from '../../../../../components/ui';
 import type { ChipVariant } from '../../../../../components/ui';
 import { useThemedStyles, useTheme, radii, spacing } from '../../../../../theme';
@@ -19,6 +21,7 @@ import { UnitMotif, resolveUnitMotif } from '../../../../../lib/academic/unit-mo
 type ScreenState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
+  | { status: 'premium' }
   | { status: 'ready'; resources: CurriculumTopicResponse[]; progressByTopic: Record<string, TopicProgressResponse> };
 
 /**
@@ -60,6 +63,12 @@ export default function UnidadRecursosScreen() {
     setState({ status: 'loading' });
     const childrenResult = await listChildTopics(unitId);
     if (!childrenResult.ok) {
+      // PREMIUM V1 (C2.2) -- deep-link / restored route a una unidad >= 2 con
+      // la cuenta en FREE: el backend devuelve `403 PREMIUM_REQUIRED`.
+      if (isPremiumRequiredError(childrenResult)) {
+        setState({ status: 'premium' });
+        return;
+      }
       setState({ status: 'error', message: childrenResult.message });
       return;
     }
@@ -86,7 +95,15 @@ export default function UnidadRecursosScreen() {
     load();
   }, [load]);
 
+  // `onBack` propio con fallback de router seguro -- `PremiumLockedScreen` es
+  // route-agnostic y NO infiere navegación desde `origin`.
+  function goBack() {
+    if (router.canGoBack()) router.back();
+    else router.replace({ pathname: '/(tabs)/estudio/[subjectId]/unidades', params: { subjectId, name: name ?? '' } });
+  }
+
   if (state.status === 'loading') return <LoadingState message="Cargando recursos…" />;
+  if (state.status === 'premium') return <PremiumLockedScreen origin="unit" onBack={goBack} />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
   if (state.resources.length === 0) {
     return (

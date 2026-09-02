@@ -9,9 +9,12 @@ import {
   resourceCountLabel,
   type ResourceCatalog,
 } from '../../../../lib/study/resource-catalog';
+import { useEntitlement } from '../../../../lib/entitlement/entitlement-provider';
 import { LoadingState } from '../../../../components/loading-state';
 import { ErrorState } from '../../../../components/error-state';
 import { EmptyState } from '../../../../components/empty-state';
+import { EntitlementUnavailable } from '../../../../components/premium/entitlement-unavailable';
+import { PremiumLockedScreen } from '../../../../components/premium/premium-locked-screen';
 import { Text, Card, Chip, Icon } from '../../../../components/ui';
 import type { ChipVariant } from '../../../../components/ui';
 import { useThemedStyles, useTheme, radii, spacing } from '../../../../theme';
@@ -22,6 +25,7 @@ import { UnitMotif, resolveUnitMotif } from '../../../../lib/academic/unit-motif
 type ScreenState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
+  | { status: 'premium' }
   | { status: 'ready'; catalog: ResourceCatalog };
 
 /**
@@ -46,7 +50,16 @@ export default function RecursosScreen() {
   const router = useRouter();
   const tokens = useTheme();
   const styles = useThemedStyles(createStyles);
+  const entitlement = useEntitlement();
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
+
+  // PREMIUM V1 (C2.2) -- el modo independiente "Recursos" es Premium.
+  //   loading           -> LoadingState local (espera al entitlement);
+  //   error inicial      -> <EntitlementUnavailable> (reintento state-driven);
+  //   FREE confirmado    -> <PremiumLockedScreen>, SIN ensamblar el catálogo;
+  //   PREMIUM confirmado -> catálogo;
+  //   backend PREMIUM_REQUIRED stale -> <PremiumLockedScreen>.
+  const confirmedTier = entitlement.state.status === 'ready' ? entitlement.state.tier : null;
 
   // Mismo tono de materia que Unidades / lista por unidad -- continuidad
   // Estudio -> Materia -> Recursos, nunca un color propio por recurso.
@@ -55,22 +68,39 @@ export default function RecursosScreen() {
   const accentBackground = subjectToneBackground(tokens, tone);
 
   const load = useCallback(async () => {
+    if (confirmedTier === null) return; // aún esperando el entitlement
+    if (confirmedTier === 'FREE') {
+      setState({ status: 'premium' });
+      return;
+    }
     setState({ status: 'loading' });
     const result = await assembleResourceCatalog(subjectId);
     if (!result.ok) {
+      if (result.premiumRequired) {
+        setState({ status: 'premium' }); // entitlement stale / deep-link
+        return;
+      }
       setState({ status: 'error', message: result.message });
       return;
     }
     setState({ status: 'ready', catalog: result.catalog });
-  }, [subjectId]);
+  }, [subjectId, confirmedTier]);
 
-  // Carga única al montar -- mismo criterio que `unidades.tsx` /
-  // `unidad/[unitId].tsx` (sin refresh-on-focus, sin polling, sin auto-retry).
+  // Se re-dispara con `subjectId` o con el tier confirmado (`FREE <-> PREMIUM`,
+  // o `error -> ready` tras un `refresh()`).
   useEffect(() => {
     load();
   }, [load]);
 
+  function goBack() {
+    if (router.canGoBack()) router.back();
+    else router.replace({ pathname: '/(tabs)/estudio/[subjectId]', params: { subjectId, name: name ?? '' } });
+  }
+
+  if (entitlement.state.status === 'loading') return <LoadingState message="Cargando recursos…" />;
+  if (entitlement.state.status === 'error') return <EntitlementUnavailable onRetry={() => void entitlement.refresh()} />;
   if (state.status === 'loading') return <LoadingState message="Cargando recursos…" />;
+  if (state.status === 'premium') return <PremiumLockedScreen origin="resources" onBack={goBack} />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
   if (state.catalog.sections.length === 0) {
     return <EmptyState message="Todavía no hay recursos disponibles para esta materia." />;

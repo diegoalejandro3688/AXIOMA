@@ -4,6 +4,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { LearningResourceResponse, ResourceContentBlockResponse } from '@axioma/contracts';
 import { getPublishedResource, listPublishedQuestions } from '../../../../../lib/api/education';
+import { isPremiumRequiredError } from '../../../../../lib/entitlement/premium-error';
+import { PremiumLockedScreen } from '../../../../../components/premium/premium-locked-screen';
 import { LoadingState } from '../../../../../components/loading-state';
 import { ErrorState } from '../../../../../components/error-state';
 import { EmptyState } from '../../../../../components/empty-state';
@@ -17,6 +19,7 @@ type ScreenState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'empty' }
+  | { status: 'premium' }
   | { status: 'ready'; resource: LearningResourceResponse; totalSteps: number };
 
 /**
@@ -61,6 +64,14 @@ export default function RecursoScreen() {
       listPublishedQuestions(topicId),
     ]);
 
+    // PREMIUM V1 (C2.2) -- deep-link / ruta restaurada a un recurso de una
+    // unidad >= 2 con la cuenta en FREE: el backend responde `403
+    // PREMIUM_REQUIRED`. Se mapea a `PremiumLockedScreen(origin='unit')` ANTES
+    // del 404 -> vacío y de cualquier error genérico.
+    if (isPremiumRequiredError(questionsResult) || isPremiumRequiredError(resourceResult)) {
+      setState({ status: 'premium' });
+      return;
+    }
     if (!questionsResult.ok) {
       setState({ status: 'error', message: questionsResult.message });
       return;
@@ -103,6 +114,7 @@ export default function RecursoScreen() {
   }
 
   if (state.status === 'loading') return <LoadingState message="Cargando recurso…" />;
+  if (state.status === 'premium') return <PremiumLockedScreen origin="unit" onBack={backToUnidades} />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
   if (state.status === 'empty') {
     return (

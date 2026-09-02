@@ -39,19 +39,6 @@ const MOBILE_ROOT = join(__dirname, '..');
 const read = (...seg: string[]) => readFileSync(join(MOBILE_ROOT, ...seg), 'utf8');
 const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-/** Recorre app/ recursivamente y devuelve el contenido concatenado de todos los .ts/.tsx. */
-function readAllAppSources(): string {
-  const out: string[] = [];
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (/\.tsx?$/.test(entry.name)) out.push(`\n// ${full}\n${readFileSync(full, 'utf8')}`);
-    }
-  };
-  walk(join(MOBILE_ROOT, 'app'));
-  return out.join('\n');
-}
 
 function main() {
   const paywallSrc = read('components', 'premium', 'premium-paywall.tsx');
@@ -137,12 +124,30 @@ function main() {
   check('PaywallProvider anidado dentro de EntitlementProvider, envolviendo ThemedRootNavigator', /<EntitlementProvider>\s*<PaywallProvider>\s*<ThemedRootNavigator \/>\s*<\/PaywallProvider>\s*<\/EntitlementProvider>/.test(layoutSrc));
 
   // --------------------------------------------------------------------
-  console.log('--- J. Ninguna pantalla de producto usa las primitivas todavia ---');
-  const appSources = readAllAppSources();
-  check('ningun archivo de app/ importa/usa usePaywall', !/usePaywall/.test(appSources));
-  check('ningun archivo de app/ usa <PremiumPaywall> / <PremiumBadge> / <PremiumLockedScreen>', !/<PremiumPaywall\b|<PremiumBadge\b|<PremiumLockedScreen\b/.test(appSources));
-  check('ninguna pantalla llama open(<origin>)', !/\.open\((['"])(unit|resources|exams|ai_quota)\1\)/.test(appSources.replace(layoutSrc, ''))); // _layout monta el host, no llama open
-  check('ninguna superficie IA gana subcadenas de plan (Premium/Free/3-6-15-50) por C2.1', (() => {
+  // J. Consumidores de las primitivas Premium.
+  //    C2.1 montaba el host sin consumidores. C2.2 los cablea, pero SOLO en
+  //    Estudio (Unidades, menu de materia, Recursos, y las 3 rutas de deep
+  //    link). Exams y Tutor IA NO deben tocar las primitivas todavia
+  //    (C2.3 / C2.4).
+  console.log('--- J. Consumidores de las primitivas Premium: solo Estudio (C2.2) ---');
+  const STUDY_PAYWALL_CONSUMERS = [
+    ['app', '(tabs)', 'estudio', '[subjectId]', 'unidades.tsx'],
+    ['app', '(tabs)', 'estudio', '[subjectId]', 'index.tsx'],
+    ['app', '(tabs)', 'estudio', '[subjectId]', 'recursos.tsx'],
+    ['app', '(tabs)', 'estudio', '[subjectId]', 'unidad', '[unitId].tsx'],
+    ['app', '(tabs)', 'estudio', 'topic', '[topicId]', 'recurso.tsx'],
+    ['app', '(tabs)', 'estudio', 'topic', '[topicId]', 'ejercicio.tsx'],
+  ];
+  const studyConsumerBlob = STUDY_PAYWALL_CONSUMERS.map((seg) => read(...seg)).join('\n');
+  check('las primitivas Premium SI se consumen en Estudio (C2.2)', /<PremiumBadge\b|<PremiumLockedScreen\b/.test(studyConsumerBlob) && /usePaywall|useEntitlement/.test(studyConsumerBlob));
+  const examsIaBlob = [
+    read('app', '(tabs)', 'estudio', 'ensayos', 'index.tsx'),
+    read('app', '(tabs)', 'ia', 'index.tsx'),
+    read('app', '(tabs)', 'ia', 'conversation', '[conversationId].tsx'),
+  ].map(stripComments).join('\n');
+  check('Ensayos / Tutor IA NO usan las primitivas Premium todavia (C2.3 / C2.4)', !/usePaywall|<PremiumPaywall\b|<PremiumBadge\b|<PremiumLockedScreen\b/.test(examsIaBlob));
+  check('solo _layout.tsx renderiza <PremiumPaywall> (patron host)', !/<PremiumPaywall\b/.test(studyConsumerBlob));
+  check('ninguna superficie IA gana subcadenas de plan (Premium/Free/3-6-15-50) por C2.2', (() => {
     const aiFiles = [
       read('app', '(tabs)', 'ia', 'index.tsx'),
       read('app', '(tabs)', 'ia', 'conversation', '[conversationId].tsx'),

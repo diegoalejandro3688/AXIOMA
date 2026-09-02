@@ -1,6 +1,7 @@
 import type { CurriculumTopicResponse, TopicProgressResponse } from '@axioma/contracts';
 import { listRootTopics, listChildTopics } from '../api/education';
 import { getTopicsProgressBatch } from '../api/progress';
+import { isPremiumRequiredError } from '../entitlement/premium-error';
 
 /**
  * ESTUDIO R -- ensamblado del "catálogo de Recursos" de una materia para el
@@ -24,6 +25,16 @@ import { getTopicsProgressBatch } from '../api/progress';
  * muestra `ErrorState` completo (mismo criterio global que `unidades.tsx`,
  * sin resiliencia por sección en V1). Una Unidad sin Recursos se OMITE de
  * las secciones (no rompe la carga).
+ *
+ * PREMIUM V1 -- Capa 2 (C2.2): el catálogo recorre TODAS las unidades, así
+ * que para una cuenta FREE topa con `403 PREMIUM_REQUIRED` en las unidades
+ * >= 2. Ese caso se PRESERVA como un discriminante propio
+ * (`premiumRequired: true`), nunca colapsado en `message` -- la pantalla lo
+ * enruta a `<PremiumLockedScreen>` en vez de `ErrorState`. Cualquier otro
+ * fallo conserva su semántica original (`premiumRequired: false` + `message`).
+ * `recursos.tsx` normalmente ni llega aquí para FREE (bloquea antes), pero
+ * un entitlement stale o un deep-link pueden hacerlo -> este discriminante
+ * es la defensa.
  */
 export interface ResourceCatalogSection {
   unit: CurriculumTopicResponse;
@@ -37,21 +48,28 @@ export interface ResourceCatalog {
 
 export type ResourceCatalogResult =
   | { ok: true; catalog: ResourceCatalog }
-  | { ok: false; message: string };
+  | { ok: false; premiumRequired: true }
+  | { ok: false; premiumRequired: false; message: string };
 
 export async function assembleResourceCatalog(subjectId: string): Promise<ResourceCatalogResult> {
   const unitsResult = await listRootTopics(subjectId);
   if (!unitsResult.ok) {
-    return { ok: false, message: unitsResult.message };
+    return isPremiumRequiredError(unitsResult)
+      ? { ok: false, premiumRequired: true }
+      : { ok: false, premiumRequired: false, message: unitsResult.message };
   }
 
   // N llamadas (una por Unidad canónica, hoy 3-4) -- mismo tradeoff que
   // `unidades.tsx`: no hay endpoint batch de hijos y crear uno para 3-4
   // llamadas no se justifica.
   const childrenLists = await Promise.all(unitsResult.data.map((unit) => listChildTopics(unit.id)));
+  const premiumChildError = childrenLists.find((result) => !result.ok && isPremiumRequiredError(result));
+  if (premiumChildError) {
+    return { ok: false, premiumRequired: true };
+  }
   const firstChildrenError = childrenLists.find((result) => !result.ok);
   if (firstChildrenError && !firstChildrenError.ok) {
-    return { ok: false, message: firstChildrenError.message };
+    return { ok: false, premiumRequired: false, message: firstChildrenError.message };
   }
 
   // Orden de Unidades y de Recursos = el que devuelve el backend
@@ -70,7 +88,9 @@ export async function assembleResourceCatalog(subjectId: string): Promise<Resour
   if (allResourceIds.length > 0) {
     const progressResult = await getTopicsProgressBatch(allResourceIds);
     if (!progressResult.ok) {
-      return { ok: false, message: progressResult.message };
+      // El batch de progreso NO esta gateado por Premium -- se conserva
+      // como error generico.
+      return { ok: false, premiumRequired: false, message: progressResult.message };
     }
     for (const progress of progressResult.data) {
       progressByResource[progress.curriculumTopicId] = progress;
