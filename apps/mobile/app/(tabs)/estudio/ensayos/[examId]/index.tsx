@@ -7,6 +7,8 @@ import { getExam, getExamAttempt, startExamAttempt } from '../../../../../lib/ap
 import { formatDuration } from '../../../../../lib/exams/timer';
 import { isTerminal } from '../../../../../lib/exams/attempt-state';
 import { getRememberedAttempt, rememberActiveAttempt, forgetActiveAttempt } from '../../../../../lib/exams/attempt-cache';
+import { usePaywall } from '../../../../../lib/entitlement/paywall-context';
+import { isPremiumRequiredError } from '../../../../../lib/entitlement/premium-error';
 import { LoadingState } from '../../../../../components/loading-state';
 import { ErrorState } from '../../../../../components/error-state';
 import { Text, Card, Button, Divider, Icon } from '../../../../../components/ui';
@@ -30,6 +32,14 @@ type ScreenState =
  * 2 métricas (Preguntas / Duración) -> sección "Antes de comenzar" con 3
  * reglas escaneables -> CTA. La regla del tiempo se mantiene explícita. Cero
  * cambios de datos, requests, `handleStart`/`handleResume`, navegación ni CTA.
+ *
+ * PREMIUM V1 -- Capa 2 (C2.3): NO hay bloqueo preventivo por `isFree`. El
+ * backend (C1.2, resume-first) es la única autoridad: `POST /attempts`
+ * devuelve `200` con el intento ACTIVE existente (incluye FREE tras downgrade
+ * con la cache local perdida) o `403 PREMIUM_REQUIRED` si no hay ninguno que
+ * reanudar. `handleResume` (cache ACTIVE válida) NO consulta entitlement ni
+ * abre paywall. En `handleStart`, SOLO `isPremiumRequiredError(result)` abre
+ * `open('exams')`; cualquier otro error conserva su comportamiento actual.
  */
 export default function EnsayoIntroScreen() {
   const { examId, name } = useLocalSearchParams<{ examId: string; name?: string }>();
@@ -39,6 +49,7 @@ export default function EnsayoIntroScreen() {
   const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
   const [starting, setStarting] = useState(false);
+  const { open } = usePaywall();
 
   // Acento de materia MUY DISCRETO: solo tiñe el eyebrow y los iconos de las
   // reglas. Mismo helper que Unidades/Recursos, sin color local.
@@ -76,6 +87,13 @@ export default function EnsayoIntroScreen() {
     const result = await startExamAttempt(examId);
     setStarting(false);
     if (!result.ok) {
+      // El backend rechazó CREAR un intento nuevo (no había ACTIVE que
+      // reanudar) y la cuenta es FREE -> paywall. Sin ErrorState, sin
+      // navegar, sin reintento automático, sin intento local falso.
+      if (isPremiumRequiredError(result)) {
+        open('exams');
+        return;
+      }
       setState({ status: 'error', message: result.message });
       return;
     }

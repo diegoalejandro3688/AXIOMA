@@ -125,29 +125,37 @@ function main() {
 
   // --------------------------------------------------------------------
   // J. Consumidores de las primitivas Premium.
-  //    C2.1 montaba el host sin consumidores. C2.2 los cablea, pero SOLO en
-  //    Estudio (Unidades, menu de materia, Recursos, y las 3 rutas de deep
-  //    link). Exams y Tutor IA NO deben tocar las primitivas todavia
-  //    (C2.3 / C2.4).
-  console.log('--- J. Consumidores de las primitivas Premium: solo Estudio (C2.2) ---');
-  const STUDY_PAYWALL_CONSUMERS = [
+  //    C2.1 montaba el host sin consumidores. C2.2 los cablea en Estudio
+  //    (Unidades, menu de materia, Recursos, 3 rutas de deep link). C2.3
+  //    anade Ensayos (lista + pre-start). Tutor IA todavia NO (C2.4).
+  console.log('--- J. Consumidores de las primitivas Premium: Estudio (C2.2) + Ensayos (C2.3), NO Tutor IA ---');
+  const PREMIUM_PRIMITIVE_CONSUMERS = [
     ['app', '(tabs)', 'estudio', '[subjectId]', 'unidades.tsx'],
     ['app', '(tabs)', 'estudio', '[subjectId]', 'index.tsx'],
     ['app', '(tabs)', 'estudio', '[subjectId]', 'recursos.tsx'],
     ['app', '(tabs)', 'estudio', '[subjectId]', 'unidad', '[unitId].tsx'],
     ['app', '(tabs)', 'estudio', 'topic', '[topicId]', 'recurso.tsx'],
     ['app', '(tabs)', 'estudio', 'topic', '[topicId]', 'ejercicio.tsx'],
+    ['app', '(tabs)', 'estudio', 'ensayos', 'index.tsx'],
+    ['app', '(tabs)', 'estudio', 'ensayos', '[examId]', 'index.tsx'],
   ];
-  const studyConsumerBlob = STUDY_PAYWALL_CONSUMERS.map((seg) => read(...seg)).join('\n');
-  check('las primitivas Premium SI se consumen en Estudio (C2.2)', /<PremiumBadge\b|<PremiumLockedScreen\b/.test(studyConsumerBlob) && /usePaywall|useEntitlement/.test(studyConsumerBlob));
-  const examsIaBlob = [
-    read('app', '(tabs)', 'estudio', 'ensayos', 'index.tsx'),
+  const consumerBlob = PREMIUM_PRIMITIVE_CONSUMERS.map((seg) => read(...seg)).join('\n');
+  check('las primitivas Premium SI se consumen en Estudio + Ensayos', /<PremiumBadge\b|<PremiumLockedScreen\b/.test(consumerBlob) && /usePaywall|useEntitlement/.test(consumerBlob));
+  const iaBlob = [
     read('app', '(tabs)', 'ia', 'index.tsx'),
     read('app', '(tabs)', 'ia', 'conversation', '[conversationId].tsx'),
   ].map(stripComments).join('\n');
-  check('Ensayos / Tutor IA NO usan las primitivas Premium todavia (C2.3 / C2.4)', !/usePaywall|<PremiumPaywall\b|<PremiumBadge\b|<PremiumLockedScreen\b/.test(examsIaBlob));
-  check('solo _layout.tsx renderiza <PremiumPaywall> (patron host)', !/<PremiumPaywall\b/.test(studyConsumerBlob));
-  check('ninguna superficie IA gana subcadenas de plan (Premium/Free/3-6-15-50) por C2.2', (() => {
+  check('Tutor IA NO usa las primitivas Premium todavia (C2.4)', !/usePaywall|<PremiumPaywall\b|<PremiumBadge\b|<PremiumLockedScreen\b/.test(iaBlob));
+  check('solo _layout.tsx renderiza <PremiumPaywall> (patron host)', !/<PremiumPaywall\b/.test(consumerBlob));
+  check('el runner / result / review de Ensayos NO gana primitivas Premium (C2.3)', (() => {
+    const flow = [
+      read('app', '(tabs)', 'estudio', 'ensayos', '[examId]', 'attempt', '[attemptId].tsx'),
+      read('app', '(tabs)', 'estudio', 'ensayos', '[examId]', 'result', '[attemptId].tsx'),
+      read('app', '(tabs)', 'estudio', 'ensayos', '[examId]', 'review', '[attemptId].tsx'),
+    ].map(stripComments).join('\n');
+    return !/usePaywall|<PremiumPaywall\b|<PremiumBadge\b|<PremiumLockedScreen\b|useEntitlement/.test(flow);
+  })());
+  check('ninguna superficie IA gana subcadenas de plan (Premium/Free/3-6-15-50)', (() => {
     const aiFiles = [
       read('app', '(tabs)', 'ia', 'index.tsx'),
       read('app', '(tabs)', 'ia', 'conversation', '[conversationId].tsx'),

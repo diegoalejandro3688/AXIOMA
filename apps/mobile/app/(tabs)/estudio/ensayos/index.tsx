@@ -4,9 +4,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { ExamListItem } from '@axioma/contracts';
 import { listExams } from '../../../../lib/api/exams';
 import { formatDuration } from '../../../../lib/exams/timer';
+import { useEntitlement } from '../../../../lib/entitlement/entitlement-provider';
 import { LoadingState } from '../../../../components/loading-state';
 import { ErrorState } from '../../../../components/error-state';
 import { EmptyState } from '../../../../components/empty-state';
+import { PremiumBadge } from '../../../../components/premium/premium-badge';
 import { Text, Card, Icon } from '../../../../components/ui';
 import { useThemedStyles, useTheme, spacing, radii } from '../../../../theme';
 import type { ThemeTokens } from '../../../../theme';
@@ -31,12 +33,23 @@ type ScreenState =
  * Recursos (`subjectIcon(name)` + `subjectTone*`), sin colores locales ni
  * `UnitMotif` (un ensayo completo no es una unidad curricular). Sin cambios
  * de datos, requests ni funcionalidad.
+ *
+ * PREMIUM V1 -- Capa 2 (C2.3): los Ensayos son Premium, pero el catálogo
+ * (`GET /exams`) sigue VISIBLE para FREE. Con FREE confirmado la card muestra
+ * `<PremiumBadge>` y atenúa SOLO la tile decorativa (mismo tono `state.warning`
+ * que Unidades, título a contraste pleno, sin opacity de card). El tap SIGUE
+ * navegando al pre-start -- NUNCA abre el paywall desde la lista: la lista no
+ * sabe si el usuario tiene un intento ACTIVE reanudable; esa decisión es del
+ * backend en `POST /attempts` (resume-first, C1.2). `loading`/`error` de
+ * entitlement -> cards normales, sin estado comercial. El tier solo afecta la
+ * presentación: no se re-pide `GET /exams` porque cambie.
  */
 export default function EnsayosListScreen() {
   const { subjectId, name } = useLocalSearchParams<{ subjectId?: string; name?: string }>();
   const router = useRouter();
   const tokens = useTheme();
   const styles = useThemedStyles(createStyles);
+  const { isFree } = useEntitlement();
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
 
   // Tono de la materia -- mismo criterio que Unidades/Recursos: viene del
@@ -78,35 +91,51 @@ export default function EnsayosListScreen() {
         data={state.exams}
         keyExtractor={(exam) => exam.id}
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <Card
-            variant="interactive"
-            accessibilityLabel={`Abrir ${item.title}, ${item.questionCount} preguntas`}
-            style={styles.card}
-            onPress={() =>
-              router.push({
-                pathname: '/(tabs)/estudio/ensayos/[examId]',
-                params: { examId: item.id, name: name ?? '' },
-              })
-            }
-          >
-            <View style={[styles.iconTile, { backgroundColor: examIconBackground }]}>
-              <Icon name="study-mode-essay" size={22} color={examIconColor} />
-            </View>
-            <View style={styles.cardBody}>
-              <Text variant="titleMedium">{item.title}</Text>
-              <Text variant="bodySmall" color="secondary">
-                {item.questionCount} preguntas · {formatDuration(item.durationSeconds)}
-              </Text>
-              {name ? (
+        renderItem={({ item }) => {
+          // FREE confirmado: badge + tile atenuada. El tap NO cambia -- sigue
+          // navegando al pre-start (el backend decide reanudar vs. 403).
+          const locked = isFree;
+          const tileBackground = locked ? tokens.color.state.warning.background : examIconBackground;
+          const tileIconColor = locked ? tokens.color.state.warning.text : examIconColor;
+          return (
+            <Card
+              variant="interactive"
+              accessibilityLabel={
+                locked
+                  ? `Abrir ${item.title}, ${item.questionCount} preguntas, contenido Premium`
+                  : `Abrir ${item.title}, ${item.questionCount} preguntas`
+              }
+              style={styles.card}
+              onPress={() =>
+                router.push({
+                  pathname: '/(tabs)/estudio/ensayos/[examId]',
+                  params: { examId: item.id, name: name ?? '' },
+                })
+              }
+            >
+              <View style={[styles.iconTile, { backgroundColor: tileBackground }]}>
+                <Icon name="study-mode-essay" size={22} color={tileIconColor} />
+              </View>
+              <View style={styles.cardBody}>
+                <Text variant="titleMedium">{item.title}</Text>
                 <Text variant="bodySmall" color="secondary">
-                  {name}
+                  {item.questionCount} preguntas · {formatDuration(item.durationSeconds)}
                 </Text>
-              ) : null}
-            </View>
-            <Icon name="chevron-right" size={20} color="muted" />
-          </Card>
-        )}
+                {name ? (
+                  <Text variant="bodySmall" color="secondary">
+                    {name}
+                  </Text>
+                ) : null}
+                {locked ? (
+                  <View style={styles.badgeRow}>
+                    <PremiumBadge />
+                  </View>
+                ) : null}
+              </View>
+              <Icon name="chevron-right" size={20} color="muted" />
+            </Card>
+          );
+        }}
       />
     </View>
   );
@@ -132,5 +161,6 @@ function createStyles(t: ThemeTokens) {
       justifyContent: 'center' as const,
     },
     cardBody: { flex: 1, gap: 2 },
+    badgeRow: { flexDirection: 'row' as const, marginTop: 2 },
   };
 }
