@@ -5,6 +5,8 @@ import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } fro
 import { FullScreenLoader } from '../components/full-screen-loader';
 import { AuthProvider, useAuth } from '../lib/auth/auth-provider';
 import { OnboardingProvider, useOnboarding } from '../lib/onboarding/onboarding-provider';
+// PREMIUM V1 -- Capa 2 (Mobile gating), C2.0. Fuente de verdad de authorization en mobile.
+import { EntitlementProvider } from '../lib/entitlement/entitlement-provider';
 import { ThemeProvider, useTheme, useColorSchemeName } from '../theme';
 
 /**
@@ -28,7 +30,9 @@ export default function RootLayout() {
     <ThemeProvider>
       <AuthProvider>
         <OnboardingProvider>
-          <ThemedRootNavigator />
+          <EntitlementProvider>
+            <ThemedRootNavigator />
+          </EntitlementProvider>
         </OnboardingProvider>
       </AuthProvider>
     </ThemeProvider>

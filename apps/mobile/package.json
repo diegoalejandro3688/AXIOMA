@@ -27,6 +27,7 @@
     "verify:unidades-batch-gate": "tsx scripts/verify-unidades-batch-gate.ts",
     "verify:study-navigation-gate": "tsx scripts/verify-study-navigation-gate.ts",
     "verify:api-client-gate": "tsx scripts/verify-api-client-gate.ts",
+    "verify:entitlement-mobile-gate": "tsx scripts/verify-entitlement-mobile-gate.ts",
     "verify:unit-motif-gate": "tsx scripts/verify-unit-motif-gate.ts",
     "verify:recursos-catalog-gate": "tsx scripts/verify-recursos-catalog-gate.ts",
     "verify:free-practice-gate": "tsx scripts/verify-free-practice-gate.ts"
