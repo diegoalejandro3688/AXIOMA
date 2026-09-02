@@ -11,6 +11,7 @@ import { AiMessageBubble, type MessageReportState } from '../../../../components
 import { AiThinkingIndicator } from '../../../../components/ai/ai-thinking-indicator';
 import { AiDisclaimer } from '../../../../components/ai/ai-disclaimer';
 import { AiModeSelector } from '../../../../components/ai/ai-mode-selector';
+import { AiLimitUpsell } from '../../../../components/ai/ai-limit-upsell';
 import { LoadingState } from '../../../../components/loading-state';
 import { ErrorState } from '../../../../components/error-state';
 import { Text, Button } from '../../../../components/ui';
@@ -261,6 +262,15 @@ export default function AiConversationScreen() {
           </Text>
         </View>
       ) : null}
+
+      {/*
+        C2.4 -- upsell OPCIONAL: solo se pinta si la cuenta es FREE confirmada
+        y el Tutor ya esta bloqueado por el estado de cuota/turnos derivado del
+        servidor (`!availability.canSend`). El componente decide por si mismo
+        (entitlement + `blocked`); aqui no hay logica de plan. Nunca abre el
+        paywall solo -- solo su CTA lo hace.
+      */}
+      <AiLimitUpsell blocked={!availability.canSend} />
 
       {/*
         AI-2A -- composer integrado (mismo patrón visual ya aprobado en

@@ -9,6 +9,7 @@ import { mapSendMessageResult, resolveSendOperationId, type PendingSendAttempt }
 import { resolveSendAvailability } from '../../../lib/ai/conversation-availability';
 import { ASSISTANCE_MODE_OPTIONS, DEFAULT_ASSISTANCE_MODE, describeAssistanceMode } from '../../../lib/ai/assistance-modes';
 import { AiQuotaSummary } from '../../../components/ai/ai-quota-summary';
+import { AiLimitUpsell } from '../../../components/ai/ai-limit-upsell';
 import { AiDisclaimer } from '../../../components/ai/ai-disclaimer';
 import { AiTutorMark } from '../../../components/ai/ai-tutor-mark';
 import { LoadingState } from '../../../components/loading-state';
@@ -357,6 +358,13 @@ export default function IaHubScreen() {
             {homeAvailability.message}
           </Text>
         ) : null}
+
+        {/*
+          C2.4 -- upsell OPCIONAL: FREE confirmada + Tutor ya bloqueado por el
+          estado de cuota derivado del servidor. El componente decide solo;
+          aqui no hay logica de plan. El CTA es lo unico que abre el paywall.
+        */}
+        <AiLimitUpsell blocked={!!homeAvailability && !homeAvailability.canSend} />
 
         {homeSendError ? (
           <Text variant="bodySmall" color="error">

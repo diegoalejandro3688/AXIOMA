@@ -127,8 +127,10 @@ function main() {
   // J. Consumidores de las primitivas Premium.
   //    C2.1 montaba el host sin consumidores. C2.2 los cablea en Estudio
   //    (Unidades, menu de materia, Recursos, 3 rutas de deep link). C2.3
-  //    anade Ensayos (lista + pre-start). Tutor IA todavia NO (C2.4).
-  console.log('--- J. Consumidores de las primitivas Premium: Estudio (C2.2) + Ensayos (C2.3), NO Tutor IA ---');
+  //    anade Ensayos (lista + pre-start). C2.4 anade el Tutor IA via
+  //    `components/ai/ai-limit-upsell.tsx` (frontera fuera del scan legacy);
+  //    las PANTALLAS del Tutor siguen sin tocar las primitivas directamente.
+  console.log('--- J. Consumidores de las primitivas Premium: Estudio (C2.2) + Ensayos (C2.3) + Tutor IA via AiLimitUpsell (C2.4) ---');
   const PREMIUM_PRIMITIVE_CONSUMERS = [
     ['app', '(tabs)', 'estudio', '[subjectId]', 'unidades.tsx'],
     ['app', '(tabs)', 'estudio', '[subjectId]', 'index.tsx'],
@@ -141,12 +143,19 @@ function main() {
   ];
   const consumerBlob = PREMIUM_PRIMITIVE_CONSUMERS.map((seg) => read(...seg)).join('\n');
   check('las primitivas Premium SI se consumen en Estudio + Ensayos', /<PremiumBadge\b|<PremiumLockedScreen\b/.test(consumerBlob) && /usePaywall|useEntitlement/.test(consumerBlob));
-  const iaBlob = [
+
+  // C2.4 -- el Tutor IA se cablea EXCLUSIVAMENTE a traves de este componente
+  // frontera, nunca dentro de las pantallas escaneadas por el gate legacy.
+  const upsellCode = stripComments(read('components', 'ai', 'ai-limit-upsell.tsx'));
+  check('AiLimitUpsell (C2.4) usa usePaywall y abre open(\'ai_quota\')', /usePaywall\(\)/.test(upsellCode) && /open\('ai_quota'\)/.test(upsellCode));
+  check('AiLimitUpsell NO usa modal/route/bottom-sheet propio (solo el host global)', !/<PremiumPaywall\b|createModal|BottomSheet|router\.(push|replace)/.test(upsellCode));
+  const iaScreensBlob = [
     read('app', '(tabs)', 'ia', 'index.tsx'),
     read('app', '(tabs)', 'ia', 'conversation', '[conversationId].tsx'),
   ].map(stripComments).join('\n');
-  check('Tutor IA NO usa las primitivas Premium todavia (C2.4)', !/usePaywall|<PremiumPaywall\b|<PremiumBadge\b|<PremiumLockedScreen\b/.test(iaBlob));
-  check('solo _layout.tsx renderiza <PremiumPaywall> (patron host)', !/<PremiumPaywall\b/.test(consumerBlob));
+  check('las PANTALLAS del Tutor IA no tocan las primitivas ni el paywall directamente (frontera = AiLimitUpsell)', !/usePaywall|<PremiumPaywall\b|<PremiumBadge\b|<PremiumLockedScreen\b|open\('ai_quota'\)/.test(iaScreensBlob));
+  check('las PANTALLAS del Tutor IA montan <AiLimitUpsell>', /<AiLimitUpsell\b/.test(iaScreensBlob));
+  check('solo _layout.tsx renderiza <PremiumPaywall> (patron host)', !/<PremiumPaywall\b/.test(consumerBlob) && !/<PremiumPaywall\b/.test(upsellCode));
   check('el runner / result / review de Ensayos NO gana primitivas Premium (C2.3)', (() => {
     const flow = [
       read('app', '(tabs)', 'estudio', 'ensayos', '[examId]', 'attempt', '[attemptId].tsx'),
