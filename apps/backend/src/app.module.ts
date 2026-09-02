@@ -14,6 +14,8 @@ import { UserModule } from './user/user.module';
 import { ProgressModule } from './progress/progress.module';
 import { GamificationModule } from './gamification/gamification.module';
 import { AiModule } from './ai/ai.module';
+// PREMIUM V1 -- Capa 1 (Entitlement backend), C1.1.
+import { EntitlementModule } from './entitlement/entitlement.module';
 import { AdministrationModule } from './administration/administration.module';
 import { EditorialModule } from './editorial/editorial.module';
 // ENSAYOS-F1 -- dominio EXAMS / Ensayos V1 (ADR-0024).
@@ -51,6 +53,7 @@ import { CoverageMatrixModule } from './editorial/coverage-matrix.module';
     ProgressModule,
     GamificationModule,
     AiModule,
+    EntitlementModule,
     AdministrationModule,
     EditorialModule,
     ExamsModule,

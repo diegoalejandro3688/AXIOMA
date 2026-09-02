@@ -4,6 +4,8 @@ import { AuthModule } from '../auth/auth.module';
 import { EducationModule } from '../education/education.module';
 import { ProgressModule } from '../progress/progress.module';
 import { InternalOpsModule } from '../platform/internal-ops/internal-ops.module';
+// PREMIUM V1 -- Capa 1 (C1.1): AiEntitlementService es ahora un adaptador delgado sobre EntitlementService.
+import { EntitlementModule } from '../entitlement/entitlement.module';
 import { AiConversationRepository } from './ai-conversation.repository';
 import { AiMessageRepository } from './ai-message.repository';
 import { AiUsageLedgerRepository } from './ai-usage-ledger.repository';
@@ -39,7 +41,7 @@ import { AnthropicAiProvider } from './anthropic-ai-provider';
  * producción, nunca alcanzable con tráfico real.
  */
 @Module({
-  imports: [AuthModule, ConfigModule, InternalOpsModule, EducationModule, ProgressModule],
+  imports: [AuthModule, ConfigModule, InternalOpsModule, EducationModule, ProgressModule, EntitlementModule],
   controllers: [AiConversationController, AiStatusController, AiInternalAdminController],
   providers: [
     AiConversationRepository,
