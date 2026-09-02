@@ -34,6 +34,8 @@ export default function EstudioLayout() {
       <Stack.Screen name="[subjectId]/unidad/[unitId]" options={{ title: 'Recursos' }} />
       {/* ESTUDIO R -- modo independiente Recursos (catálogo completo de la materia). */}
       <Stack.Screen name="[subjectId]/recursos" options={{ title: 'Recursos' }} />
+      {/* ESTUDIO / PRÁCTICA LIBRE V1 -- práctica continua stateless de preguntas aleatorias. */}
+      <Stack.Screen name="[subjectId]/practica-libre" options={{ title: 'Práctica libre' }} />
       <Stack.Screen name="topic/[topicId]/recurso" options={{ headerShown: false }} />
       <Stack.Screen name="topic/[topicId]/ejercicio" options={{ headerShown: false }} />
       {/* ENSAYOS-M1-C -- flujo de Ensayos, misma pestaña Estudio (ADR-0024). */}

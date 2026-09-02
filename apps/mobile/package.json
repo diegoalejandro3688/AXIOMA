@@ -28,7 +28,8 @@
     "verify:study-navigation-gate": "tsx scripts/verify-study-navigation-gate.ts",
     "verify:api-client-gate": "tsx scripts/verify-api-client-gate.ts",
     "verify:unit-motif-gate": "tsx scripts/verify-unit-motif-gate.ts",
-    "verify:recursos-catalog-gate": "tsx scripts/verify-recursos-catalog-gate.ts"
+    "verify:recursos-catalog-gate": "tsx scripts/verify-recursos-catalog-gate.ts",
+    "verify:free-practice-gate": "tsx scripts/verify-free-practice-gate.ts"
   },
   "dependencies": {
     "@axioma/contracts": "workspace:*",

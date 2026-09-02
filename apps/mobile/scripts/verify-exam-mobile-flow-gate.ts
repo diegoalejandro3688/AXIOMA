@@ -190,7 +190,11 @@ function main() {
   const tile = read('app/(tabs)/estudio/[subjectId]/index.tsx');
   check("el tile 'ensayo' está enabled: true", /key: 'ensayo',[\s\S]{0,160}enabled: true/.test(tile));
   check("el tile 'ensayo' rutea a /(tabs)/estudio/ensayos", /ensayo: '\/\(tabs\)\/estudio\/ensayos'/.test(tile));
-  check("los tiles 'recursos' y 'practica-libre' siguen deshabilitados", /key: 'recursos',[\s\S]{0,160}enabled: false/.test(tile) && /key: 'practica-libre',[\s\S]{0,160}enabled: false/.test(tile));
+  // PRÁCTICA LIBRE V1 -- stale assertion discovered during free-practice audit:
+  // el incremento R (Modo Recursos) habilitó `recursos`, y P1 (Práctica libre)
+  // habilita `practica-libre`. Los cuatro modos de Estudio están ahora activos;
+  // el flujo de Ensayos no cambió.
+  check("los cuatro tiles de modalidad están enabled: true", /key: 'unidades',[\s\S]{0,160}enabled: true/.test(tile) && /key: 'recursos',[\s\S]{0,160}enabled: true/.test(tile) && /key: 'practica-libre',[\s\S]{0,160}enabled: true/.test(tile) && /key: 'ensayo',[\s\S]{0,160}enabled: true/.test(tile));
 
   console.log('--- 14. Regresión Study: pantallas del recorrido de Study sin cambios ---');
   // ENSAYOS-M1-D toca a propósito `content-block-renderer.tsx` (tamaño

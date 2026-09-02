@@ -46,9 +46,9 @@ const STUDY_MODE_TILES: StudyModeTile[] = [
   {
     key: 'practica-libre',
     label: 'Práctica libre',
-    description: 'Crea tu propia práctica y mejora a tu ritmo.',
+    description: 'Practica con preguntas aleatorias de la materia.',
     icon: 'study-mode-practice',
-    enabled: false,
+    enabled: true,
   },
   {
     key: 'ensayo',
@@ -61,10 +61,14 @@ const STUDY_MODE_TILES: StudyModeTile[] = [
 
 const TILE_ROUTE: Record<
   string,
-  '/(tabs)/estudio/[subjectId]/unidades' | '/(tabs)/estudio/[subjectId]/recursos' | '/(tabs)/estudio/ensayos'
+  | '/(tabs)/estudio/[subjectId]/unidades'
+  | '/(tabs)/estudio/[subjectId]/recursos'
+  | '/(tabs)/estudio/[subjectId]/practica-libre'
+  | '/(tabs)/estudio/ensayos'
 > = {
   unidades: '/(tabs)/estudio/[subjectId]/unidades',
   recursos: '/(tabs)/estudio/[subjectId]/recursos',
+  'practica-libre': '/(tabs)/estudio/[subjectId]/practica-libre',
   ensayo: '/(tabs)/estudio/ensayos',
 };
 
