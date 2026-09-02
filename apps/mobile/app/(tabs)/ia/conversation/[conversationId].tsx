@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import type { AiAssistanceMode, AiConversationDetailResponse, AiResponseReportType } from '@axioma/contracts';
@@ -8,6 +8,7 @@ import { mapSendMessageResult, resolveSendOperationId, type PendingSendAttempt, 
 import { resolveSendAvailability } from '../../../../lib/ai/conversation-availability';
 import { DEFAULT_ASSISTANCE_MODE } from '../../../../lib/ai/assistance-modes';
 import { AiMessageBubble, type MessageReportState } from '../../../../components/ai/ai-message-bubble';
+import { AiThinkingIndicator } from '../../../../components/ai/ai-thinking-indicator';
 import { AiDisclaimer } from '../../../../components/ai/ai-disclaimer';
 import { AiModeSelector } from '../../../../components/ai/ai-mode-selector';
 import { LoadingState } from '../../../../components/loading-state';
@@ -73,6 +74,15 @@ export default function AiConversationScreen() {
     setState({ status: 'loading' });
     void load();
   }, [load]);
+
+  // Al abrir el teclado, mantener a la vista el final de la conversación
+  // (último mensaje + estado "pensando") -- el `onContentSizeChange` del
+  // ScrollView ya cubre el autoscroll cuando el contenido crece; esto cubre
+  // el caso "el contenido no cambió pero el teclado tapó el final".
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', () => scrollRef.current?.scrollToEnd({ animated: true }));
+    return () => sub.remove();
+  }, []);
 
   async function submit(content: string) {
     if (sendState.status === 'sending') return; // anti doble-toque local.
@@ -152,7 +162,7 @@ export default function AiConversationScreen() {
   const inputDisabled = !availability.canSend || sending;
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       {/*
         AI-2A -- la cuota deja de mostrarse en esta pantalla (ya vive en el
         Home del Tutor IA); `detail.dailyQuota`/`turnCount`/`maxTurns` siguen
@@ -190,14 +200,25 @@ export default function AiConversationScreen() {
           ))
         )}
 
-        {sending ? (
-          <View style={styles.thinking}>
-            <ActivityIndicator size="small" color={tokens.color.accent.default} />
-            <Text variant="caption" color="secondary">
-              El Tutor está preparando su respuesta…
+        {/*
+          Mientras `sending`: se muestra el texto que el estudiante acaba de
+          enviar (echo transitorio de `pending.content`, el mismo que estaba
+          en el composer) + el indicador animado "Tutor IA está pensando".
+          NO es una actualización optimista: `pending`/el echo desaparecen en
+          cuanto llega la respuesta canónica del servidor (`userMessage`/
+          `assistantMessage`), que es lo único que se pinta como mensaje real.
+        */}
+        {sending && pending ? (
+          <View style={[styles.pendingUser, styles.bubbleUser]}>
+            <Text variant="caption" color="muted" style={styles.pendingUserAuthor}>
+              Tú
+            </Text>
+            <Text variant="body" style={styles.pendingUserText}>
+              {pending.content}
             </Text>
           </View>
         ) : null}
+        {sending ? <AiThinkingIndicator /> : null}
       </ScrollView>
 
       {/*
@@ -294,7 +315,21 @@ function createStyles(t: ThemeTokens) {
       padding: 16,
     },
     emptyText: { lineHeight: 19 },
-    thinking: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
+    // Echo transitorio del mensaje recién enviado -- mismo look que la
+    // burbuja real del usuario (`ai-message-bubble.tsx`), alineado a la
+    // derecha, visible solo mientras `sending`.
+    pendingUser: {
+      alignSelf: 'flex-end' as const,
+      maxWidth: '85%' as const,
+      borderRadius: 14,
+      borderWidth: 1,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      gap: 4,
+    },
+    bubbleUser: { backgroundColor: t.color.accent.subtleBg, borderColor: t.color.accent.default },
+    pendingUserAuthor: { textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+    pendingUserText: { color: t.color.text.primary },
     notice: { marginHorizontal: 16, marginBottom: 8, borderWidth: 1, borderRadius: 8, padding: 10, gap: 6 },
     noticeError: { backgroundColor: t.color.state.error.background, borderColor: t.color.state.error.border },
     noticeErrorText: { color: t.color.state.error.text },

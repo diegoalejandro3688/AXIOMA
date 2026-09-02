@@ -245,7 +245,7 @@ export default function IaHubScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       {/*
         AI-1 -- header custom rediseñado: acceso ☰ al historial (antes vivía
         inline en el contenido principal) + identidad del Tutor. Reemplaza el
@@ -277,7 +277,15 @@ export default function IaHubScreen() {
           tipográfico, sin fontSize arbitrario.
         */}
         <View style={styles.hero}>
-          <AiTutorMark size={104} />
+          {/*
+            AI FINAL UX POLISH -- `size` baja un paso (104 -> 88). El
+            contenedor de `AiTutorMark` es `size * 2.3`, en su mayor parte
+            aire transparente alrededor del símbolo: reducirlo recupera
+            espacio vertical real en el Home sin encoger de forma perceptible
+            el símbolo visible ni cambiar la jerarquía. Es el mayor bloque de
+            alto recuperable para que la landing quepa sin scroll.
+          */}
+          <AiTutorMark size={88} />
           <Text variant="heading2" style={styles.heroQuestion} accessibilityRole="header">
             ¿Qué quieres aprender hoy?
           </Text>
@@ -560,15 +568,16 @@ function createStyles(t: ThemeTokens) {
     },
     headerTitleBlock: { flex: 1, alignItems: 'center' as const },
     headerSpacer: { width: 44 },
-    content: { flexGrow: 1, gap: spacing.space5, padding: spacing.space5, paddingBottom: spacing.space8, justifyContent: 'center' as const },
-    // AI-1C -- `paddingVertical` reducido en un paso (`space6` -> `space5`):
-    // el subtítulo pasó de 2 líneas a 1, ese aire ya no hace falta. Sin
-    // reorganizar el resto de la jerarquía (mismo `gap`, mismo orden).
-    // AI-1D -- `gap` reducido un paso (`space3` -> `space2`): `AiTutorMark`
-    // ya incluye su propio aire visual (la red se extiende más allá del
-    // símbolo), así que el hero no necesita tanto espacio adicional entre el
-    // símbolo y el título para sentirse equilibrado.
-    hero: { alignItems: 'center' as const, gap: spacing.space2, paddingVertical: spacing.space5 },
+    // AI FINAL UX POLISH -- se recupera el exceso vertical del Home para que
+    // la landing quepa sin scroll perceptible con el teclado cerrado, SOLO
+    // vía spacing/padding (sin recortar contenido, sin cambiar jerarquía):
+    // `gap` space5 -> space4, `padding` space5 -> space4, `paddingBottom`
+    // space8 -> space5. `justifyContent: 'center'` se mantiene para el look
+    // de landing; el `ScrollView` sigue presente como red de seguridad para
+    // pantallas más bajas (nunca recorta).
+    content: { flexGrow: 1, gap: spacing.space4, padding: spacing.space4, paddingBottom: spacing.space5, justifyContent: 'center' as const },
+    // AI-1C/1D + FINAL UX POLISH -- `paddingVertical` del hero space5 -> space3.
+    hero: { alignItems: 'center' as const, gap: spacing.space2, paddingVertical: spacing.space3 },
     heroQuestion: { textAlign: 'center' as const },
     heroSubtitle: { textAlign: 'center' as const, maxWidth: 320 },
     // AI-1B -- composer real: superficie clara, borde sutil, radio del
@@ -612,7 +621,7 @@ function createStyles(t: ThemeTokens) {
     },
     modeOptionRowSelected: { backgroundColor: t.color.accent.subtleBg },
     modeOptionText: { flex: 1, gap: 2 },
-    footerInfo: { gap: spacing.space2, marginTop: spacing.space4, opacity: 0.7 },
+    footerInfo: { gap: spacing.space2, marginTop: spacing.space3, opacity: 0.7 },
     historyHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const },
     historyList: { maxHeight: 360 },
     statusErrorBox: {
