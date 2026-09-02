@@ -7,7 +7,7 @@ import { listPublishedQuestions } from '../../../../../lib/api/education';
 import { getTopicProgress } from '../../../../../lib/api/progress';
 import { submitResponseViaOutbox } from '../../../../../lib/progress/submit-response';
 import { syncPendingOperations } from '../../../../../lib/offline/sync-worker';
-import { isPremiumRequiredError } from '../../../../../lib/entitlement/premium-error';
+import { isPremiumRequiredError, isPremiumRequiredOutcome } from '../../../../../lib/entitlement/premium-error';
 import { PremiumLockedScreen } from '../../../../../components/premium/premium-locked-screen';
 import { LoadingState } from '../../../../../components/loading-state';
 import { ErrorState } from '../../../../../components/error-state';
@@ -114,6 +114,18 @@ export default function EjercicioScreen() {
     });
 
     setSubmitting(false);
+
+    // PREMIUM V1 (C2.2) -- una cuenta PREMIUM pudo abrir este ejercicio de
+    // U3+ y luego hacer downgrade / vencer la suscripcion con la pantalla
+    // abierta. La escritura nueva la rechaza C1.4 con `403 PREMIUM_REQUIRED`.
+    // NUNCA se trata como exito; la operacion ya quedo FAILED en el outbox
+    // (4xx -> permanente, ver `flushOperation`), no se reintenta; la pantalla
+    // pasa al lock. Un fallo de red conserva su semantica offline (PENDING).
+    if (isPremiumRequiredOutcome(outcome)) {
+      setState({ status: 'premium' });
+      return;
+    }
+
     setState((prev) => {
       if (prev.status !== 'ready') return prev;
       if (outcome.kind === 'ok') {

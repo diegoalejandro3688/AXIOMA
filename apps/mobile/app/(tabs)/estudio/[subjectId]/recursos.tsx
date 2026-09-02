@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { SectionList, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { CurriculumTopicResponse, TopicProgressResponse } from '@axioma/contracts';
@@ -67,14 +67,22 @@ export default function RecursosScreen() {
   const accentColor = subjectToneColor(tokens, tone);
   const accentBackground = subjectToneBackground(tokens, tone);
 
+  // Se incrementa en cada `load()`; una respuesta de `assembleResourceCatalog`
+  // cuya generación cambió (otra materia, o `PREMIUM -> FREE` mientras estaba
+  // en vuelo) se DESCARTA -- nunca puede restaurar el catálogo Premium sobre
+  // una pantalla ya bloqueada / de otra materia.
+  const loadGenRef = useRef(0);
+
   const load = useCallback(async () => {
     if (confirmedTier === null) return; // aún esperando el entitlement
+    const gen = ++loadGenRef.current;
     if (confirmedTier === 'FREE') {
       setState({ status: 'premium' });
       return;
     }
     setState({ status: 'loading' });
     const result = await assembleResourceCatalog(subjectId);
+    if (gen !== loadGenRef.current) return; // respuesta obsoleta (tier/materia cambió)
     if (!result.ok) {
       if (result.premiumRequired) {
         setState({ status: 'premium' }); // entitlement stale / deep-link

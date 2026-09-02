@@ -212,7 +212,7 @@ async function main() {
     ['topic/[topicId]/ejercicio', EJERCICIO_DL],
   ] as const) {
     const code = stripComments(read(path));
-    check(`${label}: importa isPremiumRequiredError`, /import \{ isPremiumRequiredError \} from '[^']*lib\/entitlement\/premium-error'/.test(code));
+    check(`${label}: importa isPremiumRequiredError`, /import \{[^}]*\bisPremiumRequiredError\b[^}]*\} from '[^']*lib\/entitlement\/premium-error'/.test(code));
     check(`${label}: importa PremiumLockedScreen`, /import \{ PremiumLockedScreen \} from '[^']*components\/premium\/premium-locked-screen'/.test(code));
     check(`${label}: mapea isPremiumRequiredError -> setState({ status: 'premium' })`, /if \(isPremiumRequiredError\([\s\S]{0,120}setState\(\{ status: 'premium' \}\)/.test(code));
     check(`${label}: renderiza <PremiumLockedScreen origin="unit" onBack={...}>`, /state\.status === 'premium'\) return <PremiumLockedScreen origin="unit" onBack=\{(goBack|backToUnidades)\}/.test(code));
@@ -234,6 +234,101 @@ async function main() {
   {
     const dl = stripComments(read(UNIDAD_DL));
     check('unidad/[unitId]: goBack propio con fallback (canGoBack -> replace a unidades)', /if \(router\.canGoBack\(\)\) router\.back\(\);\s*else router\.replace\(\{ pathname: '\/\(tabs\)\/estudio\/\[subjectId\]\/unidades'/.test(dl));
+  }
+
+  // --------------------------------------------------------------------
+  // E2. Escritura de progreso tras downgrade (edge case A).
+  //   PREMIUM abre un ejercicio de U3+, hace downgrade con la pantalla
+  //   abierta y responde -> C1.4 rechaza con `403 PREMIUM_REQUIRED`. Debe:
+  //   ser distinguible, NO tratarse como exito, NO quedar en cola/reintento,
+  //   pasar a <PremiumLockedScreen origin="unit">; los demas errores intactos;
+  //   los fallos de red conservan la semantica offline (PENDING).
+  console.log('--- E2. escritura de progreso: 403 PREMIUM_REQUIRED tras downgrade ---');
+  const { submitResponse } = await import('../lib/api/progress');
+  const { isPremiumRequiredOutcome } = await import('../lib/entitlement/premium-error');
+
+  installFetch((url) => (/\/responses$/.test(url) ? premium403() : jsonResponse({})));
+  {
+    const outcome = await submitResponse(randomUUID(), { questionVersionId: randomUUID(), answerOptionId: randomUUID(), operationId: randomUUID() });
+    check('E2a: submitResponse propaga { kind:"error", status:403, code:"PREMIUM_REQUIRED" }', outcome.kind === 'error' && outcome.status === 403 && (outcome as { code?: string }).code === 'PREMIUM_REQUIRED');
+    check('E2b: isPremiumRequiredOutcome lo reconoce', isPremiumRequiredOutcome(outcome));
+  }
+  check('E2c: isPremiumRequiredOutcome NO matchea un 403 sin code', !isPremiumRequiredOutcome({ kind: 'error', status: 403 }));
+  check('E2d: isPremiumRequiredOutcome NO matchea otro 4xx con ese code', !isPremiumRequiredOutcome({ kind: 'error', status: 400, code: 'PREMIUM_REQUIRED' }));
+  check('E2e: isPremiumRequiredOutcome NO matchea network', !isPremiumRequiredOutcome({ kind: 'network' }));
+  check('E2f: isPremiumRequiredOutcome NO matchea ok', !isPremiumRequiredOutcome({ kind: 'ok' }));
+  {
+    const ej = stripComments(read(EJERCICIO_DL));
+    check('E2g: ejercicio importa isPremiumRequiredOutcome', /import \{[^}]*\bisPremiumRequiredOutcome\b[^}]*\} from '[^']*lib\/entitlement\/premium-error'/.test(ej));
+    check(
+      'E2h: ejercicio mapea el outcome premium -> setState({ status: "premium" }) y RETORNA antes del reducer de exito',
+      /if \(isPremiumRequiredOutcome\(outcome\)\) \{\s*setState\(\{ status: 'premium' \}\);\s*return;\s*\}/.test(ej) &&
+        ej.indexOf('isPremiumRequiredOutcome(outcome)') < ej.indexOf('setState((prev) => {'),
+    );
+    check('E2i: ejercicio NUNCA marca el outcome premium como respondido (no cae al reducer)', ej.indexOf('isPremiumRequiredOutcome(outcome)') < ej.indexOf('answers: { ...prev.answers'));
+    const pg = stripComments(read('lib/api/progress.ts'));
+    check('E2j: SubmitResponseOutcome.error incluye `code?: string`', /kind: 'error'; message: string; status: number; code\?: string/.test(pg));
+    check('E2k: submitResponse propaga result.code en la rama de error', /kind: 'error', message: result\.message, status: result\.status, code: result\.code/.test(pg));
+    // El outbox NO cambia: 4xx (incl. 403) -> markFailed (permanente, no se
+    // reintenta); network -> se deja PENDING.
+    const sw = stripComments(read('lib/offline/sync-worker.ts'));
+    check('E2l: sync-worker deja 4xx como FAILED (permanente, no reintenta)', /outcome\.status >= 400 && outcome\.status < 500[\s\S]{0,80}markFailed\(operation\.id/.test(sw));
+    check('E2m: sync-worker conserva la semantica offline de `network` (PENDING, sin tocar)', /case 'network':[\s\S]{0,120}break;/.test(sw));
+    check('E2n: submit-response.ts (outbox entrypoint) sin cambios de flujo', !/premium|Premium|PREMIUM/.test(stripComments(read('lib/progress/submit-response.ts'))));
+  }
+
+  // --------------------------------------------------------------------
+  // E3. Carga obsoleta del catalogo de Recursos (edge case B).
+  //   ready PREMIUM -> assembleResourceCatalog en vuelo -> cambia a FREE /
+  //   cambia la materia -> la respuesta vieja NO debe restaurar el catalogo.
+  console.log('--- E3. recursos.tsx : carga obsoleta descartada por generacion ---');
+  {
+    const rc = stripComments(read(RECURSOS));
+    check('E3a: recursos.tsx tiene loadGenRef', /const loadGenRef = useRef\(0\);/.test(rc));
+    check('E3b: cada load() incrementa la generacion', /const gen = \+\+loadGenRef\.current;/.test(rc));
+    check(
+      'E3c: la respuesta de assembleResourceCatalog se descarta si la generacion cambio',
+      /const result = await assembleResourceCatalog\(subjectId\);\s*if \(gen !== loadGenRef\.current\) return;/.test(rc),
+    );
+  }
+  {
+    // Harness: replica el guard de `load()` (verificado por scan arriba) +
+    // una secuencia con promesas diferidas.
+    type Deferred<T> = { promise: Promise<T>; resolve: (v: T) => void };
+    const deferred = <T,>(): Deferred<T> => {
+      let resolve!: (v: T) => void;
+      const promise = new Promise<T>((r) => { resolve = r; });
+      return { promise, resolve };
+    };
+    const refs = { gen: 0, rendered: null as string | null };
+    async function load(tier: 'FREE' | 'PREMIUM', subject: string, assemble: () => Promise<{ ok: true; catalog: string }>) {
+      const gen = ++refs.gen;
+      if (tier === 'FREE') { refs.rendered = 'locked'; return; }
+      const result = await assemble();
+      if (gen !== refs.gen) return; // guard
+      refs.rendered = `catalog:${subject}:${result.catalog}`;
+    }
+    // 1. ready PREMIUM, materia S1: carga arranca
+    const d1 = deferred<{ ok: true; catalog: string }>();
+    const p1 = load('PREMIUM', 'S1', () => d1.promise);
+    // 3. cambia a FREE (o cambia la materia) -> nueva carga
+    await load('FREE', 'S1', async () => ({ ok: true, catalog: 'X' }));
+    check('E3d: tras el cambio a FREE la pantalla quedo bloqueada', refs.rendered === 'locked');
+    // 5. la carga PREMIUM vieja resuelve DESPUES
+    d1.resolve({ ok: true, catalog: 'PREMIUM_CATALOG' });
+    await p1;
+    check('E3e: la respuesta PREMIUM obsoleta NO restauro el catalogo (sigue bloqueada)', refs.rendered === 'locked');
+
+    // Variante: cambio de materia (ambas PREMIUM)
+    refs.gen = 0;
+    refs.rendered = null;
+    const d2 = deferred<{ ok: true; catalog: string }>();
+    const pA = load('PREMIUM', 'S1', () => d2.promise);
+    await load('PREMIUM', 'S2', async () => ({ ok: true, catalog: 'S2CAT' }));
+    check('E3f: la materia S2 se renderizo', refs.rendered === 'catalog:S2:S2CAT');
+    d2.resolve({ ok: true, catalog: 'S1CAT' });
+    await pA;
+    check('E3g: la respuesta obsoleta de S1 NO piso a S2', refs.rendered === 'catalog:S2:S2CAT');
   }
 
   // --------------------------------------------------------------------

@@ -43,7 +43,7 @@ export type SubmitResponseOutcome =
   | { kind: 'ok'; data: SubmitResponseResponse }
   | { kind: 'conflict'; existingResponse: StudentResponseSummary }
   | { kind: 'network'; message: string }
-  | { kind: 'error'; message: string; status: number };
+  | { kind: 'error'; message: string; status: number; code?: string };
 
 /**
  * A diferencia de `apiRequest` genérico, distingue el `409` de PROGRESS
@@ -64,5 +64,8 @@ export async function submitResponse(topicId: string, input: SubmitResponseInput
     const conflict = responseConflictBodySchema.parse(result.body);
     return { kind: 'conflict', existingResponse: conflict.existingResponse };
   }
-  return { kind: 'error', message: result.message, status: result.status };
+  // `code` (envelope ADR-0007) se propaga para que el llamador pueda
+  // distinguir `403 PREMIUM_REQUIRED` (C1.4: escritura de progreso sobre una
+  // unidad Premium tras un downgrade) de cualquier otro 4xx.
+  return { kind: 'error', message: result.message, status: result.status, code: result.code };
 }
