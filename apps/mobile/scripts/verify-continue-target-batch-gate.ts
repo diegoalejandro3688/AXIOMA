@@ -17,6 +17,7 @@
 //
 // Node puro, sin backend real, `global.fetch` stub que registra cada llamada.
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import Module from 'node:module';
 import { join } from 'node:path';
 import type { CurriculumTopicResponse, SubjectResponse, TopicProgressResponse } from '@axioma/contracts';
@@ -380,6 +381,101 @@ async function main() {
     installMockFetch([s2]);
     const r2 = await pickContinueTarget();
     check('gana B2 (tiene un respondedAt de 2027 en medio del array)', selectedId(r2) === s2.resourceByTag.get('B2')!.id);
+  }
+
+  // ------------------------------------------------------------------
+  // 15. PREMIUM V1 (C2.2 regresión Inicio): Inicio 100% disponible para FREE
+  //     tras el enforcement de Capa 1. Desde C1.3 los `children` de una
+  //     unidad Premium devuelven `403 PREMIUM_REQUIRED` para FREE.
+  //     `pickContinueTarget({ freeUnitsOnly: true })` NO debe pedirlos, y un
+  //     `403` que llegase igual (tier stale) NO es fatal.
+  // ------------------------------------------------------------------
+  console.log('--- 15. FREE: no se recorren unidades Premium; un 403 en children no es fatal ---');
+
+  /** Materia con `freeUnits` unidades Free (1 recurso sin-comenzar c/u) + `premiumUnits` unidades que dan 403 en children. */
+  function installPremiumAwareFetch(opts: { freeUnits: number; premiumUnits: number; premium403: boolean }) {
+    const calls: RecordedCall[] = [];
+    const subject = mockSubject(1);
+    const units: CurriculumTopicResponse[] = [];
+    const childrenByUnit = new Map<string, CurriculumTopicResponse[]>();
+    const premiumUnitIds = new Set<string>();
+    const total = opts.freeUnits + opts.premiumUnits;
+    for (let i = 0; i < total; i++) {
+      const unit = mockTopic(randomUUID(), i + 1, subject.id, null);
+      units.push(unit);
+      const child = mockTopic(randomUUID(), 1, subject.id, unit.id);
+      childrenByUnit.set(unit.id, [child]);
+      if (i >= opts.freeUnits) premiumUnitIds.add(unit.id);
+    }
+    const json = (data: unknown, status = 200) =>
+      new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
+    (globalThis as { fetch: typeof fetch }).fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      calls.push({ method: init?.method ?? 'GET', url });
+      if (url.endsWith('/education/subjects')) return json([subject]);
+      if (/\/education\/subjects\/[^/]+\/topics/.test(url)) return json(units);
+      const ch = /\/education\/topics\/([^/]+)\/children/.exec(url);
+      if (ch) {
+        if (opts.premium403 && premiumUnitIds.has(ch[1]!)) {
+          return json({ error: { code: 'PREMIUM_REQUIRED', message: 'Contenido Premium.' } }, 403);
+        }
+        return json(childrenByUnit.get(ch[1]!) ?? []);
+      }
+      if (url.includes('/progress/topics?topicIds=')) return json([]); // todos sin-comenzar
+      throw new Error(`Llamada inesperada: ${url}`);
+    }) as typeof fetch;
+    return { calls, units, premiumUnitIds };
+  }
+
+  {
+    // FREE (freeUnitsOnly): 4 unidades (2 Free + 2 Premium). Solo se piden los children de las 2 Free.
+    const { calls, units } = installPremiumAwareFetch({ freeUnits: 2, premiumUnits: 2, premium403: true });
+    const r = await pickContinueTarget({ freeUnitsOnly: true });
+    const childrenCalls = calls.filter((c) => c.url.includes('/children'));
+    const premiumUnitChildrenCalls = childrenCalls.filter((c) => units.slice(2).some((u) => c.url.includes(u.id)));
+    check('FREE: resuelve ok (Inicio disponible)', r.ok);
+    check('FREE: selecciona un recurso de U1/U2', r.ok && r.target.kind === 'topic' && r.target.entry === 'resource');
+    check('FREE: EXACTAMENTE 2 llamadas /children (solo unidades Free)', childrenCalls.length === 2);
+    check('FREE: CERO llamadas /children a unidades Premium', premiumUnitChildrenCalls.length === 0);
+  }
+  {
+    // Defensa: aunque se recorran todas (tier no resuelto) y un children dé 403,
+    // Inicio NO falla -- esa unidad se salta.
+    const { calls } = installPremiumAwareFetch({ freeUnits: 2, premiumUnits: 2, premium403: true });
+    const r = await pickContinueTarget(); // sin freeUnitsOnly -> recorre las 4
+    check('tier no resuelto: se piden los 4 children', calls.filter((c) => c.url.includes('/children')).length === 4);
+    check('un 403 PREMIUM_REQUIRED en children NO es fatal -> ok', r.ok);
+    check('resuelve a un recurso accesible de U1/U2', r.ok && r.target.kind === 'topic');
+  }
+  {
+    // Un error NO-Premium en children sigue siendo fatal (no se degrada la resiliencia).
+    const s = buildSubject(1, [['resource']], 'children');
+    installMockFetch([s]);
+    check('children 500 (no Premium) sigue -> ok:false', (await pickContinueTarget({ freeUnitsOnly: true })).ok === false);
+  }
+  {
+    // PREMIUM confirmado (freeUnitsOnly:false): se recorren todas, sin 403 (backend no gatea).
+    const { calls } = installPremiumAwareFetch({ freeUnits: 2, premiumUnits: 2, premium403: false });
+    const r = await pickContinueTarget({ freeUnitsOnly: false });
+    check('PREMIUM: se piden los 4 children', calls.filter((c) => c.url.includes('/children')).length === 4);
+    check('PREMIUM: resuelve ok', r.ok);
+  }
+
+  // Estático: Inicio pasa el tier confirmado y NUNCA se bloquea por el entitlement.
+  {
+    const homeSrc = readFileSync(join(__dirname, '..', 'app', '(tabs)', 'index.tsx'), 'utf8');
+    check('index.tsx usa useEntitlement', /useEntitlement\(\)/.test(homeSrc));
+    check(
+      'index.tsx deriva confirmedTier solo de state.status === "ready"',
+      /entitlement\.state\.status === 'ready' \? entitlement\.state\.tier : null/.test(homeSrc),
+    );
+    check(
+      'index.tsx pasa { freeUnitsOnly: confirmedTier === "FREE" } a pickContinueTarget',
+      /pickContinueTarget\(\{ freeUnitsOnly: confirmedTier === 'FREE' \}\)/.test(homeSrc),
+    );
+    check('index.tsx: load() depende de confirmedTier (recarga al confirmarse/cambiar el tier)', /\}, \[confirmedTier\]\);/.test(homeSrc));
+    check('index.tsx NO renderiza paywall ni PremiumLockedScreen en Inicio', !/PremiumLockedScreen|usePaywall|PremiumBadge/.test(homeSrc));
+    check('index.tsx NO bloquea el render por el entitlement (sin early-return por entitlement.state)', !/entitlement\.state\.status === 'loading'\) return|entitlement\.state\.status === 'error'\) return/.test(homeSrc));
   }
 
   console.log('');

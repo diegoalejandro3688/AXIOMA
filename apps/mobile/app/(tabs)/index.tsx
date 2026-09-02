@@ -8,6 +8,7 @@ import { getLevel, getStreak } from '../../lib/api/progression';
 import { listChallenges } from '../../lib/api/challenges';
 import { groupChallenges, progressRatio as challengeProgressRatio } from '../../lib/challenges/group-challenges';
 import { pickContinueTarget, type ContinueTarget } from '../../lib/progress/pick-continue-topic';
+import { useEntitlement } from '../../lib/entitlement/entitlement-provider';
 import { LoadingState } from '../../components/loading-state';
 import { Text, Icon, Card, Progress, LevelBadge } from '../../components/ui';
 import { HomeContinueIllustration, continuationVisualFor } from '../../components/home/home-continue-illustration';
@@ -80,6 +81,15 @@ export default function InicioScreen() {
   const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
 
+  const entitlement = useEntitlement();
+  // PREMIUM V1 (C2.2): tier CONFIRMADO por el backend, o `null` mientras el
+  // entitlement carga / falla. FREE -> `pickContinueTarget` no recorre las
+  // unidades Premium (que dan 403 en `children` desde C1.3); `null`/PREMIUM ->
+  // recorre todo (un 403 stale se ignora, ver `pick-continue-topic.ts`).
+  // Inicio NUNCA se bloquea por el entitlement -- si no resolvió, la carga
+  // procede igual.
+  const confirmedTier = entitlement.state.status === 'ready' ? entitlement.state.tier : null;
+
   const mountedRef = useRef(true);
   const loadGenerationRef = useRef(0);
   const initializedRef = useRef(false);
@@ -102,7 +112,7 @@ export default function InicioScreen() {
 
     const [profileResult, targetResult, streakResult, levelResult, challengesResult] = await Promise.all([
       getProfile(),
-      pickContinueTarget(),
+      pickContinueTarget({ freeUnitsOnly: confirmedTier === 'FREE' }),
       getStreak(),
       getLevel(),
       listChallenges(),
@@ -142,7 +152,7 @@ export default function InicioScreen() {
         continuation,
       };
     });
-  }, []);
+  }, [confirmedTier]);
 
   // Un ÚNICO hook de ciclo de vida: primer foco -> carga inicial (con
   // LoadingState); focos posteriores -> refresco silencioso. Sin `useEffect`
