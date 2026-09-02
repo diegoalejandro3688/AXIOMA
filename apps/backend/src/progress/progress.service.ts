@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import {
+  PREMIUM_REQUIRED_CODE,
   topicProgressResponseSchema,
   submitResponseResponseSchema,
   academicSummaryResponseSchema,
@@ -16,6 +17,8 @@ import { CurriculumTopicRepository } from '../education/curriculum-topic.reposit
 import { QuestionVersionRepository } from '../education/question-version.repository';
 import { AnswerOptionRepository } from '../education/answer-option.repository';
 import { SubjectRepository } from '../education/subject.repository';
+import { PremiumContentPolicy } from '../education/premium-content-policy.service';
+import { EntitlementService } from '../entitlement/entitlement.service';
 import { OutboxService } from '../platform/outbox/outbox.service';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
@@ -54,6 +57,8 @@ export class ProgressService {
     private readonly questionVersionRepo: QuestionVersionRepository,
     private readonly answerOptionRepo: AnswerOptionRepository,
     private readonly subjectRepo: SubjectRepository,
+    private readonly premiumContentPolicy: PremiumContentPolicy,
+    private readonly entitlementService: EntitlementService,
     private readonly outbox: OutboxService,
   ) {}
 
@@ -223,6 +228,14 @@ export class ProgressService {
       return { data: await this.resolveAgainstExisting(existing, input.answerOptionId, accountId, topicId), created: false };
     }
 
+    // PREMIUM V1 (C1.4) -- crear una respuesta NUEVA sobre un tema de unidad
+    // premium exige tier PREMIUM. El replay por operationId (paso 1) y la
+    // idempotencia de negocio (bloque anterior) YA retornaron: este gate solo
+    // afecta la ESCRITURA de un StudentResponse nuevo. Nunca borra ni modifica
+    // filas existentes; las lecturas (`getTopicProgress`, `getAcademicSummary`,
+    // batch) no lo invocan.
+    await this.assertPremiumProgressWriteAllowed(accountId, topicId);
+
     try {
       const created = await this.responseRepo.create({
         accountId,
@@ -305,6 +318,30 @@ export class ProgressService {
   private async currentTopicStatus(accountId: string, topicId: string): Promise<'IN_PROGRESS' | 'COMPLETED'> {
     const progress = await this.topicProgressRepo.findByAccountAndTopic(accountId, topicId);
     return (progress?.status ?? 'IN_PROGRESS') as 'IN_PROGRESS' | 'COMPLETED';
+  }
+
+  /**
+   * PREMIUM V1 (C1.4) -- gate de ESCRITURA de progreso.
+   *
+   * Precondición: `topicId` ya pasó la validación de existencia (404).
+   * `EntitlementService` solo se consulta si el tema clasifica `PREMIUM_UNIT`
+   * (mismo criterio que `EducationService.assertUnitContentAccessible`).
+   * `FREE_UNIT` / `NON_CANONICAL` / `UNKNOWN_TOPIC` no requieren lookup de
+   * tier. Al perder Premium, un usuario deja de PODER escribir progreso nuevo
+   * sobre temas premium, pero sus filas existentes se conservan y sus
+   * lecturas siguen abiertas; al recuperar Premium, la escritura se reanuda.
+   */
+  private async assertPremiumProgressWriteAllowed(accountId: string, topicId: string): Promise<void> {
+    const klass = await this.premiumContentPolicy.classifyTopic(topicId);
+    if (klass !== 'PREMIUM_UNIT') return;
+
+    const { tier } = await this.entitlementService.getEntitlement(accountId);
+    if (tier === 'FREE') {
+      throw new ForbiddenException({
+        code: PREMIUM_REQUIRED_CODE,
+        message: 'El progreso de esta unidad es parte de ZETRYND Premium.',
+      });
+    }
   }
 
   /**

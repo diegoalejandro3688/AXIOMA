@@ -72,6 +72,7 @@
     "verify:exam-foundation-gate": "tsx scripts/run-gate.ts verify-exam-foundation-gate.ts",
     "verify:premium-exams-gate": "tsx scripts/run-gate.ts verify-premium-exams-gate.ts",
     "verify:premium-content-access-gate": "tsx scripts/run-gate.ts verify-premium-content-access-gate.ts",
+    "verify:premium-progress-gate": "tsx scripts/run-gate.ts verify-premium-progress-gate.ts",
     "verify:exam-passages-gate": "tsx scripts/run-gate.ts verify-exam-passages-gate.ts",
     "verify:quick-question-foundation-gate": "tsx scripts/run-gate.ts verify-quick-question-foundation-gate.ts",
     "verify:quick-question-engine-gate": "tsx scripts/run-gate.ts verify-quick-question-engine-gate.ts",
