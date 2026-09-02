@@ -13,3 +13,4 @@ export * from './ai';
 export * from './administration';
 export * from './editorial';
 export * from './content-coverage';
+export * from './premium';

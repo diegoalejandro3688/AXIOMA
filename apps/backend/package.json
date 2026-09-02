@@ -19,6 +19,7 @@
     "verify:content-source-gate": "tsx scripts/verify-content-source-gate.ts",
     "verify:free-practice-api-gate": "tsx scripts/verify-free-practice-api-gate.ts",
     "verify:study-content-mobile-reachability-gate": "tsx scripts/verify-study-content-mobile-reachability-gate.ts",
+    "verify:premium-contract-gate": "tsx scripts/verify-premium-contract-gate.ts",
     "verify:profile-subject-progress-gate": "tsx scripts/verify-profile-subject-progress-gate.ts",
     "verify:ensayo-source-gate": "tsx scripts/verify-ensayo-source-gate.ts",
     "verify:ensayo-import-gate": "tsx scripts/run-gate.ts verify-ensayo-import-gate.ts",
