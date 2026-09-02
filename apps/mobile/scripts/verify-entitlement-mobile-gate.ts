@@ -189,6 +189,122 @@ async function main() {
   check('EntitlementProvider esta ANIDADO dentro de AuthProvider', layoutSrc.indexOf('<AuthProvider>') !== -1 && layoutSrc.indexOf('<EntitlementProvider>') > layoutSrc.indexOf('<AuthProvider>') && layoutSrc.indexOf('</EntitlementProvider>') < layoutSrc.indexOf('</AuthProvider>'));
   check('EntitlementProvider envuelve ThemedRootNavigator', /<EntitlementProvider>\s*<ThemedRootNavigator \/>\s*<\/EntitlementProvider>/.test(layoutSrc));
 
+  // ----------------------------------------------------------------------
+  // H. INVARIANTE A -- ownership del cleanup de la request obsoleta.
+  //
+  // Escenario: cuenta A arranca P1 (generacion 1); cambia la cuenta ->
+  // generacion 2; cuenta B arranca P2 y `inFlightRef` pasa a ser de P2;
+  // P1 termina DESPUES. P1 debe: (a) NO aplicar estado; (b) NO limpiar ni
+  // pisar `inFlightRef`/`inFlightGenRef` de P2.
+  //
+  // Se prueba con un harness que REPLICA la gestion de refs de `runFetch`
+  // (verificada por scan abajo contra la fuente real) + una simulacion
+  // ordenada con promesas diferidas.
+  // ----------------------------------------------------------------------
+  console.log('--- H. Invariante A: ownership del cleanup (simulacion behavioral) ---');
+
+  // Los guards del harness deben aparecer LITERALMENTE en el provider real.
+  check(
+    'H-scan: el .finally del provider es owner-scoped por generacion (`if (inFlightGenRef.current === gen) inFlightRef.current = null`)',
+    /\.finally\(\(\) => \{\s*if \(inFlightGenRef\.current === gen\) inFlightRef\.current = null;\s*\}\);/.test(provCode),
+  );
+  check(
+    'H-scan: dentro de una generacion solo hay UNA request (dedup retorna la en vuelo, nunca crea una 2a)',
+    /if \(inFlightRef\.current && inFlightGenRef\.current === gen\) \{\s*await inFlightRef\.current;[\s\S]{0,80}return;\s*\}/.test(provCode),
+  );
+  check(
+    'H-scan: `inFlightGenRef.current = gen` se fija ANTES de crear/asignar la promesa (toma de ownership)',
+    provCode.indexOf('inFlightGenRef.current = gen;') !== -1 &&
+      provCode.indexOf('inFlightGenRef.current = gen;') < provCode.indexOf('inFlightRef.current = promise;'),
+  );
+
+  {
+    type Deferred<T> = { promise: Promise<T>; resolve: (v: T) => void };
+    const deferred = <T,>(): Deferred<T> => {
+      let resolve!: (v: T) => void;
+      const promise = new Promise<T>((r) => { resolve = r; });
+      return { promise, resolve };
+    };
+    type Result = { ok: true; data: { tier: string } };
+
+    // Replica EXACTA de la gestion de refs de `runFetch` + `hydrationEffect`.
+    const refs = {
+      generation: 0,
+      inFlight: null as Promise<void> | null,
+      inFlightGen: -1,
+      accountId: null as string | null,
+      applied: [] as string[], // "setState": tiers aplicados al estado
+      lastConfirmedTier: null as string | null,
+    };
+    function runFetch(account: string, getEntitlement: () => Promise<Result>): Promise<void> {
+      const gen = refs.generation;
+      if (refs.inFlight && refs.inFlightGen === gen) return refs.inFlight;
+      refs.inFlightGen = gen;
+      const promise = (async () => {
+        const result = await getEntitlement();
+        if (gen !== refs.generation || account !== refs.accountId) return; // guard de aplicacion
+        if (result.ok) refs.lastConfirmedTier = result.data.tier;
+        refs.applied.push(result.data.tier);
+      })().finally(() => {
+        if (refs.inFlightGen === gen) refs.inFlight = null; // cleanup owner-scoped
+      });
+      refs.inFlight = promise;
+      return promise;
+    }
+    function onSessionChange(newAccount: string) {
+      refs.generation += 1;
+      refs.inFlight = null;
+      refs.lastConfirmedTier = null;
+      refs.accountId = newAccount;
+    }
+
+    const dA = deferred<Result>();
+    const dB = deferred<Result>();
+
+    refs.accountId = 'A';
+    const p1 = runFetch('A', () => dA.promise); // gen 0
+    check('H1: P1 toma ownership de inFlightRef en gen 0', refs.inFlight === p1 && refs.inFlightGen === 0);
+
+    onSessionChange('B'); // gen 1, inFlightRef null
+    check('H2: el cambio de sesion incremento la generacion e invalido inFlightRef', refs.generation === 1 && refs.inFlight === null);
+
+    const p2 = runFetch('B', () => dB.promise); // gen 1
+    const p2Ref = refs.inFlight;
+    check('H3: P2 toma ownership de inFlightRef en gen 1', p2Ref === p2 && refs.inFlightGen === 1);
+
+    dA.resolve({ ok: true, data: { tier: 'FREE' } }); // P1 termina AHORA (despues de P2)
+    await p1;
+    check('H4: P1 NO aplico ningun tier al estado (guard de generacion/cuenta)', refs.applied.length === 0);
+    check('H5: P1 NO confirmo su tier (lastConfirmedTier intacto)', refs.lastConfirmedTier === null);
+    check('H6: P1.finally NO limpio inFlightRef -- sigue siendo P2', refs.inFlight === p2Ref);
+    check('H7: P1.finally NO cambio inFlightGenRef -- sigue en la generacion de P2', refs.inFlightGen === 1);
+
+    dB.resolve({ ok: true, data: { tier: 'PREMIUM' } });
+    await p2;
+    check('H8: P2 (el owner actual) aplico PREMIUM', refs.applied.join(',') === 'PREMIUM');
+    check('H9: P2.finally limpio inFlightRef (cleanup por el owner)', refs.inFlight === null);
+    check('H10: lastConfirmedTier refleja SOLO a P2', refs.lastConfirmedTier === 'PREMIUM');
+  }
+
+  // ----------------------------------------------------------------------
+  // I. INVARIANTE B -- `runFetch` estable: una transicion `loading -> ready`
+  // NO cambia la identidad de `runFetch` y por tanto NO re-dispara el effect
+  // de hidratacion (no hay bucle de requests).
+  // ----------------------------------------------------------------------
+  console.log('--- I. Invariante B: runFetch estable (sin bucle de hidratacion) ---');
+
+  const runFetchDecl = provCode.slice(
+    provCode.indexOf('const runFetch = useCallback(async'),
+    provCode.indexOf('}, [auth.status, auth.accountId]);') + '}, [auth.status, auth.accountId]);'.length,
+  );
+  check('I1: runFetch existe con deps EXACTAS [auth.status, auth.accountId]', runFetchDecl.length > 0 && /\}, \[auth\.status, auth\.accountId\]\);$/.test(runFetchDecl));
+  check('I2: las deps de runFetch NO incluyen `state`', !/\[auth\.status, auth\.accountId,[^\]]*\bstate\b/.test(runFetchDecl) && !/\bstate\b[^\]]*\]\);$/.test(runFetchDecl));
+  check('I3: el cuerpo de runFetch NO lee `state.` (usa setState funcional)', !/[^.\w]state\.(status|tier)\b/.test(runFetchDecl));
+  check('I4: runFetch actualiza el estado de forma FUNCIONAL (prev => ...)', /setState\(\(prev\) =>/.test(runFetchDecl));
+  check('I5: el effect de hidratacion depende de [auth.status, auth.accountId, runFetch] (no de state)', /void runFetch\(\);\s*\}, \[auth\.status, auth\.accountId, runFetch\]\);/.test(provCode) && !/\}, \[[^\]]*\bstate\b[^\]]*runFetch\]\);/.test(provCode));
+  check('I6: `state` solo entra en el useMemo del value (deps [state, refresh]), nunca en la ruta de fetch', /useMemo<EntitlementContextValue>\([\s\S]*?\[state, refresh\],\s*\);/.test(provCode));
+  check('I7: refresh es un useCallback estable sobre runFetch (deps [runFetch])', /const refresh = useCallback\(async \(\): Promise<void> => \{\s*await runFetch\(\);\s*\}, \[runFetch\]\);/.test(provCode));
+
   console.log('');
   if (failures > 0) {
     console.error(`${failures} verificacion(es) fallaron.`);
