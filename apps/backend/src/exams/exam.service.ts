@@ -1,9 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../platform/prisma/prisma.service';
 import { AnswerOptionRepository } from '../education/answer-option.repository';
+import { EntitlementService } from '../entitlement/entitlement.service';
 import { Prisma } from '../generated/prisma/client';
 import type { AnswerOption, Exam, ExamAttempt, ExamPassage } from '../generated/prisma/client';
-import type { ExamAttemptScore } from '@axioma/contracts';
+import { PREMIUM_REQUIRED_CODE, type ExamAttemptScore } from '@axioma/contracts';
 import { ExamRepository } from './exam.repository';
 import { ExamQuestionRepository, type ExamQuestionWithVersion } from './exam-question.repository';
 import { ExamPassageRepository } from './exam-passage.repository';
@@ -73,6 +74,14 @@ export type ExamAttemptReviewQuestionView = ExamAttemptQuestionView & {
   explanationContent: Prisma.JsonValue;
 };
 
+/**
+ * PREMIUM V1 (C1.2) -- resultado interno de la transaccion de `startAttempt`.
+ * El `403 PREMIUM_REQUIRED` NUNCA se lanza dentro de la `$transaction`: eso
+ * haria rollback del `markExpired` de un intento vencido. La transaccion
+ * devuelve este sentinel y el 403 se lanza DESPUES del commit.
+ */
+type StartAttemptOutcome = { kind: 'ATTEMPT'; attempt: ExamAttempt } | { kind: 'PREMIUM_REQUIRED' };
+
 export type ExamListItemView = { exam: Exam; questionCount: number };
 export type ExamAttemptResultView = { attempt: ExamAttempt; score: ExamAttemptScore };
 export type ExamAttemptQuestionsView = { attempt: ExamAttempt; passages: ExamPassage[]; questions: ExamAttemptQuestionView[] };
@@ -94,6 +103,7 @@ export class ExamService {
     private readonly answerRepo: ExamAttemptAnswerRepository,
     private readonly answerOptionRepo: AnswerOptionRepository,
     private readonly scoring: ExamScoringService,
+    private readonly entitlementService: EntitlementService,
   ) {}
 
   // --- Lectura de catálogo ---
@@ -120,12 +130,18 @@ export class ExamService {
    * Inicia un intento, o REANUDA el `ACTIVE` no expirado que ya exista para
    * `(cuenta, ensayo)` -- idempotente ante doble toque / reintento de red. Si
    * el intento previo expiró, lo transiciona a `EXPIRED` y crea uno nuevo.
+   *
+   * PREMIUM V1 (C1.2): CREAR un intento nuevo exige tier `PREMIUM`. REANUDAR
+   * un `ACTIVE` vigente NO lo exige -- una cuenta que perdió Premium con un
+   * ensayo en curso puede terminarlo. El `403 PREMIUM_REQUIRED` se lanza
+   * DESPUÉS del commit (ver `StartAttemptOutcome`): así, si el intento previo
+   * había vencido, su transición a `EXPIRED` queda persistida igualmente.
    */
   async startAttempt(accountId: string, examId: string): Promise<ExamAttempt> {
     // Camino rápido sin lock -- valida disponibilidad antes de serializar nada.
     await this.getPublishedExam(examId);
 
-    return this.prisma.$transaction(async (tx) => {
+    const outcome = await this.prisma.$transaction(async (tx): Promise<StartAttemptOutcome> => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${EXAM_LOCK_NAMESPACE}, hashtext(${'exam-start:' + accountId + ':' + examId}))`;
 
       const exam = await this.examRepo.findById(examId, tx);
@@ -136,15 +152,31 @@ export class ExamService {
       const existing = await this.attemptRepo.findActiveByAccountAndExam(accountId, examId, tx);
       if (existing) {
         if (Date.now() < existing.expiresAt.getTime()) {
-          return existing; // reanuda
+          return { kind: 'ATTEMPT', attempt: existing }; // reanuda -- FREE o PREMIUM, sin gate
         }
         await this.attemptRepo.markExpired(existing.id, tx);
       }
 
+      // Gate de creación. NO se lanza aquí: un `throw` haría rollback del
+      // `markExpired` de arriba. Se devuelve el sentinel y el 403 se lanza
+      // tras el commit.
+      const { tier } = await this.entitlementService.getEntitlement(accountId);
+      if (tier === 'FREE') {
+        return { kind: 'PREMIUM_REQUIRED' };
+      }
+
       const startedAt = new Date();
       const expiresAt = new Date(startedAt.getTime() + exam.durationSeconds * 1000);
-      return this.attemptRepo.create({ accountId, examId, startedAt, expiresAt }, tx);
+      return { kind: 'ATTEMPT', attempt: await this.attemptRepo.create({ accountId, examId, startedAt, expiresAt }, tx) };
     }, TX_OPTIONS);
+
+    if (outcome.kind === 'PREMIUM_REQUIRED') {
+      throw new ForbiddenException({
+        code: PREMIUM_REQUIRED_CODE,
+        message: 'Los Ensayos PAES son parte de ZETRYND Premium.',
+      });
+    }
+    return outcome.attempt;
   }
 
   /** Estado de un intento (con transición perezosa a EXPIRED si corresponde). */

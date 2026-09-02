@@ -3,6 +3,8 @@ import { AuthModule } from '../auth/auth.module';
 import { AdministrationModule } from '../administration/administration.module';
 import { EducationModule } from '../education/education.module';
 import { ObjectStorageModule } from '../platform/object-storage/object-storage.module';
+// PREMIUM V1 -- Capa 1 (C1.2): crear un intento de ensayo exige tier PREMIUM.
+import { EntitlementModule } from '../entitlement/entitlement.module';
 import { ExamRepository } from './exam.repository';
 import { ExamQuestionRepository } from './exam-question.repository';
 import { ExamPassageRepository } from './exam-passage.repository';
@@ -32,7 +34,7 @@ import { ExamAdminController } from './exam-admin.controller';
  * que ese importer futuro y el gate compartan un único camino de escritura.
  */
 @Module({
-  imports: [AuthModule, AdministrationModule, EducationModule, ObjectStorageModule],
+  imports: [AuthModule, AdministrationModule, EducationModule, ObjectStorageModule, EntitlementModule],
   controllers: [ExamController, ExamAdminController],
   providers: [
     ExamRepository,

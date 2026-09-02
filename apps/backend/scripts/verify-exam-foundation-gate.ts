@@ -36,13 +36,28 @@ async function req(method: string, path: string, headers: Record<string, string>
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const opsKey = process.env.INTERNAL_OPS_KEY ?? '';
+
+/**
+ * PREMIUM V1 (C1.2) -- crear un intento de ensayo exige tier PREMIUM. Este
+ * gate ejercita el ciclo COMPLETO de un intento, así que sus cuentas de
+ * prueba se marcan PREMIUM vía el override interno (mismo mecanismo que
+ * `verify-premium-exams-gate.ts`); el enforcement en sí lo cubre ese gate.
+ */
+async function setTier(accountId: string, tier: 'FREE' | 'PREMIUM' | null) {
+  const q = tier === null ? '' : `&tier=${tier}`;
+  const r = await req('POST', `/_internal/entitlement/set-tier-override?accountId=${accountId}${q}`, { 'x-internal-ops-key': opsKey });
+  if (r.status !== 200 && r.status !== 201) throw new Error(`set-tier-override(${accountId},${tier}) -> ${r.status} ${r.raw}`);
+}
 
 async function newSession(label: string) {
   const uid = `exam-f1-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const idToken = StubIdentityProvider.encode({ providerSubject: uid, email: `${uid}@example.com`, emailVerified: true });
   const r = await req('POST', '/auth/session', {}, { idToken });
+  const accountId = r.body?.accountId as string;
+  await setTier(accountId, 'PREMIUM');
   return {
-    accountId: r.body?.accountId as string,
+    accountId,
     authHeaders: { authorization: `Bearer ${idToken}`, 'x-session-id': r.body?.sessionId as string },
   };
 }
@@ -425,6 +440,9 @@ async function main() {
     check(`ningun archivo de src/exams usa (fuera de comentarios) ${forbidden.join('/')} (${offenders.join(', ') || 'limpio'})`, offenders.length === 0);
   } finally {
     console.log('--- 21. Limpieza (contenido publicado permanece, como en el resto de gates) ---');
+    for (const acc of accounts) {
+      try { await setTier(acc, null); } catch { /* best-effort */ }
+    }
     await pg.query('DELETE FROM exam_attempt_answer WHERE attempt_id = ANY($1::uuid[])', [trackedAttemptIds]);
     await pg.query('DELETE FROM exam_attempt WHERE id = ANY($1::uuid[])', [trackedAttemptIds]);
     await pg.query('DELETE FROM exam_question WHERE exam_id = ANY($1::uuid[])', [[examAId, examShortId, examDraftId]]);
