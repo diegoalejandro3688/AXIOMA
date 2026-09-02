@@ -27,6 +27,13 @@ import type { ApiResult } from '../api/client';
  */
 export type EntitlementTier = PremiumTier;
 
+/**
+ * Punto de entrada de UX que abrio el paywall -- decidido por la superficie
+ * MOBILE que realizo la accion bloqueada, nunca por el backend (cuyo `403`
+ * es `{ code, message }` sin `origin`). Capa 2, C2.1.
+ */
+export type PaywallOrigin = 'unit' | 'resources' | 'exams' | 'ai_quota';
+
 export type EntitlementState =
   | { status: 'loading' }
   | { status: 'ready'; tier: EntitlementTier }

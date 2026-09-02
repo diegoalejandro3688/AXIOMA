@@ -187,7 +187,8 @@ async function main() {
   const layoutSrc = read('app', '_layout.tsx');
   check('importa EntitlementProvider de lib/entitlement/entitlement-provider', /import \{ EntitlementProvider \} from '\.\.\/lib\/entitlement\/entitlement-provider'/.test(layoutSrc));
   check('EntitlementProvider esta ANIDADO dentro de AuthProvider', layoutSrc.indexOf('<AuthProvider>') !== -1 && layoutSrc.indexOf('<EntitlementProvider>') > layoutSrc.indexOf('<AuthProvider>') && layoutSrc.indexOf('</EntitlementProvider>') < layoutSrc.indexOf('</AuthProvider>'));
-  check('EntitlementProvider envuelve ThemedRootNavigator', /<EntitlementProvider>\s*<ThemedRootNavigator \/>\s*<\/EntitlementProvider>/.test(layoutSrc));
+  // C2.1 -- EntitlementProvider ahora envuelve PaywallProvider, que envuelve ThemedRootNavigator.
+  check('EntitlementProvider envuelve el arbol de navegacion (via PaywallProvider)', /<EntitlementProvider>\s*<PaywallProvider>\s*<ThemedRootNavigator \/>\s*<\/PaywallProvider>\s*<\/EntitlementProvider>/.test(layoutSrc));
 
   // ----------------------------------------------------------------------
   // H. INVARIANTE A -- ownership del cleanup de la request obsoleta.
