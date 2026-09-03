@@ -139,11 +139,11 @@ console.log('--- D. EntitlementInternalAdminController (POST /_internal/entitlem
 console.log('--- E. Wiring de modulos ---');
 {
   const mod = stripComments(read('src/entitlement/entitlement.module.ts'));
-  check('EntitlementModule exporta EntitlementService', /exports:\s*\[EntitlementService\]/.test(mod));
-  // C3.1: `AccountSubscriptionRepository` se anade como provider local (usa el
-  // PrismaService global). La asercion original "EntitlementService es el unico
-  // provider" codificaba la premisa pre-Billing "no existe AccountSubscription"
-  // -- ahora existe. Se mantiene todo lo demas.
+  // C3.1/C3.2: la premisa pre-Billing "solo se consume EntitlementService y
+  // no existe AccountSubscription" queda superada. C3.1 anade el repositorio
+  // como provider; C3.2 lo EXPORTA para que SubscriptionModule escriba la
+  // tabla que EntitlementService lee. Todo lo demas del gate se mantiene.
+  check('EntitlementModule exporta EntitlementService y AccountSubscriptionRepository (C3.2)', /exports:\s*\[EntitlementService,\s*AccountSubscriptionRepository\]/.test(mod));
   check('provee EntitlementService y AccountSubscriptionRepository (C3.1)', /providers:\s*\[EntitlementService,\s*AccountSubscriptionRepository\]/.test(mod));
   check('declara ambos controllers', /controllers:\s*\[EntitlementController,\s*EntitlementInternalAdminController\]/.test(mod));
   check('importa SOLO infraestructura (AuthModule, ConfigModule, InternalOpsModule) -- ningun modulo de dominio', /imports:\s*\[AuthModule,\s*ConfigModule,\s*InternalOpsModule\]/.test(mod) && !/EducationModule|ProgressModule|ExamsModule|AiModule/.test(mod));

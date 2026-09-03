@@ -14,3 +14,4 @@ export * from './administration';
 export * from './editorial';
 export * from './content-coverage';
 export * from './premium';
+export * from './subscription';

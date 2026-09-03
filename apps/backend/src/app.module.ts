@@ -16,6 +16,8 @@ import { GamificationModule } from './gamification/gamification.module';
 import { AiModule } from './ai/ai.module';
 // PREMIUM V1 -- Capa 1 (Entitlement backend), C1.1.
 import { EntitlementModule } from './entitlement/entitlement.module';
+// PREMIUM V1 -- Capa 3 (Google Play Billing), C3.2.
+import { SubscriptionModule } from './subscription/subscription.module';
 import { AdministrationModule } from './administration/administration.module';
 import { EditorialModule } from './editorial/editorial.module';
 // ENSAYOS-F1 -- dominio EXAMS / Ensayos V1 (ADR-0024).
@@ -54,6 +56,7 @@ import { CoverageMatrixModule } from './editorial/coverage-matrix.module';
     GamificationModule,
     AiModule,
     EntitlementModule,
+    SubscriptionModule,
     AdministrationModule,
     EditorialModule,
     ExamsModule,
