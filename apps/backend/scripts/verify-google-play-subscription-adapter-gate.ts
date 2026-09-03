@@ -505,37 +505,38 @@ async function main() {
     }
 
     // G2 -- reemplazo pendiente cancelado, linked a A ACTIVE + futuro:
-    //       A sigue vigente, NO SUPERSEDED, PREMIUM; B nunca es fila.
+    //       DISPOSICION DEL TOKEN ENVIADO = `canceled` (aunque A siga dando
+    //       PREMIUM). A sin cambios, NO SUPERSEDED; B nunca es fila.
     {
       const s = await makeSession(pg, 'g2');
       const aToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
       await reconcile(s.auth, aToken);
       const bToken = encodeFakePendingPurchaseCanceledToken(aToken);
       const r = await reconcile(s.auth, bToken);
-      check('G2: reemplazo pendiente cancelado (linked a A ACTIVE) -> 200 verified (se reconcilio A)', r.status === 200 && (r.body as { status?: string })?.status === 'verified');
+      check('G2: reemplazo pendiente cancelado (linked a A ACTIVE) -> 200 { status: "canceled" } (NUNCA "verified")', r.status === 200 && JSON.stringify(r.body) === JSON.stringify({ status: 'canceled' }));
       check('G2: A sigue ACTIVE, NO SUPERSEDED', (await rowOf(aToken))?.state === 'ACTIVE');
       check('G2: B (token cancelado) nunca es una fila', (await rowOf(bToken)) === undefined);
-      check('G2: GET /me/entitlement -> PREMIUM (derivado de A)', (await tierOf(s.auth)) === 'PREMIUM');
+      check('G2: GET /me/entitlement -> PREMIUM (authorization independiente, derivada de A)', (await tierOf(s.auth)) === 'PREMIUM');
     }
 
-    // G3 -- linked a A CANCELED + expiry futuro -> A vigente, PREMIUM.
+    // G3 -- linked a A CANCELED + expiry futuro -> status `canceled`, PREMIUM.
     {
       const s = await makeSession(pg, 'g3');
       const aToken = encodeFakeSubscriptionToken({ state: 'CANCELED', expiryDeltaMs: 15 * 24 * HOUR, autoRenewing: false });
       await reconcile(s.auth, aToken);
       const bToken = encodeFakePendingPurchaseCanceledToken(aToken);
       const r = await reconcile(s.auth, bToken);
-      check('G3: linked a A CANCELED+futuro -> 200, A no SUPERSEDED, PREMIUM', r.status === 200 && (await rowOf(aToken))?.state === 'CANCELED' && (await tierOf(s.auth)) === 'PREMIUM');
+      check('G3: linked a A CANCELED+futuro -> 200 { status: "canceled" }, A no SUPERSEDED, entitlement PREMIUM', r.status === 200 && (r.body as { status?: string })?.status === 'canceled' && (await rowOf(aToken))?.state === 'CANCELED' && (await tierOf(s.auth)) === 'PREMIUM');
     }
 
-    // G4 -- linked a A EXPIRED -> FREE (A se reconcilia, no concede).
+    // G4 -- linked a A EXPIRED -> status `canceled`, entitlement FREE.
     {
       const s = await makeSession(pg, 'g4');
       const aToken = encodeFakeSubscriptionToken({ state: 'EXPIRED', expiryDeltaMs: -5 * 24 * HOUR });
       await reconcile(s.auth, aToken);
       const bToken = encodeFakePendingPurchaseCanceledToken(aToken);
       const r = await reconcile(s.auth, bToken);
-      check('G4: linked a A EXPIRED -> 200 verified, A EXPIRED, FREE', r.status === 200 && (await rowOf(aToken))?.state === 'EXPIRED' && (await tierOf(s.auth)) === 'FREE');
+      check('G4: linked a A EXPIRED -> 200 { status: "canceled" }, A EXPIRED, entitlement FREE', r.status === 200 && (r.body as { status?: string })?.status === 'canceled' && (await rowOf(aToken))?.state === 'EXPIRED' && (await tierOf(s.auth)) === 'FREE');
       check('G4: B nunca es fila', (await rowOf(bToken)) === undefined);
     }
 
@@ -547,6 +548,21 @@ async function main() {
       await reconcile(s.auth, aToken);
       await reconcile(s.auth, encodeFakePendingPurchaseCanceledToken(aToken));
       check('G5: A jamas pasa a SUPERSEDED por una compra pendiente cancelada', (await rowOf(aToken))?.state === 'ACTIVE');
+    }
+
+    // G5b -- reconciliacion repetida de la compra pendiente cancelada linkeada:
+    //        idempotente -- sigue `canceled`, A intacta, sin fila para B.
+    {
+      const s = await makeSession(pg, 'g5b');
+      const aToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 25 * 24 * HOUR });
+      await reconcile(s.auth, aToken);
+      const bToken = encodeFakePendingPurchaseCanceledToken(aToken);
+      await reconcile(s.auth, bToken);
+      const r2 = await reconcile(s.auth, bToken);
+      check('G5b: 2do reconcile del token cancelado linkeado -> sigue 200 canceled', r2.status === 200 && (r2.body as { status?: string })?.status === 'canceled');
+      check('G5b: A sigue ACTIVE (una sola fila, sin SUPERSEDED), B sin fila, PREMIUM', (await rowOf(aToken))?.state === 'ACTIVE' && (await rowOf(bToken)) === undefined && (await tierOf(s.auth)) === 'PREMIUM');
+      const aCount = (await pg.query(`SELECT count(*)::int n FROM account_subscription WHERE purchase_token = $1`, [aToken])).rows[0].n;
+      check('G5b: EXACTAMENTE 1 fila para A', aCount === 1);
     }
 
     // G6 -- linked a A de OTRA cuenta -> 409, sin mutar nada.
@@ -570,7 +586,7 @@ async function main() {
       await reconcile(s.auth, aToken);
       const bToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 40 * 24 * HOUR, linkedPurchaseToken: aToken });
       const r = await reconcile(s.auth, bToken);
-      check('G7: reemplazo COMPLETADO -> 200, A SUPERSEDED, B ACTIVE, PREMIUM', r.status === 200 && (await rowOf(aToken))?.state === 'SUPERSEDED' && (await rowOf(bToken))?.state === 'ACTIVE' && (await tierOf(s.auth)) === 'PREMIUM');
+      check('G7: reemplazo COMPLETADO -> 200 { status: "verified" } (NO "canceled"), A SUPERSEDED, B ACTIVE, PREMIUM', r.status === 200 && (r.body as { status?: string })?.status === 'verified' && (await rowOf(aToken))?.state === 'SUPERSEDED' && (await rowOf(bToken))?.state === 'ACTIVE' && (await tierOf(s.auth)) === 'PREMIUM');
     }
 
     // G8 -- un enum GENUINAMENTE desconocido sigue fail-closed (no se confunde

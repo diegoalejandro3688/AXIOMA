@@ -166,15 +166,23 @@ export class SubscriptionReconciliationService {
    * `SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED`: una compra PENDIENTE (un
    * cambio de plan / re-alta / pago diferido) se cancelo antes de completarse.
    *
+   * El `status` del endpoint describe la DISPOSICION DEL TOKEN QUE EL CLIENTE
+   * ENVIO. Un token cuya compra pendiente se cancelo SIEMPRE responde
+   * `canceled` -- aunque internamente se reconcilie una suscripcion previa que
+   * siga concediendo PREMIUM. La verdad de authorization es independiente:
+   * `GET /me/entitlement`. Devolver `verified` para B haria que el movil (C3.5)
+   * interpretara un intento de compra cancelado como exitoso.
+   *
    * (B) Sin `linkedPurchaseToken` -> compra pendiente INICIAL cancelada: no
    *     hay suscripcion previa. Resultado neto: nada. No se escribio ninguna
    *     fila, no se acknowledgeo nada -> idempotente por construccion.
-   *     Respuesta: `canceled` (el movil NO debe leerlo como compra exitosa).
    *
    * (C) Con `linkedPurchaseToken` -> REEMPLAZO pendiente cancelado: la
    *     suscripcion EXISTENTE linkeada sigue siendo la autoridad. Este token
-   *     NO la supersede. Se verifica y reconcilia la suscripcion linkeada
-   *     (recursion, 1 salto) y el entitlement se deriva de ELLA.
+   *     NO la supersede y NO se persiste. Se verifica y reconcilia la
+   *     suscripcion linkeada (recursion, 1 salto) por sus EFECTOS (persistir/
+   *     actualizar/acknowledgear A, de lo que depende el entitlement), pero su
+   *     `status` se descarta: el endpoint responde `canceled`.
    *
    * (D) Ownership: si la suscripcion linkeada ya pertenece a OTRA cuenta
    *     ZETRYND -> `SUBSCRIPTION_ACCOUNT_MISMATCH`, sin transferir, sin
@@ -194,7 +202,7 @@ export class SubscriptionReconciliationService {
 
     if (!linked || linked === purchaseToken || depth >= 1) {
       this.logger.log(
-        `compra pendiente cancelada para ${this.tokenHint(purchaseToken)} sin suscripcion previa reconciliable -> sin cambios`,
+        `compra pendiente cancelada para ${this.tokenHint(purchaseToken)} sin suscripcion previa reconciliable -> canceled`,
       );
       return { status: 'canceled' };
     }
@@ -210,7 +218,13 @@ export class SubscriptionReconciliationService {
       });
     }
 
-    return this.reconcileToken(accountId, linked, depth + 1);
+    // Reconcilia A por sus efectos; su `status` NO es la disposicion del token
+    // que el cliente envio.
+    await this.reconcileToken(accountId, linked, depth + 1);
+    this.logger.log(
+      `compra pendiente cancelada para ${this.tokenHint(purchaseToken)}; suscripcion previa reconciliada -> canceled`,
+    );
+    return { status: 'canceled' };
   }
 
   private toWriteData(accountId: string, s: VerifiedSubscriptionSnapshot): VerifiedSubscriptionWriteData {
