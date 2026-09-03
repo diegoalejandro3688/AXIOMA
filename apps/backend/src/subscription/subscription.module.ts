@@ -5,6 +5,7 @@ import { EntitlementModule } from '../entitlement/entitlement.module';
 import { GooglePlaySubscriptionAdapter } from './google/google-play-subscription.adapter';
 import { FakeSubscriptionProviderAdapter } from './fake-subscription-provider.adapter';
 import { SUBSCRIPTION_PROVIDER_ADAPTER } from './subscription-provider.port';
+import { resolveSubscriptionProviderChoice } from './subscription-provider-choice';
 import { SubscriptionReconciliationService } from './subscription-reconciliation.service';
 import { SubscriptionController } from './subscription.controller';
 
@@ -18,11 +19,13 @@ import { SubscriptionController } from './subscription.controller';
  * global.
  *
  * `SUBSCRIPTION_PROVIDER_ADAPTER` se resuelve por `useFactory` condicional
- * (mismo patron que `AI_PROVIDER` / `IDENTITY_PROVIDER`): default `fake`. El
- * adaptador real (`GooglePlaySubscriptionAdapter`) SOLO se construye cuando
- * `GOOGLE_PLAY_PROVIDER_IMPL=google` -- asi el desarrollo local normal nunca
- * necesita `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` ni abre un cliente de red al
- * arrancar.
+ * (`resolveSubscriptionProviderChoice`): `fake` por defecto en no-produccion,
+ * `google` con `GOOGLE_PLAY_PROVIDER_IMPL=google`. En PRODUCCION con el impl
+ * ausente o `fake`, la factory LANZA al arrancar (fail-closed) -- una feature
+ * de pago mal configurada no se despliega, y no hay camino en produccion por
+ * el que un `purchaseToken` fake no verificado conceda PREMIUM. El adaptador
+ * real solo se construye bajo `google` -- el desarrollo local normal nunca
+ * necesita `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` ni abre un cliente de red.
  */
 @Module({
   imports: [ConfigModule, AuthModule, EntitlementModule],
@@ -33,9 +36,12 @@ import { SubscriptionController } from './subscription.controller';
       provide: SUBSCRIPTION_PROVIDER_ADAPTER,
       inject: [ConfigService, FakeSubscriptionProviderAdapter],
       useFactory: (config: ConfigService, fake: FakeSubscriptionProviderAdapter) => {
-        const impl = config.get<string>('GOOGLE_PLAY_PROVIDER_IMPL', 'fake');
-        if (impl === 'google') return new GooglePlaySubscriptionAdapter(config);
-        return fake;
+        const choice = resolveSubscriptionProviderChoice(
+          config.get<string>('NODE_ENV'),
+          config.get<string>('GOOGLE_PLAY_PROVIDER_IMPL'),
+        );
+        if ('reject' in choice) throw new Error(choice.reject);
+        return choice.use === 'google' ? new GooglePlaySubscriptionAdapter(config) : fake;
       },
     },
     SubscriptionReconciliationService,

@@ -177,6 +177,55 @@ async function main() {
   check('A: el mapper NUNCA fija latestEventTime', !/latestEventTime/.test(stripComments(readSrc('subscription/google/map-google-subscription.ts'))));
 
   // ========================================================================
+  console.log('--- PARTE A2. reglas PURAS: eleccion de proveedor (fail-closed en prod) + acknowledgement ---');
+
+  // A2.a -- `resolveSubscriptionProviderChoice` (task hardening seccion A).
+  const { resolveSubscriptionProviderChoice } = await import('../src/subscription/subscription-provider-choice');
+  const choiceMatrix: Array<[string | undefined, string | undefined, 'google' | 'fake' | 'reject']> = [
+    ['development', undefined, 'fake'],
+    ['development', 'fake', 'fake'],
+    ['test', undefined, 'fake'],
+    [undefined, 'fake', 'fake'],
+    ['development', 'google', 'google'],
+    ['production', 'google', 'google'],
+    ['production', undefined, 'reject'], // falta el provider en prod -> fail-closed
+    ['production', 'fake', 'reject'], // provider=fake en prod -> fail-closed
+    ['production', 'anything-else', 'reject'],
+  ];
+  for (const [nodeEnv, impl, expected] of choiceMatrix) {
+    const c = resolveSubscriptionProviderChoice(nodeEnv, impl);
+    const got = 'reject' in c ? 'reject' : c.use;
+    check(`A2: choice(NODE_ENV=${nodeEnv ?? 'unset'}, impl=${impl ?? 'unset'}) -> ${expected}`, got === expected);
+  }
+  check('A2: el modulo aplica resolveSubscriptionProviderChoice y LANZA en el rechazo', (() => {
+    const mod = stripComments(readSrc('subscription/subscription.module.ts'));
+    return /resolveSubscriptionProviderChoice\(/.test(mod) && /'reject' in choice\) throw new Error\(choice\.reject\)/.test(mod);
+  })());
+  check('A2: la factory NO tiene un default "fake" a secas (sin config.get(IMPL, "fake"))', !/GOOGLE_PLAY_PROVIDER_IMPL['"],\s*['"]fake['"]/.test(readSrc('subscription/subscription.module.ts')));
+
+  // A2.b -- `shouldAcknowledgeSubscription` (task hardening seccion B).
+  const { shouldAcknowledgeSubscription } = await import('../src/subscription/should-acknowledge');
+  const future = new Date(now.getTime() + 30 * 24 * HOUR);
+  const past = new Date(now.getTime() - 30 * 24 * HOUR);
+  const ackMatrix: Array<[string, Parameters<typeof shouldAcknowledgeSubscription>[0], boolean]> = [
+    ['ACTIVE + no-ack -> ack', { state: 'ACTIVE', expiryTime: future, recognizedState: true, acknowledged: false }, true],
+    ['ACTIVE + expiry pasado (stale) -> NO (no concede)', { state: 'ACTIVE', expiryTime: past, recognizedState: true, acknowledged: false }, false],
+    ['IN_GRACE_PERIOD + no-ack -> ack (la tabla lo considera entitled)', { state: 'IN_GRACE_PERIOD', expiryTime: future, recognizedState: true, acknowledged: false }, true],
+    ['CANCELED + expiry futuro + no-ack -> ack (usuario cancelo auto-renovacion, periodo pagado vigente)', { state: 'CANCELED', expiryTime: future, recognizedState: true, acknowledged: false }, true],
+    ['CANCELED + expiry pasado + no-ack -> NO (ya no concede)', { state: 'CANCELED', expiryTime: past, recognizedState: true, acknowledged: false }, false],
+    ['PENDING -> NO', { state: 'PENDING', expiryTime: future, recognizedState: true, acknowledged: false }, false],
+    ['EXPIRED -> NO', { state: 'EXPIRED', expiryTime: past, recognizedState: true, acknowledged: false }, false],
+    ['ON_HOLD -> NO', { state: 'ON_HOLD', expiryTime: past, recognizedState: true, acknowledged: false }, false],
+    ['PAUSED -> NO', { state: 'PAUSED', expiryTime: future, recognizedState: true, acknowledged: false }, false],
+    ['estado fail-closed (recognized=false) -> NO', { state: 'EXPIRED', expiryTime: future, recognizedState: false, acknowledged: false }, false],
+    ['ya acknowledgeada -> NO (renovacion normal)', { state: 'ACTIVE', expiryTime: future, recognizedState: true, acknowledged: true }, false],
+  ];
+  for (const [label, input, expected] of ackMatrix) {
+    check(`A2: shouldAcknowledge: ${label}`, shouldAcknowledgeSubscription(input, now) === expected);
+  }
+  check('A2: la reconciliacion delega en shouldAcknowledgeSubscription (no re-implementa la regla)', /shouldAcknowledgeSubscription\(\{/.test(stripComments(readSrc('subscription/subscription-reconciliation.service.ts'))));
+
+  // ========================================================================
   console.log('--- PARTE B. reconciliacion end-to-end (fake adapter) ---');
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
@@ -263,20 +312,48 @@ async function main() {
       check('B7: NO se acknowledgea un estado no reconocido', (await rowOf(token))?.acknowledgement_state === 'PENDING');
     }
 
-    // B8 -- acknowledge: reintento tras fallo, sin corromper ni duplicar estado.
+    // B8 -- acknowledge se dispara tambien para CANCELED (periodo pagado vigente) y GRACE.
     {
-      const s = await makeSession(pg, 'b8');
+      const s = await makeSession(pg, 'b8-canceled');
+      // Usuario cancela la auto-renovacion antes de que el backend termine:
+      // Google reporta CANCELED, expiryTime futuro, ackState PENDING.
+      const token = encodeFakeSubscriptionToken({ state: 'CANCELED', expiryDeltaMs: 20 * 24 * HOUR, autoRenewing: false });
+      const r = await reconcile(s.auth, token);
+      check('B8: CANCELED + expiry futuro + no-ack -> 200 verified', r.status === 200);
+      check('B8: -> PREMIUM (el periodo pagado sigue vigente)', (await tierOf(s.auth)) === 'PREMIUM');
+      check('B8: -> acknowledgement_state = ACKNOWLEDGED (una cancelacion vigente TAMBIEN se acknowledgea)', (await rowOf(token))?.acknowledgement_state === 'ACKNOWLEDGED');
+    }
+    {
+      const s = await makeSession(pg, 'b8-grace');
+      const token = encodeFakeSubscriptionToken({ state: 'IN_GRACE_PERIOD', expiryDeltaMs: 3 * 24 * HOUR });
+      const r = await reconcile(s.auth, token);
+      check('B8: GRACE valido + no-ack -> 200 verified, PREMIUM, ACKNOWLEDGED', r.status === 200 && (await tierOf(s.auth)) === 'PREMIUM' && (await rowOf(token))?.acknowledgement_state === 'ACKNOWLEDGED');
+    }
+    {
+      const s = await makeSession(pg, 'b8-ackd');
+      // Ya acknowledgeada de origen (una renovacion) -> no se re-acknowledgea, 200.
+      const token = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true });
+      const r = await reconcile(s.auth, token);
+      check('B8: ya acknowledgeada -> 200 verified, sigue ACKNOWLEDGED (sin re-acknowledge)', r.status === 200 && (await rowOf(token))?.acknowledgement_state === 'ACKNOWLEDGED');
+    }
+
+    // B8-retry -- fallo de acknowledge = 503 REINTENTABLE, fila preservada, sin duplicar.
+    {
+      const s = await makeSession(pg, 'b8-retry');
       const token = encodeFakeAckFailToken(1, { state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
+
       const r1 = await reconcile(s.auth, token);
-      check('B8: reconcile #1 con ack fallido -> 200 verified (ack NO fatal)', r1.status === 200);
-      check('B8: #1 -> PREMIUM aunque el ack fallo', (await tierOf(s.auth)) === 'PREMIUM');
-      check('B8: #1 -> acknowledgement_state sigue PENDING', (await rowOf(token))?.acknowledgement_state === 'PENDING');
+      check('B8-retry: #1 con ack fallido -> 503 REINTENTABLE (no "verified")', r1.status === 503);
+      check('B8-retry: #1 -> la fila YA esta persistida (state ACTIVE)', (await rowOf(token))?.state === 'ACTIVE');
+      check('B8-retry: #1 -> NO se revoca PREMIUM por un fallo de transporte del ack', (await tierOf(s.auth)) === 'PREMIUM');
+      check('B8-retry: #1 -> acknowledgement_state sigue PENDING', (await rowOf(token))?.acknowledgement_state === 'PENDING');
+
       const r2 = await reconcile(s.auth, token);
-      check('B8: reconcile #2 -> 200; ack ahora tiene exito', r2.status === 200);
-      check('B8: #2 -> acknowledgement_state = ACKNOWLEDGED', (await rowOf(token))?.acknowledgement_state === 'ACKNOWLEDGED');
+      check('B8-retry: #2 (mismo token) -> reintenta el acknowledge y ahora tiene exito -> 200 verified', r2.status === 200 && (r2.body as { status?: string })?.status === 'verified');
+      check('B8-retry: #2 -> acknowledgement_state = ACKNOWLEDGED', (await rowOf(token))?.acknowledgement_state === 'ACKNOWLEDGED');
       const count = (await pg.query(`SELECT count(*)::int n FROM account_subscription WHERE purchase_token = $1`, [token])).rows[0].n;
-      check('B8: sigue habiendo EXACTAMENTE 1 fila (estado no corrupto/duplicado)', count === 1);
-      check('B8: sigue PREMIUM', (await tierOf(s.auth)) === 'PREMIUM');
+      check('B8-retry: EXACTAMENTE 1 fila en todo el proceso (sin duplicar)', count === 1);
+      check('B8-retry: sigue PREMIUM', (await tierOf(s.auth)) === 'PREMIUM');
     }
 
     // B9 -- colision de cuenta: mismo token, otra cuenta -> 409, dueno original intacto.
@@ -351,7 +428,7 @@ async function main() {
       const adapter = readSrc('subscription/google/google-play-subscription.adapter.ts');
       check('D: SOLO el adaptador real importa google-auth-library', /from 'google-auth-library'/.test(adapter));
       const mod = stripComments(readSrc('subscription/subscription.module.ts'));
-      check('D: el adaptador real SOLO se construye con GOOGLE_PLAY_PROVIDER_IMPL=google', /impl === 'google'\) return new GooglePlaySubscriptionAdapter/.test(mod) && /'fake'\)/.test(mod));
+      check('D: el adaptador real SOLO se construye bajo la eleccion "google" (resolveSubscriptionProviderChoice)', /resolveSubscriptionProviderChoice\(/.test(mod) && /choice\.use === 'google' \? new GooglePlaySubscriptionAdapter\(config\) : fake/.test(mod));
     }
 
     // ====================================================================

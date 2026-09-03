@@ -22,6 +22,7 @@ import {
   type SubscriptionProviderAdapter,
   type VerifiedSubscriptionSnapshot,
 } from './subscription-provider.port';
+import { shouldAcknowledgeSubscription } from './should-acknowledge';
 import { ZETRYND_PLAY_PACKAGE_NAME, ZETRYND_PREMIUM_PRODUCT_ID } from './subscription-product';
 
 /**
@@ -107,19 +108,31 @@ export class SubscriptionReconciliationService {
       }
     });
 
-    // 6. Acknowledge SOLO si la compra esta entitled (ACTIVE) y aun no
-    //    acknowledgeada. NUNCA para PENDING / estado no reconocido / etc.
-    //    Fallo de acknowledge = NO fatal: la fila ya esta persistida y el
-    //    entitlement es derivable; se reintenta en una llamada posterior.
-    if (snapshot.state === 'ACTIVE' && snapshot.recognizedState && !snapshot.acknowledged) {
+    // 6. Acknowledge -- regla PURA `shouldAcknowledgeSubscription`: se
+    //    acknowledgea sii la compra CONCEDE entitlement ahora (ACTIVE,
+    //    IN_GRACE_PERIOD, o CANCELED con periodo pagado vigente), el estado
+    //    es reconocido, no es PENDING y aun no esta acknowledgeada. NUNCA
+    //    para PENDING / producto invalido / estado fail-closed / ya
+    //    acknowledgeada / estado que no concede.
+    const now = new Date();
+    if (shouldAcknowledgeSubscription({ state: snapshot.state, expiryTime: snapshot.expiryTime, recognizedState: snapshot.recognizedState, acknowledged: snapshot.acknowledged }, now)) {
       try {
         await this.provider.acknowledgeSubscription(purchaseToken);
         const row = await this.subscriptions.findByPurchaseToken(purchaseToken);
         if (row) await this.subscriptions.markAcknowledged(row.id);
       } catch (error) {
+        // La fila YA esta persistida y el entitlement es derivable -- NO se
+        // revoca PREMIUM porque el transporte del acknowledge fallara. Pero,
+        // sin worker de reintento autonomo todavia, no se puede reportar
+        // "verified" y dejar la compra sin confirmar (Google reembolsa a los
+        // 3 dias). Se devuelve un 503 REINTENTABLE: reintentar el MISMO
+        // `purchaseToken` re-verifica (idempotente, sin fila duplicada) y
+        // vuelve a intentar el acknowledge. C3.3 (RTDN) anadira recuperacion
+        // autonoma.
         this.logger.warn(
-          `acknowledge fallo para ${this.tokenHint(purchaseToken)} (no fatal, se reintentara): ${error instanceof Error ? error.message : 'desconocido'}`,
+          `acknowledge incompleto para ${this.tokenHint(purchaseToken)} (fila persistida, reintentable): ${error instanceof Error ? error.message : 'desconocido'}`,
         );
+        throw new ServiceUnavailableException('La compra se registró pero aún no se pudo confirmar. Vuelve a intentarlo.');
       }
     }
 
