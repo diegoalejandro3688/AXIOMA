@@ -458,7 +458,16 @@ async function main() {
       const updateBody = repo.slice(repo.indexOf('async updateFromVerified'), repo.indexOf('async markSuperseded'));
       check('E: createFromVerified NO fija latestEventTime', !/latestEventTime/.test(createBody));
       check('E: updateFromVerified NO fija latestEventTime ni latestNotificationType', !/latestEventTime|latestNotificationType/.test(updateBody));
-      check('E: la reconciliacion nunca referencia latestEventTime', !/latestEventTime/.test(stripComments(readSrc('subscription/subscription-reconciliation.service.ts'))));
+      // C3.3: la reconciliacion YA referencia latestEventTime -- pero SOLO via la
+      // regla PURA `resolveProviderEventTimeUpdate` (monotona) y el metodo
+      // dedicado `applyProviderEvent`; NUNCA desde `Date.now()` / llegada /
+      // `updatedAt`, y el reconcile DIRECTO pasa `providerEventTime: null`.
+      {
+        const recon = stripComments(readSrc('subscription/subscription-reconciliation.service.ts'));
+        check('E: el reconcile directo del movil pasa providerEventTime: null', /providerEventTime: null/.test(recon));
+        check('E: latestEventTime solo avanza via resolveProviderEventTimeUpdate + applyProviderEvent', /resolveProviderEventTimeUpdate\(/.test(recon) && /applyProviderEvent\(/.test(recon));
+        check('E: la reconciliacion NUNCA fija latestEventTime desde Date.now()/updatedAt/llegada', !/latestEventTime:\s*(new Date\(\)|Date\.now\(\))/.test(recon) && !/applyProviderEvent\([^)]*Date\.now\(\)/.test(recon));
+      }
 
       // Comportamiento: una fila con latestEventTime NO-null (simula una RTDN
       // previa) NO se borra ni se reemplaza al reconciliar directo.

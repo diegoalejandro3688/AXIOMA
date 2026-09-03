@@ -26,17 +26,56 @@ import {
 } from './subscription-provider.port';
 import { shouldAcknowledgeSubscription } from './should-acknowledge';
 import { ZETRYND_PLAY_PACKAGE_NAME, ZETRYND_PREMIUM_PRODUCT_ID } from './subscription-product';
+import type { NormalizedSubscriptionState } from '../entitlement/subscription/derive-subscription-tier';
+import { applyRevocationContext, resolveProviderEventTimeUpdate } from './rtdn/rtdn-event-time';
+import { rtdnSubscriptionNotificationLabel } from './rtdn/rtdn-notification-type';
 
 /**
- * PREMIUM V1 -- Capa 3 (Google Play Billing), C3.2.
+ * La reconciliacion no pudo atribuir el `purchaseToken` a ninguna cuenta:
+ * llega una RTDN para un token que aun no tiene fila ni predecesor conocido
+ * (el `reconcilePurchase` del movil todavia no corrio). NO es un fallo
+ * permanente -- el worker reintenta un numero acotado de veces; la ruta de
+ * atribucion primaria sigue siendo el reconcile del movil.
+ */
+export class SubscriptionNotAttributableError extends Error {
+  constructor(purchaseTokenHint: string) {
+    super(`RTDN para un purchaseToken no atribuible todavia (${purchaseTokenHint})`);
+    this.name = 'SubscriptionNotAttributableError';
+  }
+}
+
+/** Contexto interno de una reconciliacion. `providerEventTime`/`notificationType` solo vienen de una RTDN (C3.3). */
+interface ReconcileContext {
+  /** Acota la recursion de compra-pendiente-cancelada (1 salto). */
+  depth: number;
+  /** `DeveloperNotification.eventTimeMillis` -- cronologia AUTORITATIVA de Google. `null` = reconcile directo del movil. */
+  providerEventTime: Date | null;
+  /** `subscriptionNotification.notificationType` (entero de Google) -- contexto de revocacion. `null` = movil. */
+  notificationType: number | null;
+}
+
+const DIRECT: ReconcileContext = { depth: 0, providerEventTime: null, notificationType: null };
+
+/**
+ * PREMIUM V1 -- Capa 3 (Google Play Billing), C3.2 + C3.3.
  *
  * UNICA operacion autoritativa: verifica un `purchaseToken` con Google,
  * reconcilia `AccountSubscription` atomicamente y deja que
  * `GET /me/entitlement` derive el tier. NUNCA confia en el tier/estado/expiry
  * que el movil pudiera enviar (el movil solo manda `purchaseToken`).
  *
- * Frontera: este servicio nunca ve JSON de Google -- consume el
- * `VerifiedSubscriptionSnapshot` neutral que el adaptador ya normalizo.
+ * Dos entradas, UN camino:
+ *   - `reconcilePurchase({ accountId, purchaseToken })` -- reconcile DIRECTO
+ *     del movil (C3.2). `providerEventTime = null`: nunca fija/retrocede la
+ *     cronologia de proveedor.
+ *   - `reconcileFromNotification({ purchaseToken, providerEventTime, ... })` --
+ *     desde el worker de RTDN (C3.3). La cuenta se resuelve de la fila
+ *     existente o del predecesor linkeado; `providerEventTime` es autoritativo
+ *     y MONOTONO.
+ *
+ * Frontera: este servicio nunca ve JSON de Google ni tipos de transporte de
+ * Google -- consume el `VerifiedSubscriptionSnapshot` neutral del adaptador y,
+ * de la RTDN, solo primitivos (`Date`, entero).
  */
 @Injectable()
 export class SubscriptionReconciliationService {
@@ -54,26 +93,52 @@ export class SubscriptionReconciliationService {
   }
 
   async reconcilePurchase(input: { accountId: string; purchaseToken: string }): Promise<{ status: SubscriptionReconcileStatus }> {
-    return this.reconcileToken(input.accountId, input.purchaseToken, 0);
+    return this.reconcileToken(input.accountId, input.purchaseToken, DIRECT);
   }
 
   /**
-   * `depth` acota la recursion: una compra pendiente cancelada con
-   * `linkedPurchaseToken` reconcilia esa suscripcion existente (1 salto). Una
-   * cadena de compras pendientes canceladas encadenadas es patologica y se
-   * corta en `canceled`.
+   * Entrada desde el worker de RTDN (C3.3). El RTDN NO es la verdad de la
+   * suscripcion -- solo dispara esta reconsulta a Google. La cuenta se resuelve
+   * de la fila existente (por `purchaseToken`) o, si es una rotacion de token,
+   * del predecesor linkeado; si no se puede atribuir todavia, lanza
+   * `SubscriptionNotAttributableError` (el worker reintenta acotadamente).
+   */
+  async reconcileFromNotification(input: {
+    purchaseToken: string;
+    providerEventTime: Date | null;
+    notificationType: number | null;
+  }): Promise<{ status: SubscriptionReconcileStatus }> {
+    return this.reconcileToken(null, input.purchaseToken, {
+      depth: 0,
+      providerEventTime: input.providerEventTime,
+      notificationType: input.notificationType,
+    });
+  }
+
+  /**
+   * `ctx.depth` acota la recursion: una compra pendiente cancelada con
+   * `linkedPurchaseToken` reconcilia esa suscripcion existente (1 salto).
+   *
+   * `accountId === null` es la ruta RTDN: la cuenta se resuelve de la fila
+   * existente o del predecesor linkeado.
    */
   private async reconcileToken(
-    accountId: string,
+    accountIdInput: string | null,
     purchaseToken: string,
-    depth: number,
+    ctx: ReconcileContext,
   ): Promise<{ status: SubscriptionReconcileStatus }> {
+    let accountId = accountIdInput;
+
     // 1. Ownership pre-check -- un token ya asociado a OTRA cuenta ZETRYND
     //    NUNCA se re-vincula (ADR L.4). Mismo dueno -> camino idempotente.
+    //    RTDN (`accountId === null`): se ADOPTA la cuenta de la fila existente.
     const existing = await this.subscriptions.findByPurchaseToken(purchaseToken);
-    if (existing && existing.accountId !== accountId) {
-      this.logger.warn(`account mismatch en reconcile: token ${this.tokenHint(purchaseToken)} pertenece a otra cuenta`);
-      throw new ConflictException({ code: SUBSCRIPTION_ACCOUNT_MISMATCH_CODE, message: 'Esta compra está asociada a otra cuenta.' });
+    if (existing) {
+      if (accountId !== null && existing.accountId !== accountId) {
+        this.logger.warn(`account mismatch en reconcile: token ${this.tokenHint(purchaseToken)} pertenece a otra cuenta`);
+        throw new ConflictException({ code: SUBSCRIPTION_ACCOUNT_MISMATCH_CODE, message: 'Esta compra está asociada a otra cuenta.' });
+      }
+      accountId = existing.accountId;
     }
 
     // 2. Verificar con el proveedor. NUNCA se fabrica un snapshot exitoso.
@@ -89,7 +154,7 @@ export class SubscriptionReconciliationService {
     //     acknowledgea, NUNCA supersede a nada. Si concernia a una suscripcion
     //     EXISTENTE (`linkedPurchaseToken`), esa es la autoridad.
     if (isPendingPurchaseCanceled(verification)) {
-      return this.reconcileCanceledPendingPurchase(accountId, purchaseToken, verification, depth);
+      return this.reconcileCanceledPendingPurchase(accountId, purchaseToken, verification, ctx);
     }
     const snapshot = verification;
 
@@ -104,30 +169,53 @@ export class SubscriptionReconciliationService {
       this.logger.warn(`subscriptionState no reconocido de Google: "${snapshot.rawSubscriptionState}" -> fail-closed`);
     }
 
-    // 4. linkedPurchaseToken -- rotacion de token (ADR D.4).
+    // 3b. Contexto de REVOCACION (C3.3 §14). `SubscriptionPurchaseV2` no expone
+    //     "revoked"; si el RTDN que disparo esto es `SUBSCRIPTION_REVOKED` (12)
+    //     y el estado derivado ya es terminal (`EXPIRED`), se registra `REVOKED`
+    //     -- solo fidelidad de auditoria (ambos derivan FREE). Si el snapshot
+    //     dijera un estado que concede, NO se sobreescribe (se confia en Google).
+    const effectiveState: NormalizedSubscriptionState = applyRevocationContext(snapshot.state, ctx.notificationType);
+    if (effectiveState !== snapshot.state) {
+      this.logger.log(`RTDN revoke: ${this.tokenHint(purchaseToken)} snapshot=${snapshot.state} -> se registra REVOKED`);
+    } else if (ctx.notificationType === 12 && snapshot.recognizedState && snapshot.state !== 'EXPIRED') {
+      this.logger.warn(`RTDN revoke para ${this.tokenHint(purchaseToken)} pero el snapshot dice ${snapshot.state} -- posible desincronizacion, se confia en Google`);
+    }
+
+    // 4. linkedPurchaseToken -- rotacion de token (ADR D.4). RTDN sin cuenta:
+    //    se HEREDA la del predecesor (ADR D.4.1).
     let predecessorId: string | null = null;
     if (snapshot.linkedPurchaseToken) {
       const predecessor = await this.subscriptions.findByPurchaseToken(snapshot.linkedPurchaseToken);
       if (predecessor) {
-        if (predecessor.accountId !== accountId) {
+        if (accountId !== null && predecessor.accountId !== accountId) {
           throw new ConflictException({ code: SUBSCRIPTION_ACCOUNT_MISMATCH_CODE, message: 'La suscripción anterior pertenece a otra cuenta.' });
         }
+        if (accountId === null) accountId = predecessor.accountId;
         if (predecessor.state !== 'SUPERSEDED') predecessorId = predecessor.id;
       }
     }
 
-    const writeData = this.toWriteData(accountId, snapshot);
+    // 4b. Sin cuenta resoluble -> la RTDN llego antes que el reconcile del movil.
+    if (accountId === null) {
+      throw new SubscriptionNotAttributableError(this.tokenHint(purchaseToken));
+    }
 
-    // 5. Persistir atomicamente: upsert por purchaseToken + supersede predecesor.
+    const writeData = this.toWriteData(accountId, snapshot, effectiveState);
+    const notificationLabel = rtdnSubscriptionNotificationLabel(ctx.notificationType);
+
+    // 5. Persistir atomicamente: upsert por purchaseToken + supersede predecesor
+    //    + avanzar la cronologia de proveedor (MONOTONA) si la RTDN es mas nueva.
     await this.tx.run(async (db) => {
       const current = await this.subscriptions.findByPurchaseToken(purchaseToken, db);
-      if (current) {
-        await this.subscriptions.updateFromVerified(current.id, writeData, db);
-      } else {
-        await this.subscriptions.createFromVerified(writeData, db);
-      }
+      const eventUpdate = resolveProviderEventTimeUpdate(current?.latestEventTime ?? null, ctx.providerEventTime, notificationLabel);
+      const rowId = current
+        ? (await this.subscriptions.updateFromVerified(current.id, writeData, db)).id
+        : (await this.subscriptions.createFromVerified(writeData, db)).id;
       if (predecessorId) {
         await this.subscriptions.markSuperseded(predecessorId, db);
+      }
+      if (eventUpdate) {
+        await this.subscriptions.applyProviderEvent(rowId, eventUpdate, db);
       }
     });
 
@@ -136,9 +224,10 @@ export class SubscriptionReconciliationService {
     //    IN_GRACE_PERIOD, o CANCELED con periodo pagado vigente), el estado
     //    es reconocido, no es PENDING y aun no esta acknowledgeada. NUNCA
     //    para PENDING / producto invalido / estado fail-closed / ya
-    //    acknowledgeada / estado que no concede.
+    //    acknowledgeada / estado que no concede. Vale para el reconcile del
+    //    movil Y para el worker de RTDN (recuperacion autonoma del ack, §17).
     const now = new Date();
-    if (shouldAcknowledgeSubscription({ state: snapshot.state, expiryTime: snapshot.expiryTime, recognizedState: snapshot.recognizedState, acknowledged: snapshot.acknowledged }, now)) {
+    if (shouldAcknowledgeSubscription({ state: effectiveState, expiryTime: snapshot.expiryTime, recognizedState: snapshot.recognizedState, acknowledged: snapshot.acknowledged }, now)) {
       try {
         await this.provider.acknowledgeSubscription(purchaseToken);
         const row = await this.subscriptions.findByPurchaseToken(purchaseToken);
@@ -159,7 +248,7 @@ export class SubscriptionReconciliationService {
       }
     }
 
-    return { status: snapshot.state === 'PENDING' ? 'pending' : 'verified' };
+    return { status: effectiveState === 'PENDING' ? 'pending' : 'verified' };
   }
 
   /**
@@ -193,14 +282,14 @@ export class SubscriptionReconciliationService {
    *     esta bloqueado arriba.
    */
   private async reconcileCanceledPendingPurchase(
-    accountId: string,
+    accountId: string | null,
     purchaseToken: string,
     result: PendingPurchaseCanceledResult,
-    depth: number,
+    ctx: ReconcileContext,
   ): Promise<{ status: SubscriptionReconcileStatus }> {
     const linked = result.linkedPurchaseToken;
 
-    if (!linked || linked === purchaseToken || depth >= 1) {
+    if (!linked || linked === purchaseToken || ctx.depth >= 1) {
       this.logger.log(
         `compra pendiente cancelada para ${this.tokenHint(purchaseToken)} sin suscripcion previa reconciliable -> canceled`,
       );
@@ -208,7 +297,7 @@ export class SubscriptionReconciliationService {
     }
 
     const linkedRow = await this.subscriptions.findByPurchaseToken(linked);
-    if (linkedRow && linkedRow.accountId !== accountId) {
+    if (linkedRow && accountId !== null && linkedRow.accountId !== accountId) {
       this.logger.warn(
         `compra pendiente cancelada: la suscripcion linkeada de ${this.tokenHint(purchaseToken)} pertenece a otra cuenta`,
       );
@@ -218,21 +307,33 @@ export class SubscriptionReconciliationService {
       });
     }
 
+    const resolvedAccount = accountId ?? linkedRow?.accountId ?? null;
+    if (resolvedAccount === null) {
+      // RTDN de compra-pendiente-cancelada para un linked que aun no conocemos.
+      throw new SubscriptionNotAttributableError(this.tokenHint(purchaseToken));
+    }
+
     // Reconcilia A por sus efectos; su `status` NO es la disposicion del token
-    // que el cliente envio.
-    await this.reconcileToken(accountId, linked, depth + 1);
+    // que el cliente envio. NO se propaga la cronologia/tipo de la RTDN de B:
+    // el evento no es sobre el token de A y `subscriptionsv2.get(A)` ya da el
+    // estado actual de A (C3.3 §12 -- la RTDN no trae estado autoritativo).
+    await this.reconcileToken(resolvedAccount, linked, { depth: ctx.depth + 1, providerEventTime: null, notificationType: null });
     this.logger.log(
       `compra pendiente cancelada para ${this.tokenHint(purchaseToken)}; suscripcion previa reconciliada -> canceled`,
     );
     return { status: 'canceled' };
   }
 
-  private toWriteData(accountId: string, s: VerifiedSubscriptionSnapshot): VerifiedSubscriptionWriteData {
+  private toWriteData(
+    accountId: string,
+    s: VerifiedSubscriptionSnapshot,
+    stateOverride?: NormalizedSubscriptionState,
+  ): VerifiedSubscriptionWriteData {
     return {
       accountId,
       purchaseToken: s.purchaseToken,
       linkedPurchaseToken: s.linkedPurchaseToken,
-      state: s.state,
+      state: stateOverride ?? s.state,
       expiryTime: s.expiryTime,
       startTime: s.startTime,
       autoRenewing: s.autoRenewing,

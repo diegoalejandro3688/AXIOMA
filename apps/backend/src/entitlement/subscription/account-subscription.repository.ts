@@ -140,6 +140,25 @@ export class AccountSubscriptionRepository {
   async markAcknowledged(id: string, db?: Db): Promise<AccountSubscription> {
     return (db ?? this.prisma).accountSubscription.update({ where: { id }, data: { acknowledgementState: 'ACKNOWLEDGED' } });
   }
+
+  /**
+   * Aplica la cronologia AUTORITATIVA de proveedor (C3.3). SOLO se llama desde
+   * la reconciliacion cuando una RTDN aporta un `eventTimeMillis` MAS NUEVO que
+   * el guardado -- la monotonicidad la decide `resolveProviderEventTimeUpdate`
+   * (puro), aqui solo se persiste el resultado. `createFromVerified` /
+   * `updateFromVerified` NUNCA tocan estas columnas: una reconsulta directa
+   * (movil, C3.2) jamas fija ni retrocede la cronologia.
+   */
+  async applyProviderEvent(
+    id: string,
+    data: { latestEventTime: Date; latestNotificationType: string | null },
+    db?: Db,
+  ): Promise<AccountSubscription> {
+    return (db ?? this.prisma).accountSubscription.update({
+      where: { id },
+      data: { latestEventTime: data.latestEventTime, latestNotificationType: data.latestNotificationType },
+    });
+  }
 }
 
 /**

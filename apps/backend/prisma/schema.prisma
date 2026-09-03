@@ -3155,3 +3155,74 @@ model AccountSubscription {
   @@index([expiryTime])
   @@map("account_subscription")
 }
+
+/// Estado de procesamiento de un evento RTDN en el buzon durable (C3.3).
+///   PENDING     recibido + autenticado + deduplicado; aun no procesado
+///   PROCESSING  reclamado por el worker (claim atomico anti-doble-proceso)
+///   DONE        procesado; la reconciliacion C3.2 corrio (o no aplicaba)
+///   RETRYABLE   fallo transitorio (Google 5xx/red, ack, aun no atribuible) -- se reintenta
+///   FAILED      permanente (token invalido confirmado, mismatch, o agoto los reintentos)
+///   IGNORED     autenticado pero fuera de alcance de suscripcion (one-time / voided / familia desconocida)
+enum RtdnProcessingStatus {
+  PENDING
+  PROCESSING
+  DONE
+  RETRYABLE
+  FAILED
+  IGNORED
+
+  @@map("rtdn_processing_status")
+}
+
+/// PREMIUM V1 -- Capa 3 (Google Play Billing), C3.3.
+///
+/// Buzon DURABLE de Real-time Developer Notifications de Google Play. Google
+/// Cloud Pub/Sub entrega el evento por push HTTP autenticado (OIDC); el
+/// backend lo autentica, valida el sobre, deduplica por `messageId`, lo
+/// PERSISTE y recien entonces responde 2xx a Pub/Sub. La reconciliacion con
+/// Google (`subscriptionsv2.get` -> mapper -> reconcile C3.2) ocurre despues,
+/// asincrona, desde el worker -- un fallo de red/API tras la entrega de
+/// Pub/Sub NO pierde el evento.
+///
+/// Un RTDN NO es la verdad de la suscripcion: solo dispara una reconsulta.
+/// NUNCA se deriva entitlement de `notificationType` / payload / `eventTime`.
+///
+/// NO se persiste: el JWT bearer OIDC, headers de autorizacion, credenciales
+/// de Google, el request HTTP crudo, ni PII de usuario/cuenta.
+model GooglePlayRtdnEvent {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// `message.messageId` de Pub/Sub -- identificador global de ENTREGA.
+  /// UNICO: la re-entrega del mismo mensaje no genera segundo trabajo.
+  messageId String @unique @map("message_id")
+  /// `message.subscription` (recurso Pub/Sub) -- diagnostico / verificacion opcional.
+  subscriptionResource String? @map("subscription_resource")
+
+  provider SubscriptionProvider @default(GOOGLE_PLAY)
+  /// `DeveloperNotification.packageName` -- debe ser `com.zetrynd.app`.
+  packageName String @map("package_name")
+  /// `DeveloperNotification.version`.
+  notificationVersion String? @map("notification_version")
+  /// Familia del RTDN: `subscription` | `test` | `one_time_product` | `voided_purchase` | `unknown`.
+  notificationKind String @map("notification_kind")
+  /// `subscriptionNotification.notificationType` (entero de Google) cuando aplica.
+  notificationType Int? @map("notification_type")
+  /// `subscriptionNotification.purchaseToken` cuando aplica -- correlacion con `account_subscription`.
+  purchaseToken String? @map("purchase_token")
+  /// `DeveloperNotification.eventTimeMillis` parseado -- cronologia AUTORITATIVA de Google.
+  eventTime DateTime? @map("event_time")
+
+  status   RtdnProcessingStatus @default(PENDING)
+  attempts Int                  @default(0)
+  /// Ultimo error de procesamiento -- categoria corta, SIN secretos ni token.
+  lastError     String? @map("last_error")
+  lastErrorCode String? @map("last_error_code")
+  processedAt   DateTime? @map("processed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([purchaseToken])
+  @@map("google_play_rtdn_event")
+}

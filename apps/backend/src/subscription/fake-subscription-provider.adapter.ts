@@ -29,6 +29,11 @@ import {
  *   `fakesub-ackfail:<n>:<b64url(spec)>` -> como `-ok:`, pero `acknowledge`
  *                                          falla `n` veces (transient) y
  *                                          luego tiene exito
+ *   `fakesub-seq:<b64url([spec, ...])>`  -> cada llamada a `getSubscription`
+ *                                          avanza al siguiente `spec` (se
+ *                                          queda en el ultimo) -- para guionar
+ *                                          una TRANSICION de estado que un
+ *                                          RTDN reconsulta (C3.3)
  *   `fakesub-err:<category>`           -> lanza SubscriptionProviderError
  *   cualquier otro                     -> SubscriptionProviderError('not_found')
  *
@@ -92,6 +97,16 @@ export function encodeFakeErrorToken(category: SubscriptionProviderErrorCategory
   return `fakesub-err:${category}`;
 }
 /**
+ * Helper de test: `purchaseToken` cuyo snapshot CAMBIA entre llamadas. La
+ * llamada 1 devuelve `specs[0]`, la 2 `specs[1]`, ... y se queda en el ultimo.
+ * Sirve para probar que un RTDN dispara una reconsulta que ve el estado nuevo.
+ */
+export function encodeFakeSequenceToken(specs: FakeSnapshotSpec[]): string {
+  const withNonces = specs.map((s, i) => (s.nonce !== undefined ? s : { ...s, nonce: `seq-${Date.now().toString(36)}-${(nonceCounter++).toString(36)}-${i}` }));
+  // El nonce del token entero lo da el primer spec (todos comparten purchaseToken).
+  return `fakesub-seq:${Buffer.from(JSON.stringify(withNonces), 'utf-8').toString('base64url')}`;
+}
+/**
  * Helper de test: `purchaseToken` cuya compra pendiente fue cancelada.
  * `linkedPurchaseToken = null` -> compra pendiente inicial; un token -> la
  * suscripcion existente que la reconciliacion debe reconsultar.
@@ -104,6 +119,7 @@ export function encodeFakePendingPurchaseCanceledToken(linkedPurchaseToken: stri
 export class FakeSubscriptionProviderAdapter implements SubscriptionProviderAdapter {
   private readonly ackedTokens = new Set<string>();
   private readonly ackFailRemaining = new Map<string, number>();
+  private readonly seqCursor = new Map<string, number>();
 
   private parse(purchaseToken: string): { spec: FakeSnapshotSpec } | { error: SubscriptionProviderErrorCategory } {
     if (purchaseToken.startsWith('fakesub-err:')) {
@@ -115,6 +131,12 @@ export class FakeSubscriptionProviderAdapter implements SubscriptionProviderAdap
       const n = Number.parseInt(rest.slice(0, colon), 10);
       if (!this.ackFailRemaining.has(purchaseToken)) this.ackFailRemaining.set(purchaseToken, Number.isFinite(n) ? n : 0);
       return { spec: JSON.parse(b64urlDecode(rest.slice(colon + 1))) as FakeSnapshotSpec };
+    }
+    if (purchaseToken.startsWith('fakesub-seq:')) {
+      const specs = JSON.parse(b64urlDecode(purchaseToken.slice('fakesub-seq:'.length))) as FakeSnapshotSpec[];
+      const i = this.seqCursor.get(purchaseToken) ?? 0;
+      if (i < specs.length - 1) this.seqCursor.set(purchaseToken, i + 1);
+      return { spec: specs[Math.min(i, specs.length - 1)]! };
     }
     if (purchaseToken.startsWith('fakesub-ok:')) {
       return { spec: JSON.parse(b64urlDecode(purchaseToken.slice('fakesub-ok:'.length))) as FakeSnapshotSpec };
