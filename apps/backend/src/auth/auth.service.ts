@@ -94,21 +94,22 @@ export class AuthService {
   }
 
   /**
-   * Valida ESTA sesión específica: propiedad, expiración, revocación y
-   * sessionVersion. No basta con que exista alguna sesión activa de la cuenta.
+   * Valida ESTA sesión específica a partir de su sessionId opaco (RC1A --
+   * docs/adr/ZETRYND-V1-RC1A-AUTH-SESSION-LIFECYCLE.md). El sessionId (UUID
+   * v4) es la credencial autoritativa de las peticiones autenticadas: el
+   * idToken de Firebase se verificó una única vez en `createSession` y NO se
+   * revalida aquí -- expira en ~1 h y la sesión de ZETRYND vive 30 días.
+   *
+   * La propiedad es intrínseca: la fila `AuthSession` ya lleva su propio
+   * `accountId`, así que no hace falta cruzar contra la identidad del token.
+   * Sigue comprobando expiración, revocación explícita (`revokedAt`, p. ej.
+   * logout) y el cerrojo global `sessionVersion` frente a `Account`
+   * (lo incrementan el borrado de cuenta y la reactivación, y un operador
+   * puede subirlo a mano para matar todas las sesiones de una cuenta).
    */
-  async validateSession(idToken: string, sessionId: string): Promise<SessionResult> {
-    const identity = await this.identityProvider.verifyToken(idToken);
-
-    const authIdentity = await this.authIdentityRepo.findByProviderSubject(
-      PROVIDER_CODE,
-      identity.providerSubject,
-    );
-    if (!authIdentity) throw new UnauthorizedException('Sesión inválida');
-
+  async validateSession(sessionId: string): Promise<SessionResult> {
     const session = await this.authSessionRepo.findById(sessionId);
     if (!session) throw new UnauthorizedException('Sesión inválida');
-    if (session.accountId !== authIdentity.accountId) throw new UnauthorizedException('Sesión inválida');
     if (session.revokedAt) throw new UnauthorizedException('Sesión inválida');
     if (session.expiresAt.getTime() < Date.now()) throw new UnauthorizedException('Sesión inválida');
 

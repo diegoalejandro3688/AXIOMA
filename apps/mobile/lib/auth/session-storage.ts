@@ -2,9 +2,17 @@ import * as SecureStore from 'expo-secure-store';
 
 /**
  * Almacenamiento seguro de la sesión real -- ver ADR-0013, Decision Gate 2.
- * `idToken`/`sessionId` son información sensible: `expo-secure-store`
- * (Keychain en iOS, Keystore en Android), NUNCA `AsyncStorage` (reservado
- * para datos no sensibles, ver `lib/storage/local-flags.ts`).
+ * El `sessionId` opaco es información sensible (credencial de sesión):
+ * `expo-secure-store` (Keychain en iOS, Keystore en Android), NUNCA
+ * `AsyncStorage` (reservado para datos no sensibles, ver
+ * `lib/storage/local-flags.ts`).
+ *
+ * RC1A (docs/adr/ZETRYND-V1-RC1A-AUTH-SESSION-LIFECYCLE.md): ya NO se
+ * persiste el idToken de Firebase. Solo se usaba para reenviarlo en cada
+ * request, pero expira en ~1 h y el backend ya no lo revalida -- la sesión
+ * de ZETRYND (30 días) se autentica únicamente con el `sessionId`. La clave
+ * antigua `idToken` se borra activamente al guardar/limpiar, para no dejar
+ * un token vencido en el Keystore de instalaciones previas.
  *
  * `expo-secure-store` no tiene soporte oficial en el target Web de Expo --
  * aceptado explícitamente (ADR-0013). Verificado empíricamente (Browser
@@ -19,12 +27,13 @@ import * as SecureStore from 'expo-secure-store';
  */
 
 const KEYS = {
-  idToken: 'axioma.v1.session.idToken',
   sessionId: 'axioma.v1.session.sessionId',
 } as const;
 
+/** RC1A: clave legada -- ya no se escribe, solo se borra (limpieza de instalaciones previas). */
+const LEGACY_ID_TOKEN_KEY = 'axioma.v1.session.idToken';
+
 export interface StoredSession {
-  idToken: string;
   sessionId: string;
 }
 
@@ -34,11 +43,8 @@ export async function loadSession(): Promise<StoredSession | null> {
   if (cachedSession !== undefined) return cachedSession;
 
   try {
-    const [idToken, sessionId] = await Promise.all([
-      SecureStore.getItemAsync(KEYS.idToken),
-      SecureStore.getItemAsync(KEYS.sessionId),
-    ]);
-    cachedSession = idToken && sessionId ? { idToken, sessionId } : null;
+    const sessionId = await SecureStore.getItemAsync(KEYS.sessionId);
+    cachedSession = sessionId ? { sessionId } : null;
   } catch {
     // Sin soporte (ej. Web) o fallo de lectura -- tratar como "sin sesión
     // persistida" en vez de bloquear el arranque de la app.
@@ -51,8 +57,9 @@ export async function saveSession(session: StoredSession): Promise<void> {
   cachedSession = session; // fuente de verdad inmediata para esta ejecución, independiente de si SecureStore persiste de verdad.
   try {
     await Promise.all([
-      SecureStore.setItemAsync(KEYS.idToken, session.idToken),
       SecureStore.setItemAsync(KEYS.sessionId, session.sessionId),
+      // RC1A: borra el idToken vencido que instalaciones previas dejaron en el Keystore.
+      SecureStore.deleteItemAsync(LEGACY_ID_TOKEN_KEY),
     ]);
   } catch {
     // No bloquea el login si la escritura falla (ej. Web) -- la sesión
@@ -64,7 +71,10 @@ export async function saveSession(session: StoredSession): Promise<void> {
 export async function clearSession(): Promise<void> {
   cachedSession = null;
   try {
-    await Promise.all([SecureStore.deleteItemAsync(KEYS.idToken), SecureStore.deleteItemAsync(KEYS.sessionId)]);
+    await Promise.all([
+      SecureStore.deleteItemAsync(KEYS.sessionId),
+      SecureStore.deleteItemAsync(LEGACY_ID_TOKEN_KEY),
+    ]);
   } catch {
     // Ausencia de la clave o falta de soporte -- no es un error real.
   }

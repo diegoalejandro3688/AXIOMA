@@ -46,7 +46,9 @@ export async function apiRequest<T = void>(
   if (!options.skipAuth) {
     const session = await loadSession();
     if (session) {
-      headers.authorization = `Bearer ${session.idToken}`;
+      // RC1A: el sessionId opaco es la única credencial. El idToken de
+      // Firebase ya no se reenvía (expiraba en ~1 h; el backend no lo
+      // revalida) -- ver docs/adr/ZETRYND-V1-RC1A-AUTH-SESSION-LIFECYCLE.md.
       headers['x-session-id'] = session.sessionId;
     }
   }

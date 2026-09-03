@@ -89,7 +89,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         message: sessionResult.kind === 'network' ? 'No se pudo conectar con el servidor.' : sessionResult.message,
       };
     }
-    await saveSession({ idToken, sessionId: sessionResult.data.sessionId });
+    // RC1A: solo se persiste el sessionId -- el idToken de Firebase ya cumplió
+    // su papel (probar identidad ante POST /auth/session) y no se guarda.
+    await saveSession({ sessionId: sessionResult.data.sessionId });
     setAccountId(sessionResult.data.accountId);
     setStatus('authenticated');
     return { ok: true };

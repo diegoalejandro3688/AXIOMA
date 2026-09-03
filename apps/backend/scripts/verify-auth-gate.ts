@@ -72,20 +72,32 @@ async function main() {
   check('status 409', r4.status === 409);
   check('mensaje genérico (no confirma que la cuenta existe)', !JSON.stringify(r4.body).includes(emailA));
 
-  console.log('--- 5. /auth/me sin headers -> 401 ---');
+  console.log('--- 5. /auth/me sin X-Session-Id -> 401 ---');
   const r5 = await get('/auth/me');
   check('status 401', r5.status === 401);
 
-  console.log('--- 6. /auth/me con idToken + sessionId válidos -> 200 ---');
-  const r6 = await get('/auth/me', { authorization: `Bearer ${tokenA1}`, 'x-session-id': sessionA2 });
+  console.log('--- 6. /auth/me con solo X-Session-Id (sin Authorization) -> 200 (RC1A) ---');
+  const r6 = await get('/auth/me', { 'x-session-id': sessionA2 });
   check('status 200', r6.status === 200);
   check('accountId correcto', r6.body?.accountId === accountA);
 
-  console.log('--- 7. /auth/me con idToken válido pero sessionId de OTRA cuenta -> 401 (ownership) ---');
+  console.log('--- 6b. RC1A: un Authorization vencido/basura NO rompe una sesión válida ---');
+  // Regresión de RC0-AUTH-01: antes el guard revalidaba el idToken de Firebase
+  // en cada request y un token expirado (>1 h) tumbaba la sesión de 30 días.
+  const r6b = await get('/auth/me', {
+    authorization: 'Bearer expired.or.garbage.token',
+    'x-session-id': sessionA2,
+  });
+  check('status 200 (Authorization se ignora)', r6b.status === 200);
+  check('accountId correcto', r6b.body?.accountId === accountA);
+
+  console.log('--- 7. RC1A: cada sesión resuelve a su propia cuenta (propiedad intrínseca) ---');
   const rB = await post('/auth/session', { idToken: tokenB });
   const sessionB = rB.body?.sessionId;
-  const r7 = await get('/auth/me', { authorization: `Bearer ${tokenA1}`, 'x-session-id': sessionB });
-  check('status 401', r7.status === 401);
+  const accountB = rB.body?.accountId;
+  const r7 = await get('/auth/me', { 'x-session-id': sessionB });
+  check('status 200', r7.status === 200);
+  check('resuelve a la cuenta B, nunca a la A', r7.body?.accountId === accountB && accountB !== accountA);
 
   console.log('--- 8. /auth/me con sessionId inexistente -> 401 ---');
   const r8 = await get('/auth/me', {
@@ -93,6 +105,10 @@ async function main() {
     'x-session-id': '00000000-0000-0000-0000-000000000000',
   });
   check('status 401', r8.status === 401);
+
+  console.log('--- 8b. RC1A: X-Session-Id malformado (no-UUID) -> 401, nunca 500 ---');
+  const r8b = await get('/auth/me', { 'x-session-id': 'undefined' });
+  check('status 401 (no 500)', r8b.status === 401);
 
   console.log('--- 9. Sesión expirada -> 401 (fixture directa en Postgres) ---');
   await pg.query('UPDATE auth_session SET expires_at = now() - interval \'1 day\' WHERE id = $1', [sessionA2]);

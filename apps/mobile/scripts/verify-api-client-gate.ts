@@ -17,7 +17,8 @@ type ResolveFilename = (request: string, ...rest: unknown[]) => string;
 const moduleWithInternals = Module as unknown as { _resolveFilename: ResolveFilename };
 const originalResolveFilename = moduleWithInternals._resolveFilename;
 moduleWithInternals._resolveFilename = function (this: unknown, request: string, ...rest: unknown[]) {
-  if (request === 'expo-secure-store') return join(__dirname, '__stubs__', 'expo-secure-store.ts');
+  // Stub CON estado -- este gate observa qué headers de sesión se envían (RC1A).
+  if (request === 'expo-secure-store') return join(__dirname, '__stubs__', 'expo-secure-store.stateful.ts');
   return originalResolveFilename.call(this, request, ...rest);
 } as ResolveFilename;
 
@@ -36,7 +37,42 @@ function jsonResponse(data: unknown, status: number) {
 
 async function main() {
   process.env.EXPO_PUBLIC_API_BASE_URL = 'http://mock';
+  const secureStore = (await import('./__stubs__/expo-secure-store.stateful')) as unknown as {
+    __seed: (k: string, v: string) => void;
+  };
   const { apiRequest } = await import('../lib/api/client');
+
+  console.log('--- 0. RC1A: credencial de sesión = solo X-Session-Id, nunca Authorization ---');
+  {
+    // Instalación previa peor caso: dejó también el idToken legado en el Keystore.
+    secureStore.__seed('axioma.v1.session.sessionId', 'sess-uuid-123');
+    secureStore.__seed('axioma.v1.session.idToken', 'legacy-expired-firebase-token');
+
+    let seenHeaders: Headers | undefined;
+    (globalThis as { fetch: typeof fetch }).fetch = (async (_url: string, init?: RequestInit) => {
+      seenHeaders = new Headers(init?.headers);
+      return jsonResponse({ ok: true }, 200);
+    }) as typeof fetch;
+
+    await apiRequest('GET', '/auth/me');
+    check('envía X-Session-Id con el sessionId almacenado', seenHeaders?.get('x-session-id') === 'sess-uuid-123');
+    check('NO envía header Authorization', !seenHeaders?.has('authorization'));
+    check(
+      'ningún header transporta el idToken legado',
+      ![...(seenHeaders ?? new Headers()).values()].some((v) => v.includes('legacy-expired-firebase-token')),
+    );
+  }
+
+  console.log('--- 0b. skipAuth: no envía credencial de sesión ---');
+  {
+    let seenHeaders: Headers | undefined;
+    (globalThis as { fetch: typeof fetch }).fetch = (async (_url: string, init?: RequestInit) => {
+      seenHeaders = new Headers(init?.headers);
+      return jsonResponse({ sessionId: 'x', accountId: 'y', status: 'ACTIVE' }, 200);
+    }) as typeof fetch;
+    await apiRequest('POST', '/auth/session', { body: { idToken: 't' }, skipAuth: true });
+    check('POST /auth/session no envía X-Session-Id', !seenHeaders?.has('x-session-id'));
+  }
 
   console.log('--- 1. 429 con el body crudo de @nestjs/throttler -> mensaje humano, sin internals de Nest ---');
   {

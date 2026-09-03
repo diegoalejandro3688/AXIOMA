@@ -7,12 +7,14 @@ import type { IdentityClient } from './identity-client';
  * (`EXPO_PUBLIC_AUTH_IDENTITY_CLIENT=firebase`) -- mismo criterio que
  * `FirebaseIdentityProvider` del backend, que tampoco se instancia en modo stub.
  *
- * Persistencia de sesión propia del SDK de Firebase deliberadamente NO
- * configurada aquí -- Axioma ya persiste su propio `idToken`/`sessionId` vía
- * `expo-secure-store` (`session-storage.ts`); afinar la persistencia nativa
- * del SDK de Firebase (ej. `getReactNativePersistence`) queda pendiente hasta
- * que exista un proyecto real contra el cual validarla (mismo tipo de
- * pendiente no bloqueante que ADR-0004 dejó para Firebase Admin).
+ * RC1A (docs/adr/ZETRYND-V1-RC1A-AUTH-SESSION-LIFECYCLE.md): la sesión de
+ * Firebase es DELIBERADAMENTE efímera. Firebase solo prueba identidad en
+ * `signIn`/`signUp` dentro de una misma ejecución de JS; a partir de ahí la
+ * autenticación es 100% el `sessionId` opaco de ZETRYND. Por eso se usa
+ * `inMemoryPersistence` explícita (no `AsyncStorage`): así el intento no
+ * deja ningún token de Firebase en disco y se silencia el warning de RN
+ * sobre persistencia sin `AsyncStorage`. `getReactNativePersistence` sería
+ * contradictorio con este modelo.
  */
 export class FirebaseIdentityClient implements IdentityClient {
   private authPromise: ReturnType<typeof this.initAuth> | null = null;
@@ -32,12 +34,22 @@ export class FirebaseIdentityClient implements IdentityClient {
     }
 
     const { initializeApp, getApps, getApp } = await import('firebase/app');
-    const { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(
-      'firebase/auth'
-    );
+    const {
+      getAuth,
+      initializeAuth,
+      inMemoryPersistence,
+      signInWithEmailAndPassword,
+      createUserWithEmailAndPassword,
+      signOut,
+    } = await import('firebase/auth');
 
-    const app = getApps().length > 0 ? getApp() : initializeApp({ apiKey, authDomain, projectId, appId });
-    const auth = getAuth(app);
+    const alreadyInitialized = getApps().length > 0;
+    const app = alreadyInitialized ? getApp() : initializeApp({ apiKey, authDomain, projectId, appId });
+    // `initializeAuth` solo puede llamarse una vez por app; si ya existía
+    // (ej. Fast Refresh), `getAuth` devuelve la instancia ya configurada.
+    const auth = alreadyInitialized
+      ? getAuth(app)
+      : initializeAuth(app, { persistence: inMemoryPersistence });
     return { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut };
   }
 

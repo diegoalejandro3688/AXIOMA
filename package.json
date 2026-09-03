@@ -22,7 +22,8 @@
     "verify:lef-block-viii-gate": "node scripts/verify-lef-block-viii-gate.mjs",
     "verify:lef-phase-2-gate": "node scripts/verify-lef-phase-2-gate.mjs",
     "verify:learning-experience-foundation-gate": "node scripts/verify-learning-experience-foundation-gate.mjs",
-    "verify:premium-native-billing-foundation-gate": "node scripts/verify-premium-native-billing-foundation-gate.mjs"
+    "verify:premium-native-billing-foundation-gate": "node scripts/verify-premium-native-billing-foundation-gate.mjs",
+    "verify:rc-auth-session-lifecycle-gate": "node scripts/verify-rc-auth-session-lifecycle-gate.mjs"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.18.0",
