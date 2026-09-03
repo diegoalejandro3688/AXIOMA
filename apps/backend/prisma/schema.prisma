@@ -3110,11 +3110,18 @@ model AccountSubscription {
   /// UNICA GLOBALMENTE: un `purchaseToken` no puede pertenecer a dos cuentas
   /// (defensa de replay / account-mismatch para C3.2).
   purchaseToken       String               @unique @map("purchase_token")
-  /// Rotacion de token: apunta al `purchaseToken` anterior en resubscribe /
-  /// upgrade. La fila vieja pasa a `SUPERSEDED` (ADR D.4). NO es unico: un
-  /// token viejo puede ser referenciado; esto NO debilita la unicidad de
-  /// `purchaseToken`.
+  /// Rotacion de token DENTRO de una suscripcion viva (resubscribe antes de
+  /// expirar / upgrade / downgrade): `SubscriptionPurchaseV2.linkedPurchaseToken`.
+  /// La fila vieja pasa a `SUPERSEDED` (ADR D.4). NO es unico.
   linkedPurchaseToken String?              @map("linked_purchase_token")
+  /// Re-alta FUERA de la app tras EXPIRACION TOTAL:
+  /// `SubscriptionPurchaseV2.outOfAppPurchaseContext.expiredPurchaseToken`.
+  /// Semantica DISTINTA a `linkedPurchaseToken` (ADR D.4): la suscripcion
+  /// anterior ya termino (EXPIRED) -- esto es una compra NUEVA, no un reemplazo
+  /// en vivo. SOLO sirve para ATRIBUIR la cuenta cuando el RTDN llega antes de
+  /// que el movil reconcilie; la fila anterior NO se marca `SUPERSEDED` (se
+  /// queda EXPIRED, su estado terminal natural). NO es unico.
+  resubscribedFromPurchaseToken String?    @map("resubscribed_from_purchase_token")
 
   /// Estado normalizado del ciclo de vida -- lo que decide el tier junto con `expiryTime`.
   state SubscriptionState

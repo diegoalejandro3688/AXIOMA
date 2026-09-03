@@ -16,6 +16,8 @@ export interface VerifiedSubscriptionWriteData {
   accountId: string;
   purchaseToken: string;
   linkedPurchaseToken: string | null;
+  /** `outOfAppPurchaseContext.expiredPurchaseToken` -- re-alta fuera de la app; solo atribucion, NO supersede. */
+  resubscribedFromPurchaseToken: string | null;
   state: DerivableSubscription['state'];
   expiryTime: Date | null;
   startTime: Date | null;
@@ -42,28 +44,34 @@ type Db = PrismaService | Prisma.TransactionClient;
  *
  * Regla de seleccion DETERMINISTA (ADR seccion D.3 / task C3.1 seccion 7):
  * el historico es legitimo (una cuenta puede tener una fila EXPIRED vieja +
- * una fila nueva tras resubscribe con token rotado). NUNCA es un
- * `findFirst()` sin orden.
+ * una fila nueva tras re-suscribirse). NUNCA es un `findFirst()` sin orden.
  *
- *   1. se EXCLUYEN las filas `SUPERSEDED` (reemplazadas por rotacion de token);
- *   2. entre las elegibles gana la del EVENTO DE PROVEEDOR mas reciente:
- *      `latestEventTime` DESC, **NULLS LAST**. `latestEventTime` es la
- *      cronologia AUTORITATIVA de Google (`eventTimeMillis` de la RTDN /
- *      instante de la respuesta de `subscriptionsv2.get`) -- la misma senal
- *      que la ADR (seccion D.3 / H.3) usa para idempotencia y para descartar
- *      RTDN atrasados. Una fila cuya cronologia de proveedor es DESCONOCIDA
- *      (`latestEventTime = null`, p. ej. una fila de C3.1 todavia sin evento
- *      real) NUNCA adelanta a una fila con cronologia conocida;
- *   3. el orden de ESCRITURA LOCAL (`updatedAt`) es SOLO desempate
- *      determinista (dos filas con el mismo `latestEventTime`, o ambas
- *      `null`) -> `updatedAt` DESC -> `id` DESC. NUNCA reemplaza la
- *      cronologia del proveedor: una reconciliacion inocua/stale que toque
- *      `updatedAt` de una fila vieja no puede hacerla ganar.
+ *   1. se EXCLUYEN las filas `SUPERSEDED` (rotacion de token EN VIVO);
+ *   2. **GENERACION DE COMPRA** primero: `startTime` DESC, **NULLS LAST**.
+ *      `SubscriptionPurchaseV2.startTime` (instante en que Google concedio la
+ *      suscripcion) es el `expiryTime`/`autoRenewing`-independiente marcador
+ *      de "que compra es la actual": una re-alta (in-app, fuera de la app, o
+ *      con token rotado) es una compra NUEVA con un `startTime` MAS NUEVO que
+ *      la anterior expirada. Es dato AUTORITATIVO de Google -- no se fabrica.
+ *      Una renovacion NO cambia `startTime` (misma compra, misma fila);
+ *   3. dentro de la MISMA generacion (o `startTime` empatado / ambos null):
+ *      gana el EVENTO DE PROVEEDOR mas reciente -- `latestEventTime` DESC,
+ *      **NULLS LAST** (`eventTimeMillis` de la RTDN, la senal de idempotencia
+ *      de la ADR D.3/H.3). Una cronologia de proveedor DESCONOCIDA
+ *      (`latestEventTime = null`) NUNCA adelanta a una conocida;
+ *   4. el orden de ESCRITURA LOCAL (`updatedAt` DESC -> `id` DESC) es SOLO
+ *      desempate determinista final -- NUNCA reemplaza (2) ni (3): una
+ *      reconciliacion inocua/stale que toque `updatedAt` de una fila vieja no
+ *      puede hacerla ganar.
  *
- * Consecuencia: una fila ACTIVE historica NUNCA gana frente a una fila cuyo
- * evento de proveedor es mas reciente y dice EXPIRED/REVOKED/ON_HOLD. Los
- * registros historicos jamas conceden Premium por accidente cuando un evento
- * de proveedor mas nuevo dice lo contrario.
+ * Consecuencias:
+ *   - una compra NUEVA verificada (`latestEventTime = null` todavia) es la
+ *     vigente aunque una fila HISTORICA tenga un `eventTimeMillis` de RTDN
+ *     conocido -- el `startTime` mas nuevo manda (re-alta inmediata sin
+ *     esperar el RTDN `SUBSCRIPTION_PURCHASED`);
+ *   - una fila ACTIVE historica STALE (mismo `startTime` o mas viejo) NUNCA
+ *     gana frente a una fila cuyo evento de proveedor mas reciente dice
+ *     EXPIRED/REVOKED/ON_HOLD.
  */
 @Injectable()
 export class AccountSubscriptionRepository {
@@ -73,6 +81,7 @@ export class AccountSubscriptionRepository {
     return (db ?? this.prisma).accountSubscription.findFirst({
       where: { accountId, state: { not: 'SUPERSEDED' } },
       orderBy: [
+        { startTime: { sort: 'desc', nulls: 'last' } },
         { latestEventTime: { sort: 'desc', nulls: 'last' } },
         { updatedAt: 'desc' },
         { id: 'desc' },
@@ -87,6 +96,7 @@ export class AccountSubscriptionRepository {
   private commonWriteFields(d: VerifiedSubscriptionWriteData) {
     return {
       linkedPurchaseToken: d.linkedPurchaseToken,
+      resubscribedFromPurchaseToken: d.resubscribedFromPurchaseToken,
       state: d.state,
       expiryTime: d.expiryTime,
       startTime: d.startTime,

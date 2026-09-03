@@ -20,6 +20,9 @@
 // PARTE H -- seguridad (estatica): sin AuthGuard de usuario, verificador OIDC
 //   propio, sin logueo del bearer, sin persistir credenciales, sin mutar
 //   entitlement en el controller, fake OIDC prohibido en produccion.
+// PARTE J -- re-alta FUERA de la app: `outOfAppPurchaseContext.expiredPurchaseToken`
+//   atribuye la cuenta sin abrir el movil; NO supersede la fila expirada;
+//   ownership no transferible; linkedPurchaseToken normal intacto.
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -250,12 +253,12 @@ async function main() {
   // tz como hora LOCAL aunque la sesion sea UTC, asi que no se compara el Date.
   const subRowOf = async (token: string) => {
     const row = (await pg.query(
-      `SELECT state, acknowledgement_state, latest_notification_type, account_id,
+      `SELECT state, acknowledgement_state, latest_notification_type, account_id, resubscribed_from_purchase_token,
               (extract(epoch from latest_event_time) * 1000)::bigint AS latest_event_ms
        FROM account_subscription WHERE purchase_token = $1`,
       [token],
     )).rows[0] as
-      | { state: string; acknowledgement_state: string; latest_notification_type: string | null; account_id: string; latest_event_ms: string | null }
+      | { state: string; acknowledgement_state: string; latest_notification_type: string | null; account_id: string; resubscribed_from_purchase_token: string | null; latest_event_ms: string | null }
       | undefined;
     return row === undefined
       ? undefined
@@ -551,6 +554,90 @@ async function main() {
       check('I: RTDN fija latest_event_time', afterRtdn?.latestEventMs === now.getTime() - HOUR);
       await reconcile(s.auth, token);
       check('I: reconcile directo posterior NO borra ni retrocede latest_event_time', (await subRowOf(token))?.latestEventMs === now.getTime() - HOUR);
+    }
+
+    // ======================================================================
+    console.log('--- PARTE J. re-alta FUERA DE LA APP (outOfAppPurchaseContext) ---');
+    const seedSub = async (opts: {
+      accountId: string;
+      token: string;
+      state: string;
+      expiryDeltaMs: number;
+      startDeltaMs: number;
+      latestEventDeltaMs?: number | null;
+      ackState?: 'ACKNOWLEDGED' | 'PENDING';
+    }) => {
+      usedPurchaseTokens.push(opts.token);
+      await pg.query(
+        `INSERT INTO account_subscription
+           (id, account_id, provider, product_id, base_plan_id, purchase_token, state, expiry_time, start_time,
+            auto_renewing, acknowledgement_state, latest_event_time, created_at, updated_at)
+         VALUES ($1,$2,'GOOGLE_PLAY','zetrynd_premium','premium-monthly',$3,$4::subscription_state,
+            now() + ($5 || ' milliseconds')::interval, now() + ($6 || ' milliseconds')::interval,
+            true, $7, ${opts.latestEventDeltaMs == null ? 'NULL' : "now() + ($8 || ' milliseconds')::interval"}, now(), now())`,
+        opts.latestEventDeltaMs == null
+          ? [randomUUID(), opts.accountId, opts.token, opts.state, String(opts.expiryDeltaMs), String(opts.startDeltaMs), opts.ackState ?? 'ACKNOWLEDGED']
+          : [randomUUID(), opts.accountId, opts.token, opts.state, String(opts.expiryDeltaMs), String(opts.startDeltaMs), opts.ackState ?? 'ACKNOWLEDGED', String(opts.latestEventDeltaMs)],
+      );
+    };
+
+    // J1 -- out-of-app B ACTIVE + expiredPurchaseToken=A: el worker resuelve la
+    //       cuenta de A, reconcilia B, lo acknowledgea, entitlement PREMIUM,
+    //       SIN abrir el movil. A NO se marca SUPERSEDED.
+    {
+      const s = await makeSession(pg, 'j1');
+      const aToken = `seed-j1-A-${randomUUID()}`;
+      await seedSub({ accountId: s.accountId, token: aToken, state: 'EXPIRED', expiryDeltaMs: -2 * 24 * HOUR, startDeltaMs: -200 * 24 * HOUR, latestEventDeltaMs: -2 * 24 * HOUR });
+      check('J1: pre -- cuenta X con A EXPIRED, FREE', (await subRowOf(aToken))?.state === 'EXPIRED' && (await tierOf(s.auth)) === 'FREE');
+      const bToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 28 * 24 * HOUR, startDeltaMs: -1 * HOUR, expiredPurchaseToken: aToken });
+      usedPurchaseTokens.push(bToken);
+      await postRtdn(oidcBearer(), envelope('j1-purchased', developerNotification({ eventTimeMillis: String(now.getTime()), subscription: { notificationType: 4, purchaseToken: bToken } })));
+      await processRtdn();
+      const bRow = await subRowOf(bToken);
+      check('J1: el worker atribuyo B a la cuenta de A automaticamente', bRow?.account_id === s.accountId);
+      check('J1: B ACKNOWLEDGED por el worker', bRow?.acknowledgement_state === 'ACKNOWLEDGED');
+      check('J1: entitlement -> PREMIUM sin abrir el movil', (await tierOf(s.auth)) === 'PREMIUM');
+      check('J1: se registro el vinculo resubscribed_from_purchase_token = A', bRow?.resubscribed_from_purchase_token === aToken);
+      check('J1: A NO se marco SUPERSEDED (re-alta != rotacion) -- sigue EXPIRED', (await subRowOf(aToken))?.state === 'EXPIRED');
+      check('J1: el evento de inbox quedo DONE (sin loop de 24 intentos)', (await rtdnRowOf('j1-purchased'))?.status === 'DONE' && (await rtdnRowOf('j1-purchased'))!.attempts <= 2);
+    }
+
+    // J2 -- expiredPurchaseToken apunta a un token que NO existe como fila:
+    //       no se puede atribuir -> RETRYABLE acotado (NO FAILED de una, NO fila fabricada).
+    {
+      const bToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 28 * 24 * HOUR, startDeltaMs: -1 * HOUR, expiredPurchaseToken: `seed-j2-missing-${randomUUID()}` });
+      usedPurchaseTokens.push(bToken);
+      await postRtdn(oidcBearer(), envelope('j2-missing', developerNotification({ eventTimeMillis: String(now.getTime()), subscription: { notificationType: 4, purchaseToken: bToken } })));
+      await processRtdn();
+      const row = await rtdnRowOf('j2-missing');
+      check('J2: expiredPurchaseToken sin fila -> RETRYABLE not_attributable (acotado), NO FAILED', row?.status === 'RETRYABLE' && row?.last_error_code === 'not_attributable');
+      check('J2: NO se fabrica fila para B', (await subRowOf(bToken)) === undefined);
+    }
+
+    // J3 -- ownership: B se ata SOLO a la cuenta de A; ninguna otra cuenta puede reclamarlo.
+    {
+      const x = await makeSession(pg, 'j3-x');
+      const aToken = `seed-j3-A-${randomUUID()}`;
+      await seedSub({ accountId: x.accountId, token: aToken, state: 'EXPIRED', expiryDeltaMs: -2 * 24 * HOUR, startDeltaMs: -100 * 24 * HOUR, latestEventDeltaMs: -2 * 24 * HOUR });
+      const bToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 28 * 24 * HOUR, startDeltaMs: -1 * HOUR, expiredPurchaseToken: aToken });
+      usedPurchaseTokens.push(bToken);
+      await postRtdn(oidcBearer(), envelope('j3-purchased', developerNotification({ eventTimeMillis: String(now.getTime()), subscription: { notificationType: 4, purchaseToken: bToken } })));
+      await processRtdn();
+      check('J3: B se ata a la cuenta de A (X) y a ninguna otra', (await subRowOf(bToken))?.account_id === x.accountId);
+    }
+
+    // J4 -- REGRESION: linkedPurchaseToken normal SIGUE marcando el predecesor
+    //       SUPERSEDED tambien por la via RTDN (semantica intacta).
+    {
+      const s = await makeSession(pg, 'j4');
+      const aToken = `seed-j4-A-${randomUUID()}`;
+      await seedSub({ accountId: s.accountId, token: aToken, state: 'ACTIVE', expiryDeltaMs: 5 * 24 * HOUR, startDeltaMs: -30 * 24 * HOUR, latestEventDeltaMs: -10 * 24 * HOUR });
+      const bToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, startDeltaMs: -1 * HOUR, linkedPurchaseToken: aToken });
+      usedPurchaseTokens.push(bToken);
+      await postRtdn(oidcBearer(), envelope('j4-restarted', developerNotification({ eventTimeMillis: String(now.getTime()), subscription: { notificationType: 7, purchaseToken: bToken } })));
+      await processRtdn();
+      check('J4: linkedPurchaseToken via RTDN -> A SUPERSEDED, B ACTIVE, PREMIUM', (await subRowOf(aToken))?.state === 'SUPERSEDED' && (await subRowOf(bToken))?.state === 'ACTIVE' && (await tierOf(s.auth)) === 'PREMIUM');
+      check('J4: B NO tiene resubscribed_from (fue linkedPurchaseToken, no outOfApp)', (await subRowOf(bToken))?.resubscribed_from_purchase_token === null);
     }
   } finally {
     if (usedMessageIds.length) {

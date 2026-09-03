@@ -197,6 +197,16 @@ export function mapGoogleSubscription(
       regionCode: raw.regionCode ?? null,
       obfuscatedExternalAccountId: raw.externalAccountIdentifiers?.obfuscatedExternalAccountId ?? null,
       cancelUserInitiated: readCancelUserInitiated(raw.canceledStateContext),
+      // Re-alta fuera de la app tras expiracion total. Se auto-referencia
+      // (== este mismo token) -> se ignora (contexto inconsistente); el
+      // servicio ademas hace fail-closed ante cadenas de propiedad imposibles.
+      expiredPurchaseToken:
+        raw.outOfAppPurchaseContext?.expiredPurchaseToken &&
+        raw.outOfAppPurchaseContext.expiredPurchaseToken !== ctx.purchaseToken
+          ? raw.outOfAppPurchaseContext.expiredPurchaseToken
+          : null,
+      expiredObfuscatedExternalAccountId:
+        raw.outOfAppPurchaseContext?.expiredExternalAccountIdentifiers?.obfuscatedExternalAccountId ?? null,
     },
   };
 }

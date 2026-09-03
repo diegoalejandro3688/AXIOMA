@@ -67,6 +67,9 @@ interface FakeSnapshotSpec {
   cancelUserInitiated?: boolean | null;
   rawSubscriptionState?: string;
   recognizedState?: boolean;
+  /** `outOfAppPurchaseContext.expiredPurchaseToken` -- re-alta fuera de la app. */
+  expiredPurchaseToken?: string | null;
+  expiredObfuscatedExternalAccountId?: string | null;
   /** Solo hace UNICO el string del token (cada compra tiene su token). El fake lo ignora. */
   nonce?: string;
 }
@@ -177,6 +180,9 @@ export class FakeSubscriptionProviderAdapter implements SubscriptionProviderAdap
       regionCode: 'CL',
       obfuscatedExternalAccountId: spec.obfuscatedExternalAccountId ?? null,
       cancelUserInitiated: spec.cancelUserInitiated ?? null,
+      expiredPurchaseToken:
+        spec.expiredPurchaseToken && spec.expiredPurchaseToken !== purchaseToken ? spec.expiredPurchaseToken : null,
+      expiredObfuscatedExternalAccountId: spec.expiredObfuscatedExternalAccountId ?? null,
       raw: { fake: true, spec },
     };
   }

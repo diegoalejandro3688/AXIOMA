@@ -142,6 +142,12 @@ async function main() {
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
 
+  // `startTime` por defecto COMPARTIDO -- las filas de un mismo caso empatan en
+  // generacion de compra, asi que la seleccion cae al criterio (3)
+  // `latestEventTime` exactamente como en C3.1. Un caso de RE-ALTA pasa un
+  // `startTime` explicito MAS NUEVO para probar la generacion de compra (2).
+  const START_DEFAULT = D(-120 * 24 * HOUR);
+
   async function insertSub(opts: {
     accountId: string;
     state: NormalizedSubscriptionState;
@@ -149,6 +155,8 @@ async function main() {
     autoRenewing?: boolean;
     purchaseToken?: string;
     linkedPurchaseToken?: string | null;
+    /** `SubscriptionPurchaseV2.startTime` -- generacion de compra. Default COMPARTIDO. */
+    startTime?: Date | null;
     /** Cronologia AUTORITATIVA de proveedor. `undefined` -> null (desconocida). */
     latestEventTime?: Date | null;
     /** Orden de escritura LOCAL. Solo desempate. */
@@ -161,7 +169,7 @@ async function main() {
          (id, account_id, provider, product_id, base_plan_id, purchase_token, linked_purchase_token,
           state, expiry_time, start_time, auto_renewing, acknowledgement_state, latest_event_time, created_at, updated_at)
        VALUES ($1, $2, 'GOOGLE_PLAY', 'zetrynd_premium', 'premium-monthly', $3, $4,
-          $5::subscription_state, $6, now(), $7, 'ACKNOWLEDGED', $8, now(), $9)`,
+          $5::subscription_state, $6, $7, $8, 'ACKNOWLEDGED', $9, now(), $10)`,
       [
         randomUUID(),
         opts.accountId,
@@ -169,6 +177,7 @@ async function main() {
         opts.linkedPurchaseToken ?? null,
         opts.state,
         opts.expiryTime === undefined ? null : opts.expiryTime,
+        opts.startTime === undefined ? START_DEFAULT : opts.startTime,
         opts.autoRenewing ?? true,
         opts.latestEventTime === undefined ? null : opts.latestEventTime,
         updatedAt,
@@ -304,16 +313,56 @@ async function main() {
       check('C6b: ambas latestEventTime=null -> desempate determinista por updatedAt DESC -> EXPIRED -> FREE', t1 === 'FREE' && t1 === t2);
     }
 
-    // C7 -- verificacion estatica: la query NO ordena por updatedAt como criterio primario.
+    // C7 -- verificacion estatica del orderBy: generacion (startTime) primero,
+    // luego cronologia de proveedor (latestEventTime), luego updatedAt.
     {
       const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1');
       const repoSrc = stripComments(readFileSync(join(__dirname, '..', 'src/entitlement/subscription/account-subscription.repository.ts'), 'utf8'));
       const orderIdx = repoSrc.indexOf('orderBy:');
+      const stIdx = repoSrc.indexOf('startTime', orderIdx);
       const letIdx = repoSrc.indexOf('latestEventTime', orderIdx);
       const uaIdx = repoSrc.indexOf('updatedAt', orderIdx);
-      check('C7: orderBy usa latestEventTime ANTES que updatedAt (cronologia de proveedor primero)', orderIdx !== -1 && letIdx !== -1 && uaIdx !== -1 && letIdx < uaIdx);
+      check('C7: orderBy = startTime -> latestEventTime -> updatedAt (generacion, luego evento, luego escritura local)', orderIdx !== -1 && stIdx !== -1 && letIdx !== -1 && uaIdx !== -1 && stIdx < letIdx && letIdx < uaIdx);
+      check("C7: startTime se ordena con nulls: 'last'", /startTime:\s*\{\s*sort:\s*'desc',\s*nulls:\s*'last'\s*\}/.test(repoSrc));
       check("C7: latestEventTime se ordena con nulls: 'last' (una cronologia desconocida no adelanta)", /latestEventTime:\s*\{\s*sort:\s*'desc',\s*nulls:\s*'last'\s*\}/.test(repoSrc));
       check('C7: SUPERSEDED excluido en el where', /state:\s*\{\s*not:\s*'SUPERSEDED'\s*\}/.test(repoSrc));
+    }
+
+    // C8 -- RE-ALTA: A EXPIRED con evento de proveedor CONOCIDO + B ACTIVE
+    // recien verificada (latestEventTime=null) pero con startTime MAS NUEVO.
+    // B es la generacion de compra actual -> PREMIUM sin esperar el RTDN.
+    {
+      const s = await makeSession(pg, 'c8');
+      await insertSub({
+        accountId: s.accountId,
+        state: 'EXPIRED',
+        expiryTime: D(-2 * 24 * HOUR),
+        startTime: D(-200 * 24 * HOUR), // compra vieja
+        latestEventTime: D(-2 * 24 * HOUR), // RTDN SUBSCRIPTION_EXPIRED conocido
+        updatedAt: D(-2 * 24 * HOUR),
+      });
+      await insertSub({
+        accountId: s.accountId,
+        state: 'ACTIVE',
+        expiryTime: D(28 * 24 * HOUR),
+        startTime: D(-1 * HOUR), // compra NUEVA (re-alta)
+        latestEventTime: null, // recien verificada por reconcile del movil, sin RTDN aun
+        updatedAt: D(-1 * HOUR),
+      });
+      check('C8: re-alta -- B ACTIVE (startTime nuevo, evento null) gana a A EXPIRED (evento conocido) -> PREMIUM', (await tierFor(s.authHeaders)) === 'PREMIUM');
+    }
+
+    // C9 -- REGRESION C3.1 reforzada: dentro de la MISMA generacion de compra
+    // (startTime empatado), una fila ACTIVE STALE con latestEventTime=null
+    // NUNCA gana a la verdad de proveedor mas nueva REVOKED/EXPIRED.
+    {
+      const s = await makeSession(pg, 'c9');
+      const gen = D(-30 * 24 * HOUR);
+      await insertSub({ accountId: s.accountId, state: 'ACTIVE', expiryTime: D(20 * 24 * HOUR), startTime: gen, latestEventTime: null, updatedAt: D(+5 * HOUR) });
+      await insertSub({ accountId: s.accountId, state: 'REVOKED', expiryTime: D(20 * 24 * HOUR), startTime: gen, latestEventTime: D(-1 * HOUR), updatedAt: D(-5 * HOUR) });
+      const t1 = await tierFor(s.authHeaders);
+      const t2 = await tierFor(s.authHeaders);
+      check('C9: misma generacion -- ACTIVE stale (evento null) NO gana a REVOKED (evento conocido) -> FREE', t1 === 'FREE' && t1 === t2);
     }
 
     // ====================================================================

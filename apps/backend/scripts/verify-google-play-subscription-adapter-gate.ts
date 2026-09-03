@@ -195,6 +195,30 @@ async function main() {
     check('A: el mapper trata PENDING_PURCHASE_CANCELED de forma EXPLICITA (no lo deja caer por el default)', /GOOGLE_SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED/.test(stripComments(readSrc('subscription/google/map-google-subscription.ts'))));
   }
 
+  // A.5 -- outOfAppPurchaseContext (re-alta fuera de la app tras expiracion total).
+  {
+    const withCtx = mapGoogleSubscription(
+      {
+        subscriptionState: 'SUBSCRIPTION_STATE_ACTIVE',
+        outOfAppPurchaseContext: {
+          expiredPurchaseToken: 'tok-expirado-A',
+          expiredExternalAccountIdentifiers: { obfuscatedExternalAccountId: 'obf-exp-9' },
+        },
+        lineItems: [li(ZETRYND_PREMIUM_PRODUCT_ID, ZETRYND_PREMIUM_BASE_PLAN_ID)],
+      },
+      { ...ctx, purchaseToken: 'tok-B' },
+    );
+    check('A: mapea outOfAppPurchaseContext -> expiredPurchaseToken + expiredObfuscatedExternalAccountId', !!(withCtx.ok && withCtx.snapshot.expiredPurchaseToken === 'tok-expirado-A' && withCtx.snapshot.expiredObfuscatedExternalAccountId === 'obf-exp-9'));
+    const noCtx = mapGoogleSubscription({ subscriptionState: 'SUBSCRIPTION_STATE_ACTIVE', lineItems: [li(ZETRYND_PREMIUM_PRODUCT_ID, ZETRYND_PREMIUM_BASE_PLAN_ID)] }, ctx);
+    check('A: sin outOfAppPurchaseContext -> expiredPurchaseToken null', noCtx.ok && noCtx.snapshot.expiredPurchaseToken === null && noCtx.snapshot.expiredObfuscatedExternalAccountId === null);
+    const selfRef = mapGoogleSubscription(
+      { subscriptionState: 'SUBSCRIPTION_STATE_ACTIVE', outOfAppPurchaseContext: { expiredPurchaseToken: 'tok-B' }, lineItems: [li(ZETRYND_PREMIUM_PRODUCT_ID, ZETRYND_PREMIUM_BASE_PLAN_ID)] },
+      { ...ctx, purchaseToken: 'tok-B' },
+    );
+    check('A: expiredPurchaseToken == este mismo token (auto-referencia inconsistente) -> null', selfRef.ok && selfRef.snapshot.expiredPurchaseToken === null);
+    check('A: outOfAppPurchaseContext NO es linkedPurchaseToken -- el mapper no lo copia a linkedPurchaseToken', withCtx.ok && withCtx.snapshot.linkedPurchaseToken === null);
+  }
+
   // ========================================================================
   console.log('--- PARTE A2. reglas PURAS: eleccion de proveedor (fail-closed en prod) + acknowledgement ---');
 
@@ -253,8 +277,8 @@ async function main() {
     req('POST', '/me/subscription/google-play/reconcile', auth, { purchaseToken });
   const tierOf = async (auth: Record<string, string>) => ((await req('GET', '/me/entitlement', auth)).body as { tier?: string } | null)?.tier;
   const rowOf = async (token: string) =>
-    (await pg.query(`SELECT state, acknowledgement_state, latest_event_time, account_id FROM account_subscription WHERE purchase_token = $1`, [token])).rows[0] as
-      | { state: string; acknowledgement_state: string; latest_event_time: Date | null; account_id: string }
+    (await pg.query(`SELECT state, acknowledgement_state, latest_event_time, account_id, resubscribed_from_purchase_token FROM account_subscription WHERE purchase_token = $1`, [token])).rows[0] as
+      | { state: string; acknowledgement_state: string; latest_event_time: Date | null; account_id: string; resubscribed_from_purchase_token: string | null }
       | undefined;
 
   try {
@@ -410,6 +434,38 @@ async function main() {
       const r = await reconcile(other.auth, newToken);
       check('B10b: token nuevo cuyo predecesor pertenece a otra cuenta -> 409', r.status === 409);
       check('B10b: el predecesor sigue siendo del dueno original, sin SUPERSEDED', (await rowOf(oldToken))?.account_id === owner.accountId && (await rowOf(oldToken))?.state === 'ACTIVE');
+    }
+
+    // B11 -- RE-ALTA IN-APP: la cuenta X tenia una fila EXPIRED historica; X
+    // compra de nuevo -> reconcile(B) -> verified -> PREMIUM DE INMEDIATO
+    // (sin esperar el RTDN). B tiene startTime mas nuevo -> es la generacion
+    // vigente. A NO se marca SUPERSEDED.
+    {
+      const s = await makeSession(pg, 'b11');
+      const aToken = encodeFakeSubscriptionToken({ state: 'EXPIRED', expiryDeltaMs: -5 * 24 * HOUR }); // startTime default = now-30d
+      await reconcile(s.auth, aToken);
+      check('B11: pre -- A EXPIRED, cuenta X en FREE', (await rowOf(aToken))?.state === 'EXPIRED' && (await tierOf(s.auth)) === 'FREE');
+      const bToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 28 * 24 * HOUR, startDeltaMs: -1 * HOUR }); // startTime nuevo
+      const r = await reconcile(s.auth, bToken);
+      check('B11: reconcile(B) -> 200 verified', r.status === 200 && (r.body as { status?: string })?.status === 'verified');
+      check('B11: GET /me/entitlement -> PREMIUM DE INMEDIATO (no espera el SUBSCRIPTION_PURCHASED RTDN)', (await tierOf(s.auth)) === 'PREMIUM');
+      check('B11: A NO se marca SUPERSEDED (re-alta != rotacion de token) -- sigue EXPIRED', (await rowOf(aToken))?.state === 'EXPIRED');
+      check('B11: B queda ACTIVE, latest_event_time NULL (no se invento cronologia)', (await rowOf(bToken))?.state === 'ACTIVE' && (await rowOf(bToken))?.latest_event_time === null);
+    }
+
+    // B12 -- OWNERSHIP fail-closed: la cuenta Z reconcilia B cuyo
+    // outOfAppPurchaseContext.expiredPurchaseToken = A pertenece a X (!= Z).
+    // Cadena de propiedad imposible -> 409, sin fila para B, sin PREMIUM para Z.
+    {
+      const x = await makeSession(pg, 'b12-x');
+      const z = await makeSession(pg, 'b12-z');
+      const aToken = encodeFakeSubscriptionToken({ state: 'EXPIRED', expiryDeltaMs: -5 * 24 * HOUR });
+      await reconcile(x.auth, aToken);
+      const bToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 28 * 24 * HOUR, expiredPurchaseToken: aToken });
+      const r = await reconcile(z.auth, bToken);
+      check('B12: expiredPurchaseToken apunta a la fila de otra cuenta -> 409 SUBSCRIPTION_ACCOUNT_MISMATCH', r.status === 409 && (r.body as { error?: { code?: string } })?.error?.code === 'SUBSCRIPTION_ACCOUNT_MISMATCH');
+      check('B12: NO se crea fila para B; Z NO gana PREMIUM', (await rowOf(bToken)) === undefined && (await tierOf(z.auth)) === 'FREE');
+      check('B12: A intacta (de X, EXPIRED)', (await rowOf(aToken))?.account_id === x.accountId && (await rowOf(aToken))?.state === 'EXPIRED');
     }
 
     // ====================================================================

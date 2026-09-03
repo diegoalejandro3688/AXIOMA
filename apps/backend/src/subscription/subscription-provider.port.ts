@@ -58,6 +58,21 @@ export interface VerifiedSubscriptionSnapshot {
   /** `canceledStateContext.userInitiatedCancellation` presente -> true; system -> false; ausente -> null. */
   cancelUserInitiated: boolean | null;
 
+  /**
+   * `outOfAppPurchaseContext.expiredPurchaseToken` -- la suscripcion EXPIRADA
+   * de la que esta compra es re-alta FUERA de la app. Solo para ATRIBUCION de
+   * cuenta (resolver el `accountId` de la fila expirada). NO es rotacion de
+   * token: la fila anterior NO se marca `SUPERSEDED`.
+   */
+  expiredPurchaseToken: string | null;
+  /**
+   * `outOfAppPurchaseContext.expiredExternalAccountIdentifiers.obfuscatedExternalAccountId`.
+   * DIAGNOSTICO -- fallback FUTURO de atribucion (C3.5 fijara un
+   * `obfuscatedAccountId` opaco en el BillingFlow); hoy `expiredPurchaseToken`
+   * basta para el caso primario (ZETRYND ya tiene la fila anterior).
+   */
+  expiredObfuscatedExternalAccountId: string | null;
+
   /** Respuesta cruda completa de `subscriptionsv2.get` -- se persiste en `rawSnapshot` (Json), nunca se loguea ni se expone por HTTP. */
   raw: unknown;
 }

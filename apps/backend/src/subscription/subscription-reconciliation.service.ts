@@ -181,8 +181,9 @@ export class SubscriptionReconciliationService {
       this.logger.warn(`RTDN revoke para ${this.tokenHint(purchaseToken)} pero el snapshot dice ${snapshot.state} -- posible desincronizacion, se confia en Google`);
     }
 
-    // 4. linkedPurchaseToken -- rotacion de token (ADR D.4). RTDN sin cuenta:
-    //    se HEREDA la del predecesor (ADR D.4.1).
+    // 4. linkedPurchaseToken -- rotacion de token EN VIVO (ADR D.4). El
+    //    predecesor pasa a `SUPERSEDED`. RTDN sin cuenta: se HEREDA la del
+    //    predecesor (ADR D.4.1).
     let predecessorId: string | null = null;
     if (snapshot.linkedPurchaseToken) {
       const predecessor = await this.subscriptions.findByPurchaseToken(snapshot.linkedPurchaseToken);
@@ -195,12 +196,35 @@ export class SubscriptionReconciliationService {
       }
     }
 
+    // 4a. outOfAppPurchaseContext.expiredPurchaseToken -- RE-ALTA FUERA DE LA
+    //     APP tras EXPIRACION TOTAL. Semantica DISTINTA a linkedPurchaseToken:
+    //     la suscripcion anterior ya termino, esto es una compra NUEVA. SOLO se
+    //     usa para ATRIBUIR la cuenta (RTDN antes del reconcile del movil);
+    //     la fila anterior NO se marca SUPERSEDED (se queda EXPIRED). Se
+    //     REGISTRA el vinculo en `resubscribedFromPurchaseToken`.
+    let resubscribedFrom: string | null = null;
+    if (snapshot.expiredPurchaseToken) {
+      const expired = await this.subscriptions.findByPurchaseToken(snapshot.expiredPurchaseToken);
+      if (expired) {
+        if (accountId !== null && expired.accountId !== accountId) {
+          // Cadena de propiedad IMPOSIBLE: la sesion es de X pero la
+          // suscripcion expirada linkeada es de otra cuenta -> fail-closed.
+          this.logger.warn(`resubscribe: expiredPurchaseToken de ${this.tokenHint(purchaseToken)} pertenece a otra cuenta`);
+          throw new ConflictException({ code: SUBSCRIPTION_ACCOUNT_MISMATCH_CODE, message: 'La suscripción anterior pertenece a otra cuenta.' });
+        }
+        if (accountId === null) accountId = expired.accountId;
+        resubscribedFrom = snapshot.expiredPurchaseToken;
+      }
+      // `expired` no existe como fila -> no se puede atribuir por aqui; si
+      // `accountId` sigue null cae al 4b (reintento acotado, NO fila fabricada).
+    }
+
     // 4b. Sin cuenta resoluble -> la RTDN llego antes que el reconcile del movil.
     if (accountId === null) {
       throw new SubscriptionNotAttributableError(this.tokenHint(purchaseToken));
     }
 
-    const writeData = this.toWriteData(accountId, snapshot, effectiveState);
+    const writeData = this.toWriteData(accountId, snapshot, effectiveState, resubscribedFrom);
     const notificationLabel = rtdnSubscriptionNotificationLabel(ctx.notificationType);
 
     // 5. Persistir atomicamente: upsert por purchaseToken + supersede predecesor
@@ -328,11 +352,13 @@ export class SubscriptionReconciliationService {
     accountId: string,
     s: VerifiedSubscriptionSnapshot,
     stateOverride?: NormalizedSubscriptionState,
+    resubscribedFromPurchaseToken: string | null = null,
   ): VerifiedSubscriptionWriteData {
     return {
       accountId,
       purchaseToken: s.purchaseToken,
       linkedPurchaseToken: s.linkedPurchaseToken,
+      resubscribedFromPurchaseToken,
       state: stateOverride ?? s.state,
       expiryTime: s.expiryTime,
       startTime: s.startTime,

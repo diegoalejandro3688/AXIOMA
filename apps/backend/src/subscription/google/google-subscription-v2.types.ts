@@ -78,6 +78,23 @@ export interface GoogleCanceledStateContext {
 }
 
 /**
+ * `SubscriptionPurchaseV2.outOfAppPurchaseContext` -- presente cuando la
+ * suscripcion se compro FUERA de la app (p. ej. el usuario se re-suscribe
+ * desde la Play Store tras la EXPIRACION TOTAL de su suscripcion anterior).
+ * Google lo provee EXPRESAMENTE para que el backend pueda asociar y
+ * acknowledgear la compra nueva aunque la app nunca se abra.
+ *
+ * `expiredPurchaseToken` NO es `linkedPurchaseToken`: la suscripcion anterior
+ * YA termino (no es un reemplazo en vivo) -- ver `map-google-subscription.ts`.
+ */
+export interface GoogleOutOfAppPurchaseContext {
+  /** `purchaseToken` de la suscripcion EXPIRADA de la que esta es re-alta. */
+  expiredPurchaseToken?: string;
+  /** Identificadores externos (ofuscados) de esa suscripcion expirada. */
+  expiredExternalAccountIdentifiers?: GoogleExternalAccountIdentifiers;
+}
+
+/**
  * `SubscriptionPurchaseV2` -- subconjunto leido. Campos deliberadamente
  * OMITIDOS por decision de persistencia de la ADR (seccion D.2.c):
  * `subscribeWithGoogleInfo`, `latestOrderId` de line item, `etag`,
@@ -94,6 +111,8 @@ export interface GoogleSubscriptionPurchaseV2 {
   testPurchase?: Record<string, never> | null;
   externalAccountIdentifiers?: GoogleExternalAccountIdentifiers;
   canceledStateContext?: GoogleCanceledStateContext;
+  /** Presente en re-altas fuera de la app tras expiracion total. */
+  outOfAppPurchaseContext?: GoogleOutOfAppPurchaseContext;
   /** Timestamp RFC3339. */
   startTime?: string;
   lineItems?: GoogleSubscriptionPurchaseLineItem[];
