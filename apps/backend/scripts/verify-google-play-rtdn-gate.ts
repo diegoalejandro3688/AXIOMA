@@ -42,6 +42,7 @@ import {
   resolveProviderEventTimeUpdate,
 } from '../src/subscription/rtdn/rtdn-event-time';
 import {
+  RTDN_SUBSCRIPTION_DEPRECATED_TYPES,
   isActionableSubscriptionNotification,
   rtdnSubscriptionNotificationLabel,
 } from '../src/subscription/rtdn/rtdn-notification-type';
@@ -166,12 +167,36 @@ async function main() {
     check('A: clasifica payload desconocido -> unknown', classifyDeveloperNotification({}).kind === 'unknown');
   }
 
-  // A.2 tabla de notificationType (ACTUAL, incluye 20).
+  // A.2 tabla de notificationType -- TODA la tabla oficial ACTUAL.
   {
-    check('A: type 2 -> SUBSCRIPTION_RENEWED', rtdnSubscriptionNotificationLabel(2) === 'SUBSCRIPTION_RENEWED');
-    check('A: type 12 -> SUBSCRIPTION_REVOKED', rtdnSubscriptionNotificationLabel(12) === 'SUBSCRIPTION_REVOKED');
-    check('A: type 20 -> SUBSCRIPTION_PENDING_PURCHASE_CANCELED', rtdnSubscriptionNotificationLabel(20) === 'SUBSCRIPTION_PENDING_PURCHASE_CANCELED');
-    check('A: type futuro 99 -> SUBSCRIPTION_UNKNOWN_99 (registrable, nunca concede)', rtdnSubscriptionNotificationLabel(99) === 'SUBSCRIPTION_UNKNOWN_99');
+    const known: Array<[number, string]> = [
+      [1, 'SUBSCRIPTION_RECOVERED'],
+      [2, 'SUBSCRIPTION_RENEWED'],
+      [3, 'SUBSCRIPTION_CANCELED'],
+      [4, 'SUBSCRIPTION_PURCHASED'],
+      [5, 'SUBSCRIPTION_ON_HOLD'],
+      [6, 'SUBSCRIPTION_IN_GRACE_PERIOD'],
+      [7, 'SUBSCRIPTION_RESTARTED'],
+      [8, 'SUBSCRIPTION_PRICE_CHANGE_CONFIRMED'],
+      [9, 'SUBSCRIPTION_DEFERRED'],
+      [10, 'SUBSCRIPTION_PAUSED'],
+      [11, 'SUBSCRIPTION_PAUSE_SCHEDULE_CHANGED'],
+      [12, 'SUBSCRIPTION_REVOKED'],
+      [13, 'SUBSCRIPTION_EXPIRED'],
+      [17, 'SUBSCRIPTION_ITEMS_CHANGED'],
+      [18, 'SUBSCRIPTION_CANCELLATION_SCHEDULED'],
+      [19, 'SUBSCRIPTION_PRICE_CHANGE_UPDATED'],
+      [20, 'SUBSCRIPTION_PENDING_PURCHASE_CANCELED'],
+      [22, 'SUBSCRIPTION_PRICE_STEP_UP_CONSENT_UPDATED'],
+    ];
+    for (const [type, label] of known) {
+      check(`A: type ${type} -> ${label} (reconocido, NUNCA SUBSCRIPTION_UNKNOWN_*)`, rtdnSubscriptionNotificationLabel(type) === label);
+    }
+    check('A: type 8 sigue reconocido pero esta marcado DEPRECADO', RTDN_SUBSCRIPTION_DEPRECATED_TYPES.has(8) && rtdnSubscriptionNotificationLabel(8) === 'SUBSCRIPTION_PRICE_CHANGE_CONFIRMED');
+    check('A: 17/18/19/22 NO se etiquetan como SUBSCRIPTION_UNKNOWN_*', [17, 18, 19, 22].every((t) => !rtdnSubscriptionNotificationLabel(t)!.startsWith('SUBSCRIPTION_UNKNOWN_')));
+    for (const n of [14, 15, 16, 21, 99]) {
+      check(`A: entero NO documentado ${n} -> SUBSCRIPTION_UNKNOWN_${n} (fail-safe, registrable, nunca concede)`, rtdnSubscriptionNotificationLabel(n) === `SUBSCRIPTION_UNKNOWN_${n}`);
+    }
     check('A: type null -> null', rtdnSubscriptionNotificationLabel(null) === null);
     check('A: accionable sii hay purchaseToken', isActionableSubscriptionNotification('t') && !isActionableSubscriptionNotification(null) && !isActionableSubscriptionNotification(''));
   }
@@ -398,6 +423,27 @@ async function main() {
       check('F: A NO SUPERSEDED, sigue ACTIVE', (await subRowOf(aToken))?.state === 'ACTIVE');
       check('F: entitlement sigue PREMIUM (derivado de A)', (await tierOf(s.auth)) === 'PREMIUM');
       check('F: el evento de inbox quedo DONE', (await rtdnRowOf('f-ppc'))?.status === 'DONE');
+    }
+    // F.tipos-reconocidos-sin-soporte -- 17/18/19/22: reconocidos, disparan la
+    // reconsulta autoritativa, NO cambian el tier por si mismos, NO se
+    // implementa add-on / cuota / UI de precio.
+    for (const [type, label] of [
+      [17, 'SUBSCRIPTION_ITEMS_CHANGED'],
+      [18, 'SUBSCRIPTION_CANCELLATION_SCHEDULED'],
+      [19, 'SUBSCRIPTION_PRICE_CHANGE_UPDATED'],
+      [22, 'SUBSCRIPTION_PRICE_STEP_UP_CONSENT_UPDATED'],
+    ] as Array<[number, string]>) {
+      const s = await makeSession(pg, `f-t${type}`);
+      const token = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true });
+      await reconcile(s.auth, token);
+      await postRtdn(oidcBearer(), envelope(`f-t${type}`, developerNotification({ eventTimeMillis: String(now.getTime()), subscription: { notificationType: type, purchaseToken: token } })));
+      await processRtdn();
+      const row = await subRowOf(token);
+      check(`F: type ${type} (${label}) -> inbox DONE, reconciliado, sigue PREMIUM, latest_notification_type=${label}`,
+        (await rtdnRowOf(`f-t${type}`))?.status === 'DONE'
+          && row?.state === 'ACTIVE'
+          && (await tierOf(s.auth)) === 'PREMIUM'
+          && row?.latest_notification_type === label);
     }
 
     // ======================================================================
