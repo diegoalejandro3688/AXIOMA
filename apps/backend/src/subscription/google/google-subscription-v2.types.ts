@@ -14,6 +14,25 @@
  * C3.3). El mapper C3.2 NUNCA fija `latestEventTime`.
  */
 
+/**
+ * `SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED` -- estado ACTUAL y
+ * documentado de Google (NO un enum futuro desconocido): una compra
+ * PENDIENTE (un cambio de plan / re-alta / compra con pago diferido que aun
+ * no completaba) fue CANCELADA antes de completarse. La transaccion NUNCA
+ * llego a ser una suscripcion.
+ *
+ * Si la compra pendiente concernia a una suscripcion EXISTENTE, Google
+ * devuelve `linkedPurchaseToken` apuntando a esa suscripcion y el estado
+ * autoritativo hay que leerlo de ELLA (no de este token). RTDN emite el tipo
+ * 20 `SUBSCRIPTION_PENDING_PURCHASE_CANCELED` (C3.3).
+ *
+ * ZETRYND lo trata como una DISPOSICION dedicada del mapper -- nunca una fila
+ * `AccountSubscription`, nunca un `NormalizedSubscriptionState`, nunca un
+ * acknowledge. Ver `map-google-subscription.ts`.
+ */
+export const GOOGLE_SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED =
+  'SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED' as const;
+
 /** Valores documentados de `SubscriptionPurchaseV2.subscriptionState`. */
 export type GoogleSubscriptionStateString =
   | 'SUBSCRIPTION_STATE_UNSPECIFIED'
@@ -23,7 +42,8 @@ export type GoogleSubscriptionStateString =
   | 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD'
   | 'SUBSCRIPTION_STATE_ON_HOLD'
   | 'SUBSCRIPTION_STATE_CANCELED'
-  | 'SUBSCRIPTION_STATE_EXPIRED';
+  | 'SUBSCRIPTION_STATE_EXPIRED'
+  | typeof GOOGLE_SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED;
 
 export interface GoogleAutoRenewingPlan {
   autoRenewEnabled?: boolean;

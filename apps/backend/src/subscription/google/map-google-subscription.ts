@@ -1,6 +1,10 @@
 import type { NormalizedSubscriptionState } from '../../entitlement/subscription/derive-subscription-tier';
 import type { VerifiedSubscriptionSnapshot } from '../subscription-provider.port';
-import type { GoogleSubscriptionPurchaseLineItem, GoogleSubscriptionPurchaseV2 } from './google-subscription-v2.types';
+import {
+  GOOGLE_SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED,
+  type GoogleSubscriptionPurchaseLineItem,
+  type GoogleSubscriptionPurchaseV2,
+} from './google-subscription-v2.types';
 
 /**
  * PREMIUM V1 -- Capa 3 (Google Play Billing), C3.2.
@@ -32,7 +36,15 @@ export type MapGoogleSubscriptionRejectionReason =
 
 export type MapGoogleSubscriptionResult =
   | { ok: true; snapshot: Omit<VerifiedSubscriptionSnapshot, 'raw'> }
-  | { ok: false; reason: MapGoogleSubscriptionRejectionReason; detail: string };
+  | { ok: false; reason: MapGoogleSubscriptionRejectionReason; detail: string }
+  /**
+   * `SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED` -- NO es un rechazo (el
+   * token se verifico con exito) ni un snapshot (nunca es una fila
+   * `AccountSubscription`). Es una DISPOSICION propia: la compra pendiente se
+   * cancelo. `linkedPurchaseToken` (si Google lo trae) es la suscripcion
+   * EXISTENTE cuya estado autoritativo debe consultarse en su lugar.
+   */
+  | { ok: false; pendingPurchaseCanceled: true; linkedPurchaseToken: string | null; detail: string };
 
 /**
  * Mapea el `subscriptionState` string de Google a un estado normalizado.
@@ -50,6 +62,13 @@ export function mapGoogleSubscriptionState(raw: string | undefined): {
   recognized: boolean;
 } {
   switch (raw) {
+    case GOOGLE_SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED:
+      // Estado ACTUAL de Google, manejado AGUAS ARRIBA por
+      // `mapGoogleSubscription` como una disposicion dedicada (nunca una fila
+      // `AccountSubscription`). NO cae por el `default` de "enum desconocido":
+      // se trata EXPLICITAMENTE. Si un llamador lo pasara aqui igualmente,
+      // fail-closed -- NO reconocido, NO entitled, jamas `ACTIVE`.
+      return { state: 'EXPIRED', recognized: false };
     case 'SUBSCRIPTION_STATE_PENDING':
       return { state: 'PENDING', recognized: true };
     case 'SUBSCRIPTION_STATE_ACTIVE':
@@ -127,7 +146,22 @@ export function mapGoogleSubscription(
     return { ok: false, reason: 'wrong_package', detail: `consultado "${ctx.queriedPackageName}", esperado "${ctx.expectedPackageName}"` };
   }
 
-  // 2. line item ZETRYND (nunca lineItems[0]).
+  // 2. Compra pendiente CANCELADA -- disposicion propia, ANTES de exigir un
+  //    line item (una compra pendiente cancelada puede no traer uno bien
+  //    formado). Nunca se convierte en una fila; si `linkedPurchaseToken`
+  //    esta presente, es la suscripcion existente que hay que reconsultar.
+  if (raw.subscriptionState === GOOGLE_SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED) {
+    return {
+      ok: false,
+      pendingPurchaseCanceled: true,
+      linkedPurchaseToken: raw.linkedPurchaseToken ?? null,
+      detail: raw.linkedPurchaseToken
+        ? `compra pendiente cancelada; suscripcion existente linkeada = ${raw.linkedPurchaseToken.slice(0, 6)}...`
+        : 'compra pendiente inicial cancelada (sin suscripcion previa)',
+    };
+  }
+
+  // 3. line item ZETRYND (nunca lineItems[0]).
   const lineItems = raw.lineItems ?? [];
   const selection = selectZetryndLineItem(lineItems, ctx.expectedProductId, ctx.expectedBasePlanId);
   if (!selection.ok) {
@@ -135,12 +169,12 @@ export function mapGoogleSubscription(
   }
   const item = selection.item;
 
-  // 3. productId defensivo (redundante con la seleccion, explicito).
+  // 4. productId defensivo (redundante con la seleccion, explicito).
   if (item.productId !== ctx.expectedProductId) {
     return { ok: false, reason: 'wrong_product', detail: `line item productId "${item.productId}" != "${ctx.expectedProductId}"` };
   }
 
-  // 4. estado normalizado (fail-closed para desconocidos).
+  // 5. estado normalizado (fail-closed para desconocidos).
   const rawState = raw.subscriptionState ?? 'SUBSCRIPTION_STATE_UNSPECIFIED';
   const { state, recognized } = mapGoogleSubscriptionState(rawState);
 

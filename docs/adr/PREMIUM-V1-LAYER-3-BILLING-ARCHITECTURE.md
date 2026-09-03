@@ -259,6 +259,7 @@ Regla:
 1. Al procesar un token nuevo con `linkedPurchaseToken` presente: buscar la fila del token viejo, marcarla `SUPERSEDED` (estado terminal interno), y crear/actualizar la fila del token nuevo con `accountId` **heredado** de la vieja (no confiar sólo en `obfuscatedAccountId` del token nuevo, que puede venir vacío en restore).
 2. Nunca borrar la fila vieja — se conserva para auditoría y para resolver RTDN atrasados que aún referencian el token viejo.
 3. Si un RTDN llega con un token que ya está `SUPERSEDED`: consultar la API igualmente; si Google devuelve un estado terminal coherente, ignorar; si no, alertar (posible desincronización).
+4. **`SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED`** (compra pendiente cancelada — C3.2 hardening): el `linkedPurchaseToken` NO indica un reemplazo completado, sino uno que **se canceló antes de completarse**. El token cancelado **nunca es una fila** (`AccountSubscription`), **nunca acknowledgea** y **nunca marca `SUPERSEDED`** a la suscripción linkeada. Con `linkedPurchaseToken` presente se reconsulta y reconcilia esa suscripción existente y el entitlement se deriva de ELLA; sin él, resultado neto = nada y el endpoint responde `canceled`. Si la suscripción linkeada pertenece a otra cuenta → `SUBSCRIPTION_ACCOUNT_MISMATCH`, sin transferir.
 
 ### D.5 Metadata cruda
 
@@ -329,7 +330,8 @@ Guarda de robustez: si `state ∈ {ACTIVE, IN_GRACE_PERIOD}` pero `expiryTime` e
 | Compra nueva (pago inmediato) | `SUBSCRIPTION_STATE_ACTIVE` | `SUBSCRIPTION_PURCHASED` | `ACTIVE` | **PREMIUM** | tras verificar + acknowledge (< 3 días). |
 | Compra pendiente (método de pago diferido) | `SUBSCRIPTION_STATE_PENDING` | `SUBSCRIPTION_PURCHASED` con estado pending | `PENDING` | **FREE** | **NO** concede PREMIUM. Esperar a `ACTIVE`. |
 | Pending → comprada | `ACTIVE` | `SUBSCRIPTION_PURCHASED` / `SUBSCRIPTION_RENEWED` | `ACTIVE` | **PREMIUM** | reconsultar; entonces conceder. |
-| Pending → cancelada | `CANCELED` / `EXPIRED` | `SUBSCRIPTION_CANCELED` / `SUBSCRIPTION_EXPIRED` | `EXPIRED` | **FREE** | nunca se concedió. |
+| Pending → cancelada (compra pendiente INICIAL) | `SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED` (`linkedPurchaseToken` = null) | `SUBSCRIPTION_PENDING_PURCHASE_CANCELED` (tipo 20) | **ninguna fila** | **FREE** | nunca se concedió; disposición del mapper, no un `state`. Endpoint responde `canceled`. |
+| Pending → cancelada (REEMPLAZO de una suscripción existente) | `SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED` (`linkedPurchaseToken` = A) | `SUBSCRIPTION_PENDING_PURCHASE_CANCELED` (tipo 20) | A **sin cambios** (NO `SUPERSEDED`) | **según A** | el reemplazo NO completó; se reconsulta y reconcilia A (`linkedPurchaseToken`), el entitlement se deriva de A. El token cancelado nunca es una fila. |
 | Renovación | `ACTIVE` | `SUBSCRIPTION_RENEWED` | `ACTIVE` (nuevo `expiryTime`) | **PREMIUM** | actualizar `expiryTime`. |
 | Usuario cancela auto-renovación, periodo pagado sigue | `CANCELED` (con `expiryTime` futuro) | `SUBSCRIPTION_CANCELED` | `CANCELED` | **PREMIUM** hasta `expiryTime` | `autoRenewing=false`. Mostrar "acceso hasta <fecha>" (§K). |
 | Grace period (fallo de pago, Google reintenta) | `SUBSCRIPTION_STATE_IN_GRACE_PERIOD` | `SUBSCRIPTION_IN_GRACE_PERIOD` | `IN_GRACE_PERIOD` | **PREMIUM** | usuario conserva acceso; `queryPurchasesAsync` aún lo devuelve. |

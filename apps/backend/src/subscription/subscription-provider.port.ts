@@ -62,14 +62,41 @@ export interface VerifiedSubscriptionSnapshot {
   raw: unknown;
 }
 
+/**
+ * Resultado de verificar un `purchaseToken` cuya compra PENDIENTE fue
+ * CANCELADA (`SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED`). NO es un error
+ * (el token se verifico con exito) y NO es una suscripcion (nunca produce una
+ * fila `AccountSubscription`). `linkedPurchaseToken`, si Google lo trae, es la
+ * suscripcion EXISTENTE cuyo estado autoritativo debe consultarse en su lugar.
+ */
+export interface PendingPurchaseCanceledResult {
+  pendingPurchaseCanceled: true;
+  purchaseToken: string;
+  linkedPurchaseToken: string | null;
+  /** Payload crudo del proveedor -- nunca se loguea ni se expone por HTTP. */
+  raw: unknown;
+}
+
+export type SubscriptionVerificationResult = VerifiedSubscriptionSnapshot | PendingPurchaseCanceledResult;
+
+export function isPendingPurchaseCanceled(
+  result: SubscriptionVerificationResult,
+): result is PendingPurchaseCanceledResult {
+  return (result as PendingPurchaseCanceledResult).pendingPurchaseCanceled === true;
+}
+
 export interface SubscriptionProviderAdapter {
   /**
    * Verifica un `purchaseToken` contra el proveedor
    * (`purchases.subscriptionsv2.get`). Lanza `SubscriptionProviderError`
    * ante CUALQUIER fallo (credenciales ausentes, 4xx, 5xx, red, snapshot que
    * no corresponde al producto ZETRYND). NUNCA fabrica un snapshot exitoso.
+   *
+   * Devuelve un `VerifiedSubscriptionSnapshot` normal, o -- si la compra
+   * pendiente fue cancelada -- un `PendingPurchaseCanceledResult` (no es un
+   * fallo: el token se verifico).
    */
-  getSubscription(purchaseToken: string): Promise<VerifiedSubscriptionSnapshot>;
+  getSubscription(purchaseToken: string): Promise<SubscriptionVerificationResult>;
 
   /**
    * Acknowledgea una compra (`purchases.subscriptions.acknowledge`).

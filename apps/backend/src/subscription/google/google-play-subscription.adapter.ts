@@ -3,7 +3,7 @@ import type { ConfigService } from '@nestjs/config';
 import {
   SubscriptionProviderError,
   type SubscriptionProviderAdapter,
-  type VerifiedSubscriptionSnapshot,
+  type SubscriptionVerificationResult,
 } from '../subscription-provider.port';
 import {
   ZETRYND_PLAY_PACKAGE_NAME,
@@ -73,7 +73,7 @@ export class GooglePlaySubscriptionAdapter implements SubscriptionProviderAdapte
     return new SubscriptionProviderError(`Google Play respondio ${status}`, 'unknown');
   }
 
-  async getSubscription(purchaseToken: string): Promise<VerifiedSubscriptionSnapshot> {
+  async getSubscription(purchaseToken: string): Promise<SubscriptionVerificationResult> {
     const token = await this.accessToken();
     const url = `${ANDROID_PUBLISHER_BASE}/applications/${encodeURIComponent(ZETRYND_PLAY_PACKAGE_NAME)}/purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`;
 
@@ -94,6 +94,12 @@ export class GooglePlaySubscriptionAdapter implements SubscriptionProviderAdapte
       expectedBasePlanId: ZETRYND_PREMIUM_BASE_PLAN_ID,
     });
     if (!mapped.ok) {
+      if ('pendingPurchaseCanceled' in mapped) {
+        // No es un fallo: el token se verifico y Google dice que la compra
+        // pendiente se cancelo. La reconciliacion decide que hacer con el
+        // `linkedPurchaseToken` (si lo hay).
+        return { pendingPurchaseCanceled: true, purchaseToken, linkedPurchaseToken: mapped.linkedPurchaseToken, raw };
+      }
       throw new SubscriptionProviderError(`snapshot no corresponde al producto ZETRYND (${mapped.reason}): ${mapped.detail}`, 'wrong_product');
     }
     return { ...mapped.snapshot, raw };

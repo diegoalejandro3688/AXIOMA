@@ -18,6 +18,9 @@
 // PARTE D -- frontera de transporte (Google no se filtra al dominio).
 // PARTE E -- procedencia de `latestEventTime` (C3.2 seccion 3): una
 //   verificacion directa NUNCA lo fija ni lo reemplaza.
+// PARTE G -- compra pendiente CANCELADA (`SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED`):
+//   disposicion propia del mapper; nunca una fila / acknowledge / SUPERSEDED;
+//   con `linkedPurchaseToken` se reconcilia la suscripcion existente; ownership.
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -34,6 +37,7 @@ import {
 import {
   encodeFakeAckFailToken,
   encodeFakeErrorToken,
+  encodeFakePendingPurchaseCanceledToken,
   encodeFakeSubscriptionToken,
 } from '../src/subscription/fake-subscription-provider.adapter';
 
@@ -175,6 +179,21 @@ async function main() {
   }
   check('A: los tipos de transporte de Google NO declaran eventTimeMillis (solo la nota lo menciona)', !/eventTimeMillis[?:]/.test(stripComments(readSrc('subscription/google/google-subscription-v2.types.ts'))));
   check('A: el mapper NUNCA fija latestEventTime', !/latestEventTime/.test(stripComments(readSrc('subscription/google/map-google-subscription.ts'))));
+
+  // A.4 -- SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED: disposicion propia,
+  //        NO cae por el branch generico de "enum desconocido".
+  {
+    const PPC = 'SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED';
+    const withLinked = mapGoogleSubscription({ subscriptionState: PPC, linkedPurchaseToken: 'tok-A', lineItems: [li(ZETRYND_PREMIUM_PRODUCT_ID, ZETRYND_PREMIUM_BASE_PLAN_ID)] }, ctx);
+    check('A: PENDING_PURCHASE_CANCELED con linkedPurchaseToken -> disposicion pendingPurchaseCanceled + linked', !withLinked.ok && 'pendingPurchaseCanceled' in withLinked && (withLinked as { linkedPurchaseToken?: string | null }).linkedPurchaseToken === 'tok-A');
+    const noLinked = mapGoogleSubscription({ subscriptionState: PPC, lineItems: [] }, ctx);
+    check('A: PENDING_PURCHASE_CANCELED sin linkedPurchaseToken ni line item -> disposicion + linked null', !noLinked.ok && 'pendingPurchaseCanceled' in noLinked && (noLinked as { linkedPurchaseToken?: string | null }).linkedPurchaseToken === null);
+    const wrongPkg = mapGoogleSubscription({ subscriptionState: PPC, linkedPurchaseToken: 'tok-A' }, { ...ctx, queriedPackageName: 'com.otra.app' });
+    check('A: PENDING_PURCHASE_CANCELED con package equivocado -> sigue ganando wrong_package', !wrongPkg.ok && 'reason' in wrongPkg && wrongPkg.reason === 'wrong_package');
+    const helperState = mapGoogleSubscriptionState(PPC);
+    check('A: mapGoogleSubscriptionState(PENDING_PURCHASE_CANCELED) -> NO reconocido, jamas ACTIVE (explicito, no default)', helperState.recognized === false && helperState.state !== 'ACTIVE');
+    check('A: el mapper trata PENDING_PURCHASE_CANCELED de forma EXPLICITA (no lo deja caer por el default)', /GOOGLE_SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED/.test(stripComments(readSrc('subscription/google/map-google-subscription.ts'))));
+  }
 
   // ========================================================================
   console.log('--- PARTE A2. reglas PURAS: eleccion de proveedor (fail-closed en prod) + acknowledgement ---');
@@ -468,6 +487,109 @@ async function main() {
       const env = readFileSync(join(SRC, '..', '.env.example'), 'utf8');
       return /GOOGLE_PLAY_PROVIDER_IMPL=fake/.test(env) && /# GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=/.test(env) && !/"private_key"/.test(env);
     })());
+
+    // ====================================================================
+    console.log('--- PARTE G. compra pendiente CANCELADA (SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED) ---');
+
+    // G1 -- compra pendiente INICIAL cancelada (sin linked) -> canceled, FREE,
+    //       sin fila, sin acknowledge. Idempotente.
+    {
+      const s = await makeSession(pg, 'g1');
+      const token = encodeFakePendingPurchaseCanceledToken(null);
+      const r = await reconcile(s.auth, token);
+      check('G1: compra pendiente inicial cancelada -> 200 { status: "canceled" }', r.status === 200 && JSON.stringify(r.body) === JSON.stringify({ status: 'canceled' }));
+      check('G1: GET /me/entitlement -> FREE', (await tierOf(s.auth)) === 'FREE');
+      check('G1: NO se crea ninguna fila para el token cancelado', (await rowOf(token)) === undefined);
+      const r2 = await reconcile(s.auth, token);
+      check('G1: reintento idempotente -> sigue 200 canceled, sin fila', r2.status === 200 && (r2.body as { status?: string })?.status === 'canceled' && (await rowOf(token)) === undefined);
+    }
+
+    // G2 -- reemplazo pendiente cancelado, linked a A ACTIVE + futuro:
+    //       A sigue vigente, NO SUPERSEDED, PREMIUM; B nunca es fila.
+    {
+      const s = await makeSession(pg, 'g2');
+      const aToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
+      await reconcile(s.auth, aToken);
+      const bToken = encodeFakePendingPurchaseCanceledToken(aToken);
+      const r = await reconcile(s.auth, bToken);
+      check('G2: reemplazo pendiente cancelado (linked a A ACTIVE) -> 200 verified (se reconcilio A)', r.status === 200 && (r.body as { status?: string })?.status === 'verified');
+      check('G2: A sigue ACTIVE, NO SUPERSEDED', (await rowOf(aToken))?.state === 'ACTIVE');
+      check('G2: B (token cancelado) nunca es una fila', (await rowOf(bToken)) === undefined);
+      check('G2: GET /me/entitlement -> PREMIUM (derivado de A)', (await tierOf(s.auth)) === 'PREMIUM');
+    }
+
+    // G3 -- linked a A CANCELED + expiry futuro -> A vigente, PREMIUM.
+    {
+      const s = await makeSession(pg, 'g3');
+      const aToken = encodeFakeSubscriptionToken({ state: 'CANCELED', expiryDeltaMs: 15 * 24 * HOUR, autoRenewing: false });
+      await reconcile(s.auth, aToken);
+      const bToken = encodeFakePendingPurchaseCanceledToken(aToken);
+      const r = await reconcile(s.auth, bToken);
+      check('G3: linked a A CANCELED+futuro -> 200, A no SUPERSEDED, PREMIUM', r.status === 200 && (await rowOf(aToken))?.state === 'CANCELED' && (await tierOf(s.auth)) === 'PREMIUM');
+    }
+
+    // G4 -- linked a A EXPIRED -> FREE (A se reconcilia, no concede).
+    {
+      const s = await makeSession(pg, 'g4');
+      const aToken = encodeFakeSubscriptionToken({ state: 'EXPIRED', expiryDeltaMs: -5 * 24 * HOUR });
+      await reconcile(s.auth, aToken);
+      const bToken = encodeFakePendingPurchaseCanceledToken(aToken);
+      const r = await reconcile(s.auth, bToken);
+      check('G4: linked a A EXPIRED -> 200 verified, A EXPIRED, FREE', r.status === 200 && (await rowOf(aToken))?.state === 'EXPIRED' && (await tierOf(s.auth)) === 'FREE');
+      check('G4: B nunca es fila', (await rowOf(bToken)) === undefined);
+    }
+
+    // G5 -- una compra pendiente cancelada NUNCA marca a A SUPERSEDED
+    //       (contraste directo con el reemplazo COMPLETADO de G7).
+    {
+      const s = await makeSession(pg, 'g5');
+      const aToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 20 * 24 * HOUR });
+      await reconcile(s.auth, aToken);
+      await reconcile(s.auth, encodeFakePendingPurchaseCanceledToken(aToken));
+      check('G5: A jamas pasa a SUPERSEDED por una compra pendiente cancelada', (await rowOf(aToken))?.state === 'ACTIVE');
+    }
+
+    // G6 -- linked a A de OTRA cuenta -> 409, sin mutar nada.
+    {
+      const owner = await makeSession(pg, 'g6-owner');
+      const other = await makeSession(pg, 'g6-other');
+      const aToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
+      await reconcile(owner.auth, aToken);
+      const r = await reconcile(other.auth, encodeFakePendingPurchaseCanceledToken(aToken));
+      check('G6: reemplazo pendiente cancelado cuyo linked es de otra cuenta -> 409 SUBSCRIPTION_ACCOUNT_MISMATCH', r.status === 409 && (r.body as { error?: { code?: string } })?.error?.code === 'SUBSCRIPTION_ACCOUNT_MISMATCH');
+      check('G6: A sigue siendo del dueno original, ACTIVE, sin SUPERSEDED', (await rowOf(aToken))?.account_id === owner.accountId && (await rowOf(aToken))?.state === 'ACTIVE');
+      check('G6: la otra cuenta NO gana PREMIUM', (await tierOf(other.auth)) === 'FREE');
+    }
+
+    // G7 -- REGRESION: un reemplazo COMPLETADO (ACTIVE con linkedPurchaseToken)
+    //       SIGUE marcando a A SUPERSEDED con normalidad. La regla especial es
+    //       solo para PENDING_PURCHASE_CANCELED.
+    {
+      const s = await makeSession(pg, 'g7');
+      const aToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 10 * 24 * HOUR });
+      await reconcile(s.auth, aToken);
+      const bToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 40 * 24 * HOUR, linkedPurchaseToken: aToken });
+      const r = await reconcile(s.auth, bToken);
+      check('G7: reemplazo COMPLETADO -> 200, A SUPERSEDED, B ACTIVE, PREMIUM', r.status === 200 && (await rowOf(aToken))?.state === 'SUPERSEDED' && (await rowOf(bToken))?.state === 'ACTIVE' && (await tierOf(s.auth)) === 'PREMIUM');
+    }
+
+    // G8 -- un enum GENUINAMENTE desconocido sigue fail-closed (no se confunde
+    //       con PENDING_PURCHASE_CANCELED).
+    {
+      const unknown = mapGoogleSubscriptionState('SUBSCRIPTION_STATE_SOMETHING_NEW_2028');
+      check('G8: enum futuro desconocido -> EXPIRED + NO reconocido (fail-closed, sin cambios)', unknown.state === 'EXPIRED' && unknown.recognized === false);
+    }
+
+    // G9 -- NUNCA se acknowledgea el token de una compra pendiente cancelada.
+    {
+      const s = await makeSession(pg, 'g9');
+      const aToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true });
+      await reconcile(s.auth, aToken);
+      const bToken = encodeFakePendingPurchaseCanceledToken(aToken);
+      await reconcile(s.auth, bToken);
+      check('G9: el token cancelado no tiene fila -> imposible que se haya acknowledgeado', (await rowOf(bToken)) === undefined);
+      check('G9: A conserva su acknowledgement_state = ACKNOWLEDGED (no se toco)', (await rowOf(aToken))?.acknowledgement_state === 'ACKNOWLEDGED');
+    }
   } finally {
     if (createdAccountIds.length) {
       await pg.query('DELETE FROM account_subscription WHERE account_id = ANY($1::uuid[])', [createdAccountIds]);

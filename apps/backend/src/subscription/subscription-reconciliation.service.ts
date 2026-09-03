@@ -19,6 +19,8 @@ import {
 import {
   SUBSCRIPTION_PROVIDER_ADAPTER,
   SubscriptionProviderError,
+  isPendingPurchaseCanceled,
+  type PendingPurchaseCanceledResult,
   type SubscriptionProviderAdapter,
   type VerifiedSubscriptionSnapshot,
 } from './subscription-provider.port';
@@ -52,8 +54,20 @@ export class SubscriptionReconciliationService {
   }
 
   async reconcilePurchase(input: { accountId: string; purchaseToken: string }): Promise<{ status: SubscriptionReconcileStatus }> {
-    const { accountId, purchaseToken } = input;
+    return this.reconcileToken(input.accountId, input.purchaseToken, 0);
+  }
 
+  /**
+   * `depth` acota la recursion: una compra pendiente cancelada con
+   * `linkedPurchaseToken` reconcilia esa suscripcion existente (1 salto). Una
+   * cadena de compras pendientes canceladas encadenadas es patologica y se
+   * corta en `canceled`.
+   */
+  private async reconcileToken(
+    accountId: string,
+    purchaseToken: string,
+    depth: number,
+  ): Promise<{ status: SubscriptionReconcileStatus }> {
     // 1. Ownership pre-check -- un token ya asociado a OTRA cuenta ZETRYND
     //    NUNCA se re-vincula (ADR L.4). Mismo dueno -> camino idempotente.
     const existing = await this.subscriptions.findByPurchaseToken(purchaseToken);
@@ -63,12 +77,21 @@ export class SubscriptionReconciliationService {
     }
 
     // 2. Verificar con el proveedor. NUNCA se fabrica un snapshot exitoso.
-    let snapshot: VerifiedSubscriptionSnapshot;
+    let verification: VerifiedSubscriptionSnapshot | PendingPurchaseCanceledResult;
     try {
-      snapshot = await this.provider.getSubscription(purchaseToken);
+      verification = await this.provider.getSubscription(purchaseToken);
     } catch (error) {
       throw this.mapProviderError(error, purchaseToken);
     }
+
+    // 2b. Compra PENDIENTE CANCELADA -- la transaccion nunca llego a ser una
+    //     suscripcion. NUNCA se persiste una fila para este token, NUNCA se
+    //     acknowledgea, NUNCA supersede a nada. Si concernia a una suscripcion
+    //     EXISTENTE (`linkedPurchaseToken`), esa es la autoridad.
+    if (isPendingPurchaseCanceled(verification)) {
+      return this.reconcileCanceledPendingPurchase(accountId, purchaseToken, verification, depth);
+    }
+    const snapshot = verification;
 
     // 3. Validacion defensiva de producto (el adaptador ya la hizo, explicita).
     if (snapshot.packageName !== ZETRYND_PLAY_PACKAGE_NAME || snapshot.productId !== ZETRYND_PREMIUM_PRODUCT_ID) {
@@ -137,6 +160,57 @@ export class SubscriptionReconciliationService {
     }
 
     return { status: snapshot.state === 'PENDING' ? 'pending' : 'verified' };
+  }
+
+  /**
+   * `SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED`: una compra PENDIENTE (un
+   * cambio de plan / re-alta / pago diferido) se cancelo antes de completarse.
+   *
+   * (B) Sin `linkedPurchaseToken` -> compra pendiente INICIAL cancelada: no
+   *     hay suscripcion previa. Resultado neto: nada. No se escribio ninguna
+   *     fila, no se acknowledgeo nada -> idempotente por construccion.
+   *     Respuesta: `canceled` (el movil NO debe leerlo como compra exitosa).
+   *
+   * (C) Con `linkedPurchaseToken` -> REEMPLAZO pendiente cancelado: la
+   *     suscripcion EXISTENTE linkeada sigue siendo la autoridad. Este token
+   *     NO la supersede. Se verifica y reconcilia la suscripcion linkeada
+   *     (recursion, 1 salto) y el entitlement se deriva de ELLA.
+   *
+   * (D) Ownership: si la suscripcion linkeada ya pertenece a OTRA cuenta
+   *     ZETRYND -> `SUBSCRIPTION_ACCOUNT_MISMATCH`, sin transferir, sin
+   *     supersede, sin conceder entitlement. Si aun NO esta persistida,
+   *     reconciliarla la vincula a la cuenta de SESION -- exactamente la regla
+   *     de primer contacto de C3.2 (la cadena token->linked la devolvio Google
+   *     para el token de esta misma sesion), y el unico camino peligroso ya
+   *     esta bloqueado arriba.
+   */
+  private async reconcileCanceledPendingPurchase(
+    accountId: string,
+    purchaseToken: string,
+    result: PendingPurchaseCanceledResult,
+    depth: number,
+  ): Promise<{ status: SubscriptionReconcileStatus }> {
+    const linked = result.linkedPurchaseToken;
+
+    if (!linked || linked === purchaseToken || depth >= 1) {
+      this.logger.log(
+        `compra pendiente cancelada para ${this.tokenHint(purchaseToken)} sin suscripcion previa reconciliable -> sin cambios`,
+      );
+      return { status: 'canceled' };
+    }
+
+    const linkedRow = await this.subscriptions.findByPurchaseToken(linked);
+    if (linkedRow && linkedRow.accountId !== accountId) {
+      this.logger.warn(
+        `compra pendiente cancelada: la suscripcion linkeada de ${this.tokenHint(purchaseToken)} pertenece a otra cuenta`,
+      );
+      throw new ConflictException({
+        code: SUBSCRIPTION_ACCOUNT_MISMATCH_CODE,
+        message: 'La suscripción anterior pertenece a otra cuenta.',
+      });
+    }
+
+    return this.reconcileToken(accountId, linked, depth + 1);
   }
 
   private toWriteData(accountId: string, s: VerifiedSubscriptionSnapshot): VerifiedSubscriptionWriteData {

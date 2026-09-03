@@ -9,7 +9,7 @@ import {
   SubscriptionProviderError,
   type SubscriptionProviderAdapter,
   type SubscriptionProviderErrorCategory,
-  type VerifiedSubscriptionSnapshot,
+  type SubscriptionVerificationResult,
 } from './subscription-provider.port';
 
 /**
@@ -24,6 +24,8 @@ import {
  * guionar el comportamiento sin un endpoint interno:
  *
  *   `fakesub-ok:<b64url(spec)>`        -> devuelve un snapshot segun `spec`
+ *                                        (o, si `spec.pendingPurchaseCanceled`,
+ *                                        un `PendingPurchaseCanceledResult`)
  *   `fakesub-ackfail:<n>:<b64url(spec)>` -> como `-ok:`, pero `acknowledge`
  *                                          falla `n` veces (transient) y
  *                                          luego tiene exito
@@ -42,6 +44,12 @@ import {
  */
 interface FakeSnapshotSpec {
   state: NormalizedSubscriptionState;
+  /**
+   * Si `true`, `getSubscription` devuelve un `PendingPurchaseCanceledResult`
+   * (compra pendiente cancelada) en vez de un snapshot. `state` se ignora;
+   * `linkedPurchaseToken` (si se fija) es la suscripcion existente linkeada.
+   */
+  pendingPurchaseCanceled?: boolean;
   expiryDeltaMs?: number;
   startDeltaMs?: number;
   autoRenewing?: boolean;
@@ -83,6 +91,14 @@ export function encodeFakeAckFailToken(failures: number, spec: FakeSnapshotSpec)
 export function encodeFakeErrorToken(category: SubscriptionProviderErrorCategory): string {
   return `fakesub-err:${category}`;
 }
+/**
+ * Helper de test: `purchaseToken` cuya compra pendiente fue cancelada.
+ * `linkedPurchaseToken = null` -> compra pendiente inicial; un token -> la
+ * suscripcion existente que la reconciliacion debe reconsultar.
+ */
+export function encodeFakePendingPurchaseCanceledToken(linkedPurchaseToken: string | null): string {
+  return encodeFakeSubscriptionToken({ state: 'EXPIRED', pendingPurchaseCanceled: true, linkedPurchaseToken });
+}
 
 @Injectable()
 export class FakeSubscriptionProviderAdapter implements SubscriptionProviderAdapter {
@@ -106,12 +122,20 @@ export class FakeSubscriptionProviderAdapter implements SubscriptionProviderAdap
     return { error: 'not_found' };
   }
 
-  async getSubscription(purchaseToken: string): Promise<VerifiedSubscriptionSnapshot> {
+  async getSubscription(purchaseToken: string): Promise<SubscriptionVerificationResult> {
     const parsed = this.parse(purchaseToken);
     if ('error' in parsed) {
       throw new SubscriptionProviderError(`fake: ${parsed.error}`, parsed.error);
     }
     const spec = parsed.spec;
+    if (spec.pendingPurchaseCanceled === true) {
+      return {
+        pendingPurchaseCanceled: true,
+        purchaseToken,
+        linkedPurchaseToken: spec.linkedPurchaseToken ?? null,
+        raw: { fake: true, spec },
+      };
+    }
     const now = Date.now();
     const acknowledged = this.ackedTokens.has(purchaseToken) || spec.acknowledged === true;
     return {
