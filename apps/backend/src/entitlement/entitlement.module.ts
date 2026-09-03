@@ -5,6 +5,7 @@ import { InternalOpsModule } from '../platform/internal-ops/internal-ops.module'
 import { EntitlementService } from './entitlement.service';
 import { EntitlementController } from './entitlement.controller';
 import { EntitlementInternalAdminController } from './entitlement-internal-admin.controller';
+import { AccountSubscriptionRepository } from './subscription/account-subscription.repository';
 
 /**
  * PREMIUM V1 -- Capa 1 (Entitlement backend), C1.1.
@@ -17,11 +18,16 @@ import { EntitlementInternalAdminController } from './entitlement-internal-admin
  * modulos es imposible.
  *
  * Exporta `EntitlementService` -- la unica pieza que otros modulos consumen.
+ *
+ * C3.1: `AccountSubscriptionRepository` se anade como provider LOCAL (usa el
+ * `PrismaService` global, no requiere importar ningun modulo). El modulo
+ * sigue importando SOLO infraestructura -- ningun modulo de dominio, ningun
+ * ciclo. `EntitlementService` lo recibe de forma OPCIONAL.
  */
 @Module({
   imports: [AuthModule, ConfigModule, InternalOpsModule],
   controllers: [EntitlementController, EntitlementInternalAdminController],
-  providers: [EntitlementService],
+  providers: [EntitlementService, AccountSubscriptionRepository],
   exports: [EntitlementService],
 })
 export class EntitlementModule {}

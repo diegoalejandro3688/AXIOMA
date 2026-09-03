@@ -317,6 +317,7 @@ model Account {
   aiUsageLedgerEntries AiUsageLedgerEntry[]
   aiGenerationClaims   AiGenerationClaim[]
   aiResponseReports    AiResponseReport[]
+  subscriptions        AccountSubscription[]
 
   @@map("account")
 }
@@ -3031,4 +3032,126 @@ model ExamAttemptAnswer {
   @@index([attemptId])
   @@index([accountId])
   @@map("exam_attempt_answer")
+}
+
+// ===========================================================================
+// PREMIUM V1 -- Capa 3 (Google Play Billing), C3.1.
+//
+// `AccountSubscription` es la proyeccion PERSISTIDA de la verdad de Google
+// Play para una cuenta. NO es el entitlement: `EntitlementService` la LEE y
+// deriva `{ tier: FREE | PREMIUM }` con la funcion pura
+// `deriveSubscriptionTier` (`src/entitlement/subscription/`). Ver
+// docs/adr/PREMIUM-V1-LAYER-3-BILLING-ARCHITECTURE.md secciones D / E.
+//
+// C3.1 NO conecta con Google: no hay verificacion (`subscriptionsv2.get`),
+// ni RTDN, ni endpoints de compra/restore, ni credenciales de service
+// account. Solo el esquema + la derivacion + la seleccion de la fila
+// vigente. Las escrituras reales llegan en C3.2/C3.3.
+//
+// Frontera congelada: `AccountSubscription` != `AccountEntitlement`.
+// ===========================================================================
+
+/// Store / proveedor de la suscripcion. `GOOGLE_PLAY` es el unico en V1;
+/// el enum existe para preparar iOS/otros sin re-migrar (ADR D.2.a).
+enum SubscriptionProvider {
+  GOOGLE_PLAY
+
+  @@map("subscription_provider")
+}
+
+/// Estado NORMALIZADO del ciclo de vida (ADR D.6 / E.1). El futuro adaptador
+/// de Google (C3.2/C3.3) mapea `SubscriptionPurchaseV2.subscriptionState` a
+/// estos valores; el dominio nunca ve tipos de transporte de Google.
+///
+///   PENDING          compra creada, pago pendiente -- NO concede entitlement
+///   ACTIVE           vigente y pagada -- PREMIUM
+///   IN_GRACE_PERIOD  fallo de pago, Google reintenta, usuario CONSERVA acceso -- PREMIUM
+///   ON_HOLD          account hold -- usuario PIERDE acceso -- FREE
+///   CANCELED         auto-renovacion cancelada; sigue PREMIUM hasta `expiryTime`
+///   EXPIRED          termino -- FREE
+///   REVOKED          reembolso / chargeback / revocacion -- FREE inmediato
+///   PAUSED           no aplica V1 (pausa deshabilitada); mapeado por completitud -- FREE
+///   SUPERSEDED       interno: reemplazada por otra fila via `linkedPurchaseToken`
+enum SubscriptionState {
+  PENDING
+  ACTIVE
+  IN_GRACE_PERIOD
+  ON_HOLD
+  CANCELED
+  EXPIRED
+  REVOKED
+  PAUSED
+  SUPERSEDED
+
+  @@map("subscription_state")
+}
+
+/// Estado del acknowledgement de Google (ADR D.2.a). Google reembolsa y
+/// revoca una compra nueva no reconocida a los 3 dias -- el backend
+/// (C3.2) sera responsable de reconocerla tras verificarla.
+enum SubscriptionAcknowledgementState {
+  PENDING
+  ACKNOWLEDGED
+
+  @@map("subscription_acknowledgement_state")
+}
+
+model AccountSubscription {
+  id        String @id @default(uuid()) @db.Uuid
+  accountId String @map("account_id") @db.Uuid
+
+  // --- Autoritativos (ADR D.2.a) -----------------------------------------
+  provider            SubscriptionProvider @default(GOOGLE_PLAY)
+  /// Producto de Play (`zetrynd_premium`).
+  productId           String               @map("product_id")
+  /// Base plan (`premium-monthly`); util para el futuro plan anual.
+  basePlanId          String?              @map("base_plan_id")
+  /// Identidad canonica de la suscripcion en Play + clave de idempotencia.
+  /// UNICA GLOBALMENTE: un `purchaseToken` no puede pertenecer a dos cuentas
+  /// (defensa de replay / account-mismatch para C3.2).
+  purchaseToken       String               @unique @map("purchase_token")
+  /// Rotacion de token: apunta al `purchaseToken` anterior en resubscribe /
+  /// upgrade. La fila vieja pasa a `SUPERSEDED` (ADR D.4). NO es unico: un
+  /// token viejo puede ser referenciado; esto NO debilita la unicidad de
+  /// `purchaseToken`.
+  linkedPurchaseToken String?              @map("linked_purchase_token")
+
+  /// Estado normalizado del ciclo de vida -- lo que decide el tier junto con `expiryTime`.
+  state SubscriptionState
+
+  /// `currentPeriodEnd` -- la fecha que decide `PREMIUM` vs `FREE` (comparacion `>` estricta con `now`).
+  expiryTime DateTime? @map("expiry_time")
+  startTime  DateTime? @map("start_time")
+
+  /// Intencion de renovacion. DIAGNOSTICO -- `deriveSubscriptionTier` NUNCA
+  /// lo lee. Cancelar la renovacion (`false`) NO degrada el tier.
+  autoRenewing         Boolean                          @default(false) @map("auto_renewing")
+  acknowledgementState SubscriptionAcknowledgementState @default(PENDING) @map("acknowledgement_state")
+
+  /// Ultimo tipo de RTDN conocido (C3.3). Solo registro/metricas.
+  latestNotificationType String?   @map("latest_notification_type")
+  /// Instante del ultimo evento de Google aplicado -- para descartar RTDN
+  /// atrasados / fuera de orden (idempotencia, ADR D.3).
+  latestEventTime        DateTime? @map("latest_event_time")
+
+  // --- Diagnostico / auditoria (ADR D.2.b) -- ningun consumidor de producto los lee
+  cancelReason        String?   @map("cancel_reason")
+  cancelUserInitiated Boolean?  @map("cancel_user_initiated")
+  cancelTime          DateTime? @map("cancel_time")
+  regionCode          String?   @map("region_code")
+  /// `true` si Google marca la compra como de prueba -- nunca debe llegar a produccion.
+  testPurchase        Boolean   @default(false) @map("test_purchase")
+  /// Ultima respuesta completa de `subscriptionsv2.get` (solo la ultima,
+  /// retencion acotada -- ADR D.5). Para depuracion / re-derivacion.
+  rawSnapshot         Json?     @map("raw_snapshot")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([accountId])
+  @@index([state])
+  @@index([expiryTime])
+  @@map("account_subscription")
 }

@@ -1,5 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import type { PremiumTier } from '@axioma/contracts';
+import { AccountSubscriptionRepository, toDerivableSubscription } from './subscription/account-subscription.repository';
+import { deriveSubscriptionTier } from './subscription/derive-subscription-tier';
 
 /** Tier de authorization de una cuenta -- estructuralmente igual a `PremiumTier` de `@axioma/contracts`. */
 export type EntitlementTier = PremiumTier;
@@ -10,39 +12,60 @@ export interface AccountEntitlement {
 }
 
 /**
- * PREMIUM V1 -- Capa 1 (Entitlement backend), C1.1.
+ * PREMIUM V1 -- Capa 1 (Entitlement backend), C1.1 · Capa 3 (Billing), C3.1.
  *
  * FUENTE DE VERDAD UNICA Y TRANSVERSAL de authorization: "que tier tiene esta
- * cuenta AHORA MISMO". La reemplaza a la resolucion de tier que hasta C1.0
- * vivia embebida en `AiEntitlementService` (hoy un adaptador delgado sobre
- * este servicio). Estudio, Ensayos y Progreso consumiran `getEntitlement`
- * exactamente igual que IA -- ninguno conoce el concepto de plan/tier en si.
+ * cuenta AHORA MISMO". Estudio, Ensayos, Progreso e IA consumen
+ * `getEntitlement` exactamente igual -- ninguno conoce el concepto de
+ * plan/tier/suscripcion en si.
  *
- * FRONTERA PROVISIONAL (no es decision de dominio "las cuentas son Free"):
- * el esquema no tiene todavia ninguna tabla/campo de suscripcion. Mientras
- * no exista, `getEntitlement` resuelve toda cuenta como `FREE` -- la opcion
- * mas conservadora. `PREMIUM` solo se alcanza via `testOnlyTierOverride`
- * (mapa en memoria, poblado unicamente por `EntitlementInternalAdminController`,
- * rechazado en produccion, reiniciado en cada arranque -- nunca persistencia,
- * es un interruptor de prueba para los gates).
+ * PRECEDENCIA de resolucion del tier (ADR seccion 6 / task C3.1 seccion 6):
  *
- * FRONTERA CONGELADA authorization <-> billing (Capa 3): cuando exista
- * `AccountSubscription` (estado comercial: `autoRenew`, `currentPeriodEnd`,
- * token de store), este metodo derivara el tier de la VIGENCIA del periodo
- * -- `tier = (subscription && subscription.currentPeriodEnd > now) ? 'PREMIUM' : 'FREE'`.
- * Cancelar la renovacion automatica (`autoRenew === false`) NO degrada: la
- * cuenta sigue `PREMIUM` hasta la expiracion. Ningun endpoint de contenido
- * conoce `autoRenew` ni `currentPeriodEnd`; solo leen `tier`. Este es el
- * UNICO archivo que cambia cuando llegue esa fuente de verdad.
+ *   1. Override explicito de QA (`testOnlyTierOverride`) -- SOLO alcanzable
+ *      via `EntitlementInternalAdminController` (`InternalOpsGuard` +
+ *      `rejectInProduction`) y su alias de IA. Nunca en produccion, nunca
+ *      desde una superficie de producto. Mapa EN MEMORIA, se reinicia en
+ *      cada arranque, nunca se persiste. Se conserva hasta que Billing este
+ *      plenamente operativo (Capa 3 completa) para poder hacer QA sin compras
+ *      reales.
+ *   2. `AccountSubscription` verificada -- la fila "vigente" de la cuenta
+ *      (`AccountSubscriptionRepository.findCurrentByAccountId`, regla de
+ *      seleccion determinista) proyectada a `deriveSubscriptionTier`
+ *      (funcion PURA, matriz de ciclo de vida de la ADR seccion E). C3.1 solo
+ *      LEE esta tabla: las escrituras (verificacion de Google, RTDN) llegan
+ *      en C3.2/C3.3.
+ *   3. FREE -- por defecto (sin override y sin suscripcion vigente).
+ *
+ * FRONTERA CONGELADA authorization <-> billing: `AccountSubscription` es la
+ * verdad comercial (`state`, `expiryTime`, `autoRenewing`, token de store);
+ * `AccountEntitlement` es `{ tier }` y NADA MAS. Cancelar la renovacion
+ * automatica NO degrada: la derivacion depende de la VIGENCIA del periodo
+ * pagado (`expiryTime > now`), nunca de `autoRenewing`. Ningun endpoint de
+ * contenido conoce `state`/`expiryTime`/`autoRenewing`; solo leen `tier`.
+ *
+ * El repositorio es OPCIONAL en el constructor: sin el (p. ej. en un gate
+ * puro que hace `new EntitlementService()`), toda cuenta deriva FREE -- el
+ * comportamiento previo a C3.1, intacto.
  */
 @Injectable()
 export class EntitlementService {
   private readonly testOnlyTierOverride = new Map<string, EntitlementTier>();
 
+  constructor(@Optional() private readonly subscriptionRepo?: AccountSubscriptionRepository) {}
+
   async getEntitlement(accountId: string): Promise<AccountEntitlement> {
-    // PROVISIONAL: sin fuente de verdad de suscripcion todavia -- ver docstring de la clase.
-    const tier = this.testOnlyTierOverride.get(accountId) ?? 'FREE';
-    return { tier };
+    // 1. Override explicito de QA (nunca produccion, nunca UI de producto).
+    const override = this.testOnlyTierOverride.get(accountId);
+    if (override !== undefined) return { tier: override };
+
+    // 2. Suscripcion verificada -> derivacion pura.
+    if (this.subscriptionRepo) {
+      const row = await this.subscriptionRepo.findCurrentByAccountId(accountId);
+      return { tier: deriveSubscriptionTier(toDerivableSubscription(row), new Date()) };
+    }
+
+    // 3. Default conservador.
+    return { tier: 'FREE' };
   }
 
   /**
