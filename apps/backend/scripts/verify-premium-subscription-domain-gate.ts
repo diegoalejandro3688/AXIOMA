@@ -149,6 +149,9 @@ async function main() {
     autoRenewing?: boolean;
     purchaseToken?: string;
     linkedPurchaseToken?: string | null;
+    /** Cronologia AUTORITATIVA de proveedor. `undefined` -> null (desconocida). */
+    latestEventTime?: Date | null;
+    /** Orden de escritura LOCAL. Solo desempate. */
     updatedAt?: Date;
   }): Promise<string> {
     const token = opts.purchaseToken ?? `tok-${randomUUID()}`;
@@ -156,9 +159,9 @@ async function main() {
     await pg.query(
       `INSERT INTO account_subscription
          (id, account_id, provider, product_id, base_plan_id, purchase_token, linked_purchase_token,
-          state, expiry_time, start_time, auto_renewing, acknowledgement_state, created_at, updated_at)
+          state, expiry_time, start_time, auto_renewing, acknowledgement_state, latest_event_time, created_at, updated_at)
        VALUES ($1, $2, 'GOOGLE_PLAY', 'zetrynd_premium', 'premium-monthly', $3, $4,
-          $5::subscription_state, $6, now(), $7, 'ACKNOWLEDGED', now(), $8)`,
+          $5::subscription_state, $6, now(), $7, 'ACKNOWLEDGED', $8, now(), $9)`,
       [
         randomUUID(),
         opts.accountId,
@@ -167,6 +170,7 @@ async function main() {
         opts.state,
         opts.expiryTime === undefined ? null : opts.expiryTime,
         opts.autoRenewing ?? true,
+        opts.latestEventTime === undefined ? null : opts.latestEventTime,
         updatedAt,
       ],
     );
@@ -205,41 +209,111 @@ async function main() {
     }
 
     // ====================================================================
-    console.log('--- PARTE C. seleccion de la fila vigente (historico + SUPERSEDED) ---');
+    // PARTE C -- seleccion de la fila vigente por CRONOLOGIA DE PROVEEDOR
+    // (`latestEventTime`), no por orden de escritura local (`updatedAt`).
+    console.log('--- PARTE C. seleccion por latestEventTime (cronologia de proveedor), no por updatedAt ---');
+    const tierFor = async (auth: Record<string, string>): Promise<string | undefined> =>
+      ((await req('GET', '/me/entitlement', auth)).body as { tier?: string } | null)?.tier;
 
-    // C1 -- fila ACTIVE vieja (expiry futuro) + fila EXPIRED nueva -> gana la nueva -> FREE.
+    // C1 -- el caso que DEBE ser imposible: evento de proveedor viejo ACTIVE +
+    // updatedAt local MAS NUEVO (reconciliacion stale toco la fila vieja) vs
+    // evento de proveedor mas nuevo REVOKED. Gana REVOKED por latestEventTime.
     {
       const s = await makeSession(pg, 'c1');
-      await insertSub({ accountId: s.accountId, state: 'ACTIVE', expiryTime: D(60 * 24 * HOUR), updatedAt: D(-10 * 24 * HOUR) });
-      await insertSub({ accountId: s.accountId, state: 'EXPIRED', expiryTime: D(-1 * HOUR), updatedAt: D(-1 * HOUR) });
-      const r = await tierOf(s.authHeaders);
-      check('C1: ACTIVE historico + EXPIRED mas reciente -> FREE (el historico no concede Premium)', (r.body as { tier?: string })?.tier === 'FREE');
+      await insertSub({
+        accountId: s.accountId,
+        state: 'ACTIVE',
+        expiryTime: D(60 * 24 * HOUR),
+        latestEventTime: D(-2 * HOUR), // evento de proveedor 10:00
+        updatedAt: D(+1 * HOUR), // pero updatedAt local es el mas nuevo (12:00) -- trampa
+      });
+      await insertSub({
+        accountId: s.accountId,
+        state: 'REVOKED',
+        expiryTime: D(60 * 24 * HOUR),
+        latestEventTime: D(-1 * HOUR), // evento de proveedor 11:00 -- mas nuevo
+        updatedAt: D(-1 * HOUR),
+      });
+      check('C1: ACTIVE (evento viejo, updatedAt local nuevo) vs REVOKED (evento nuevo) -> REVOKED gana -> FREE', (await tierFor(s.authHeaders)) === 'FREE');
     }
 
-    // C2 -- fila EXPIRED vieja + fila ACTIVE nueva -> gana la nueva -> PREMIUM.
+    // C2 -- ACTIVE (evento viejo) vs EXPIRED (evento nuevo) -> EXPIRED gana -> FREE.
     {
       const s = await makeSession(pg, 'c2');
-      await insertSub({ accountId: s.accountId, state: 'EXPIRED', expiryTime: D(-30 * 24 * HOUR), updatedAt: D(-30 * 24 * HOUR) });
-      await insertSub({ accountId: s.accountId, state: 'ACTIVE', expiryTime: D(20 * 24 * HOUR), updatedAt: D(-1 * HOUR) });
-      const r = await tierOf(s.authHeaders);
-      check('C2: EXPIRED historico + ACTIVE mas reciente -> PREMIUM', (r.body as { tier?: string })?.tier === 'PREMIUM');
+      await insertSub({ accountId: s.accountId, state: 'ACTIVE', expiryTime: D(60 * 24 * HOUR), latestEventTime: D(-10 * 24 * HOUR), updatedAt: D(+2 * HOUR) });
+      await insertSub({ accountId: s.accountId, state: 'EXPIRED', expiryTime: D(-1 * HOUR), latestEventTime: D(-1 * HOUR), updatedAt: D(-3 * HOUR) });
+      check('C2: ACTIVE (evento viejo) vs EXPIRED (evento nuevo) -> EXPIRED gana -> FREE', (await tierFor(s.authHeaders)) === 'FREE');
     }
 
-    // C3 -- SUPERSEDED sola -> se excluye -> como si no hubiera suscripcion vigente -> FREE.
+    // C3 -- ACTIVE (evento NUEVO) vs REVOKED (evento viejo) -> ACTIVE gana -> PREMIUM.
     {
       const s = await makeSession(pg, 'c3');
-      await insertSub({ accountId: s.accountId, state: 'SUPERSEDED', expiryTime: D(60 * 24 * HOUR) });
-      const r = await tierOf(s.authHeaders);
-      check('C3: unica fila SUPERSEDED (expiry futuro) -> FREE (excluida de la seleccion)', (r.body as { tier?: string })?.tier === 'FREE');
+      await insertSub({ accountId: s.accountId, state: 'REVOKED', expiryTime: D(20 * 24 * HOUR), latestEventTime: D(-30 * 24 * HOUR), updatedAt: D(-1 * HOUR) });
+      await insertSub({ accountId: s.accountId, state: 'ACTIVE', expiryTime: D(20 * 24 * HOUR), latestEventTime: D(-1 * HOUR), updatedAt: D(-30 * 24 * HOUR) });
+      check('C3: REVOKED (evento viejo) vs ACTIVE (evento nuevo) -> ACTIVE gana -> PREMIUM', (await tierFor(s.authHeaders)) === 'PREMIUM');
     }
 
-    // C4 -- SUPERSEDED (nueva, expiry futuro) + ACTIVE (vieja, expiry futuro) -> gana la ACTIVE -> PREMIUM.
+    // C4 -- SUPERSEDED nunca elegible, ni con el evento de proveedor mas nuevo.
     {
       const s = await makeSession(pg, 'c4');
-      await insertSub({ accountId: s.accountId, state: 'ACTIVE', expiryTime: D(20 * 24 * HOUR), updatedAt: D(-2 * HOUR) });
-      await insertSub({ accountId: s.accountId, state: 'SUPERSEDED', expiryTime: D(60 * 24 * HOUR), updatedAt: D(-1 * HOUR) });
-      const r = await tierOf(s.authHeaders);
-      check('C4: SUPERSEDED mas reciente + ACTIVE vigente -> PREMIUM (SUPERSEDED nunca es la fila vigente)', (r.body as { tier?: string })?.tier === 'PREMIUM');
+      await insertSub({ accountId: s.accountId, state: 'ACTIVE', expiryTime: D(20 * 24 * HOUR), latestEventTime: D(-5 * HOUR) });
+      await insertSub({ accountId: s.accountId, state: 'SUPERSEDED', expiryTime: D(60 * 24 * HOUR), latestEventTime: D(-1 * HOUR) }); // evento mas nuevo pero SUPERSEDED
+      check('C4: SUPERSEDED con el evento de proveedor mas nuevo NO es elegible -> gana la ACTIVE -> PREMIUM', (await tierFor(s.authHeaders)) === 'PREMIUM');
+    }
+    {
+      const s = await makeSession(pg, 'c4b');
+      await insertSub({ accountId: s.accountId, state: 'SUPERSEDED', expiryTime: D(60 * 24 * HOUR), latestEventTime: D(-1 * HOUR) });
+      check('C4b: unica fila = SUPERSEDED (expiry futuro) -> FREE (no hay fila elegible)', (await tierFor(s.authHeaders)) === 'FREE');
+    }
+
+    // C5 -- `latestEventTime = null` (cronologia de proveedor DESCONOCIDA):
+    // NUNCA adelanta a una fila con cronologia conocida (NULLS LAST).
+    {
+      const s = await makeSession(pg, 'c5');
+      // Fila EXPIRED con evento de proveedor conocido y VIEJO.
+      await insertSub({ accountId: s.accountId, state: 'EXPIRED', expiryTime: D(-1 * HOUR), latestEventTime: D(-10 * 24 * HOUR), updatedAt: D(-10 * 24 * HOUR) });
+      // Fila ACTIVE SIN latestEventTime (null) y con updatedAt local muy nuevo.
+      await insertSub({ accountId: s.accountId, state: 'ACTIVE', expiryTime: D(20 * 24 * HOUR), latestEventTime: null, updatedAt: D(+5 * HOUR) });
+      check('C5: fila con latestEventTime=null NO adelanta a una con cronologia conocida -> gana EXPIRED -> FREE', (await tierFor(s.authHeaders)) === 'FREE');
+    }
+    {
+      const s = await makeSession(pg, 'c5b');
+      // Si la UNICA fila elegible tiene latestEventTime=null, se usa igual (existe, se deriva de su state).
+      await insertSub({ accountId: s.accountId, state: 'ACTIVE', expiryTime: D(20 * 24 * HOUR), latestEventTime: null });
+      check('C5b: fila unica con latestEventTime=null se selecciona igual (ACTIVE) -> PREMIUM', (await tierFor(s.authHeaders)) === 'PREMIUM');
+    }
+
+    // C6 -- empate: mismo latestEventTime -> desempate DETERMINISTA por updatedAt DESC, luego id DESC.
+    {
+      const s = await makeSession(pg, 'c6');
+      const sameEvent = D(-1 * HOUR);
+      await insertSub({ accountId: s.accountId, state: 'EXPIRED', expiryTime: D(-1 * HOUR), latestEventTime: sameEvent, updatedAt: D(-3 * HOUR) });
+      await insertSub({ accountId: s.accountId, state: 'ACTIVE', expiryTime: D(20 * 24 * HOUR), latestEventTime: sameEvent, updatedAt: D(-1 * HOUR) }); // updatedAt mas nuevo
+      const t1 = await tierFor(s.authHeaders);
+      const t2 = await tierFor(s.authHeaders);
+      check('C6: empate en latestEventTime -> desempate por updatedAt DESC -> ACTIVE -> PREMIUM', t1 === 'PREMIUM');
+      check('C6: el desempate es DETERMINISTA (misma respuesta en dos llamadas)', t1 === t2);
+    }
+    {
+      const s = await makeSession(pg, 'c6b');
+      // Ambas con latestEventTime=null -> desempate por updatedAt DESC, tambien determinista.
+      await insertSub({ accountId: s.accountId, state: 'ACTIVE', expiryTime: D(20 * 24 * HOUR), latestEventTime: null, updatedAt: D(-3 * HOUR) });
+      await insertSub({ accountId: s.accountId, state: 'EXPIRED', expiryTime: D(-1 * HOUR), latestEventTime: null, updatedAt: D(-1 * HOUR) });
+      const t1 = await tierFor(s.authHeaders);
+      const t2 = await tierFor(s.authHeaders);
+      check('C6b: ambas latestEventTime=null -> desempate determinista por updatedAt DESC -> EXPIRED -> FREE', t1 === 'FREE' && t1 === t2);
+    }
+
+    // C7 -- verificacion estatica: la query NO ordena por updatedAt como criterio primario.
+    {
+      const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1');
+      const repoSrc = stripComments(readFileSync(join(__dirname, '..', 'src/entitlement/subscription/account-subscription.repository.ts'), 'utf8'));
+      const orderIdx = repoSrc.indexOf('orderBy:');
+      const letIdx = repoSrc.indexOf('latestEventTime', orderIdx);
+      const uaIdx = repoSrc.indexOf('updatedAt', orderIdx);
+      check('C7: orderBy usa latestEventTime ANTES que updatedAt (cronologia de proveedor primero)', orderIdx !== -1 && letIdx !== -1 && uaIdx !== -1 && letIdx < uaIdx);
+      check("C7: latestEventTime se ordena con nulls: 'last' (una cronologia desconocida no adelanta)", /latestEventTime:\s*\{\s*sort:\s*'desc',\s*nulls:\s*'last'\s*\}/.test(repoSrc));
+      check('C7: SUPERSEDED excluido en el where', /state:\s*\{\s*not:\s*'SUPERSEDED'\s*\}/.test(repoSrc));
     }
 
     // ====================================================================
@@ -273,8 +347,6 @@ async function main() {
     console.log('--- PARTE E. precedencia del override de QA + production-safety ---');
     {
       const s = await makeSession(pg, 'e');
-      const tierFor = async (auth: Record<string, string>): Promise<string | undefined> =>
-        ((await req('GET', '/me/entitlement', auth)).body as { tier?: string } | null)?.tier;
       // Suscripcion EXPIRED -> derivacion pura diria FREE.
       await insertSub({ accountId: s.accountId, state: 'EXPIRED', expiryTime: D(-10 * 24 * HOUR) });
       check('E0: sin override, EXPIRED -> FREE', (await tierFor(s.authHeaders)) === 'FREE');
