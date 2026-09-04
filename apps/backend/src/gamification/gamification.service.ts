@@ -41,6 +41,11 @@ function deduplicationKeyFor(eventKey: GamificationEventKey, payload: Record<str
       // intento. Reintentar/repetir el mismo Ensayo colapsa siempre a esta
       // misma clave, sin importar cuántos ExamAttempt distintos se completen.
       return `ensayo-completado:${payload.accountId as string}:${payload.examId as string}`;
+    case 'resource_completed':
+      // XP-V1B-2 -- identidad (accountId, learningResourceId), la identidad
+      // CANÓNICA del recurso, nunca su versión editorial -- un nuevo
+      // LearningResourceVersion del mismo recurso nunca reabre elegibilidad.
+      return `resource-completed:${payload.accountId as string}:${payload.learningResourceId as string}`;
   }
 }
 
@@ -54,6 +59,8 @@ function sourceEntityFor(eventKey: GamificationEventKey, payload: Record<string,
       return { type: 'CurriculumTopicProgress', id: payload.curriculumTopicId as string };
     case 'exam_completed':
       return { type: 'ExamAttempt', id: payload.examAttemptId as string };
+    case 'resource_completed':
+      return { type: 'LearningResourceProgress', id: payload.learningResourceProgressId as string };
   }
 }
 
@@ -67,6 +74,8 @@ function activityTypeFor(eventKey: GamificationEventKey): string {
       return 'TEMA_COMPLETADO';
     case 'exam_completed':
       return 'ENSAYO_COMPLETADO';
+    case 'resource_completed':
+      return 'RECURSO_COMPLETADO';
   }
 }
 

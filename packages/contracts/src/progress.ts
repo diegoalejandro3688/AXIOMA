@@ -160,3 +160,32 @@ export const academicSummaryResponseSchema = z.object({
   progressBySubject: z.array(subjectProgressSummarySchema),
 });
 export type AcademicSummaryResponse = z.infer<typeof academicSummaryResponseSchema>;
+
+// --- GET/POST /progress/topics/:topicId/resource-completion (XP-V1B-2) ---
+
+/**
+ * Estado de completitud DERIVADO de `learning_resource_progress`
+ * (presencia/ausencia de fila, nunca un tercer estado): `NOT_COMPLETED` es
+ * la ausencia de fila, `COMPLETED` su presencia. `completedAt` es el
+ * instante de la PRIMERA completitud -- inmutable, nunca cambia en llamadas
+ * posteriores (ni por reabrir el recurso ni por una nueva versión editorial
+ * del mismo recurso canónico).
+ */
+export const resourceCompletionSchema = z.object({
+  status: z.enum(['NOT_COMPLETED', 'COMPLETED']),
+  completedAt: isoDateTime.nullable(),
+});
+export type ResourceCompletion = z.infer<typeof resourceCompletionSchema>;
+
+/**
+ * `POST .../resource-completion` -- acción explícita "Completar recurso".
+ * Idempotente, mismo criterio que el resto de PROGRESS: primera llamada real
+ * -> `justCompleted = true`; cualquier llamada posterior sobre un recurso ya
+ * completado -> 200 idempotente, `justCompleted = false`, `completedAt` SIN
+ * cambiar -- nunca un 409 solo por ya estar completo.
+ */
+export const completeResourceResponseSchema = z.object({
+  completion: resourceCompletionSchema,
+  justCompleted: z.boolean(),
+});
+export type CompleteResourceResponse = z.infer<typeof completeResourceResponseSchema>;

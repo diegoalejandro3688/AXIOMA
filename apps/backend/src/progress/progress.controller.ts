@@ -5,11 +5,15 @@ import {
   submitResponseResponseSchema,
   responseConflictBodySchema,
   topicProgressBatchQuerySchema,
+  resourceCompletionSchema,
+  completeResourceResponseSchema,
   type TopicProgressResponse,
   type TopicProgressBatchResponse,
   type SubmitResponseResponse,
   type ResponseConflictBody,
   type AcademicSummaryResponse,
+  type ResourceCompletion,
+  type CompleteResourceResponse,
 } from '@axioma/contracts';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { parseRequestBody } from '../platform/validation/parse-request-body';
@@ -97,5 +101,27 @@ export class ProgressController {
       }
       throw error;
     }
+  }
+
+  /**
+   * XP-V1B-2 -- lectura pura del estado de completitud del recurso del tema.
+   * `NOT_COMPLETED` (ausencia de fila) nunca es un 404 -- el 404 es solo
+   * "tema inexistente" o "sin recurso publicado".
+   */
+  @Get('topics/:topicId/resource-completion')
+  async getResourceCompletion(@Req() request: AuthenticatedRequest, @Param('topicId') topicId: string): Promise<ResourceCompletion> {
+    const result = await this.progressService.getResourceCompletion(request.accountId, topicId);
+    return resourceCompletionSchema.parse(result);
+  }
+
+  /**
+   * XP-V1B-2 -- acción explícita "Completar recurso". Idempotente: siempre
+   * 200, `justCompleted` distingue la primera completitud real de un
+   * reproceso sobre un recurso ya completado.
+   */
+  @Post('topics/:topicId/resource-completion')
+  async completeResource(@Req() request: AuthenticatedRequest, @Param('topicId') topicId: string): Promise<CompleteResourceResponse> {
+    const result = await this.progressService.completeResource(request.accountId, topicId);
+    return completeResourceResponseSchema.parse(result);
   }
 }

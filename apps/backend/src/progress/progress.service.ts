@@ -4,22 +4,35 @@ import {
   topicProgressResponseSchema,
   submitResponseResponseSchema,
   academicSummaryResponseSchema,
+  completeResourceResponseSchema,
   GAMIFICATION_SCHEMA_VERSION,
   type TopicProgressResponse,
   type SubmitResponseResponse,
   type AcademicSummaryResponse,
+  type CompleteResourceResponse,
+  type ResourceCompletion,
 } from '@axioma/contracts';
 import { Prisma } from '../generated/prisma/client';
-import type { StudentResponse, CurriculumTopicProgress } from '../generated/prisma/client';
+import type { StudentResponse, CurriculumTopicProgress, LearningResourceProgress } from '../generated/prisma/client';
 import { CurriculumTopicProgressRepository } from './curriculum-topic-progress.repository';
 import { StudentResponseRepository } from './student-response.repository';
+// XP-V1B-2 -- persiste "la cuenta X completó el LearningResource canónico Y".
+import { LearningResourceProgressRepository } from './learning-resource-progress.repository';
 import { CurriculumTopicRepository } from '../education/curriculum-topic.repository';
+import { LearningResourceVersionRepository } from '../education/learning-resource-version.repository';
 import { QuestionVersionRepository } from '../education/question-version.repository';
 import { AnswerOptionRepository } from '../education/answer-option.repository';
 import { SubjectRepository } from '../education/subject.repository';
 import { PremiumContentPolicy } from '../education/premium-content-policy.service';
 import { EntitlementService } from '../entitlement/entitlement.service';
 import { OutboxService } from '../platform/outbox/outbox.service';
+
+/** XP-V1B-2 -- ausencia de fila = NOT_COMPLETED, presencia = COMPLETED (nunca un tercer estado almacenado). */
+function toResourceCompletion(progress: LearningResourceProgress | null): ResourceCompletion {
+  return progress
+    ? { status: 'COMPLETED', completedAt: progress.completedAt.toISOString() }
+    : { status: 'NOT_COMPLETED', completedAt: null };
+}
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
@@ -60,6 +73,8 @@ export class ProgressService {
     private readonly premiumContentPolicy: PremiumContentPolicy,
     private readonly entitlementService: EntitlementService,
     private readonly outbox: OutboxService,
+    private readonly resourceVersionRepo: LearningResourceVersionRepository,
+    private readonly resourceProgressRepo: LearningResourceProgressRepository,
   ) {}
 
   /**
@@ -381,13 +396,80 @@ export class ProgressService {
   }
 
   /**
+   * XP-V1B-2 -- estado de completitud del recurso PUBLICADO del tema (misma
+   * resolución que `EducationService.getPublishedResource`: el recurso
+   * canónico del tema, vía su última versión PUBLISHED). Lectura pura, nunca
+   * crea nada -- `NOT_COMPLETED` es la ausencia de fila, mismo criterio que
+   * `getTopicProgress`.
+   */
+  async getResourceCompletion(accountId: string, topicId: string): Promise<ResourceCompletion> {
+    const topic = await this.topicRepo.findById(topicId);
+    if (!topic) throw new NotFoundException('Tema no encontrado.');
+    await this.assertPremiumProgressWriteAllowed(accountId, topicId);
+
+    const version = await this.resourceVersionRepo.findLatestPublishedByTopicId(topicId);
+    if (!version) throw new NotFoundException('No hay ningún recurso publicado para este tema.');
+
+    const progress = await this.resourceProgressRepo.findByAccountAndResource(accountId, version.learningResource.id);
+    return toResourceCompletion(progress);
+  }
+
+  /**
+   * XP-V1B-2 -- acción explícita "Completar recurso" (abrir/leer el recurso
+   * NUNCA cuenta como completitud -- esta es la ÚNICA vía). Reutiliza
+   * EXACTAMENTE el mismo gate de acceso que gatea la escritura de progreso
+   * sobre el tema (`assertPremiumProgressWriteAllowed`) -- un recurso Premium
+   * bloqueado para una cuenta FREE no puede completarse por manipulación
+   * directa de la API, sin una segunda interpretación de entitlement.
+   * Idempotente: una segunda llamada sobre un recurso ya completado devuelve
+   * 200 con `justCompleted=false` y el `completedAt` ORIGINAL, nunca un 409.
+   */
+  async completeResource(accountId: string, topicId: string): Promise<CompleteResourceResponse> {
+    const topic = await this.topicRepo.findById(topicId);
+    if (!topic) throw new NotFoundException('Tema no encontrado.');
+    await this.assertPremiumProgressWriteAllowed(accountId, topicId);
+
+    const version = await this.resourceVersionRepo.findLatestPublishedByTopicId(topicId);
+    if (!version) throw new NotFoundException('No hay ningún recurso publicado para este tema.');
+
+    const learningResourceId = version.learningResource.id;
+    const { progress, created } = await this.resourceProgressRepo.createIdempotent(accountId, learningResourceId);
+
+    // Publicación best-effort al Outbox de plataforma, mismo criterio EXACTO
+    // que `student_response_recorded`: SOLO en la transición real
+    // (`created === true`), nunca en un reproceso de un recurso ya
+    // completado -- evita republicar el mismo hecho académico en cada tap.
+    if (created) {
+      await this.outbox.publish({
+        eventKey: 'resource_completed',
+        schemaVersion: GAMIFICATION_SCHEMA_VERSION,
+        sourceDomain: 'PROGRESS',
+        aggregateId: accountId,
+        occurredAt: progress.completedAt,
+        payload: {
+          accountId,
+          learningResourceProgressId: progress.id,
+          learningResourceId,
+          completedAt: progress.completedAt.toISOString(),
+        },
+      });
+    }
+
+    return completeResourceResponseSchema.parse({
+      completion: toResourceCompletion(progress),
+      justCompleted: created,
+    });
+  }
+
+  /**
    * Llamado por PrivacyService durante el cierre definitivo (ADR-0014, punto
    * 2). `StudentResponse` primero (no depende de `CurriculumTopicProgress`,
    * pero el orden deja la base más ordenada durante la transacción lógica).
-   * Ambos `deleteMany` -- nunca lanzan si no hay filas, seguro ante reintentos.
+   * Todos los `deleteMany` -- nunca lanzan si no hay filas, seguro ante reintentos.
    */
   async deleteProgressForAccountClosure(accountId: string): Promise<void> {
     await this.responseRepo.deleteByAccountId(accountId);
     await this.topicProgressRepo.deleteByAccountId(accountId);
+    await this.resourceProgressRepo.deleteByAccountId(accountId);
   }
 }

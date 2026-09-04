@@ -112,6 +112,7 @@ model LearningResource {
 
   primarySubject Subject                   @relation(fields: [primarySubjectId], references: [id], onDelete: Restrict)
   versions       LearningResourceVersion[]
+  progress       LearningResourceProgress[]
 
   @@index([primarySubjectId])
   @@map("learning_resource")
@@ -265,6 +266,34 @@ model CurriculumTopicProgress {
   @@unique([accountId, curriculumTopicId])
   @@index([accountId])
   @@map("curriculum_topic_progress")
+}
+
+/// XP-V1B-2 -- hecho durable mínimo: "la cuenta X completó el LearningResource
+/// canónico Y en el instante T". SOLO dos estados observables (ausencia de fila
+/// = NOT_COMPLETED, fila presente = COMPLETED) -- sin `status`, sin
+/// IN_PROGRESS/VIEWING/porcentaje, misma filosofía de "lo mínimo que representa
+/// el hecho" que el resto de PROGRESS. `accountId` SIN FK a `Account` --
+/// mismo criterio exacto que `CurriculumTopicProgress`/`StudentResponse`
+/// (ADR-0014): desacople de esquema entre dominios AUTH y PROGRESS.
+/// `learningResourceId` (identidad CANÓNICA del recurso, nunca la versión
+/// editorial) es la única FK -- un nuevo `LearningResourceVersion` del mismo
+/// recurso NUNCA reabre elegibilidad de XP. `@@unique([accountId,
+/// learningResourceId])` es la autoridad final de "a lo sumo UNA completitud
+/// por cuenta+recurso" -- protege incluso contra una carrera de dos
+/// solicitudes de completar concurrentes (P2002, nunca un `SELECT` previo sin
+/// garantía). `completedAt` se fija UNA sola vez, en la creación -- nunca se
+/// actualiza (no existe ningún `UPDATE` sobre esta tabla en todo el dominio).
+model LearningResourceProgress {
+  id                 String   @id @default(uuid()) @db.Uuid
+  accountId          String   @map("account_id") @db.Uuid
+  learningResourceId String   @map("learning_resource_id") @db.Uuid
+  completedAt        DateTime @default(now()) @map("completed_at")
+
+  learningResource LearningResource @relation(fields: [learningResourceId], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, learningResourceId])
+  @@index([accountId])
+  @@map("learning_resource_progress")
 }
 
 /// Inmutable tras crearse -- aplicado por el trigger

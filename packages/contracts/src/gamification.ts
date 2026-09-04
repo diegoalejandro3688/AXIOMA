@@ -17,6 +17,7 @@ export const GAMIFICATION_EVENT_KEYS = [
   'curriculum_topic_completed',
   'quick_question_answered',
   'exam_completed',
+  'resource_completed',
 ] as const;
 
 export type GamificationEventKey = (typeof GAMIFICATION_EVENT_KEYS)[number];
@@ -106,17 +107,39 @@ export const examCompletedPayloadSchema = z
 
 export type ExamCompletedPayload = z.infer<typeof examCompletedPayloadSchema>;
 
+/**
+ * XP-V1B-2 -- publicado por PROGRESS/EDUCATION únicamente cuando
+ * `EducationService.completeResource` crea la fila de
+ * `learning_resource_progress` por primera vez (nunca en una llamada
+ * posterior sobre un recurso ya completado). Identidad estable de
+ * deduplicación de negocio = (accountId, learningResourceId) -- la identidad
+ * CANÓNICA del recurso, nunca su versión editorial -- un nuevo
+ * `LearningResourceVersion` del mismo recurso nunca reabre elegibilidad.
+ */
+export const resourceCompletedPayloadSchema = z
+  .object({
+    accountId: entityId,
+    learningResourceProgressId: entityId,
+    learningResourceId: entityId,
+    completedAt: isoDateTime,
+  })
+  .strict();
+
+export type ResourceCompletedPayload = z.infer<typeof resourceCompletedPayloadSchema>;
+
 export const gamificationEventPayloadSchemas: Record<
   GamificationEventKey,
   | typeof studentResponseRecordedPayloadSchema
   | typeof curriculumTopicCompletedPayloadSchema
   | typeof quickQuestionAnsweredPayloadSchema
   | typeof examCompletedPayloadSchema
+  | typeof resourceCompletedPayloadSchema
 > = {
   student_response_recorded: studentResponseRecordedPayloadSchema,
   curriculum_topic_completed: curriculumTopicCompletedPayloadSchema,
   quick_question_answered: quickQuestionAnsweredPayloadSchema,
   exam_completed: examCompletedPayloadSchema,
+  resource_completed: resourceCompletedPayloadSchema,
 };
 
 /**
