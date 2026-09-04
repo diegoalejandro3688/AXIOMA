@@ -3,7 +3,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from '../auth/auth.module';
 import { EntitlementModule } from '../entitlement/entitlement.module';
 import { InternalOpsModule } from '../platform/internal-ops/internal-ops.module';
-import { GooglePlaySubscriptionAdapter } from './google/google-play-subscription.adapter';
+import {
+  GooglePlaySubscriptionAdapter,
+  readGooglePlayServiceAccount,
+} from './google/google-play-subscription.adapter';
 import { FakeSubscriptionProviderAdapter } from './fake-subscription-provider.adapter';
 import { DisabledSubscriptionProviderAdapter } from './disabled-subscription-provider.adapter';
 import { SUBSCRIPTION_PROVIDER_ADAPTER } from './subscription-provider.port';
@@ -36,6 +39,12 @@ import { RTDN_PUSH_AUTHENTICATOR, readRtdnAuthConfig, type RtdnAuthConfig } from
  * LANZA al arrancar (fail-closed) -- ni un `purchaseToken` fake ni un push de
  * Pub/Sub no verificado pueden conceder PREMIUM / disparar reconciliacion.
  *
+ * RC1B.1A -- con `impl=google` la factory tambien VALIDA SINCRONA la config
+ * local requerida (`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` valida para suscripcion;
+ * `readRtdnAuthConfig` para RTDN) y LANZA al arrancar si falta -- nunca boota
+ * un `google` a medio configurar que fallaria 503 recien en el primer
+ * reconcile. NO se valida contra Google en el arranque.
+ *
  * RC1B.1 -- POSTURA CONGELADA (`GOOGLE_PLAY_PROVIDER_IMPL=disabled` /
  * `GOOGLE_PLAY_RTDN_AUTH_IMPL=disabled`): mientras Google Play Billing sigue
  * congelado (sin Play Console), esta postura EXPLICITA permite arrancar en
@@ -63,7 +72,19 @@ const RTDN_AUTH_FALLBACK: RtdnAuthConfig = {
         );
         if ('reject' in choice) throw new Error(choice.reject);
         if (choice.use === 'disabled') return new DisabledSubscriptionProviderAdapter();
-        return choice.use === 'google' ? new GooglePlaySubscriptionAdapter(config) : fake;
+        if (choice.use === 'google') {
+          // RC1B.1A -- fail-fast: `google` sin la config local requerida NO ARRANCA
+          // (paridad con readRtdnAuthConfig). NO valida contra Google.
+          const acct = readGooglePlayServiceAccount(config.get<string>('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'));
+          if (!acct.ok) {
+            throw new Error(
+              `GOOGLE_PLAY_PROVIDER_IMPL=google exige una GOOGLE_PLAY_SERVICE_ACCOUNT_JSON valida ` +
+                `(falta: ${acct.missing.join(', ')}). Sin ella la verificacion de compras no puede funcionar -- fail-closed al arrancar.`,
+            );
+          }
+          return new GooglePlaySubscriptionAdapter(config);
+        }
+        return fake;
       },
     },
     {

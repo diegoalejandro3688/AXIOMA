@@ -25,6 +25,7 @@ import { resolveSubscriptionProviderChoice } from '../src/subscription/subscript
 import { resolveRtdnAuthChoice, rtdnProcessingEnabled } from '../src/subscription/rtdn/rtdn-auth-choice';
 import { DisabledSubscriptionProviderAdapter } from '../src/subscription/disabled-subscription-provider.adapter';
 import { DisabledRtdnPushAuthenticator } from '../src/subscription/rtdn/disabled-rtdn-push-authenticator';
+import { readGooglePlayServiceAccount } from '../src/subscription/google/google-play-subscription.adapter';
 import { SubscriptionProviderError } from '../src/subscription/subscription-provider.port';
 import { RtdnPushAuthError } from '../src/subscription/rtdn/rtdn-push-authenticator.port';
 
@@ -156,7 +157,8 @@ async function main() {
   );
   check(
     'F: subscription factory: modo "google" sigue construyendo el adaptador real (10)',
-    /choice\.use === 'google' \? new GooglePlaySubscriptionAdapter\(config\) : fake/.test(mod),
+    /choice\.use === 'google'\)\s*\{[\s\S]*?return new GooglePlaySubscriptionAdapter\(config\);/.test(mod) &&
+      /return fake;/.test(mod),
   );
   check(
     'F: RTDN factory: choice "disabled" -> DisabledRtdnPushAuthenticator',
@@ -189,12 +191,50 @@ async function main() {
       /case 'disabled':[\s\S]{0,400}?ServiceUnavailableException\(/.test(svc),
   );
 
+  // ------------------------------------------------------------------
+  console.log('\n--- G. RC1B.1A -- fail-fast de `google` con config local ausente/invalida ---');
+  check('G: readGooglePlayServiceAccount(undefined) -> !ok (GOOGLE_PLAY_SERVICE_ACCOUNT_JSON)', (() => {
+    const r = readGooglePlayServiceAccount(undefined);
+    return !r.ok && r.missing.includes('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON');
+  })());
+  check('G: readGooglePlayServiceAccount("") -> !ok', !readGooglePlayServiceAccount('').ok);
+  check('G: readGooglePlayServiceAccount("{no-json") -> !ok', !readGooglePlayServiceAccount('{no-json').ok);
+  check('G: readGooglePlayServiceAccount("[]") -> !ok (no es objeto)', !readGooglePlayServiceAccount('[]').ok);
+  check('G: readGooglePlayServiceAccount(sin credenciales) -> !ok (client_email + private_key)', (() => {
+    const r = readGooglePlayServiceAccount('{}');
+    return !r.ok && r.missing.includes('client_email') && r.missing.includes('private_key');
+  })());
+  check('G: readGooglePlayServiceAccount(type != service_account) -> !ok', !readGooglePlayServiceAccount(JSON.stringify({ type: 'authorized_user', client_email: 'a@b.c', private_key: 'k' })).ok);
+  check('G: readGooglePlayServiceAccount(minima valida: client_email + private_key) -> ok', (() => {
+    const r = readGooglePlayServiceAccount(JSON.stringify({ client_email: 'sa@p.iam.gserviceaccount.com', private_key: 'pk' }));
+    return r.ok && r.account.clientEmail === 'sa@p.iam.gserviceaccount.com' && r.account.privateKey === 'pk';
+  })());
+  check('G: readGooglePlayServiceAccount(service_account completa) -> ok', readGooglePlayServiceAccount(JSON.stringify({ type: 'service_account', client_email: 'a@b.c', private_key: 'k', project_id: 'p' })).ok);
+  check(
+    'G: la factory de subscription VALIDA readGooglePlayServiceAccount y LANZA bajo "google" si !ok',
+    /choice\.use === 'google'\)\s*\{/.test(mod) &&
+      /readGooglePlayServiceAccount\(config\.get<string>\('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'\)\)/.test(mod) &&
+      /if \(!acct\.ok\) \{[\s\S]{0,400}?throw new Error\(/.test(mod) &&
+      // el throw esta ANTES del `new GooglePlaySubscriptionAdapter`
+      mod.indexOf('if (!acct.ok)') < mod.indexOf('new GooglePlaySubscriptionAdapter(config)'),
+  );
+  check(
+    'G: el adaptador real reusa el MISMO validador (readGooglePlayServiceAccount), sin duplicar reglas',
+    /readGooglePlayServiceAccount\(this\.config\.get<string>\('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'\)\)/.test(
+      stripComments(readSrc('subscription/google/google-play-subscription.adapter.ts')),
+    ) &&
+      // ya no hay un JSON.parse suelto en getAuth
+      !/const raw = this\.config\.get<string>\('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'\)/.test(
+        readSrc('subscription/google/google-play-subscription.adapter.ts'),
+      ),
+  );
+
   console.log('');
   if (failures > 0) {
     console.error(`${failures} verificacion(es) fallaron.`);
     process.exit(1);
   }
-  console.log('Todas las verificaciones del gate de postura CONGELADA (RC1B.1) pasaron.');
+  console.log('Todas las verificaciones del gate de postura CONGELADA (RC1B.1 / RC1B.1A) pasaron.');
 }
 
 main().catch((error) => {

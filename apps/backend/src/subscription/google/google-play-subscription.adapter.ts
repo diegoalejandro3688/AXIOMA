@@ -17,6 +17,53 @@ const ANDROID_PUBLISHER_SCOPE = 'https://www.googleapis.com/auth/androidpublishe
 const ANDROID_PUBLISHER_BASE = 'https://androidpublisher.googleapis.com/androidpublisher/v3';
 
 /**
+ * RC1B.1A -- validador PURO y SINCRONO de la credencial de Google Play que el
+ * adaptador real necesita. Espejo de `readRtdnAuthConfig` (RTDN): lo llama el
+ * `useFactory` de `subscription.module.ts` para FALLAR AL ARRANCAR cuando
+ * `GOOGLE_PLAY_PROVIDER_IMPL=google` pero la config local requerida
+ * (`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`) falta / no es JSON / no tiene los
+ * campos objetivamente necesarios de una service account. NO valida contra
+ * Google (eso solo se sabe en una llamada real).
+ *
+ * Unica fuente de las reglas de parseo -- el propio adaptador (`getAuth`) lo
+ * reutiliza, no las duplica.
+ */
+export interface GooglePlayServiceAccount {
+  clientEmail: string;
+  privateKey: string;
+  /** Objeto completo tal cual, para `new GoogleAuth({ credentials })`. */
+  raw: Record<string, unknown>;
+}
+
+export function readGooglePlayServiceAccount(
+  raw: string | undefined,
+): { ok: true; account: GooglePlayServiceAccount } | { ok: false; missing: string[] } {
+  if (!raw || raw.trim() === '') return { ok: false, missing: ['GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, missing: ['GOOGLE_PLAY_SERVICE_ACCOUNT_JSON (no es JSON valido)'] };
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { ok: false, missing: ['GOOGLE_PLAY_SERVICE_ACCOUNT_JSON (no es un objeto JSON)'] };
+  }
+  const obj = parsed as Record<string, unknown>;
+  const missing: string[] = [];
+  const clientEmail = typeof obj.client_email === 'string' ? obj.client_email.trim() : '';
+  const privateKey = typeof obj.private_key === 'string' ? obj.private_key.trim() : '';
+  if (!clientEmail) missing.push('client_email');
+  if (!privateKey) missing.push('private_key');
+  // `type` -- ausente se tolera (algunas exportaciones lo omiten); presente y
+  // distinto de "service_account" es objetivamente invalido.
+  if (typeof obj.type === 'string' && obj.type !== 'service_account') {
+    missing.push(`type debe ser "service_account" (recibido "${obj.type}")`);
+  }
+  if (missing.length > 0) return { ok: false, missing };
+  return { ok: true, account: { clientEmail, privateKey, raw: obj } };
+}
+
+/**
  * PREMIUM V1 -- Capa 3 (Google Play Billing), C3.2.
  *
  * Adaptador REAL de la Google Play Developer API (`androidpublisher` v3).
@@ -28,8 +75,12 @@ const ANDROID_PUBLISHER_BASE = 'https://androidpublisher.googleapis.com/androidp
  * impl por defecto es el FAKE -- este adaptador nunca se instancia, nunca
  * lee `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, nunca abre un cliente de red.
  *
- * Sin credenciales -> `SubscriptionProviderError('not_configured')`. NUNCA
- * fabrica un snapshot exitoso.
+ * RC1B.1A -- con `GOOGLE_PLAY_PROVIDER_IMPL=google` la config local requerida
+ * (`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` valida, con `client_email`/`private_key`)
+ * se valida SINCRONA en el `useFactory` -> si falta, el backend NO ARRANCA
+ * (fail-fast, igual que RTDN). Si aun asi se llega aqui sin config valida
+ * (tests / no-produccion) -> `SubscriptionProviderError('not_configured')`.
+ * NUNCA fabrica un snapshot exitoso.
  *
  * NOTA: sus rutas se COMPILAN pero no se ejercitan con Google real en C3.2
  * -- eso empieza en C3.4 (Play Console + service account). Los gates corren
@@ -42,17 +93,17 @@ export class GooglePlaySubscriptionAdapter implements SubscriptionProviderAdapte
 
   private getAuth(): GoogleAuth {
     if (this.auth) return this.auth;
-    const raw = this.config.get<string>('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON');
-    if (!raw || raw.trim() === '') {
-      throw new SubscriptionProviderError('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON no configurada', 'not_configured');
+    // Mismas reglas de parseo que usa el `useFactory` para fallar al arrancar
+    // (RC1B.1A) -- una sola fuente. En produccion esto ya se validó al
+    // bootstrap; este camino solo se alcanza en tests / no-produccion.
+    const parsed = readGooglePlayServiceAccount(this.config.get<string>('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'));
+    if (!parsed.ok) {
+      throw new SubscriptionProviderError(
+        `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON invalida (falta: ${parsed.missing.join(', ')})`,
+        'not_configured',
+      );
     }
-    let credentials: Record<string, unknown>;
-    try {
-      credentials = JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-      throw new SubscriptionProviderError('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON no es JSON valido', 'not_configured');
-    }
-    this.auth = new GoogleAuth({ credentials, scopes: [ANDROID_PUBLISHER_SCOPE] });
+    this.auth = new GoogleAuth({ credentials: parsed.account.raw, scopes: [ANDROID_PUBLISHER_SCOPE] });
     return this.auth;
   }
 

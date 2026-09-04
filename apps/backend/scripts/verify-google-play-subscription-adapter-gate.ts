@@ -522,7 +522,27 @@ async function main() {
       const adapter = readSrc('subscription/google/google-play-subscription.adapter.ts');
       check('D: SOLO el adaptador real importa google-auth-library', /from 'google-auth-library'/.test(adapter));
       const mod = stripComments(readSrc('subscription/subscription.module.ts'));
-      check('D: el adaptador real SOLO se construye bajo la eleccion "google" (resolveSubscriptionProviderChoice)', /resolveSubscriptionProviderChoice\(/.test(mod) && /choice\.use === 'google' \? new GooglePlaySubscriptionAdapter\(config\) : fake/.test(mod));
+      check('D: el adaptador real SOLO se construye bajo la eleccion "google" (resolveSubscriptionProviderChoice)', /resolveSubscriptionProviderChoice\(/.test(mod) && /choice\.use === 'google'\)\s*\{/.test(mod) && /return new GooglePlaySubscriptionAdapter\(config\);/.test(mod));
+      // RC1B.1A -- fail-fast: `google` sin config local requerida -> throw en el useFactory.
+      check('D: RC1B.1A -- la factory VALIDA readGooglePlayServiceAccount y LANZA si !ok bajo "google"', /readGooglePlayServiceAccount\(config\.get<string>\('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'\)\)/.test(mod) && /if \(!acct\.ok\) \{[\s\S]{0,300}?throw new Error\(/.test(mod));
+    }
+    {
+      // RC1B.1A -- validador PURO reutilizado por adaptador + factory (una sola fuente).
+      const { readGooglePlayServiceAccount } = await import('../src/subscription/google/google-play-subscription.adapter');
+      check('D: readGooglePlayServiceAccount(undefined) -> !ok, missing GOOGLE_PLAY_SERVICE_ACCOUNT_JSON', (() => {
+        const r = readGooglePlayServiceAccount(undefined);
+        return !r.ok && r.missing.includes('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON');
+      })());
+      check('D: readGooglePlayServiceAccount("no-json") -> !ok', !readGooglePlayServiceAccount('{no-json').ok);
+      check('D: readGooglePlayServiceAccount(sin client_email/private_key) -> !ok', (() => {
+        const r = readGooglePlayServiceAccount(JSON.stringify({ type: 'service_account' }));
+        return !r.ok && r.missing.includes('client_email') && r.missing.includes('private_key');
+      })());
+      check('D: readGooglePlayServiceAccount(type equivocado) -> !ok', !readGooglePlayServiceAccount(JSON.stringify({ type: 'user', client_email: 'x@y.z', private_key: 'k' })).ok);
+      check('D: readGooglePlayServiceAccount(minima valida) -> ok', (() => {
+        const r = readGooglePlayServiceAccount(JSON.stringify({ client_email: 'sa@proj.iam.gserviceaccount.com', private_key: '-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----\n' }));
+        return r.ok && r.account.clientEmail === 'sa@proj.iam.gserviceaccount.com';
+      })());
     }
 
     // ====================================================================
@@ -560,11 +580,26 @@ async function main() {
     // ====================================================================
     console.log('--- PARTE F. credenciales y package.json ---');
     check('F: package.json declara google-auth-library como dep directa', /"google-auth-library":/.test(readFileSync(join(SRC, '..', 'package.json'), 'utf8')));
-    check('F: GOOGLE_PLAY_SERVICE_ACCOUNT_JSON solo se LEE (config.get) en el adaptador real', (() => {
+    check('F: GOOGLE_PLAY_SERVICE_ACCOUNT_JSON solo se LEE en el adaptador real y el useFactory (fail-fast RC1B.1A)', (() => {
       const readsIt = (f: string) => /config\.(get|getOrThrow)<[^>]*>\('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'\)|config\.(get|getOrThrow)\('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'\)/.test(readSrc(f));
-      const otherReaders = ['subscription/subscription-reconciliation.service.ts', 'subscription/subscription.controller.ts', 'subscription/subscription.module.ts', 'subscription/fake-subscription-provider.adapter.ts', 'subscription/google/map-google-subscription.ts']
+      // NUNCA en dominio/controller/fake/mapper.
+      const forbidden = ['subscription/subscription-reconciliation.service.ts', 'subscription/subscription.controller.ts', 'subscription/fake-subscription-provider.adapter.ts', 'subscription/google/map-google-subscription.ts']
         .filter(readsIt);
-      return otherReaders.length === 0 && readsIt('subscription/google/google-play-subscription.adapter.ts');
+      // El modulo SI lo lee, pero SOLO a traves del validador compartido `readGooglePlayServiceAccount` (sin JSON.parse propio).
+      const mod = readSrc('subscription/subscription.module.ts');
+      const moduleOk =
+        readsIt('subscription/subscription.module.ts') &&
+        /readGooglePlayServiceAccount\(\s*config\.get<string>\('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'\)\s*\)/.test(mod) &&
+        !/JSON\.parse\([^)]*GOOGLE_PLAY_SERVICE_ACCOUNT_JSON/.test(mod);
+      return forbidden.length === 0 && readsIt('subscription/google/google-play-subscription.adapter.ts') && moduleOk;
+    })());
+    check('F: RC1B.1A -- reglas de parseo de la credencial en UN solo lugar; getAuth() delega en readGooglePlayServiceAccount', (() => {
+      const adapter = stripComments(readSrc('subscription/google/google-play-subscription.adapter.ts'));
+      const getAuthBody = (adapter.match(/private getAuth\(\)[^{]*\{([\s\S]*?)\n {2}\}/) ?? [])[1] ?? '';
+      return /readGooglePlayServiceAccount\(this\.config\.get<string>\('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'\)\)/.test(getAuthBody)
+        && !/JSON\.parse/.test(getAuthBody)
+        // el unico JSON.parse de la credencial vive en el validador
+        && (adapter.match(/JSON\.parse\(raw\)/g) ?? []).length === 1;
     })());
     check('F: el adaptador real no tiene logger ni loguea la credencial (solo lanza errores tipados)', !/Logger|this\.logger|console\./.test(stripComments(readSrc('subscription/google/google-play-subscription.adapter.ts'))));
     check('F: .env.example documenta GOOGLE_PLAY_PROVIDER_IMPL y no trae un JSON real', (() => {
