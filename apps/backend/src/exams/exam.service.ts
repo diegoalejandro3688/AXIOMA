@@ -11,16 +11,25 @@ import { ExamPassageRepository } from './exam-passage.repository';
 import { ExamAttemptRepository } from './exam-attempt.repository';
 import { ExamAttemptAnswerRepository } from './exam-attempt-answer.repository';
 import { ExamScoringService } from './exam-scoring.service';
+import { OutboxService } from '../platform/outbox/outbox.service';
+import { GAMIFICATION_SCHEMA_VERSION } from '@axioma/contracts';
 
 /**
  * Motor del dominio EXAMS / Ensayos V1 (ENSAYOS-F1, ADR-0024).
  *
- * Aislamiento CRÍTICO (ADR-0024 §isolation): reutiliza `AnswerOptionRepository`
- * de EDUCATION SOLO para resolver `isCorrect` server-side -- nunca escribe en
- * `student_response`/`curriculum_topic_progress`, nunca publica al outbox,
- * nunca otorga XP/LP. Un intento de ensayo completo no muta nada fuera de las
- * cuatro tablas propias (`exam`/`exam_question`/`exam_attempt`/
+ * Aislamiento (ADR-0024 §isolation): reutiliza `AnswerOptionRepository` de
+ * EDUCATION SOLO para resolver `isCorrect` server-side -- nunca escribe en
+ * `student_response`/`curriculum_topic_progress`, nunca otorga XP/LP
+ * directamente. Un intento de ensayo completo no muta ninguna tabla ajena a
+ * las cuatro propias (`exam`/`exam_question`/`exam_attempt`/
  * `exam_attempt_answer`).
+ *
+ * XP-V1B revisa la única excepción a "nunca publica al outbox": `submitAttempt`
+ * publica `exam_completed` (best-effort, post-commit -- mismo patrón que
+ * PROGRESS/GAMIFICATION) SOLO en la transición ACTIVE -> COMPLETED real (nunca
+ * en una relectura de un intento ya COMPLETED/EXPIRED). Sigue sin escribir
+ * ninguna fila fuera de las cuatro tablas propias -- la publicación es un
+ * efecto de lectura del outbox, no una escritura del dominio EXAMS.
  *
  * Advisory lock namespace 24 (distinto de 19-23 ya en uso). Dos claves:
  * `exam-start:{accountId}:{examId}` serializa el inicio idempotente de intento;
@@ -104,6 +113,7 @@ export class ExamService {
     private readonly answerOptionRepo: AnswerOptionRepository,
     private readonly scoring: ExamScoringService,
     private readonly entitlementService: EntitlementService,
+    private readonly outbox: OutboxService,
   ) {}
 
   // --- Lectura de catálogo ---
@@ -276,17 +286,46 @@ export class ExamService {
    * status real y el puntaje calculado con las respuestas existentes.
    */
   async submitAttempt(accountId: string, attemptId: string): Promise<ExamAttemptResultView> {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await this.lockAttempt(tx, attemptId);
       let attempt = await this.refreshExpiry(tx, await this.loadOwnedAttempt(tx, accountId, attemptId));
 
+      // `justCompleted` -- SOLO true cuando ESTA llamada transiciona
+      // ACTIVE -> COMPLETED por primera vez; nunca en una relectura de un
+      // intento ya COMPLETED (idempotente, mismo criterio que
+      // `curriculum_topic_completed` en progress.service.ts) ni en EXPIRED.
+      let justCompleted = false;
       if (attempt.status === 'ACTIVE') {
         attempt = await this.attemptRepo.markCompleted(attemptId, new Date(), tx);
+        justCompleted = true;
       }
 
       const score = await this.computeScore(tx, attempt);
-      return { attempt, score };
+      return { attempt, score, justCompleted };
     }, TX_OPTIONS);
+
+    // XP-V1B -- publicación best-effort, post-commit (mismo criterio que
+    // `student_response_recorded`/`quick_question_answered`): nunca dentro
+    // de la transacción de arriba, y SOLO en la transición real. Identidad
+    // de deduplicación de negocio en GAMIFICATION = (accountId, examId), no
+    // examAttemptId -- ver `gamification.ts`/`gamification.service.ts`.
+    if (result.justCompleted && result.attempt.completedAt) {
+      await this.outbox.publish({
+        eventKey: 'exam_completed',
+        schemaVersion: GAMIFICATION_SCHEMA_VERSION,
+        sourceDomain: 'EXAMS',
+        aggregateId: accountId,
+        occurredAt: result.attempt.completedAt,
+        payload: {
+          accountId,
+          examAttemptId: result.attempt.id,
+          examId: result.attempt.examId,
+          completedAt: result.attempt.completedAt.toISOString(),
+        },
+      });
+    }
+
+    return { attempt: result.attempt, score: result.score };
   }
 
   async getResult(accountId: string, attemptId: string): Promise<ExamAttemptResultView> {

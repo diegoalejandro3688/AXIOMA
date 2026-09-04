@@ -422,14 +422,34 @@ async function main() {
       [isoAccts, isoAccts],
     );
     check('0 eventos de gamificacion en el outbox para estas cuentas', gamiEvents.rows[0].n === 0);
-    const anyExamOutbox = await pg.query(`SELECT count(*)::int n FROM outbox_event WHERE source_domain = 'EXAMS'`);
-    check('el dominio EXAMS no publica NINGUN outbox_event', anyExamOutbox.rows[0].n === 0);
 
-    console.log('--- 20. Frontera de dominio estatica: los archivos de exams no tocan PROGRESS/Outbox ---');
+    // XP-V1B revisa el aislamiento original: EXAMS ahora publica EXCLUSIVAMENTE
+    // `exam_completed` (nunca otro event_key) -- la pureza de dominio ya no es
+    // "cero outbox_event", sino "ningun event_key ajeno a exam_completed".
+    const examOutboxByKey = await pg.query(
+      `SELECT event_key, count(*)::int n FROM outbox_event WHERE source_domain = 'EXAMS' GROUP BY event_key`,
+    );
+    const nonExamCompletedKeys = examOutboxByKey.rows.filter((r) => r.event_key !== 'exam_completed');
+    check(
+      `el dominio EXAMS solo publica 'exam_completed' (ajenos: ${nonExamCompletedKeys.map((r) => r.event_key).join(', ') || 'ninguno'})`,
+      nonExamCompletedKeys.length === 0,
+    );
+    const examCompletedForIso = await pg.query(
+      `SELECT count(*)::int n FROM outbox_event
+        WHERE source_domain = 'EXAMS' AND event_key = 'exam_completed'
+          AND (aggregate_id = ANY($1::uuid[]) OR payload->>'accountId' = ANY($2::text[]))`,
+      [isoAccts, isoAccts],
+    );
+    check('al menos un exam_completed publicado para Alice tras completar el ensayo A', examCompletedForIso.rows[0].n >= 1);
+
+    console.log('--- 20. Frontera de dominio estatica: los archivos de exams no tocan PROGRESS/gamificacion directa ---');
     const { readFileSync, readdirSync } = await import('node:fs');
     const { join } = await import('node:path');
     const examsDir = join(__dirname, '..', 'src', 'exams');
-    const forbidden = ['StudentResponse', 'CurriculumTopicProgress', 'ProgressService', 'OutboxService', 'OutboxModule', 'XpGrant'];
+    // OutboxService/OutboxModule quedan FUERA de la lista prohibida a partir de
+    // XP-V1B -- su uso para publicar `exam_completed` es ahora la unica
+    // excepcion sancionada al aislamiento (ver exam.service.ts/exams.module.ts).
+    const forbidden = ['StudentResponse', 'CurriculumTopicProgress', 'ProgressService', 'XpGrant'];
     // Ignora comentarios -- lo que importa es que el CÓDIGO no importe ni use
     // estos símbolos, no que un comentario explique por qué NO se usan.
     const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
