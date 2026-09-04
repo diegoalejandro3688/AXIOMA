@@ -36,17 +36,52 @@ function check(label: string, condition: boolean) {
   }
 }
 
-async function req(method: string, path: string, headers: Record<string, string> = {}, body?: unknown) {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Este gate hace decenas de solicitudes HTTP por corrida (~6 sesiones, ~10
+ * overrides de tier, ~15 operaciones de intento) y el flujo de release lo
+ * ejecuta muchas veces seguidas. El limite GLOBAL de `ThrottlerModule`
+ * (300 req/60 s por IP, ver app.module.ts) puede devolver 429 a solicitudes
+ * legitimas cuando el gate corre en rafaga -- ese 429 hacia caer la PRIMERA
+ * asercion (`GET /exams`) y cascadeaba las 19. Se absorbe con backoff
+ * acotado: NUNCA se relaja el limite real y ningun test de este archivo
+ * verifica un 429 crudo (mismo criterio que verify-ai-quota-gate.ts).
+ */
+async function req(method: string, path: string, headers: Record<string, string> = {}, body?: unknown, attempt = 0) {
   const res = await fetch(base + path, {
     method,
     headers: { 'content-type': 'application/json', ...headers },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 429 && attempt < 5) {
+    await sleep(12_000);
+    return req(method, path, headers, body, attempt + 1);
+  }
   const text = await res.text();
   return { status: res.status, body: text ? JSON.parse(text) : null, raw: text };
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/**
+ * Espera ACOTADA y DETERMINISTA a que un intento del ensayo corto venza,
+ * SIN tocar su estado -- las inv. 4/5/6 exigen que la operacion bajo prueba
+ * (el `POST /attempts` siguiente) sea la PRIMERA en encontrar el intento
+ * vencido-pero-ACTIVE y persistir su `markExpired` (dentro de la transaccion
+ * para inv. 5/6). Por eso NO se consulta el endpoint de estado (dispararia
+ * la transicion perezosa antes de tiempo). La espera se deriva del reloj
+ * server-authoritative que la respuesta ya trae (`expiresAt` - `serverTime`),
+ * no de una constante fija; bucle con cota monotona y buffer amplio.
+ */
+async function waitOutServerExpiry(resp: { body: { expiresAt?: string; serverTime?: string } | null }): Promise<void> {
+  const expiresAt = Date.parse(resp.body?.expiresAt ?? '');
+  const serverTime = Date.parse(resp.body?.serverTime ?? '');
+  const remainingMs = Number.isFinite(expiresAt) && Number.isFinite(serverTime) ? Math.max(0, expiresAt - serverTime) : 2_000;
+  const targetMs = remainingMs + 2_000; // buffer duro por encima del vencimiento
+  const start = performance.now();
+  while (performance.now() - start < targetMs) {
+    await sleep(100);
+  }
+}
 
 async function newSession(label: string) {
   const uid = `premium-exams-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -192,7 +227,7 @@ async function main() {
     const attemptD1 = d1.body?.attemptId as string;
     trackedAttemptIds.push(attemptD1);
     check('PREMIUM: primer intento del ensayo corto -> 200 ACTIVE', d1.status === 200 && d1.body?.status === 'ACTIVE');
-    await sleep(2600); // el ensayo corto dura 2s
+    await waitOutServerExpiry(d1); // deja vencer D1 sin tocar su estado -- el POST siguiente debe ser quien lo marca EXPIRED
     const d2 = await req('POST', `/exams/${examShortId}/attempts`, acctD.authHeaders, {});
     const attemptD2 = d2.body?.attemptId as string;
     trackedAttemptIds.push(attemptD2);
@@ -212,7 +247,7 @@ async function main() {
     const attemptE1 = e1.body?.attemptId as string;
     trackedAttemptIds.push(attemptE1);
     check('PREMIUM: intento del ensayo corto creado -> 200 ACTIVE', e1.status === 200 && e1.body?.status === 'ACTIVE');
-    await sleep(2600);
+    await waitOutServerExpiry(e1); // E1 vence en el reloj del server, pero sigue ACTIVE en BD hasta que el POST FREE lo toque
     await setTier(acctE.accountId, 'FREE'); // downgrade DESPUES de que E1 vencio
     const e2 = await req('POST', `/exams/${examShortId}/attempts`, acctE.authHeaders, {});
     check('FREE + ACTIVE expirado: POST /attempts -> 403 PREMIUM_REQUIRED', isPremiumRequired(e2));
