@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { LearningResourceResponse, ResourceContentBlockResponse } from '@axioma/contracts';
+import type { LearningResourceResponse, ResourceContentBlockResponse, ResourceCompletion } from '@axioma/contracts';
 import { getPublishedResource, listPublishedQuestions } from '../../../../../lib/api/education';
+import { getResourceCompletion, completeResource } from '../../../../../lib/api/progress';
 import { isPremiumRequiredError } from '../../../../../lib/entitlement/premium-error';
 import { PremiumLockedScreen } from '../../../../../components/premium/premium-locked-screen';
 import { LoadingState } from '../../../../../components/loading-state';
@@ -20,7 +21,7 @@ type ScreenState =
   | { status: 'error'; message: string }
   | { status: 'empty' }
   | { status: 'premium' }
-  | { status: 'ready'; resource: LearningResourceResponse; totalSteps: number };
+  | { status: 'ready'; resource: LearningResourceResponse; totalSteps: number; completion: ResourceCompletion };
 
 /**
  * Recurso -- primer paso del recorrido de una unidad (ver ADR-0014: sin
@@ -51,6 +52,7 @@ export default function RecursoScreen() {
   const tokens = useTheme();
   const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
+  const [completing, setCompleting] = useState(false);
 
   // Mismo tono de materia que STUDY-2/2A/STUDY-3 (`subjectIcon(name).tone`)
   // -- continuidad visual, sin token/color nuevo.
@@ -59,9 +61,10 @@ export default function RecursoScreen() {
 
   const load = useCallback(async () => {
     setState({ status: 'loading' });
-    const [resourceResult, questionsResult] = await Promise.all([
+    const [resourceResult, questionsResult, completionResult] = await Promise.all([
       getPublishedResource(topicId),
       listPublishedQuestions(topicId),
+      getResourceCompletion(topicId),
     ]);
 
     // PREMIUM V1 (C2.2) -- deep-link / ruta restaurada a un recurso de una
@@ -85,8 +88,27 @@ export default function RecursoScreen() {
       return;
     }
 
-    setState({ status: 'ready', resource: resourceResult.data, totalSteps: 1 + questionsResult.data.length });
+    // XP-V1B-2 -- si la lectura de completitud falla, degrada a
+    // NOT_COMPLETED (nunca bloquea la pantalla por esto): el POST posterior
+    // sigue siendo la autoridad real y es idempotente de todos modos.
+    const completion: ResourceCompletion = completionResult.ok
+      ? completionResult.data
+      : { status: 'NOT_COMPLETED', completedAt: null };
+
+    setState({ status: 'ready', resource: resourceResult.data, totalSteps: 1 + questionsResult.data.length, completion });
   }, [topicId]);
+
+  async function handleCompleteResource() {
+    if (completing || state.status !== 'ready' || state.completion.status === 'COMPLETED') return;
+    setCompleting(true);
+    const result = await completeResource(topicId);
+    setCompleting(false);
+    // XP-V1B-2 -- sin completitud optimista/permanente ante un fallo de
+    // red/API: el estado del servidor manda, se puede reintentar libremente.
+    if (result.ok) {
+      setState((prev) => (prev.status === 'ready' ? { ...prev, completion: result.data.completion } : prev));
+    }
+  }
 
   useEffect(() => {
     load();
@@ -151,6 +173,19 @@ export default function RecursoScreen() {
         </Text>
         <View style={[styles.titleAccent, { backgroundColor: accentColor }]} />
         <ContentBlockRenderer blocks={blocks} highlightFormulas />
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: state.completion.status === 'COMPLETED' || completing }}
+          disabled={state.completion.status === 'COMPLETED' || completing}
+          style={[styles.completeButton, state.completion.status === 'COMPLETED' && styles.completeButtonDone]}
+          onPress={handleCompleteResource}
+        >
+          <Icon name="check" size={18} color={state.completion.status === 'COMPLETED' ? 'accent' : 'secondary'} />
+          <Text variant="titleMedium" weight="semibold" style={state.completion.status === 'COMPLETED' ? styles.completeButtonTextDone : styles.completeButtonText}>
+            {state.completion.status === 'COMPLETED' ? 'Completado' : completing ? 'Completando…' : 'Completar recurso'}
+          </Text>
+        </Pressable>
       </ScrollView>
 
       <Pressable accessibilityRole="button" style={styles.continueButton} onPress={goToExercise}>
@@ -223,5 +258,23 @@ function createStyles(t: ThemeTokens) {
       marginTop: 8,
     },
     continueButtonText: { color: t.color.text.onInverse },
+    // XP-V1B-2 -- CTA "Completar recurso": mismos tokens de borde/superficie
+    // que el resto de Estudio, sin color nuevo. Estado "Completado" solo
+    // cambia borde/color de texto a `accent` -- misma paleta ya usada para el
+    // acento de materia en esta pantalla.
+    completeButton: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: spacing.space2,
+      borderWidth: 1,
+      borderColor: t.color.border.default,
+      borderRadius: radii.medium,
+      paddingVertical: 12,
+      marginTop: spacing.space3,
+    },
+    completeButtonDone: { borderColor: t.color.accent.default },
+    completeButtonText: { color: t.color.text.secondary },
+    completeButtonTextDone: { color: t.color.accent.default },
   };
 }

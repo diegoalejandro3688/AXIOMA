@@ -3,10 +3,14 @@ import {
   topicProgressBatchResponseSchema,
   submitResponseResponseSchema,
   responseConflictBodySchema,
+  resourceCompletionSchema,
+  completeResourceResponseSchema,
   type TopicProgressResponse,
   type TopicProgressBatchResponse,
   type SubmitResponseResponse,
   type StudentResponseSummary,
+  type ResourceCompletion,
+  type CompleteResourceResponse,
 } from '@axioma/contracts';
 import { apiRequest, type ApiResult } from './client';
 
@@ -68,4 +72,18 @@ export async function submitResponse(topicId: string, input: SubmitResponseInput
   // distinguir `403 PREMIUM_REQUIRED` (C1.4: escritura de progreso sobre una
   // unidad Premium tras un downgrade) de cualquier otro 4xx.
   return { kind: 'error', message: result.message, status: result.status, code: result.code };
+}
+
+/** XP-V1B-2 -- lectura pura del estado de completitud del recurso del tema. `NOT_COMPLETED` NUNCA es un 404. */
+export function getResourceCompletion(topicId: string): Promise<ApiResult<ResourceCompletion>> {
+  return apiRequest('GET', `/progress/topics/${topicId}/resource-completion`, { schema: resourceCompletionSchema });
+}
+
+/**
+ * XP-V1B-2 -- acción explícita "Completar recurso". Idempotente: siempre
+ * 200; `justCompleted` distingue la primera completitud real de un
+ * reproceso sobre un recurso ya completado.
+ */
+export function completeResource(topicId: string): Promise<ApiResult<CompleteResourceResponse>> {
+  return apiRequest('POST', `/progress/topics/${topicId}/resource-completion`, { schema: completeResourceResponseSchema });
 }
