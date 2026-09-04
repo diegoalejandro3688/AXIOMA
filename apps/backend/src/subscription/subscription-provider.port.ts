@@ -128,6 +128,8 @@ export const SUBSCRIPTION_PROVIDER_ADAPTER = Symbol('SUBSCRIPTION_PROVIDER_ADAPT
 export type SubscriptionProviderErrorCategory =
   /** Faltan / son invalidas las credenciales del backend. NUNCA es un exito de verificacion. */
   | 'not_configured'
+  /** RC1B.1 -- `GOOGLE_PLAY_PROVIDER_IMPL=disabled`: Billing intencionalmente CONGELADO. NUNCA verifica ni concede PREMIUM. */
+  | 'disabled'
   /** 404 -- el `purchaseToken` no existe / es desconocido para Google. */
   | 'not_found'
   /** 401 / 403 de Google -- problema de auth de la service account. */

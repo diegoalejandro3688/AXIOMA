@@ -224,7 +224,7 @@ async function main() {
 
   // A2.a -- `resolveSubscriptionProviderChoice` (task hardening seccion A).
   const { resolveSubscriptionProviderChoice } = await import('../src/subscription/subscription-provider-choice');
-  const choiceMatrix: Array<[string | undefined, string | undefined, 'google' | 'fake' | 'reject']> = [
+  const choiceMatrix: Array<[string | undefined, string | undefined, 'google' | 'fake' | 'disabled' | 'reject']> = [
     ['development', undefined, 'fake'],
     ['development', 'fake', 'fake'],
     ['test', undefined, 'fake'],
@@ -234,6 +234,8 @@ async function main() {
     ['production', undefined, 'reject'], // falta el provider en prod -> fail-closed
     ['production', 'fake', 'reject'], // provider=fake en prod -> fail-closed
     ['production', 'anything-else', 'reject'],
+    ['production', 'disabled', 'disabled'], // RC1B.1 -- postura CONGELADA explicita
+    ['development', 'disabled', 'disabled'],
   ];
   for (const [nodeEnv, impl, expected] of choiceMatrix) {
     const c = resolveSubscriptionProviderChoice(nodeEnv, impl);
@@ -244,6 +246,23 @@ async function main() {
     const mod = stripComments(readSrc('subscription/subscription.module.ts'));
     return /resolveSubscriptionProviderChoice\(/.test(mod) && /'reject' in choice\) throw new Error\(choice\.reject\)/.test(mod);
   })());
+  check('A2: RC1B.1 -- choice "disabled" construye DisabledSubscriptionProviderAdapter (nunca fake ni google)', (() => {
+    const mod = stripComments(readSrc('subscription/subscription.module.ts'));
+    return /choice\.use === 'disabled'\)\s*return new DisabledSubscriptionProviderAdapter\(\)/.test(mod);
+  })());
+  {
+    // RC1B.1 -- el adaptador `disabled` NUNCA verifica ni concede PREMIUM.
+    const { DisabledSubscriptionProviderAdapter } = await import('../src/subscription/disabled-subscription-provider.adapter');
+    const { SubscriptionProviderError } = await import('../src/subscription/subscription-provider.port');
+    const a = new DisabledSubscriptionProviderAdapter();
+    let threw = false;
+    try {
+      await a.getSubscription('t');
+    } catch (e) {
+      threw = e instanceof SubscriptionProviderError && (e as InstanceType<typeof SubscriptionProviderError>).category === 'disabled';
+    }
+    check('A2: DisabledSubscriptionProviderAdapter.getSubscription lanza SubscriptionProviderError("disabled")', threw);
+  }
   check('A2: la factory NO tiene un default "fake" a secas (sin config.get(IMPL, "fake"))', !/GOOGLE_PLAY_PROVIDER_IMPL['"],\s*['"]fake['"]/.test(readSrc('subscription/subscription.module.ts')));
 
   // A2.b -- `shouldAcknowledgeSubscription` (task hardening seccion B).

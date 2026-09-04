@@ -383,6 +383,11 @@ export class SubscriptionReconciliationService {
         // Config incompleta -- NUNCA se disfraza de exito. 503, sin detalle.
         this.logger.error('verificacion de compra no configurada (GOOGLE_PLAY_SERVICE_ACCOUNT_JSON)');
         return new ServiceUnavailableException('La verificación de compras no está disponible.');
+      case 'disabled':
+        // RC1B.1 -- Billing intencionalmente CONGELADO (GOOGLE_PLAY_PROVIDER_IMPL=disabled).
+        // NUNCA se disfraza de exito. 503 deliberado, sin detalle.
+        this.logger.warn('reconciliacion solicitada con Google Play Billing en postura CONGELADA (disabled) -- 503');
+        return new ServiceUnavailableException('La verificación de compras no está disponible.');
       case 'transient':
         return new ServiceUnavailableException('No se pudo verificar la compra. Inténtalo de nuevo.');
       case 'not_found':

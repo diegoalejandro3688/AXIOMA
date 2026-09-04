@@ -5,6 +5,7 @@ import { EntitlementModule } from '../entitlement/entitlement.module';
 import { InternalOpsModule } from '../platform/internal-ops/internal-ops.module';
 import { GooglePlaySubscriptionAdapter } from './google/google-play-subscription.adapter';
 import { FakeSubscriptionProviderAdapter } from './fake-subscription-provider.adapter';
+import { DisabledSubscriptionProviderAdapter } from './disabled-subscription-provider.adapter';
 import { SUBSCRIPTION_PROVIDER_ADAPTER } from './subscription-provider.port';
 import { resolveSubscriptionProviderChoice } from './subscription-provider-choice';
 import { SubscriptionReconciliationService } from './subscription-reconciliation.service';
@@ -13,10 +14,11 @@ import { GooglePlayRtdnController } from './rtdn/google-play-rtdn.controller';
 import { GooglePlayRtdnEventRepository } from './rtdn/google-play-rtdn-event.repository';
 import { RtdnIngestionService } from './rtdn/rtdn-ingestion.service';
 import { RtdnProcessingService } from './rtdn/rtdn-processing.service';
-import { RtdnProcessingScheduler } from './rtdn/rtdn-processing.scheduler';
+import { RtdnProcessingScheduler, RTDN_PROCESSING_ENABLED } from './rtdn/rtdn-processing.scheduler';
 import { FakeRtdnPushAuthenticator } from './rtdn/fake-rtdn-push-authenticator';
 import { GoogleRtdnPushAuthenticator } from './rtdn/google-rtdn-push-authenticator';
-import { resolveRtdnAuthChoice } from './rtdn/rtdn-auth-choice';
+import { DisabledRtdnPushAuthenticator } from './rtdn/disabled-rtdn-push-authenticator';
+import { resolveRtdnAuthChoice, rtdnProcessingEnabled } from './rtdn/rtdn-auth-choice';
 import { RTDN_PUSH_AUTHENTICATOR, readRtdnAuthConfig, type RtdnAuthConfig } from './rtdn/rtdn-push-authenticator.port';
 
 /**
@@ -33,6 +35,13 @@ import { RTDN_PUSH_AUTHENTICATOR, readRtdnAuthConfig, type RtdnAuthConfig } from
  * el impl explicito. En PRODUCCION con el impl ausente o `fake`, la factory
  * LANZA al arrancar (fail-closed) -- ni un `purchaseToken` fake ni un push de
  * Pub/Sub no verificado pueden conceder PREMIUM / disparar reconciliacion.
+ *
+ * RC1B.1 -- POSTURA CONGELADA (`GOOGLE_PLAY_PROVIDER_IMPL=disabled` /
+ * `GOOGLE_PLAY_RTDN_AUTH_IMPL=disabled`): mientras Google Play Billing sigue
+ * congelado (sin Play Console), esta postura EXPLICITA permite arrancar en
+ * `NODE_ENV=production` con adaptadores `disabled` que NUNCA verifican ni
+ * conceden PREMIUM (reconcile -> 503; push -> 401) y sin agendar el worker
+ * del buzon RTDN. El impl ausente en produccion sigue siendo un rechazo.
  */
 const RTDN_AUTH_FALLBACK: RtdnAuthConfig = {
   expectedAudience: 'rtdn-oidc-audience-no-configurada',
@@ -53,6 +62,7 @@ const RTDN_AUTH_FALLBACK: RtdnAuthConfig = {
           config.get<string>('GOOGLE_PLAY_PROVIDER_IMPL'),
         );
         if ('reject' in choice) throw new Error(choice.reject);
+        if (choice.use === 'disabled') return new DisabledSubscriptionProviderAdapter();
         return choice.use === 'google' ? new GooglePlaySubscriptionAdapter(config) : fake;
       },
     },
@@ -65,6 +75,8 @@ const RTDN_AUTH_FALLBACK: RtdnAuthConfig = {
           config.get<string>('GOOGLE_PLAY_RTDN_AUTH_IMPL'),
         );
         if ('reject' in choice) throw new Error(choice.reject);
+        // RC1B.1 -- postura CONGELADA: rechaza todo push, sin config OIDC.
+        if (choice.use === 'disabled') return new DisabledRtdnPushAuthenticator();
         const parsed = readRtdnAuthConfig(
           config.get<string>('GOOGLE_PLAY_RTDN_OIDC_AUDIENCE'),
           config.get<string>('GOOGLE_PLAY_RTDN_PUSH_SERVICE_ACCOUNT_EMAIL'),
@@ -84,6 +96,16 @@ const RTDN_AUTH_FALLBACK: RtdnAuthConfig = {
           ? new GoogleRtdnPushAuthenticator(parsed.config)
           : new FakeRtdnPushAuthenticator(parsed.config);
       },
+    },
+    {
+      // RC1B.1 -- `false` con `GOOGLE_PLAY_RTDN_AUTH_IMPL=disabled`: el
+      // `@Cron` del worker RTDN sale sin tocar la BD ni Google.
+      provide: RTDN_PROCESSING_ENABLED,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) =>
+        rtdnProcessingEnabled(
+          resolveRtdnAuthChoice(config.get<string>('NODE_ENV'), config.get<string>('GOOGLE_PLAY_RTDN_AUTH_IMPL')),
+        ),
     },
     SubscriptionReconciliationService,
     GooglePlayRtdnEventRepository,

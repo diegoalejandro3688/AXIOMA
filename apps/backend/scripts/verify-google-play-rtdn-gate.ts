@@ -227,7 +227,7 @@ async function main() {
 
   // A.5 eleccion de verificador (fail-closed en produccion).
   {
-    const matrix: Array<[string | undefined, string | undefined, 'google' | 'fake' | 'reject']> = [
+    const matrix: Array<[string | undefined, string | undefined, 'google' | 'fake' | 'disabled' | 'reject']> = [
       ['development', undefined, 'fake'],
       ['development', 'fake', 'fake'],
       ['test', undefined, 'fake'],
@@ -236,11 +236,27 @@ async function main() {
       ['production', undefined, 'reject'],
       ['production', 'fake', 'reject'],
       ['production', 'otro', 'reject'],
+      ['production', 'disabled', 'disabled'], // RC1B.1 -- postura CONGELADA explicita
+      ['development', 'disabled', 'disabled'],
     ];
     for (const [env, impl, expected] of matrix) {
       const c = resolveRtdnAuthChoice(env, impl);
       check(`A: rtdnAuthChoice(NODE_ENV=${env ?? 'unset'}, impl=${impl ?? 'unset'}) -> ${expected}`, ('reject' in c ? 'reject' : c.use) === expected);
     }
+    // RC1B.1 -- worker NO se agenda con `disabled`; SI con google/fake.
+    const { rtdnProcessingEnabled } = await import('../src/subscription/rtdn/rtdn-auth-choice');
+    check('A: rtdnProcessingEnabled(disabled) === false', rtdnProcessingEnabled({ use: 'disabled' }) === false);
+    check('A: rtdnProcessingEnabled(google) === true', rtdnProcessingEnabled({ use: 'google' }) === true);
+    // RC1B.1 -- el autenticador `disabled` rechaza todo push.
+    const { DisabledRtdnPushAuthenticator } = await import('../src/subscription/rtdn/disabled-rtdn-push-authenticator');
+    const { RtdnPushAuthError } = await import('../src/subscription/rtdn/rtdn-push-authenticator.port');
+    let rejected = false;
+    try {
+      await new DisabledRtdnPushAuthenticator().authenticate('Bearer x');
+    } catch (e) {
+      rejected = e instanceof RtdnPushAuthError;
+    }
+    check('A: DisabledRtdnPushAuthenticator.authenticate SIEMPRE lanza RtdnPushAuthError', rejected);
   }
 
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
@@ -535,6 +551,8 @@ async function main() {
       check('H: el modulo aplica resolveRtdnAuthChoice y LANZA en el rechazo (fake OIDC prohibido en prod)', /resolveRtdnAuthChoice\(/.test(mod) && /'reject' in choice\) throw new Error\(choice\.reject\)/.test(mod));
       check('H: config de auth RTDN incompleta con impl=google / en prod -> fail-closed (throw)', /readRtdnAuthConfig\(/.test(mod) && /throw new Error\(\s*[`'"]Config de auth RTDN incompleta/.test(mod));
       check('H: el adaptador OIDC real SOLO se importa/instancia bajo la eleccion google', /choice\.use === 'google'\s*\n?\s*\?\s*new GoogleRtdnPushAuthenticator/.test(mod));
+      check('H: RC1B.1 -- eleccion "disabled" -> DisabledRtdnPushAuthenticator, ANTES de readRtdnAuthConfig', /choice\.use === 'disabled'\)\s*return new DisabledRtdnPushAuthenticator\(\)/.test(mod) && mod.indexOf('new DisabledRtdnPushAuthenticator()') < mod.indexOf('readRtdnAuthConfig('));
+      check('H: RC1B.1 -- worker RTDN gateado por RTDN_PROCESSING_ENABLED (no se agenda con disabled)', /provide: RTDN_PROCESSING_ENABLED/.test(mod) && /if \(!this\.enabled\) return;/.test(stripComments(readSrc('subscription/rtdn/rtdn-processing.scheduler.ts'))));
       const recon = readSrc('subscription/subscription-reconciliation.service.ts');
       check('H: la reconciliacion NO importa tipos de transporte de Google ni de Pub/Sub', !/google-subscription-v2|map-google-subscription|GoogleSubscriptionPurchaseV2|google-auth-library|rtdn-notification\.types|parse-pubsub/.test(recon));
       check('H: la reconciliacion recibe providerEventTime como primitivo (Date|null) desde el worker', /reconcileFromNotification\(input: \{[\s\S]*providerEventTime: Date \| null/.test(recon));
