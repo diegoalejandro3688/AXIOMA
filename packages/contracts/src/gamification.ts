@@ -12,7 +12,12 @@ import { entityId, isoDateTime } from './common';
  * en vez de colarse silenciosamente.
  */
 
-export const GAMIFICATION_EVENT_KEYS = ['student_response_recorded', 'curriculum_topic_completed', 'quick_question_answered'] as const;
+export const GAMIFICATION_EVENT_KEYS = [
+  'student_response_recorded',
+  'curriculum_topic_completed',
+  'quick_question_answered',
+  'exam_completed',
+] as const;
 
 export type GamificationEventKey = (typeof GAMIFICATION_EVENT_KEYS)[number];
 
@@ -80,13 +85,38 @@ export const quickQuestionAnsweredPayloadSchema = z
 
 export type QuickQuestionAnsweredPayload = z.infer<typeof quickQuestionAnsweredPayloadSchema>;
 
+/**
+ * XP-V1B -- publicado por EXAMS únicamente cuando `submitAttempt` transiciona
+ * un `ExamAttempt` de ACTIVE a COMPLETED por primera vez (nunca en una
+ * relectura de un intento ya COMPLETED, nunca en EXPIRED). La identidad
+ * estable para deduplicación de negocio de GAMIFICATION es (accountId,
+ * examId) -- NO examAttemptId -- porque la recompensa de XP es única por
+ * cuenta+Ensayo canónico, no por intento; un reintento del mismo Ensayo
+ * nunca debe producir una segunda actividad validada. `examAttemptId` viaja
+ * solo para trazabilidad.
+ */
+export const examCompletedPayloadSchema = z
+  .object({
+    accountId: entityId,
+    examAttemptId: entityId,
+    examId: entityId,
+    completedAt: isoDateTime,
+  })
+  .strict();
+
+export type ExamCompletedPayload = z.infer<typeof examCompletedPayloadSchema>;
+
 export const gamificationEventPayloadSchemas: Record<
   GamificationEventKey,
-  typeof studentResponseRecordedPayloadSchema | typeof curriculumTopicCompletedPayloadSchema | typeof quickQuestionAnsweredPayloadSchema
+  | typeof studentResponseRecordedPayloadSchema
+  | typeof curriculumTopicCompletedPayloadSchema
+  | typeof quickQuestionAnsweredPayloadSchema
+  | typeof examCompletedPayloadSchema
 > = {
   student_response_recorded: studentResponseRecordedPayloadSchema,
   curriculum_topic_completed: curriculumTopicCompletedPayloadSchema,
   quick_question_answered: quickQuestionAnsweredPayloadSchema,
+  exam_completed: examCompletedPayloadSchema,
 };
 
 /**

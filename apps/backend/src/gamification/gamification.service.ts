@@ -35,6 +35,12 @@ function deduplicationKeyFor(eventKey: GamificationEventKey, payload: Record<str
       // Sin identificador propio de "transición" en el modelo actual -- se
       // usa (accountId, curriculumTopicId), tal como fue decidido explícitamente.
       return `topic-completed:${payload.accountId as string}:${payload.curriculumTopicId as string}`;
+    case 'exam_completed':
+      // XP-V1B -- identidad (accountId, examId), NUNCA examAttemptId: la
+      // recompensa de XP es única por cuenta+Ensayo canónico, no por
+      // intento. Reintentar/repetir el mismo Ensayo colapsa siempre a esta
+      // misma clave, sin importar cuántos ExamAttempt distintos se completen.
+      return `ensayo-completado:${payload.accountId as string}:${payload.examId as string}`;
   }
 }
 
@@ -46,6 +52,8 @@ function sourceEntityFor(eventKey: GamificationEventKey, payload: Record<string,
       return { type: 'QuickQuestionAttempt', id: payload.quickQuestionAttemptId as string };
     case 'curriculum_topic_completed':
       return { type: 'CurriculumTopicProgress', id: payload.curriculumTopicId as string };
+    case 'exam_completed':
+      return { type: 'ExamAttempt', id: payload.examAttemptId as string };
   }
 }
 
@@ -57,6 +65,8 @@ function activityTypeFor(eventKey: GamificationEventKey): string {
       return 'QUICK_QUESTION_ANSWERED';
     case 'curriculum_topic_completed':
       return 'TEMA_COMPLETADO';
+    case 'exam_completed':
+      return 'ENSAYO_COMPLETADO';
   }
 }
 
