@@ -22,6 +22,10 @@ export function describeUnlockRequirement(requirement: UnlockRequirement): strin
     // para TITLE_THRESHOLD) -- este módulo solo la muestra, nunca la fabrica.
     case 'STUDY_UNIT':
       return requirement.requirementCopy;
+    // STABILIZATION-B6A -- avatares históricos V1 = maestría de materia; el
+    // backend entrega "Completa {nombre canónico de la materia}".
+    case 'STUDY_SUBJECT':
+      return requirement.requirementCopy;
     case 'TITLE_THRESHOLD':
       return requirement.requirementCopy;
   }

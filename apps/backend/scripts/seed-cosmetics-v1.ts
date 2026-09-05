@@ -35,7 +35,7 @@ import {
   COSMETICS_V1_NEW,
   COSMETICS_V1_STARTER_ITEM_KEYS,
   COSMETICS_V1_LEGACY_RETIRE_ITEM_KEYS,
-  HISTORIC_AVATAR_UNIT_MAP,
+  HISTORIC_AVATAR_SUBJECT_MAP,
   LEAGUE_V1,
   LEAGUE_V1_PARTICIPANT_GROUP_SIZE,
   LEAGUE_V1_PROMOTION_RULE,
@@ -295,20 +295,23 @@ export async function seedCosmeticsV1(opts: { dryRun?: boolean } = {}): Promise<
   }
   console.log('  7 LeagueDefinition (Bronce..Gran Maestro, tierOrder 1..7, grupo 30, top/bottom 20%) con marco conectado.');
 
-  console.log('\n--- 6b. Avatares históricos (5) + reward bundles conectados a su unidad canónica ---');
-  for (const [itemKey, unitCode] of Object.entries(HISTORIC_AVATAR_UNIT_MAP)) {
+  console.log('\n--- 6b. Avatares históricos (5): reward bundles ---');
+  // STABILIZATION-B6A -- los 5 avatares históricos V1 son recompensas de
+  // MAESTRÍA DE MATERIA. El seed sólo garantiza que exista su
+  // `reward_bundle` canónico (`cosmetics-v1-historic-{itemKey}`), que el
+  // worker/reconciliación ubican por `bundleKey`. Ya NO se conecta ningún
+  // `curriculum_topic.reward_bundle_id` (esos 5 vínculos por unidad se
+  // retiraron en B6A): la elegibilidad la resuelve `SubjectCompletionService`
+  // + `HISTORIC_AVATAR_SUBJECT_MAP`, no una fila FK.
+  for (const [itemKey, subjectKey] of Object.entries(HISTORIC_AVATAR_SUBJECT_MAP)) {
     const avatarId = cosmeticIdByKey.get(itemKey);
     if (!avatarId) fail(`avatar histórico: falta CosmeticItem "${itemKey}".`);
-    const bundleId = await ensureCosmeticBundle(`cosmetics-v1-historic-${itemKey}`, `Avatar histórico: ${itemKey}`, avatarId);
-    const unit = await prisma.curriculumTopic.findUnique({ where: { code: unitCode } });
-    if (!unit) fail(`avatar histórico "${itemKey}": unidad canónica "${unitCode}" no existe.`);
-    if (unit.rewardBundleId == null) {
-      await prisma.curriculumTopic.update({ where: { code: unitCode }, data: { rewardBundleId: bundleId } });
-    } else if (unit.rewardBundleId !== bundleId) {
-      fail(`unidad "${unitCode}" ya tiene rewardBundleId=${unit.rewardBundleId} (distinto del esperado ${bundleId}) -- no se sobrescribe en silencio.`);
-    }
+    await ensureCosmeticBundle(`cosmetics-v1-historic-${itemKey}`, `Avatar histórico: ${itemKey}`, avatarId);
+    // Verificación de coherencia (no escribe): la materia mapeada debe existir.
+    const subject = await prisma.subject.findUnique({ where: { subjectKey } });
+    if (!subject) fail(`avatar histórico "${itemKey}": materia canónica "${subjectKey}" no existe.`);
   }
-  console.log(`  5 avatares históricos conectados a su unidad canónica: ${Object.entries(HISTORIC_AVATAR_UNIT_MAP).map(([k, u]) => `${k}->${u}`).join(', ')}.`);
+  console.log(`  5 reward bundles de avatar histórico asegurados; maestría de materia: ${Object.entries(HISTORIC_AVATAR_SUBJECT_MAP).map(([k, s]) => `${k}->${s}`).join(', ')}.`);
 
   console.log('\n--- 7. Retiro de marcos legacy ---');
   const retire = await prisma.cosmeticItem.updateMany({

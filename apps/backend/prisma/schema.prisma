@@ -1058,17 +1058,27 @@ enum RewardSourceEntityType {
   /// misma liga en otra temporada nunca duplica la propiedad
   /// (`idempotencyKey = reward:LEAGUE:{leagueDefinitionId}`).
   LEAGUE
-  /// STABILIZATION-B -- procedencia de los avatares históricos V1 entregados
-  /// al completar TODOS los recursos canónicos de su unidad mapeada
-  /// (`RewardEvaluationWorker`). `sourceEntityId` = `CurriculumTopic.id` de
-  /// esa unidad -- identidad estable, independiente de temporada/reintento
-  /// (`idempotencyKey = reward:STUDY_UNIT:{curriculumTopicId}`).
+  /// STABILIZATION-B -- procedencia de un cosmético entregado al completar
+  /// TODOS los recursos canónicos de UNA unidad raíz canónica
+  /// (`RewardEvaluationWorker`). Sigue siendo una capacidad GENERAL válida
+  /// (rewards futuros por unidad). `sourceEntityId` = `CurriculumTopic.id`.
+  /// STABILIZATION-B6A -- los 5 primeros avatares históricos V1 dejaron de
+  /// usar esta vía (pasaron a STUDY_SUBJECT); ninguna fila
+  /// `curriculum_topic.reward_bundle_id` la alimenta ya.
   STUDY_UNIT
   /// STABILIZATION-B (Titles V1) -- procedencia de un AccountTitle otorgado
   /// al alcanzar uno de los 7 umbrales congelados de Títulos V1 (NUNCA vía
   /// el motor de Logros -- Titles V1 no usa achievement_definition/
   /// achievement_version). `sourceEntityId` = `{accountId}:{titleKey}`.
   TITLE_UNLOCK
+  /// STABILIZATION-B6A -- procedencia de los 5 primeros avatares históricos
+  /// V1, entregados al completar UNA MATERIA canónica ENTERA (todas sus
+  /// unidades canónicas V1 completas), no una sola unidad. Reutiliza la
+  /// misma semántica de completitud de unidad ya establecida (todos los
+  /// recursos canónicos COMPLETED), compuesta a nivel materia
+  /// (`SubjectCompletionService`). `sourceEntityId` = `{accountId}:{subjectKey}`
+  /// (`idempotencyKey = reward:STUDY_SUBJECT:{accountId}:{subjectKey}`).
+  STUDY_SUBJECT
 
   @@map("reward_source_entity_type")
 }

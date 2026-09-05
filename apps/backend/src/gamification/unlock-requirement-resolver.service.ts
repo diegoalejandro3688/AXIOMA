@@ -5,8 +5,11 @@ import { AchievementVersionRepository } from './achievement-version.repository';
 import { ChallengeDefinitionRepository } from './challenge-definition.repository';
 import { TitleDefinitionRepository } from './title-definition.repository';
 import { CurriculumTopicRepository } from '../education/curriculum-topic.repository';
+import { CosmeticItemRepository } from './cosmetic-item.repository';
+import { SubjectRepository } from '../education/subject.repository';
 import { parseUnlockRule } from './achievement-unlock-rule';
 import { TITLES_V1, type TitleV1Metric } from './titles-v1-catalog';
+import { HISTORIC_AVATAR_SUBJECT_MAP } from './cosmetics-v1-catalog';
 import type { RewardComponentType } from '../generated/prisma/client';
 
 export type UnlockRequirementView =
@@ -14,6 +17,7 @@ export type UnlockRequirementView =
   | { source: 'ACHIEVEMENT'; achievementKey: string; achievementName: string; unlockRule: { schemaVersion: 'v1'; type: 'XP_THRESHOLD'; value: number } }
   | { source: 'CHALLENGE'; challengeKey: string; challengeName: string; challengeType: 'DAILY' | 'WEEKLY'; completionRule: string }
   | { source: 'STUDY_UNIT'; unitCode: string; unitName: string; requirementCopy: string }
+  | { source: 'STUDY_SUBJECT'; subjectCode: string; subjectName: string; requirementCopy: string }
   | { source: 'TITLE_THRESHOLD'; metric: TitleV1Metric; threshold: number; requirementCopy: string };
 
 /**
@@ -29,10 +33,13 @@ export type UnlockRequirementView =
  *   2. `reward_bundle_item -> reward_bundle -> achievement_version`   (ACHIEVEMENT)
  *   3. `reward_bundle_item -> reward_bundle -> challenge_definition`  (CHALLENGE)
  *   4. `reward_bundle_item -> reward_bundle -> curriculum_topic.reward_bundle_id`
- *      (STUDY_UNIT -- avatares históricos V1, STABILIZATION-B2)
+ *      (STUDY_UNIT -- capacidad GENERAL; ningún cosmético V1 la usa hoy)
  *   5. `TitleDefinition.titleKey` en `TITLES_V1` (`titles-v1-catalog.ts`)
  *      (TITLE_THRESHOLD -- Títulos V1, STABILIZATION-B3, que NO usan
  *      `RewardBundle`: la propiedad vive directa en `account_title`)
+ *   6. `cosmetic_item.itemKey` en `HISTORIC_AVATAR_SUBJECT_MAP`
+ *      (STUDY_SUBJECT -- avatares históricos V1, STABILIZATION-B6A, maestría
+ *      de materia; tampoco pasa por `RewardBundle` para el requisito)
  *
  * Lectura pura, sin escritura, sin reinterpretar `RewardEvaluationWorker`
  * ni ninguna regla de entrega -- solo lee la MISMA cadena relacional que
@@ -48,6 +55,8 @@ export class UnlockRequirementResolverService {
     private readonly challengeDefinitionRepo: ChallengeDefinitionRepository,
     private readonly curriculumTopicRepo: CurriculumTopicRepository,
     private readonly titleDefinitionRepo: TitleDefinitionRepository,
+    private readonly cosmeticItemRepo: CosmeticItemRepository,
+    private readonly subjectRepo: SubjectRepository,
   ) {}
 
   /**
@@ -74,6 +83,37 @@ export class UnlockRequirementResolverService {
           threshold: entry.threshold,
           requirementCopy: entry.lockedRequirementCopy,
         });
+      }
+    }
+
+    // Ruta 6 -- STUDY_SUBJECT (avatares históricos V1 = maestría de materia,
+    // STABILIZATION-B6A). Como TITLE_THRESHOLD, NO pasa por `reward_bundle`:
+    // el requisito se deriva del `itemKey` canónico del cosmético y del
+    // `HISTORIC_AVATAR_SUBJECT_MAP` congelado, resolviendo el nombre real de
+    // la materia desde `subject` (nunca un string arbitrario ni cinco
+    // constantes en el cliente). Debe ejecutarse ANTES de la salida temprana
+    // por `bundleLinks` vacío: los 5 vínculos `curriculum_topic.reward_bundle_id`
+    // se retiraron en B6A.
+    if (componentType === 'COSMETIC') {
+      const items = await this.cosmeticItemRepo.findManyByIds(referenceIds);
+      const historic = items.filter((item) => item.itemKey in HISTORIC_AVATAR_SUBJECT_MAP);
+      if (historic.length > 0) {
+        const subjectKeys = [...new Set(historic.map((item) => HISTORIC_AVATAR_SUBJECT_MAP[item.itemKey]!))];
+        const subjectByKey = new Map(
+          (await Promise.all(subjectKeys.map((key) => this.subjectRepo.findByKey(key))))
+            .filter((s): s is NonNullable<typeof s> => s != null)
+            .map((s) => [s.subjectKey, s] as const),
+        );
+        for (const item of historic) {
+          const subject = subjectByKey.get(HISTORIC_AVATAR_SUBJECT_MAP[item.itemKey]!);
+          if (!subject) continue;
+          result.get(item.id)?.push({
+            source: 'STUDY_SUBJECT',
+            subjectCode: subject.subjectKey,
+            subjectName: subject.name,
+            requirementCopy: `Completa ${subject.name}`,
+          });
+        }
       }
     }
 

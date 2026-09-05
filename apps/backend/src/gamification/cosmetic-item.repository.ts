@@ -34,6 +34,16 @@ export class CosmeticItemRepository {
   }
 
   /**
+   * STABILIZATION-B6A -- resolución por lote id -> `cosmetic_item` para
+   * `UnlockRequirementResolverService` (avatares históricos V1 = maestría de
+   * materia). `WHERE id IN (...)`, una sola consulta.
+   */
+  findManyByIds(ids: string[]): Promise<CosmeticItem[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.prisma.cosmeticItem.findMany({ where: { id: { in: ids } } });
+  }
+
+  /**
    * LEF Bloque V, Incremento 6 -- catálogo de cosméticos VISIBLES
    * (`visibilityStatus = PUBLIC`, `status = ACTIVE`) que la cuenta NO
    * posee todavía -- candidatos a "bloqueado". Mismo criterio de

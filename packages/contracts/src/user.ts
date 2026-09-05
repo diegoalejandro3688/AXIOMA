@@ -191,18 +191,33 @@ export const challengeUnlockRequirementSchema = z.object({
   completionRule: z.string(),
 });
 /**
- * STABILIZATION-B6 -- variante ADITIVA. Los avatares históricos V1 (B2) se
- * desbloquean completando su unidad canónica mapeada
+ * STABILIZATION-B6 -- variante ADITIVA. Capacidad GENERAL: un cosmético que
+ * se desbloquea completando UNA unidad canónica
  * (`curriculum_topic.reward_bundle_id -> reward_bundle -> reward_bundle_item`),
- * un mecanismo que el resolver original (nivel/logro/desafío) no describía,
- * por lo que quedaban invisibles en el catálogo. `requirementCopy` lo
- * deriva el backend de forma determinista a partir del nombre canónico de
- * la unidad -- nunca un string arbitrario del cliente.
+ * un mecanismo que el resolver original (nivel/logro/desafío) no describía.
+ * `requirementCopy` lo deriva el backend de forma determinista a partir del
+ * nombre canónico de la unidad -- nunca un string arbitrario del cliente.
+ * (STABILIZATION-B6A: los 5 avatares históricos V1 ya NO usan esta vía --
+ * pasaron a `STUDY_SUBJECT`. Se mantiene para rewards por unidad futuros.)
  */
 export const studyUnitUnlockRequirementSchema = z.object({
   source: z.literal('STUDY_UNIT'),
   unitCode: z.string(),
   unitName: z.string(),
+  requirementCopy: z.string(),
+});
+/**
+ * STABILIZATION-B6A -- variante ADITIVA. Los 5 primeros avatares históricos
+ * V1 son recompensas de MAESTRÍA DE MATERIA: se desbloquean al completar
+ * TODAS las unidades canónicas V1 de su materia mapeada (no una sola
+ * unidad). Mapeo congelado `HISTORIC_AVATAR_SUBJECT_MAP`. `subjectCode` =
+ * `subject.subject_key` canónico; `requirementCopy` = `"Completa {subjectName}"`
+ * derivado del `subject.name` canónico -- nunca un string del cliente.
+ */
+export const studySubjectUnlockRequirementSchema = z.object({
+  source: z.literal('STUDY_SUBJECT'),
+  subjectCode: z.string(),
+  subjectName: z.string(),
   requirementCopy: z.string(),
 });
 /**
@@ -223,6 +238,7 @@ export const unlockRequirementSchema = z.discriminatedUnion('source', [
   achievementUnlockRequirementSchema,
   challengeUnlockRequirementSchema,
   studyUnitUnlockRequirementSchema,
+  studySubjectUnlockRequirementSchema,
   titleThresholdUnlockRequirementSchema,
 ]);
 export type UnlockRequirement = z.infer<typeof unlockRequirementSchema>;

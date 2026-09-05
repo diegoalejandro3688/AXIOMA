@@ -38,7 +38,8 @@ import { utcDayStart } from './daily-activity-signal.reader';
 import { ValidatedGamificationActivityRepository } from './validated-gamification-activity.repository';
 import { CurriculumTopicRepository } from '../education/curriculum-topic.repository';
 import { CurriculumTopicProgressRepository } from '../progress/curriculum-topic-progress.repository';
-import { HISTORIC_AVATAR_UNIT_MAP } from './cosmetics-v1-catalog';
+import { HISTORIC_AVATAR_SUBJECT_MAP } from './cosmetics-v1-catalog';
+import { SubjectCompletionService } from './subject-completion.service';
 import { TitleDefinitionRepository } from './title-definition.repository';
 import { TitleEligibilityService } from './title-eligibility.service';
 import { TITLES_V1 } from './titles-v1-catalog';
@@ -152,6 +153,7 @@ export class RewardEvaluationWorker {
     private readonly curriculumTopicProgressRepo: CurriculumTopicProgressRepository,
     private readonly titleDefinitionRepo: TitleDefinitionRepository,
     private readonly titleEligibilityService: TitleEligibilityService,
+    private readonly subjectCompletionService: SubjectCompletionService,
   ) {}
 
   /**
@@ -622,45 +624,38 @@ export class RewardEvaluationWorker {
   }
 
   /**
-   * STABILIZATION-B -- avatares históricos V1. Recompute-desde-el-origen
-   * (mismo criterio que Erudito/Polímata de Títulos): NUNCA usa el
-   * `activityType` del evento como proxy de "unidad completa" -- cada vez
-   * que hay AL MENOS un OTORGAMIENTO pendiente, recalcula desde cero, para
-   * las 5 unidades mapeadas, si TODOS sus recursos canónicos
-   * (`CurriculumTopicRepository.findCanonicalResourceChildIds`, misma
-   * definición exacta que "Progreso por materia" de Perfil) están
-   * `curriculum_topic_progress.status = COMPLETED`. Una unidad sin
-   * `rewardBundleId` provisionado (seed de cosméticos aún no corrido)
-   * queda como no-op seguro -- nunca un error.
+   * STABILIZATION-B6A -- avatares históricos V1 = recompensas de MAESTRÍA DE
+   * MATERIA. Recompute-desde-el-origen (mismo criterio que Erudito/Polímata
+   * de Títulos): NUNCA usa el `activityType` del evento como proxy -- cada
+   * vez que hay AL MENOS un OTORGAMIENTO pendiente, recalcula desde cero
+   * para los 5 avatares, y otorga sólo si su MATERIA canónica mapeada está
+   * COMPLETA (TODAS sus unidades canónicas V1 completas, vía
+   * `SubjectCompletionService` -- la MISMA semántica de completitud de
+   * unidad ya establecida, compuesta a nivel materia). Completar una sola
+   * unidad ya NO desbloquea nada (superado desde B6A). Un bundle ausente
+   * (seed de cosméticos aún no corrido) es no-op seguro, nunca un error.
    */
   private async evaluateHistoricalAvatars(accountId: string, pendingEntries: XpLedgerEntry[]): Promise<boolean> {
     const hasOtorgamiento = pendingEntries.some((entry) => entry.entryType === 'OTORGAMIENTO');
     if (!hasOtorgamiento) return true;
 
     let allResolved = true;
-    for (const unitCode of new Set(Object.values(HISTORIC_AVATAR_UNIT_MAP))) {
-      const unit = await this.curriculumTopicRepo.findByCode(unitCode);
-      if (!unit || !unit.rewardBundleId) continue;
+    for (const [itemKey, subjectKey] of Object.entries(HISTORIC_AVATAR_SUBJECT_MAP)) {
+      const subjectComplete = await this.subjectCompletionService.isSubjectCompleteByKey(accountId, subjectKey);
+      if (!subjectComplete) continue;
 
-      const childIds = await this.curriculumTopicRepo.findCanonicalResourceChildIds(unit.id);
-      if (childIds.length === 0) continue;
+      // El reward_bundle del avatar histórico ya NO se ubica vía
+      // `curriculum_topic.reward_bundle_id` (esos 5 vínculos se retiraron en
+      // B6A) -- se ubica por su `bundleKey` canónico determinístico, el
+      // mismo que crea `seed-cosmetics-v1.ts` (`cosmetics-v1-historic-{itemKey}`).
+      const bundle = await this.bundleRepo.findByBundleKey(`cosmetics-v1-historic-${itemKey}`);
+      if (!bundle) continue;
 
-      const progressRows = await this.curriculumTopicProgressRepo.findManyByAccountAndTopicIds(accountId, childIds);
-      const completedCount = progressRows.filter((row) => row.status === 'COMPLETED').length;
-      if (completedCount < childIds.length) continue;
-
-      const bundle = await this.bundleRepo.findById(unit.rewardBundleId);
-      if (!bundle) {
-        this.logger.error(`Unidad "${unit.code}" referencia un reward_bundle_id inexistente (${unit.rewardBundleId}).`);
-        allResolved = false;
-        continue;
-      }
-      // STABILIZATION-B -- `sourceEntityId` incluye `accountId` (mismo
-      // criterio que LEVEL, `${accountId}:${levelNumber}`): `unit.id` solo
-      // es el MISMO para toda cuenta que complete esa unidad -- sin el
-      // prefijo, `deliverBundleComponents` colisionaría entre cuentas (ver
-      // idempotencyKey global de RewardGrant, sin accountId propio).
-      const { allResolved: delivered } = await this.deliverBundleComponents(accountId, bundle, 'STUDY_UNIT', `${accountId}:${unit.id}`);
+      // `sourceEntityId = {accountId}:{subjectKey}` -- identidad estable e
+      // independiente de temporada/reintento; incluye `accountId` porque el
+      // `idempotencyKey` global de RewardGrant no lo lleva (mismo criterio
+      // que LEVEL/LEAGUE/STUDY_UNIT).
+      const { allResolved: delivered } = await this.deliverBundleComponents(accountId, bundle, 'STUDY_SUBJECT', `${accountId}:${subjectKey}`);
       if (!delivered) allResolved = false;
     }
     return allResolved;
