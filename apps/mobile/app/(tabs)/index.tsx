@@ -8,6 +8,7 @@ import { getLevel, getStreak } from '../../lib/api/progression';
 import { listChallenges } from '../../lib/api/challenges';
 import { groupChallenges, progressRatio as challengeProgressRatio } from '../../lib/challenges/group-challenges';
 import { pickContinueTarget, type ContinueTarget } from '../../lib/progress/pick-continue-topic';
+import { useBoundedReconciliation } from '../../lib/progress/use-bounded-reconciliation';
 import { useEntitlement } from '../../lib/entitlement/entitlement-provider';
 import { LoadingState } from '../../components/loading-state';
 import { Text, Icon, Card, Progress, LevelBadge } from '../../components/ui';
@@ -168,6 +169,17 @@ export default function InicioScreen() {
     }, [load]),
   );
 
+  // STABILIZATION-B8 (Polish F) -- tras una actividad de estudio, XP y
+  // Desafíos llegan de forma asíncrona (~1.5-2.5 min). Mientras la ventana
+  // de reconciliación esté armada y el XP autoritativo NO haya cambiado,
+  // esta tarjeta muestra "Actualizando progreso…" y refresca de forma
+  // acotada. Nunca fabrica XP.
+  const reconcileRefresh = useCallback(() => void load({ silent: true }), [load]);
+  const { processing: progressProcessing } = useBoundedReconciliation(
+    reconcileRefresh,
+    state.status === 'ready' && state.level ? state.level.lifetimeXp : null,
+  );
+
   if (state.status === 'loading') return <LoadingState message="Cargando tu progreso…" />;
 
   const continuation = state.continuation;
@@ -252,6 +264,11 @@ export default function InicioScreen() {
               accessibilityLabel={`Progreso de nivel: ${Math.round(state.level.progressRatio * 100)}%`}
             />
           </View>
+          {progressProcessing ? (
+            <Text variant="caption" color="secondary" style={styles.reconcilingNote} accessibilityLabel="Actualizando progreso">
+              Actualizando progreso…
+            </Text>
+          ) : null}
         </Card>
       ) : (
         <Card variant="outlined" style={styles.statusCard}>
@@ -426,6 +443,7 @@ function createStyles(t: ThemeTokens) {
 
     // SECUNDARIO -- Nivel / XP (una sola unidad)
     statusCard: { gap: spacing.space3 },
+    reconcilingNote: { marginTop: -spacing.space1 },
     statusRow: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, gap: spacing.space3 },
     statusLeft: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.space2, flexShrink: 1, minWidth: 0 },
     statusXp: { flexShrink: 0 },

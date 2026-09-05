@@ -6,6 +6,7 @@ import type { QuestionResponse, ResourceContentBlockResponse, TopicProgressRespo
 import { listPublishedQuestions } from '../../../../../lib/api/education';
 import { getTopicProgress } from '../../../../../lib/api/progress';
 import { submitResponseViaOutbox } from '../../../../../lib/progress/submit-response';
+import { armStudyProgressReconciliation } from '../../../../../lib/progress/study-progress-reconciliation';
 import { syncPendingOperations } from '../../../../../lib/offline/sync-worker';
 import { isPremiumRequiredError, isPremiumRequiredOutcome } from '../../../../../lib/entitlement/premium-error';
 import { PremiumLockedScreen } from '../../../../../components/premium/premium-locked-screen';
@@ -124,6 +125,18 @@ export default function EjercicioScreen() {
     if (isPremiumRequiredOutcome(outcome)) {
       setState({ status: 'premium' });
       return;
+    }
+
+    // STABILIZATION-B8 (Polish F) -- el servidor ACEPTÓ la respuesta: se
+    // producirá una actividad de estudio (RESPUESTA_VALIDADA, y
+    // RECURSO_COMPLETADO/TEMA_COMPLETADO si esto completó el recurso/tema),
+    // cuyo XP + evaluación de Desafíos llega de forma asíncrona (~1.5-2.5 min).
+    // Se "arma" la ventana de reconciliación para que Inicio/Competir
+    // muestren "Actualizando progreso…" y refresquen de forma acotada.
+    // NUNCA se fabrica XP ni contadores aquí. Sólo en el camino ACEPTADO
+    // (`outcome.kind === 'ok'`) -- una operación en cola offline no arma nada.
+    if (outcome.kind === 'ok') {
+      armStudyProgressReconciliation();
     }
 
     setState((prev) => {

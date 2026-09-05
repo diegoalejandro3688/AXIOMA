@@ -19,6 +19,7 @@ import { LeagueLadderDialog } from '../../../components/competitive/league-ladde
 import { LeagueTrophy } from '../../../components/competitive/league-trophy';
 import { ChallengeRow } from '../../../components/challenges/challenge-row';
 import { useChallengeClaim } from '../../../components/challenges/use-challenge-claim';
+import { useBoundedReconciliation } from '../../../lib/progress/use-bounded-reconciliation';
 import { useTheme, useThemedStyles, useColorSchemeName, spacing, radii } from '../../../theme';
 import type { ThemeTokens, IconName } from '../../../theme';
 
@@ -188,11 +189,12 @@ export default function CompetirScreen() {
     else if (!silent) setMyContext(null);
   }, []);
 
-  const load = useCallback(async () => {
-    setState({ status: 'loading' });
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    if (!silent) setState({ status: 'loading' });
     const result = await listChallenges();
     if (!result.ok) {
-      setState({ status: 'error', message: result.message });
+      if (!silent) setState({ status: 'error', message: result.message });
       return;
     }
     setState({ status: 'ready', challenges: result.data.challenges });
@@ -208,6 +210,17 @@ export default function CompetirScreen() {
     );
   }, []);
   const { claimingId, errors: claimErrors, claim, claiming } = useChallengeClaim({ onClaimed: applyClaimed, onReconcile: load });
+
+  // STABILIZATION-B8 (Polish F, §21) -- tras una actividad de ESTUDIO, el
+  // progreso de Desafíos llega asíncrono (~1.5-2.5 min). Mientras la ventana
+  // de reconciliación esté armada y ningún contador haya cambiado, la
+  // sección Desafíos muestra "Actualizando progreso…" y refresca de forma
+  // acotada. Quick NUNCA arma esto (no es actividad de estudio). Nunca
+  // fabrica contadores.
+  const challengeSignature =
+    state.status === 'ready' ? state.challenges.map((c) => `${c.id}:${c.progressValue}:${c.challengeStatus}`).join('|') : null;
+  const reconcileChallenges = useCallback(() => void load({ silent: true }), [load]);
+  const { processing: challengeProcessing } = useBoundedReconciliation(reconcileChallenges, challengeSignature);
 
   useEffect(() => {
     load();
@@ -505,6 +518,12 @@ export default function CompetirScreen() {
           Desafíos
         </Text>
 
+        {challengeProcessing && state.status === 'ready' ? (
+          <Text variant="caption" color="secondary" accessibilityLabel="Actualizando progreso">
+            Actualizando progreso…
+          </Text>
+        ) : null}
+
         {state.status === 'loading' ? (
           <ActivityIndicator color={tokens.color.accent.default} />
         ) : state.status === 'error' ? (
@@ -594,7 +613,14 @@ export default function CompetirScreen() {
 
       {renderChallengesSection()}
     </ScrollView>
-    <LeagueLadderDialog visible={leagueInfoVisible} onRequestClose={() => setLeagueInfoVisible(false)} />
+    <LeagueLadderDialog
+      visible={leagueInfoVisible}
+      onRequestClose={() => setLeagueInfoVisible(false)}
+      // STABILIZATION-B8 (Polish E) -- liga vigente AUTORITATIVA de la
+      // participación de la temporada actual (`view.leagueTier`); sólo
+      // cuando hay una participación cargada. Nunca un valor fijo.
+      currentTier={leagueState.status === 'ready' && leagueState.view.kind === 'enrolled' ? leagueState.view.leagueTier : null}
+    />
     </>
   );
 }

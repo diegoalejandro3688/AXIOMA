@@ -10,6 +10,7 @@ import {
   submitExamAttempt,
 } from '../../../../../../lib/api/exams';
 import { forgetActiveAttempt } from '../../../../../../lib/exams/attempt-cache';
+import { armStudyProgressReconciliation } from '../../../../../../lib/progress/study-progress-reconciliation';
 import {
   selectionsFromQuestions,
   sortByDisplayOrder,
@@ -207,6 +208,10 @@ export default function EnsayoAttemptScreen() {
     setSubmitting(false);
     setConfirmSubmit(false);
     if (result.ok || (result.kind === 'http' && result.status === 409)) {
+      // STABILIZATION-B8 (Polish F) -- ensayo enviado: se producirá
+      // ENSAYO_COMPLETADO, cuyo XP + evaluación de Desafíos llega asíncrono.
+      // Inicio/Competir mostrarán "Actualizando progreso…" de forma acotada.
+      if (result.ok) armStudyProgressReconciliation();
       await forgetActiveAttempt(examId);
       goToResult();
       return;
