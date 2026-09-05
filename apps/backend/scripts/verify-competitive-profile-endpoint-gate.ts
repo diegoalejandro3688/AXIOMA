@@ -7,6 +7,7 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
+import { assertGateDb, finalizeStaleGateSeasons, retireStaleGateLeagues } from './gate-db-safety';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identity.provider';
@@ -74,6 +75,7 @@ async function main() {
   const prisma = new PrismaClient({ adapter }) as unknown as PrismaService;
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
+  await assertGateDb(pg);
 
   const seasonRepo = new GameSeasonRepository(prisma);
   const leagueDefinitionRepo = new LeagueDefinitionRepository(prisma);
@@ -140,10 +142,10 @@ async function main() {
 
   // --- Liga real para accountVisible ---
   // Higiene entre corridas -- ninguna temporada ACTIVE huérfana de una corrida anterior (mismo criterio que verify-league-ranking-gate.ts).
-  await pg.query("UPDATE game_season SET status = 'FINALIZED', finalized_at = now() WHERE status = 'ACTIVE'");
+  await finalizeStaleGateSeasons(pg);
   const season = await seasonRepo.create({ seasonKey: `cpe-gate-${suffix}`, name: 'Temporada CPE', startsAt: seasonStart, endsAt: seasonEnd });
   await pg.query("UPDATE game_season SET status = 'ACTIVE' WHERE id = $1", [season.id]);
-  await pg.query("UPDATE league_definition SET status = 'RETIRED', retired_at = now() WHERE status = 'ACTIVE'");
+  await retireStaleGateLeagues(pg);
   const tier = await leagueDefinitionRepo.create({ leagueKey: `cpe-tier-${suffix}`, name: 'Liga de Prueba CPE', tierOrder: 10, participantGroupSize: 40 });
   const groupRow = await pg.query(
     `INSERT INTO league_group (id, game_season_id, league_definition_id, group_number, capacity, assignment_policy_version, status)

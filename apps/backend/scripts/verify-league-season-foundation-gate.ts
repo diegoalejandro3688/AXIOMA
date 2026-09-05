@@ -7,6 +7,7 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
+import { assertGateDb, finalizeStaleGateSeasons, retireStaleGateLeagues } from './gate-db-safety';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient, Prisma } from '../src/generated/prisma/client';
 import { GameSeasonRepository } from '../src/gamification/game-season.repository';
@@ -63,6 +64,7 @@ async function main() {
   const prisma = new PrismaClient({ adapter }) as unknown as PrismaService;
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
+  await assertGateDb(pg);
 
   const seasonRepo = new GameSeasonRepository(prisma);
   const leagueDefinitionRepo = new LeagueDefinitionRepository(prisma);
@@ -134,7 +136,7 @@ async function main() {
   // a mitad de camino), puede haber dejado una temporada ACTIVE huérfana --
   // el índice único parcial (una sola ACTIVE a la vez) impediría activar la
   // temporada de ESTA corrida si no se limpia primero.
-  await pg.query("UPDATE game_season SET status = 'FINALIZED', finalized_at = now() WHERE status = 'ACTIVE'");
+  await finalizeStaleGateSeasons(pg);
 
   console.log('--- 1. game_season: creación, invariante de una sola ACTIVE (índice único parcial) ---');
   const seasonA = await seasonRepo.create({
@@ -194,10 +196,10 @@ async function main() {
   // Higiene: `findLowestActiveTier` no filtra por corrida -- nos aseguramos
   // de que ningún tier de otra ejecución previa de este gate tenga
   // tierOrder menor al de "bronze" recién creado.
-  await pg.query("UPDATE league_definition SET status = 'RETIRED' WHERE league_key NOT IN ($1, $2) AND status = 'ACTIVE'", [
-    bronze.leagueKey,
-    silver.leagueKey,
-  ]);
+  // STABILIZATION-B7 -- namespaced: sólo ligas-fixture de gate (marca epoch),
+  // nunca las 7 ligas productivas. `bronze`/`silver` de esta corrida se
+  // preservan explícitamente.
+  await retireStaleGateLeagues(pg, [bronze.leagueKey, silver.leagueKey]);
   const lowestTier = await leagueDefinitionRepo.findLowestActiveTier();
   check('findLowestActiveTier devuelve el tier de tierOrder mínimo (Bronce, no Plata)', lowestTier?.id === bronze.id);
 

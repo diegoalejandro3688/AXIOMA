@@ -19,6 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
+import { assertGateDb, finalizeStaleGateSeasons, retireStaleGateLeagues } from './gate-db-safety';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
@@ -143,6 +144,7 @@ async function main() {
   const prisma = new PrismaClient({ adapter }) as unknown as PrismaService;
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
+  await assertGateDb(pg);
 
   const seasonRepo = new GameSeasonRepository(prisma);
   const leagueDefinitionRepo = new LeagueDefinitionRepository(prisma);
@@ -195,8 +197,8 @@ async function main() {
   const now = new Date();
 
   // Higiene: cierra cualquier temporada ACTIVE huérfana + retira tiers previos.
-  await pg.query("UPDATE game_season SET status = 'FINALIZED', finalized_at = now() WHERE status = 'ACTIVE'");
-  await pg.query("UPDATE league_definition SET status = 'RETIRED', retired_at = now() WHERE status = 'ACTIVE'");
+  await finalizeStaleGateSeasons(pg);
+  await retireStaleGateLeagues(pg);
 
   const tier = await leagueDefinitionRepo.create({ leagueKey: `compv1-tier-${suffix}`, name: 'Bronce', tierOrder: 1, participantGroupSize: 30, promotionRule: 'top-percent:20', demotionRule: 'bottom-percent:20' });
   const season = await seasonRepo.create({ seasonKey: `compv1-${suffix}`, name: 'CompV1', startsAt: new Date(now.getTime() - 60 * 60 * 1000), endsAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) });

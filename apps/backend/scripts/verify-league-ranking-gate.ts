@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
+import { assertGateDb, finalizeStaleGateSeasons, retireStaleGateLeagues } from './gate-db-safety';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { GameSeasonRepository } from '../src/gamification/game-season.repository';
@@ -42,9 +43,10 @@ async function main() {
   const prisma = new PrismaClient({ adapter }) as unknown as PrismaService;
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
+  await assertGateDb(pg);
 
   // Higiene entre corridas -- ninguna temporada ACTIVE huérfana de una corrida anterior interrumpida.
-  await pg.query("UPDATE game_season SET status = 'FINALIZED', finalized_at = now() WHERE status = 'ACTIVE'");
+  await finalizeStaleGateSeasons(pg);
   // Higiene entre corridas -- este gate depende de ser dueño del `tierOrder`
   // más alto/más bajo ACTIVE para probar "tiers extremos" (§7b). Sin esto,
   // una corrida anterior de ESTE MISMO gate deja un league_definition ACTIVE
@@ -52,7 +54,7 @@ async function main() {
   // pueden devolver esa fila vieja en vez de la de esta corrida (empate de
   // tierOrder, desempate arbitrario de la base) -- falso negativo, no un
   // defecto de la lógica de producción.
-  await pg.query("UPDATE league_definition SET status = 'RETIRED', retired_at = now() WHERE status = 'ACTIVE'");
+  await retireStaleGateLeagues(pg);
 
   const seasonRepo = new GameSeasonRepository(prisma);
   const leagueDefinitionRepo = new LeagueDefinitionRepository(prisma);

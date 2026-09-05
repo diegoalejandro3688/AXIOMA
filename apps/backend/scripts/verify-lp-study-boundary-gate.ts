@@ -18,6 +18,7 @@ import { LeaguePointLedgerEntryRepository } from '../src/gamification/league-poi
 import { QuickQuestionAttemptRepository } from '../src/gamification/quick-question-attempt.repository';
 import { LeaguePointGrantService } from '../src/gamification/league-point-grant.service';
 import { hotfixStudyLpBoundary } from './competitive-hotfix-study-lp-boundary-v1';
+import { assertGateDbViaPrisma } from './gate-db-safety';
 
 let failures = 0;
 function check(label: string, ok: boolean) {
@@ -48,6 +49,10 @@ async function insertActivity(prisma: PrismaClient, accountId: string, activityT
 async function main() {
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
   const svcPrisma = prisma as unknown as PrismaService;
+  // STABILIZATION-B7 -- este gate se ejecuta DIRECTAMENTE (sin run-gate.ts) y
+  // crea `league_definition`/`game_season` ACTIVE: HARD FAIL si apunta a la
+  // base real (`axioma_dev`). Debe correr contra una base desechable.
+  await assertGateDbViaPrisma(prisma as unknown as { $queryRawUnsafe: <T>(q: string) => Promise<T> });
 
   // --- Fixtures: 1 liga, 1 temporada ACTIVE, 1 grupo OPEN, 1 participante enrolado ---
   const leagueId = randomUUID();

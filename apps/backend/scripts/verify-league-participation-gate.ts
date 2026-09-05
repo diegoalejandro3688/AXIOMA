@@ -10,6 +10,7 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
+import { assertGateDb, finalizeStaleGateSeasons, retireStaleGateLeagues } from './gate-db-safety';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identity.provider';
@@ -62,6 +63,7 @@ async function main() {
   const prisma = new PrismaClient({ adapter }) as unknown as PrismaService;
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
+  await assertGateDb(pg);
 
   const seasonRepo = new GameSeasonRepository(prisma);
   const leagueDefinitionRepo = new LeagueDefinitionRepository(prisma);
@@ -77,7 +79,7 @@ async function main() {
 
   console.log('--- 0. Fixtures: temporada ACTIVA propia + tier más bajo, aislados de otras corridas ---');
   // Higiene entre corridas -- mismo criterio que verify-league-season-foundation-gate.ts.
-  await pg.query("UPDATE game_season SET status = 'FINALIZED', finalized_at = now() WHERE status = 'ACTIVE'");
+  await finalizeStaleGateSeasons(pg);
 
   const season = await seasonRepo.create({
     seasonKey: `lpg-season-${suffix}`,
@@ -95,7 +97,7 @@ async function main() {
   });
   // Asegura que ESTE tier sea el más bajo real durante la corrida -- mismo
   // criterio de higiene que verify-league-season-foundation-gate.ts.
-  await pg.query('UPDATE league_definition SET status = $1 WHERE league_key != $2 AND status = $3', ['RETIRED', bronze.leagueKey, 'ACTIVE']);
+  await retireStaleGateLeagues(pg, bronze.leagueKey);
 
   console.log('--- 1. GET antes de cualquier POST: NOT_ENROLLED, y NUNCA crea participación ---');
   const alice = await createSession('alice');

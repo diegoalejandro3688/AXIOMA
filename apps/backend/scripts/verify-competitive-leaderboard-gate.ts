@@ -6,6 +6,7 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
+import { assertGateDb, finalizeStaleGateSeasons, retireStaleGateLeagues } from './gate-db-safety';
 import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
@@ -84,6 +85,7 @@ async function main() {
   const prisma = new PrismaClient({ adapter, log: [{ emit: 'event', level: 'query' }] }) as unknown as PrismaService;
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
+  await assertGateDb(pg);
 
   let queryCount = 0;
   (prisma as unknown as { $on: (event: 'query', cb: () => void) => void }).$on('query', () => {
@@ -109,10 +111,10 @@ async function main() {
 
   const self = await createSession('self'); // PRIVATE -- prueba la excepción de autoconsulta
 
-  await pg.query("UPDATE game_season SET status = 'FINALIZED', finalized_at = now() WHERE status = 'ACTIVE'");
+  await finalizeStaleGateSeasons(pg);
   const season = await seasonRepo.create({ seasonKey: `cple-gate-${suffix}`, name: 'Temporada CPLE', startsAt: seasonStart, endsAt: seasonEnd });
   await pg.query("UPDATE game_season SET status = 'ACTIVE' WHERE id = $1", [season.id]);
-  await pg.query("UPDATE league_definition SET status = 'RETIRED', retired_at = now() WHERE status = 'ACTIVE'");
+  await retireStaleGateLeagues(pg);
   // COMPETITIVE V1 -- `tier` es un tier MEDIO real (below @9 / above @11 ACTIVE),
   // con la gramática productiva `top/bottom-percent:20`, para que la zona EN
   // VIVO produzca PROMOTION/DEMOTION reales (no todo RETENTION por borde de tier).

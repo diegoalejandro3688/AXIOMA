@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
+import { assertGateDb, finalizeStaleGateSeasons, retireStaleGateLeagues } from './gate-db-safety';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identity.provider';
@@ -107,9 +108,10 @@ async function main() {
   const prisma = new PrismaClient({ adapter }) as unknown as PrismaService;
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
+  await assertGateDb(pg);
 
-  await pg.query("UPDATE game_season SET status = 'FINALIZED', finalized_at = now() WHERE status = 'ACTIVE'");
-  await pg.query("UPDATE league_definition SET status = 'RETIRED', retired_at = now() WHERE status = 'ACTIVE'");
+  await finalizeStaleGateSeasons(pg);
+  await retireStaleGateLeagues(pg);
 
   const titleDefinitionRepo = new TitleDefinitionRepository(prisma);
   const accountTitleRepo = new AccountTitleRepository(prisma);

@@ -14,6 +14,7 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
+import { assertGateDb } from './gate-db-safety';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { XpLedgerEntryRepository } from '../src/gamification/xp-ledger-entry.repository';
@@ -65,6 +66,7 @@ async function main() {
   const prisma = new PrismaClient({ adapter }) as unknown as PrismaService;
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
+  await assertGateDb(pg);
 
   const suffix = Date.now();
   const curriculumTopicRepo = new CurriculumTopicRepository(prisma);
