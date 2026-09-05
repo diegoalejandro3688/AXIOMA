@@ -8,6 +8,7 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
+import { assertGateDb, finalizeStaleGateSeasons, retireOtherActiveLeagues } from './gate-db-safety';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { GameSeasonRepository } from '../src/gamification/game-season.repository';
@@ -58,6 +59,7 @@ async function main() {
   const prisma = new PrismaClient({ adapter }) as unknown as PrismaService;
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
+  await assertGateDb(pg);
 
   const suffix = Date.now();
   const bundleRepo = new RewardBundleRepository(prisma);
@@ -133,9 +135,31 @@ async function main() {
   const tier3 = await leagueDefinitionRepo.create({ leagueKey: `gate-tier3-${suffix}`, name: 'Tier 3 (terminal)', tierOrder: 3, participantGroupSize: 30, promotionRule: 'top-percent:20', demotionRule: 'bottom-percent:20', rewardBundleId: t3.bundleId });
   check('3 tiers creados ACTIVE', tier1.status === 'ACTIVE' && tier2.status === 'ACTIVE' && tier3.status === 'ACTIVE');
 
+  // STABILIZATION-B7 -- FIXTURE INVÁLIDO CORREGIDO: los 3 tiers-fixture usan
+  // `tierOrder` 1/2/3, que COLISIONAN con las 7 ligas productivas seedeadas
+  // en la base de gates (Bronce=1, Plata=2, Oro=3, ...). Sin esto,
+  // `findLowestActiveTier` / `findAdjacentActiveTier` devolvían una liga
+  // REAL en vez de la del gate, `resolveTargetTier` resolvía un tier sin el
+  // `rewardBundleId` del gate y NINGÚN marco se entregaba -- exactamente la
+  // firma de 9 fallos que arrastraba este gate. Se retiran todas las ligas
+  // ACTIVE ajenas a esta corrida (seguro: `assertGateDb` ya hizo HARD FAIL
+  // si la base fuese `axioma_dev`).
+  await retireOtherActiveLeagues(pg, [tier1.leagueKey, tier2.leagueKey, tier3.leagueKey]);
+
+  // STABILIZATION-B7 -- `startsAt` SIEMPRE en el pasado (1 h atrás) para que
+  // la temporada sea CANÓNICAMENTE VIGENTE (`findCurrent` exige
+  // `startsAt <= now < endsAt`, no sólo status ACTIVE). `offsetDays` sólo
+  // separa los `endsAt` para mantener claves/orden distintos entre las
+  // temporadas sucesivas del gate. Sólo una está ACTIVE a la vez
+  // (`finalizeStaleGateSeasons` cierra la anterior).
   async function newActiveSeason(seasonKey: string, offsetDays: number): Promise<string> {
-    await pg.query("UPDATE game_season SET status = 'FINALIZED' WHERE status = 'ACTIVE'");
-    const season = await seasonRepo.create({ seasonKey, name: seasonKey, startsAt: new Date(Date.now() + offsetDays * 86_400_000), endsAt: new Date(Date.now() + (offsetDays + 7) * 86_400_000) });
+    await finalizeStaleGateSeasons(pg);
+    const season = await seasonRepo.create({
+      seasonKey,
+      name: seasonKey,
+      startsAt: new Date(Date.now() - 60 * 60 * 1000),
+      endsAt: new Date(Date.now() + (offsetDays + 7) * 86_400_000),
+    });
     await pg.query("UPDATE game_season SET status = 'ACTIVE' WHERE id = $1", [season.id]);
     return season.id;
   }
