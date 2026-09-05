@@ -24,6 +24,16 @@ import { AchievementProgressRepository } from '../src/gamification/achievement-p
 import { AchievementUnlockRepository } from '../src/gamification/achievement-unlock.repository';
 import { AccountTitleRepository } from '../src/gamification/account-title.repository';
 import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
+import { ChallengeDefinitionRepository } from '../src/gamification/challenge-definition.repository';
+import { AccountChallengeRepository } from '../src/gamification/account-challenge.repository';
+import { AccountChallengeDailyProgressRepository } from '../src/gamification/account-challenge-daily-progress.repository';
+import { AccountChallengeConsumedEventRepository } from '../src/gamification/account-challenge-consumed-event.repository';
+import { ValidatedGamificationActivityRepository } from '../src/gamification/validated-gamification-activity.repository';
+import { CurriculumTopicRepository } from '../src/education/curriculum-topic.repository';
+import { CurriculumTopicProgressRepository } from '../src/progress/curriculum-topic-progress.repository';
+import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
+import { TitleEligibilityService } from '../src/gamification/title-eligibility.service';
+import { SubjectRepository } from '../src/education/subject.repository';
 import { RewardEvaluationWorker } from '../src/gamification/reward-evaluation.worker';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
@@ -106,6 +116,15 @@ async function main() {
       achievementUnlockRepo,
       accountTitleRepo,
       inventoryItemRepo,
+      new ChallengeDefinitionRepository(prisma),
+      new AccountChallengeRepository(prisma),
+      new AccountChallengeDailyProgressRepository(prisma),
+      new AccountChallengeConsumedEventRepository(prisma),
+      new ValidatedGamificationActivityRepository(prisma),
+      new CurriculumTopicRepository(prisma),
+      new CurriculumTopicProgressRepository(prisma),
+      new TitleDefinitionRepository(prisma),
+      new TitleEligibilityService(prisma, new SubjectRepository(prisma), new CurriculumTopicRepository(prisma), new CurriculumTopicProgressRepository(prisma), progressionService),
     );
   }
   const worker = buildWorker(ledgerRepo);
@@ -409,12 +428,18 @@ async function main() {
   // 'accountTitle' se retiró en 3.a, 'ChallengeDefinition' en 4.b, e
   // 'inventoryItem' en 5.a -- el worker ahora entrega componentes
   // TITLE/COSMETIC y evalúa desafíos legítimamente, todos con autorización
-  // formal (§4.16/§4.19).
+  // formal (§4.16/§4.19). STABILIZATION-B añade 'CurriculumTopicProgress'
+  // a esa misma lista, pero SOLO para `reward-evaluation.worker.ts`
+  // (avatares históricos/Desafíos-solo-estudio en B2, elegibilidad de
+  // Títulos V1 en B3) -- los repositorios de logros siguen sin motivo
+  // para tocar PROGRESS, esa parte de la frontera no cambia.
   const forbiddenSymbols = ['StudentResponse', 'CurriculumTopicProgress', 'PublicProfile', 'equippedTitle', 'equippedCosmetic'];
+  const exemptions: Record<string, string[]> = { 'reward-evaluation.worker.ts': ['CurriculumTopicProgress'] };
   let boundaryViolationFound = false;
   for (const file of filesToCheck) {
     const contents = readFileSync(join(gamificationDir, file), 'utf8');
     for (const symbol of forbiddenSymbols) {
+      if (exemptions[file]?.includes(symbol)) continue;
       if (contents.includes(symbol)) {
         boundaryViolationFound = true;
         console.error(`  ${file} referencia el símbolo prohibido "${symbol}"`);

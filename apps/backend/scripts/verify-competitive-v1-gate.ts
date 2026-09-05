@@ -47,6 +47,15 @@ import { AchievementVersionRepository } from '../src/gamification/achievement-ve
 import { AchievementProgressRepository } from '../src/gamification/achievement-progress.repository';
 import { AchievementUnlockRepository } from '../src/gamification/achievement-unlock.repository';
 import { AccountTitleRepository } from '../src/gamification/account-title.repository';
+import { ChallengeDefinitionRepository } from '../src/gamification/challenge-definition.repository';
+import { AccountChallengeRepository } from '../src/gamification/account-challenge.repository';
+import { AccountChallengeDailyProgressRepository } from '../src/gamification/account-challenge-daily-progress.repository';
+import { AccountChallengeConsumedEventRepository } from '../src/gamification/account-challenge-consumed-event.repository';
+import { CurriculumTopicRepository } from '../src/education/curriculum-topic.repository';
+import { CurriculumTopicProgressRepository } from '../src/progress/curriculum-topic-progress.repository';
+import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
+import { TitleEligibilityService } from '../src/gamification/title-eligibility.service';
+import { SubjectRepository } from '../src/education/subject.repository';
 import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
 import { LEAGUE_POINT_RULES_V1, LEAGUE_POINT_RULE_V1_EFFECTIVE_FROM } from '../src/gamification/competitive-v1-config';
 import { computeZoneCounts, resolveCompetitiveZone, competitiveZoneFor, MINIMUM_PARTICIPANTS_FOR_PROMOTION } from '../src/gamification/promotion-grammar';
@@ -160,6 +169,21 @@ async function main() {
     new AchievementUnlockRepository(prisma),
     new AccountTitleRepository(prisma),
     new InventoryItemRepository(prisma),
+    new ChallengeDefinitionRepository(prisma),
+    new AccountChallengeRepository(prisma),
+    new AccountChallengeDailyProgressRepository(prisma),
+    new AccountChallengeConsumedEventRepository(prisma),
+    new ValidatedGamificationActivityRepository(prisma),
+    new CurriculumTopicRepository(prisma),
+    new CurriculumTopicProgressRepository(prisma),
+    new TitleDefinitionRepository(prisma),
+    new TitleEligibilityService(
+      prisma,
+      new SubjectRepository(prisma),
+      new CurriculumTopicRepository(prisma),
+      new CurriculumTopicProgressRepository(prisma),
+      new ProgressionService(new XpBalanceRepository(prisma), new XpLedgerEntryRepository(prisma), new LevelDefinitionRepository(prisma)),
+    ),
   );
   const enrollmentService = new LeagueEnrollmentService(prisma, seasonRepo, leagueDefinitionRepo, leagueGroupRepo, participationRepo, bundleRepo, rewardWorker);
   const quickQuestionAttemptRepo = new QuickQuestionAttemptRepository(prisma);

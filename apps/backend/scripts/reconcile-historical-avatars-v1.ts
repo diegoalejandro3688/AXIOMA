@@ -42,6 +42,9 @@ import { CurriculumTopicProgressRepository } from '../src/progress/curriculum-to
 import { RewardEvaluationWorker } from '../src/gamification/reward-evaluation.worker';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
 import { HISTORIC_AVATAR_UNIT_MAP } from '../src/gamification/cosmetics-v1-catalog';
+import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
+import { TitleEligibilityService } from '../src/gamification/title-eligibility.service';
+import { SubjectRepository } from '../src/education/subject.repository';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
 
 export interface ReconcileHistoricalAvatarsResult {
@@ -84,6 +87,8 @@ export async function reconcileHistoricalAvatarsV1({ dryRun }: { dryRun: boolean
       new ValidatedGamificationActivityRepository(prisma),
       curriculumTopicRepo,
       curriculumTopicProgressRepo,
+      new TitleDefinitionRepository(prisma),
+      new TitleEligibilityService(prisma, new SubjectRepository(prisma), curriculumTopicRepo, curriculumTopicProgressRepo, new ProgressionService(balanceRepo, ledgerRepo, levelDefRepo)),
     );
 
     console.log(`=== AVATARES HISTÓRICOS V1 -- reconciliación retroactiva ${dryRun ? '(DRY RUN, no escribe)' : ''} ===\n`);

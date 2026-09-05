@@ -29,6 +29,12 @@ import { ChallengeDefinitionRepository } from '../src/gamification/challenge-def
 import { AccountChallengeRepository } from '../src/gamification/account-challenge.repository';
 import { AccountChallengeDailyProgressRepository } from '../src/gamification/account-challenge-daily-progress.repository';
 import { AccountChallengeConsumedEventRepository } from '../src/gamification/account-challenge-consumed-event.repository';
+import { ValidatedGamificationActivityRepository } from '../src/gamification/validated-gamification-activity.repository';
+import { CurriculumTopicRepository } from '../src/education/curriculum-topic.repository';
+import { CurriculumTopicProgressRepository } from '../src/progress/curriculum-topic-progress.repository';
+import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
+import { TitleEligibilityService } from '../src/gamification/title-eligibility.service';
+import { SubjectRepository } from '../src/education/subject.repository';
 import { RewardEvaluationWorker } from '../src/gamification/reward-evaluation.worker';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
@@ -116,6 +122,11 @@ async function main() {
       accountChallengeRepo,
       dailyProgressRepo,
       consumedEventRepo,
+      new ValidatedGamificationActivityRepository(prisma),
+      new CurriculumTopicRepository(prisma),
+      new CurriculumTopicProgressRepository(prisma),
+      new TitleDefinitionRepository(prisma),
+      new TitleEligibilityService(prisma, new SubjectRepository(prisma), new CurriculumTopicRepository(prisma), new CurriculumTopicProgressRepository(prisma), progressionService),
     );
   }
   const worker = buildWorker(inventoryItemRepo);

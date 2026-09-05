@@ -25,6 +25,15 @@ import { AchievementUnlockRepository } from '../src/gamification/achievement-unl
 import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
 import { AccountTitleRepository } from '../src/gamification/account-title.repository';
 import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
+import { TitleEligibilityService } from '../src/gamification/title-eligibility.service';
+import { SubjectRepository } from '../src/education/subject.repository';
+import { CurriculumTopicRepository } from '../src/education/curriculum-topic.repository';
+import { CurriculumTopicProgressRepository } from '../src/progress/curriculum-topic-progress.repository';
+import { ChallengeDefinitionRepository } from '../src/gamification/challenge-definition.repository';
+import { AccountChallengeRepository } from '../src/gamification/account-challenge.repository';
+import { AccountChallengeDailyProgressRepository } from '../src/gamification/account-challenge-daily-progress.repository';
+import { AccountChallengeConsumedEventRepository } from '../src/gamification/account-challenge-consumed-event.repository';
+import { ValidatedGamificationActivityRepository } from '../src/gamification/validated-gamification-activity.repository';
 import { RewardEvaluationWorker } from '../src/gamification/reward-evaluation.worker';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
@@ -83,6 +92,15 @@ async function main() {
     achievementUnlockRepo,
     accountTitleRepo,
     inventoryItemRepo,
+    new ChallengeDefinitionRepository(prisma),
+    new AccountChallengeRepository(prisma),
+    new AccountChallengeDailyProgressRepository(prisma),
+    new AccountChallengeConsumedEventRepository(prisma),
+    new ValidatedGamificationActivityRepository(prisma),
+    new CurriculumTopicRepository(prisma),
+    new CurriculumTopicProgressRepository(prisma),
+    titleDefinitionRepo,
+    new TitleEligibilityService(prisma, new SubjectRepository(prisma), new CurriculumTopicRepository(prisma), new CurriculumTopicProgressRepository(prisma), progressionService),
   );
 
   const suffix = Date.now();
@@ -258,8 +276,15 @@ async function main() {
   console.log('--- 6. Reintento no duplica (idempotencia real, no solo por construcción) ---');
   const outcomeL2 = await worker.processAccount(accountL);
   check('reintento (sin pendientes nuevas) -> PROCESSED', outcomeL2 === 'PROCESSED');
-  const accountTitleCountL = await pg.query('SELECT count(*)::int AS n FROM account_title WHERE account_id = $1', [accountL]);
-  check('sigue existiendo UNA sola account_title tras el reintento', accountTitleCountL.rows[0].n === 1);
+  // Acotado al par (accountL, titleDefinition.id) de ESTE fixture -- no un
+  // COUNT total sobre account_title. STABILIZATION-B (Titles V1) evalúa,
+  // en CADA processAccount, si esta misma cuenta también califica para
+  // alguno de los 7 títulos reales congelados (misma cuenta, otro
+  // title_definition) -- un total sin acotar sería falso positivo aquí:
+  // esta sección solo prueba la idempotencia del componente TITLE de 1.a,
+  // no la ausencia de otras entregas legítimas y NO relacionadas.
+  const accountTitleCountL = await pg.query('SELECT count(*)::int AS n FROM account_title WHERE account_id = $1 AND title_definition_id = $2', [accountL, titleDefinition.id]);
+  check('sigue existiendo UNA sola account_title para ESTE par tras el reintento', accountTitleCountL.rows[0].n === 1);
 
   console.log('--- 7. Entrega real vía el worker: fuente ACHIEVEMENT_UNLOCK, componente TITLE (reutiliza el mismo mecanismo) ---');
   const achievementBundle = await bundleRepo.create({

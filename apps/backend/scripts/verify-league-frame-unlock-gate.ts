@@ -27,6 +27,9 @@ import { AchievementVersionRepository } from '../src/gamification/achievement-ve
 import { AchievementProgressRepository } from '../src/gamification/achievement-progress.repository';
 import { AchievementUnlockRepository } from '../src/gamification/achievement-unlock.repository';
 import { AccountTitleRepository } from '../src/gamification/account-title.repository';
+import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
+import { TitleEligibilityService } from '../src/gamification/title-eligibility.service';
+import { SubjectRepository } from '../src/education/subject.repository';
 import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
 import { ChallengeDefinitionRepository } from '../src/gamification/challenge-definition.repository';
 import { AccountChallengeRepository } from '../src/gamification/account-challenge.repository';
@@ -88,6 +91,14 @@ async function main() {
     new ValidatedGamificationActivityRepository(prisma),
     new CurriculumTopicRepository(prisma),
     new CurriculumTopicProgressRepository(prisma),
+    new TitleDefinitionRepository(prisma),
+    new TitleEligibilityService(
+      prisma,
+      new SubjectRepository(prisma),
+      new CurriculumTopicRepository(prisma),
+      new CurriculumTopicProgressRepository(prisma),
+      new ProgressionService(new XpBalanceRepository(prisma), new XpLedgerEntryRepository(prisma), new LevelDefinitionRepository(prisma)),
+    ),
   );
   const enrollmentService = new LeagueEnrollmentService(prisma, seasonRepo, leagueDefinitionRepo, leagueGroupRepo, participationRepo, bundleRepo, worker);
 

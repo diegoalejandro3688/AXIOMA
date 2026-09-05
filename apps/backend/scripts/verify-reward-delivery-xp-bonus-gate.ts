@@ -30,6 +30,16 @@ import { AchievementUnlockRepository } from '../src/gamification/achievement-unl
 import { AccountTitleRepository } from '../src/gamification/account-title.repository';
 import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
 import { CosmeticItemRepository } from '../src/gamification/cosmetic-item.repository';
+import { ChallengeDefinitionRepository } from '../src/gamification/challenge-definition.repository';
+import { AccountChallengeRepository } from '../src/gamification/account-challenge.repository';
+import { AccountChallengeDailyProgressRepository } from '../src/gamification/account-challenge-daily-progress.repository';
+import { AccountChallengeConsumedEventRepository } from '../src/gamification/account-challenge-consumed-event.repository';
+import { ValidatedGamificationActivityRepository } from '../src/gamification/validated-gamification-activity.repository';
+import { CurriculumTopicRepository } from '../src/education/curriculum-topic.repository';
+import { CurriculumTopicProgressRepository } from '../src/progress/curriculum-topic-progress.repository';
+import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
+import { TitleEligibilityService } from '../src/gamification/title-eligibility.service';
+import { SubjectRepository } from '../src/education/subject.repository';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
 
@@ -107,6 +117,15 @@ async function main() {
     achievementUnlockRepo,
     accountTitleRepo,
     inventoryItemRepo,
+    new ChallengeDefinitionRepository(prisma),
+    new AccountChallengeRepository(prisma),
+    new AccountChallengeDailyProgressRepository(prisma),
+    new AccountChallengeConsumedEventRepository(prisma),
+    new ValidatedGamificationActivityRepository(prisma),
+    new CurriculumTopicRepository(prisma),
+    new CurriculumTopicProgressRepository(prisma),
+    new TitleDefinitionRepository(prisma),
+    new TitleEligibilityService(prisma, new SubjectRepository(prisma), new CurriculumTopicRepository(prisma), new CurriculumTopicProgressRepository(prisma), progressionService),
   );
 
   // Este gate no ejercita logros -- pero desde 2.b, RewardEvaluationWorker
@@ -296,6 +315,15 @@ async function main() {
     achievementUnlockRepo,
     accountTitleRepo,
     inventoryItemRepo,
+    new ChallengeDefinitionRepository(prisma),
+    new AccountChallengeRepository(prisma),
+    new AccountChallengeDailyProgressRepository(prisma),
+    new AccountChallengeConsumedEventRepository(prisma),
+    new ValidatedGamificationActivityRepository(prisma),
+    new CurriculumTopicRepository(prisma),
+    new CurriculumTopicProgressRepository(prisma),
+    new TitleDefinitionRepository(prisma),
+    new TitleEligibilityService(prisma, new SubjectRepository(prisma), new CurriculumTopicRepository(prisma), new CurriculumTopicProgressRepository(prisma), progressionService),
   );
 
   const accountC = randomUUID();
@@ -367,13 +395,15 @@ async function main() {
   const filesToCheck = ['reward-evaluation.worker.ts'];
   // 'AchievementDefinition' se retiró en 2.b (evalúa logros UNIQUE),
   // 'accountTitle' se retiró en 3.a (entrega componentes TITLE),
-  // 'ChallengeDefinition' se retiró en 4.b (evalúa desafíos, §4.16), e
+  // 'ChallengeDefinition' se retiró en 4.b (evalúa desafíos, §4.16),
   // 'inventoryItem' se retira en 5.a (entrega componentes COSMETIC,
-  // §4.19) -- los cuatro sub-incrementos extendieron el worker con
-  // autorización formal. La frontera que SIGUE vigente (equipamiento,
+  // §4.19), y 'CurriculumTopicProgress' se retira en STABILIZATION-B
+  // (avatares históricos/Desafíos-solo-estudio en B2, elegibilidad de
+  // Títulos V1 en B3) -- los cinco extendieron el worker con autorización
+  // formal del PO. La frontera que SIGUE vigente (equipamiento,
   // Incremento 3.b/5.b, y reclamación de desafíos, endpoints/móvil de
   // 4.c/4.d ya cerrados vía otros mecanismos) no cambió y se verifica igual.
-  const forbiddenSymbols = ['StudentResponse', 'CurriculumTopicProgress', 'PublicProfile', 'equippedTitle', 'equippedCosmetic'];
+  const forbiddenSymbols = ['StudentResponse', 'PublicProfile', 'equippedTitle', 'equippedCosmetic'];
   let boundaryViolationFound = false;
   for (const file of filesToCheck) {
     const contents = readFileSync(join(__dirname, '..', 'src', 'gamification', file), 'utf8');

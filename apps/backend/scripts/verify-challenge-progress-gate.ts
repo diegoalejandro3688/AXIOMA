@@ -22,6 +22,9 @@ import { AchievementVersionRepository } from '../src/gamification/achievement-ve
 import { AchievementProgressRepository } from '../src/gamification/achievement-progress.repository';
 import { AchievementUnlockRepository } from '../src/gamification/achievement-unlock.repository';
 import { AccountTitleRepository } from '../src/gamification/account-title.repository';
+import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
+import { TitleEligibilityService } from '../src/gamification/title-eligibility.service';
+import { SubjectRepository } from '../src/education/subject.repository';
 import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
 import { ChallengeDefinitionRepository } from '../src/gamification/challenge-definition.repository';
 import { AccountChallengeRepository } from '../src/gamification/account-challenge.repository';
@@ -112,6 +115,8 @@ async function main() {
     validatedActivityRepo,
     new CurriculumTopicRepository(prisma),
     new CurriculumTopicProgressRepository(prisma),
+    new TitleDefinitionRepository(prisma),
+    new TitleEligibilityService(prisma, new SubjectRepository(prisma), new CurriculumTopicRepository(prisma), new CurriculumTopicProgressRepository(prisma), progressionService),
   );
 
   const suffix = Date.now();
@@ -353,17 +358,28 @@ async function main() {
     'account-challenge-consumed-event.repository.ts',
   ];
   const forbiddenSymbols = ['StudentResponse', 'CurriculumTopicProgress', 'PublicProfile', 'equippedTitle', 'equippedCosmetic'];
+  // STABILIZATION-B -- `reward-evaluation.worker.ts` referencia
+  // `CurriculumTopicProgress*` LEGÍTIMAMENTE desde B2 (avatares
+  // históricos/filtro de actividad de estudio de Desafíos) y desde B3
+  // (`TitleEligibilityService`, unidades/recursos canónicos de Títulos) --
+  // ambos aprobados explícitamente por el PO. La frontera original (4.b,
+  // "el worker de Desafíos nunca toca PROGRESS") queda exceptuada
+  // ÚNICAMENTE para ESTE símbolo en ESTE archivo; el resto de la matriz
+  // (los otros 3 archivos, y todos los demás símbolos) sigue vigente sin
+  // cambios.
+  const exemptions: Record<string, string[]> = { 'reward-evaluation.worker.ts': ['CurriculumTopicProgress'] };
   let boundaryViolationFound = false;
   for (const file of filesToCheck) {
     const contents = readFileSync(join(gamificationDir, file), 'utf8');
     for (const symbol of forbiddenSymbols) {
+      if (exemptions[file]?.includes(symbol)) continue;
       if (contents.includes(symbol)) {
         boundaryViolationFound = true;
         console.error(`  ${file} referencia el símbolo prohibido "${symbol}"`);
       }
     }
   }
-  check('ningún archivo nuevo de 4.b referencia PROGRESS/Public Profile/equipamiento', !boundaryViolationFound);
+  check('ningún archivo nuevo de 4.b referencia PROGRESS/Public Profile/equipamiento (fuera de las excepciones B2/B3 aprobadas)', !boundaryViolationFound);
 
   await pg.end();
   await prisma.$disconnect();

@@ -42,6 +42,16 @@ class TestRewardEvaluationWorker extends RewardEvaluationWorker {
   capturedEntryCounts = new Map<string, number>();
   onEvaluateHook?: (accountId: string) => Promise<void>;
 
+  // `evaluateAccount` está completamente sobreescrito abajo -- ninguna de
+  // las dependencias reales del worker (nivel/logros/desafíos/avatares/
+  // títulos) se toca jamás desde este archivo. El resto de parámetros del
+  // constructor real solo existen para satisfacer el tipo; se les pasa
+  // `undefined` deliberadamente.
+  constructor(prisma: PrismaService, ledgerRepo: XpLedgerEntryRepository, cursorRepo: RewardEvaluationCursorRepository) {
+    const rest = new Array(22).fill(undefined);
+    super(...([prisma, ledgerRepo, cursorRepo, ...rest] as ConstructorParameters<typeof RewardEvaluationWorker>));
+  }
+
   protected async evaluateAccount(_tx: Prisma.TransactionClient, accountId: string, pendingEntries: XpLedgerEntry[]): Promise<void> {
     this.capturedEntryCounts.set(accountId, pendingEntries.length);
     const delay = this.delayMsAccounts.get(accountId);
