@@ -171,7 +171,17 @@ export class LeagueEnrollmentService {
         this.logger.error(`Liga "${league.leagueKey}" referencia un reward_bundle_id inexistente (${league.rewardBundleId}).`);
         return;
       }
-      const { allResolved } = await this.rewardEvaluationWorker.deliverBundleComponents(accountId, bundle, 'LEAGUE', league.id);
+      // STABILIZATION-B (bug real encontrado durante la implementación de
+      // avatares históricos) -- `deliverBundleComponents` construye
+      // `idempotencyKey = reward:{sourceEntityType}:{sourceEntityId}`, SIN
+      // `accountId`. `league.id` por sí solo es el MISMO para TODAS las
+      // cuentas que superan ese tier -- sin el prefijo de cuenta, la
+      // primera cuenta en superar un tier "reserva" esa idempotencyKey
+      // globalmente, y `RewardGrantRepository.createIdempotent` devuelve
+      // ESA fila existente (de otra cuenta) para cualquier cuenta
+      // siguiente, que entonces nunca recibe su propio `inventory_item`
+      // (mismo criterio ya usado por LEVEL: `sourceEntityId = accountId:levelNumber`).
+      const { allResolved } = await this.rewardEvaluationWorker.deliverBundleComponents(accountId, bundle, 'LEAGUE', `${accountId}:${league.id}`);
       if (!allResolved) {
         this.logger.warn(`Marco de liga "${league.leagueKey}" quedó PENDING para la cuenta ${accountId} -- se reintentará en la próxima inscripción a esa liga.`);
       }

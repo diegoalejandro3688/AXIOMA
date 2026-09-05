@@ -33,6 +33,8 @@ import { AccountChallengeRepository } from '../src/gamification/account-challeng
 import { AccountChallengeDailyProgressRepository } from '../src/gamification/account-challenge-daily-progress.repository';
 import { AccountChallengeConsumedEventRepository } from '../src/gamification/account-challenge-consumed-event.repository';
 import { ValidatedGamificationActivityRepository } from '../src/gamification/validated-gamification-activity.repository';
+import { CurriculumTopicRepository } from '../src/education/curriculum-topic.repository';
+import { CurriculumTopicProgressRepository } from '../src/progress/curriculum-topic-progress.repository';
 import { RewardEvaluationWorker } from '../src/gamification/reward-evaluation.worker';
 import { LeagueEnrollmentService } from '../src/gamification/league-enrollment.service';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
@@ -84,6 +86,8 @@ async function main() {
     new AccountChallengeDailyProgressRepository(prisma),
     new AccountChallengeConsumedEventRepository(prisma),
     new ValidatedGamificationActivityRepository(prisma),
+    new CurriculumTopicRepository(prisma),
+    new CurriculumTopicProgressRepository(prisma),
   );
   const enrollmentService = new LeagueEnrollmentService(prisma, seasonRepo, leagueDefinitionRepo, leagueGroupRepo, participationRepo, bundleRepo, worker);
 
@@ -124,20 +128,34 @@ async function main() {
   }
 
   const accountA = randomUUID();
+  // STABILIZATION-B -- segunda cuenta, en PARALELO exacto con A, para probar
+  // que dos cuentas distintas superando el MISMO tier reciben cada una su
+  // PROPIO marco (regresión real encontrada y corregida en este incremento:
+  // `deliverBundleComponents` construye `idempotencyKey` SIN `accountId` --
+  // sin el fix, la segunda cuenta en superar un tier nunca recibía su
+  // propia fila, silenciosamente reutilizaba el `reward_grant` de la primera).
+  const accountB = randomUUID();
 
   console.log('--- A. Ingreso inicial (tier más bajo) -- 0 marcos otorgados ---');
   await newActiveSeason(`gate-league-s1-${suffix}`, 0);
   await enrollmentService.joinActiveSeason(accountA);
+  await enrollmentService.joinActiveSeason(accountB);
   check('tier1 (inicial) NO otorga su propio marco por el mero ingreso', !(await ownsFrame(accountA, t1.cosmeticItemId)));
   check('tier2/tier3 tampoco (ni siquiera participó ahí)', !(await ownsFrame(accountA, t2.cosmeticItemId)) && !(await ownsFrame(accountA, t3.cosmeticItemId)));
 
-  console.log('--- B. PROMOTED tier1 -> tier2: se entrega el marco de tier1 (el SUPERADO), no el de tier2 ---');
+  console.log('--- B. PROMOTED tier1 -> tier2 (A y B en paralelo): cada cuenta recibe su PROPIO marco de tier1 (el SUPERADO), no el de tier2 ---');
   const participation1 = await participationRepo.findMostRecentByAccountId(accountA);
   await pg.query("UPDATE season_league_participation SET participation_status = 'SEASON_ENDED' WHERE id = $1", [participation1!.id]);
   await pg.query("UPDATE season_league_participation SET participation_status = 'PROMOTED' WHERE id = $1", [participation1!.id]);
+  const participationB1 = await participationRepo.findMostRecentByAccountId(accountB);
+  await pg.query("UPDATE season_league_participation SET participation_status = 'SEASON_ENDED' WHERE id = $1", [participationB1!.id]);
+  await pg.query("UPDATE season_league_participation SET participation_status = 'PROMOTED' WHERE id = $1", [participationB1!.id]);
   await newActiveSeason(`gate-league-s2-${suffix}`, 10);
   await enrollmentService.joinActiveSeason(accountA);
-  check('marco de tier1 (superado) otorgado', await ownsFrame(accountA, t1.cosmeticItemId));
+  await enrollmentService.joinActiveSeason(accountB);
+  check('marco de tier1 (superado) otorgado a A', await ownsFrame(accountA, t1.cosmeticItemId));
+  check('marco de tier1 (superado) TAMBIÉN otorgado a B -- su PROPIA fila, no la de A', await ownsFrame(accountB, t1.cosmeticItemId));
+  check('exactamente 2 filas de marco tier1 en total (una por cuenta, nunca compartida/colisionada)', (await pg.query('SELECT count(*)::int AS n FROM inventory_item WHERE cosmetic_item_id = $1', [t1.cosmeticItemId])).rows[0].n === 2);
   check('marco de tier2 (destino, NO superado todavía) -- aún no otorgado', !(await ownsFrame(accountA, t2.cosmeticItemId)));
 
   console.log('--- C. Reingreso a la MISMA temporada (idempotente) -- sin duplicado ---');
