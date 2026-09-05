@@ -1,5 +1,6 @@
 import { Image, View } from 'react-native';
 import { useTheme } from '../../theme';
+import { Icon } from './icon';
 
 export type AvatarSize = 'small' | 'medium' | 'large' | 'hero';
 
@@ -18,9 +19,16 @@ export interface AvatarProps {
 
 /**
  * Avatar circular con marco opcional superpuesto -- sin fetch, sin lógica de
- * negocio, recibe todo por props (UI-5, sección 9 del handoff). Placeholder
- * circular con borde `border.default` cuando `avatarUri` es `null`, mismo
- * criterio que ya usaba `identity-header.tsx` antes de extraerse aquí.
+ * negocio, recibe todo por props (UI-5, sección 9 del handoff).
+ *
+ * STABILIZATION-B8 (Polish A, decisión de producto CONGELADA) -- una
+ * identidad de usuario NUNCA se renderiza como un círculo vacío. Cuando
+ * `avatarUri` es `null` (p.ej. una cuenta sin AVATAR equipado, estado
+ * legítimo tras retirar un histórico obsoleto en B7.3), se muestra un
+ * FALLBACK DE PRESENTACIÓN: el mismo glifo de persona canónico de la app
+ * (`Icon name="profile"`) centrado en el disco. Es SÓLO visual -- no crea
+ * `inventory_item`, no otorga ni equipa cosmético, no toca estado de cuenta
+ * ni Personalización, y no implica que la cuenta posea nada.
  */
 export function Avatar({ avatarUri, frameUri, size, accessibilityLabel }: AvatarProps) {
   const tokens = useTheme();
@@ -39,6 +47,7 @@ export function Avatar({ avatarUri, frameUri, size, accessibilityLabel }: Avatar
         />
       ) : (
         <View
+          accessibilityLabel={accessibilityLabel}
           style={{
             width: dimension,
             height: dimension,
@@ -46,8 +55,12 @@ export function Avatar({ avatarUri, frameUri, size, accessibilityLabel }: Avatar
             borderWidth: 1,
             borderColor: tokens.color.border.default,
             backgroundColor: tokens.color.background.surface,
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
-        />
+        >
+          <Icon name="profile" size={Math.round(dimension * 0.56)} color="muted" />
+        </View>
       )}
       {frameUri ? (
         <Image
