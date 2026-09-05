@@ -86,7 +86,9 @@ export class CompetitiveLeaderboardService {
     const limit = Math.min(options.limit ?? DEFAULT_LEADERBOARD_LIMIT, MAX_LEADERBOARD_LIMIT);
     const afterRankPosition = options.cursor !== undefined ? decodeLeaderboardCursor(options.cursor) : undefined;
 
-    const participation = await this.participationRepo.findActiveByAccountId(accountId);
+    // STABILIZATION-B7 -- ver CompetitiveContextService: temporada vigente, no
+    // una participación histórica con estado ACTIVE residual.
+    const participation = await this.participationRepo.findCurrentByAccountId(accountId, new Date());
     if (!participation) return { entries: [], nextCursor: null, competitiveContext: null };
 
     const leaderboardDefinition = await this.leaderboardDefinitionRepo.findActiveByKey(LEADERBOARD_KEY);

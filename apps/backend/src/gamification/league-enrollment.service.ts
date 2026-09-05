@@ -78,7 +78,11 @@ export class LeagueEnrollmentService {
    * inscripción idempotente, §9.9).
    */
   async joinActiveSeason(accountId: string): Promise<EnrollmentOutcome> {
-    const season = await this.seasonRepo.findActive();
+    // STABILIZATION-B7 -- temporada CANÓNICA vigente (status ACTIVE Y `now`
+    // dentro de la ventana), la misma que resuelve el Ranking. Una temporada
+    // ACTIVE fuera de ventana (contaminación, o un tick de scheduler de
+    // retraso) nunca es "la temporada a la que inscribirse".
+    const season = await this.seasonRepo.findCurrent(new Date());
     if (!season) return { outcome: 'NO_ACTIVE_SEASON' };
 
     // Idempotencia rápida sin lock: si ya existe, no hace falta serializar nada.
@@ -252,7 +256,9 @@ export class LeagueEnrollmentService {
    * verdad.
    */
   async getParticipationStatus(accountId: string): Promise<ParticipationStatusOutcome> {
-    const season = await this.seasonRepo.findActive();
+    // STABILIZATION-B7 -- misma temporada canónica vigente que `joinActiveSeason`
+    // y que el Ranking (`CompetitiveContextService`/`CompetitiveLeaderboardService`).
+    const season = await this.seasonRepo.findCurrent(new Date());
     if (!season) return { kind: 'NO_ACTIVE_SEASON' };
 
     const participation = await this.participationRepo.findByAccountAndSeason(accountId, season.id);

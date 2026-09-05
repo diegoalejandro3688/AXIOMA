@@ -59,7 +59,10 @@ export class CompetitiveContextService {
   ) {}
 
   async resolveByAccountId(accountId: string): Promise<CompetitiveContext | null> {
-    const participation = await this.participationRepo.findActiveByAccountId(accountId);
+    // STABILIZATION-B7 -- participación de la TEMPORADA VIGENTE, no cualquier
+    // participación cuyo estado siga ACTIVE (una temporada FINALIZED cuya
+    // participación no se cerró no es "ranking actual").
+    const participation = await this.participationRepo.findCurrentByAccountId(accountId, new Date());
     if (!participation) return null;
 
     const leaderboardDefinition = await this.leaderboardDefinitionRepo.findActiveByKey(LEADERBOARD_KEY);

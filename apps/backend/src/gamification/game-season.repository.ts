@@ -34,10 +34,51 @@ export class GameSeasonRepository {
     return client.gameSeason.findUnique({ where: { id } });
   }
 
-  /** A lo sumo una fila -- el índice único parcial garantiza que nunca hay más de una ACTIVE. */
+  /**
+   * A lo sumo una fila -- el índice único parcial `game_season_single_active`
+   * garantiza que nunca hay más de una ACTIVE. Uso restringido a las lógicas
+   * de ciclo de vida (scheduler de activación/transición, cálculo de
+   * leaderboard) que razonan sobre "la temporada ACTIVE" como estado del
+   * sistema, no como "la temporada vigente para mostrar/consultar" -- para
+   * eso usar `findCurrent`.
+   */
   findActive(tx?: Prisma.TransactionClient): Promise<GameSeason | null> {
     const client: Client = tx ?? this.prisma;
     return client.gameSeason.findFirst({ where: { status: 'ACTIVE' } });
+  }
+
+  /**
+   * STABILIZATION-B7 -- resolución CANÓNICA de "la temporada de liga
+   * vigente ahora", ÚNICA fuente para toda superficie de lectura/API (Hub,
+   * Ranking, elegibilidad de LP). Requiere las TRES condiciones, nunca solo
+   * `status = ACTIVE`:
+   *   - status = ACTIVE
+   *   - startsAt <= now
+   *   - endsAt   >  now
+   * Determinista: el índice único parcial `game_season_single_active`
+   * garantiza <= 1 fila ACTIVE; el `orderBy` es defensa en profundidad por
+   * si ese invariante fuese violado por contaminación (una temporada
+   * ACTIVE fuera de ventana nunca se devuelve como vigente).
+   */
+  findCurrent(now: Date, tx?: Prisma.TransactionClient): Promise<GameSeason | null> {
+    const client: Client = tx ?? this.prisma;
+    return client.gameSeason.findFirst({
+      where: { status: 'ACTIVE', startsAt: { lte: now }, endsAt: { gt: now } },
+      orderBy: { startsAt: 'desc' },
+    });
+  }
+
+  /**
+   * STABILIZATION-B7 -- diagnóstico de invariante: todas las filas ACTIVE
+   * cuya ventana contiene `now`. En operación normal es 0 o 1; > 1 indica
+   * contaminación (p.ej. un gate que escribió sobre `axioma_dev`).
+   */
+  findAllCurrent(now: Date, tx?: Prisma.TransactionClient): Promise<GameSeason[]> {
+    const client: Client = tx ?? this.prisma;
+    return client.gameSeason.findMany({
+      where: { status: 'ACTIVE', startsAt: { lte: now }, endsAt: { gt: now } },
+      orderBy: { startsAt: 'desc' },
+    });
   }
 
   findScheduledReadyToActivate(now: Date): Promise<GameSeason[]> {

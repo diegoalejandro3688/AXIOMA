@@ -47,10 +47,25 @@ export class SeasonLeagueParticipationRepository {
     });
   }
 
-  /** A lo sumo una fila ACTIVE por cuenta -- las temporadas nunca se solapan (invariante de game_season). */
-  findActiveByAccountId(accountId: string, tx?: Prisma.TransactionClient): Promise<SeasonLeagueParticipation | null> {
+  /**
+   * STABILIZATION-B7 -- participación VIGENTE de la cuenta: `ACTIVE` Y
+   * perteneciente a la temporada canónica vigente ahora (`game_season`
+   * ACTIVE con `now` dentro de su ventana). Reemplaza al antiguo
+   * `findActiveByAccountId`, que devolvía una participación cuyo *estado*
+   * seguía `ACTIVE` aunque su *temporada* estuviese FINALIZED -- la causa
+   * raíz de que el Ranking mostrara una participación histórica como
+   * "actual" (B5A). Una consulta, determinista (<=1 temporada vigente,
+   * `@@unique([accountId, gameSeasonId])`).
+   */
+  findCurrentByAccountId(accountId: string, now: Date, tx?: Prisma.TransactionClient): Promise<SeasonLeagueParticipation | null> {
     const client: Client = tx ?? this.prisma;
-    return client.seasonLeagueParticipation.findFirst({ where: { accountId, participationStatus: 'ACTIVE' } });
+    return client.seasonLeagueParticipation.findFirst({
+      where: {
+        accountId,
+        participationStatus: 'ACTIVE',
+        gameSeason: { status: 'ACTIVE', startsAt: { lte: now }, endsAt: { gt: now } },
+      },
+    });
   }
 
   /** Usado por `LeaguePointGrantService` para acotar qué actividades pueden llegar a otorgar LP (§9.4). */
@@ -63,10 +78,17 @@ export class SeasonLeagueParticipationRepository {
   }
 
   /**
-   * Última participación de la cuenta en cualquier temporada anterior --
-   * usada por §9.2 para decidir el tier de entrada de un estudiante
-   * recurrente (mantiene el tier de su última participación, salvo que un
-   * ascenso/descenso ya lo haya cambiado -- decisión de Incremento 2).
+   * HISTORIAL / TRANSICIÓN ENTRE TEMPORADAS ÚNICAMENTE -- última
+   * participación de la cuenta en CUALQUIER temporada, por recencia
+   * (`joinedAt`). Usada por §9.2 (`LeagueEnrollmentService.resolveTargetTier`)
+   * para decidir el tier de entrada de un estudiante recurrente al INSCRIBIRSE
+   * en una temporada nueva -- el resultado congelado (PROMOTED/DEMOTED/
+   * RETAINED) de su temporada anterior.
+   *
+   * STABILIZATION-B7 -- NUNCA usar esto para resolver "la participación
+   * actual" de una superficie de lectura: por definición puede devolver una
+   * participación de una temporada ya terminada. Para "actual" usar
+   * `findCurrentByAccountId`.
    */
   findMostRecentByAccountId(accountId: string, tx?: Prisma.TransactionClient): Promise<SeasonLeagueParticipation | null> {
     const client: Client = tx ?? this.prisma;

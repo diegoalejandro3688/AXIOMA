@@ -142,7 +142,12 @@ export class LeaguePointGrantService {
     // Lectura previa (fuera de la transacción) -- solo para decidir si vale
     // la pena intentar; la verificación AUTORITATIVA ocurre releyendo
     // DENTRO de la transacción SERIALIZABLE de abajo (§9.5).
-    const participation = await this.participationRepo.findActiveByAccountId(activity.accountId);
+    // STABILIZATION-B7 -- pre-chequeo acotado a la participación de la
+    // TEMPORADA VIGENTE en `at` (misma semántica que la relectura
+    // autoritativa dentro de la transacción SERIALIZABLE de abajo, y que
+    // `QuickLpEligibilityService`). Una participación cuya temporada ya no
+    // está vigente nunca debe recibir LP nuevo.
+    const participation = await this.participationRepo.findCurrentByAccountId(activity.accountId, at);
     if (!participation) return { outcome: 'NOT_PARTICIPATING' };
     if (at < participation.joinedAt) return { outcome: 'OUT_OF_WINDOW' };
 
