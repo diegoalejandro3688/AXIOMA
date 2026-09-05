@@ -81,3 +81,31 @@ export const LEAGUE_POINT_RULE_V1_EFFECTIVE_FROM = new Date('2026-01-01T00:00:00
 /** Prefijo del `seasonKey` de la primera temporada de QA -- se completa con la fecha de inicio (`comp-v1-2026-08-31`). */
 export const COMPETITIVE_V1_SEASON_KEY_PREFIX = 'comp-v1';
 export const COMPETITIVE_V1_SEASON_NAME = 'Temporada 1';
+
+/**
+ * PF2-B -- ORQUESTACIÓN DE TEMPORADAS SEMANALES V1 (decisión de producto
+ * CONGELADA). Fuente de verdad única -- toda la lógica de calendario
+ * (`season-calendar.ts`) y de provisión (`SeasonProvisioningService`) lee de
+ * aquí; ningún string mágico duplicado. NUNCA expuesto vía contrato móvil.
+ */
+export const SEASON_CADENCE = 'weekly' as const;
+/** Zona canónica de las fronteras de temporada -- `season-calendar.ts` usa la MISMA cadena. */
+export const SEASON_TIME_ZONE = 'America/Santiago' as const;
+/** Prefijo del `seasonKey` canónico: `comp-v1-{YYYY-MM-DD local Santiago del lunes de inicio}`. */
+export const SEASON_KEY_PREFIX = COMPETITIVE_V1_SEASON_KEY_PREFIX;
+/**
+ * Semanas FUTURAS mantenidas por delante de la semana canónica actual. El
+ * horizonte total provisionado = 1 (actual) + `SEASON_HORIZON_FUTURE_WEEKS` = 5.
+ */
+export const SEASON_HORIZON_FUTURE_WEEKS = 4;
+/**
+ * Versiones de política de las temporadas canónicas -- MISMAS que la primera
+ * temporada real de QA (`ensure-first-competitive-season.ts`). PF2-B no
+ * introduce una política de ranking/recompensa nueva.
+ */
+export const SEASON_RANKING_RULE_VERSION = 'sum-league-points-v1';
+export const SEASON_REWARD_POLICY_VERSION = 'league-frame-v1';
+/** Nombre visible de cada temporada canónica -- `Temporada semanal {YYYY-MM-DD}`. */
+export function canonicalSeasonName(localStartDate: string): string {
+  return `Temporada semanal ${localStartDate}`;
+}
