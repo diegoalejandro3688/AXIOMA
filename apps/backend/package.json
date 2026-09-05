@@ -62,6 +62,8 @@
     "xp:seed-v1": "tsx scripts/seed-xp-v1.ts",
     "verify:xp-v1-implementation-gate": "tsx scripts/verify-xp-v1-implementation-gate.ts",
     "verify:resource-completion-gate": "tsx scripts/verify-resource-completion-gate.ts",
+    "competitive:hotfix-study-lp-boundary-v1": "tsx scripts/competitive-hotfix-study-lp-boundary-v1.ts",
+    "verify:lp-study-boundary-gate": "tsx scripts/verify-lp-study-boundary-gate.ts",
     "verify:challenges-v1-catalog-gate": "tsx scripts/run-gate.ts verify-challenges-v1-catalog-gate.ts",
     "verify:cosmetic-foundation-gate": "tsx scripts/run-gate.ts verify-cosmetic-foundation-gate.ts",
     "verify:cosmetic-equipment-gate": "tsx scripts/run-gate.ts verify-cosmetic-equipment-gate.ts",
