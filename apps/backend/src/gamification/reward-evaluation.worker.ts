@@ -35,6 +35,16 @@ import { AccountChallengeDailyProgressRepository } from './account-challenge-dai
 import { AccountChallengeConsumedEventRepository } from './account-challenge-consumed-event.repository';
 import { parseCompletionRule, parseEligibilityRule } from './challenge-rule';
 import { utcDayStart } from './daily-activity-signal.reader';
+import { ValidatedGamificationActivityRepository } from './validated-gamification-activity.repository';
+
+/**
+ * STABILIZATION-B -- decisión de producto CONGELADA (§5 del brief): "actividad
+ * de estudio" para propósitos de Desafíos es EXACTAMENTE este conjunto.
+ * QUICK_QUESTION_ANSWERED, Práctica libre y el propio BONO de recompensa
+ * quedan explícitamente fuera -- Quick es Competir, no Estudio, aunque
+ * también otorgue XP normal (+2) con el mismo `entryType=OTORGAMIENTO`.
+ */
+const STUDY_ACTIVITY_TYPES = new Set(['RESPUESTA_VALIDADA', 'RECURSO_COMPLETADO', 'TEMA_COMPLETADO', 'ENSAYO_COMPLETADO']);
 
 /**
  * Bloque III (ADR-0019). Sub-incremento 1.b: descubrimiento de cuentas
@@ -131,6 +141,7 @@ export class RewardEvaluationWorker {
     private readonly accountChallengeRepo: AccountChallengeRepository,
     private readonly dailyProgressRepo: AccountChallengeDailyProgressRepository,
     private readonly consumedEventRepo: AccountChallengeConsumedEventRepository,
+    private readonly validatedActivityRepo: ValidatedGamificationActivityRepository,
   ) {}
 
   /**
@@ -562,9 +573,25 @@ export class RewardEvaluationWorker {
    * `BONO` -- evita que la propia recompensa retroalimente el progreso del
    * desafío --, `REVERSO` y `AJUSTE`). Ningún dato fuera de lo que
    * `evaluateAccount` ya recibía -- la frontera del worker no se ensancha.
+   *
+   * STABILIZATION-B -- además filtrado a `STUDY_ACTIVITY_TYPES`, resuelto
+   * SIEMPRE por provenance real (`ValidatedGamificationActivity.activityType`
+   * vía `validatedActivityId`), nunca inferido desde `xpAmount` (dos
+   * `activityType` distintos pueden compartir el mismo monto -- ej.
+   * QUICK_QUESTION_ANSWERED y RESPUESTA_VALIDADA ambos +2). Una entrada
+   * OTORGAMIENTO sin `validatedActivityId` o cuya actividad no se
+   * encuentra se excluye de forma segura (nunca cuenta por defecto).
    */
   private async evaluateChallenges(accountId: string, pendingEntries: XpLedgerEntry[]): Promise<boolean> {
-    const eligibleEntries = pendingEntries.filter((entry) => entry.entryType === 'OTORGAMIENTO');
+    const otorgamientoEntries = pendingEntries.filter((entry) => entry.entryType === 'OTORGAMIENTO');
+    if (otorgamientoEntries.length === 0) return true;
+
+    const activityIds = otorgamientoEntries.map((e) => e.validatedActivityId).filter((id): id is string => id != null);
+    const activityTypeById = await this.validatedActivityRepo.findActivityTypesByIds(activityIds);
+    const eligibleEntries = otorgamientoEntries.filter((entry) => {
+      const activityType = entry.validatedActivityId ? activityTypeById.get(entry.validatedActivityId) : undefined;
+      return activityType != null && STUDY_ACTIVITY_TYPES.has(activityType);
+    });
     if (eligibleEntries.length === 0) return true;
 
     let allResolved = true;

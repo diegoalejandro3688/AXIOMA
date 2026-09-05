@@ -27,6 +27,7 @@ import { ChallengeDefinitionRepository } from '../src/gamification/challenge-def
 import { AccountChallengeRepository } from '../src/gamification/account-challenge.repository';
 import { AccountChallengeDailyProgressRepository } from '../src/gamification/account-challenge-daily-progress.repository';
 import { AccountChallengeConsumedEventRepository } from '../src/gamification/account-challenge-consumed-event.repository';
+import { ValidatedGamificationActivityRepository } from '../src/gamification/validated-gamification-activity.repository';
 import { GamificationProgramRepository } from '../src/gamification/gamification-program.repository';
 import { GamificationProgramVersionRepository } from '../src/gamification/gamification-program-version.repository';
 import { XpRuleRepository } from '../src/gamification/xp-rule.repository';
@@ -80,6 +81,7 @@ async function main() {
   const accountChallengeRepo = new AccountChallengeRepository(prisma);
   const dailyProgressRepo = new AccountChallengeDailyProgressRepository(prisma);
   const consumedEventRepo = new AccountChallengeConsumedEventRepository(prisma);
+  const validatedActivityRepo = new ValidatedGamificationActivityRepository(prisma);
   const programRepo = new GamificationProgramRepository(prisma);
   const versionRepo = new GamificationProgramVersionRepository(prisma);
   const ruleRepo = new XpRuleRepository(prisma);
@@ -105,6 +107,7 @@ async function main() {
     accountChallengeRepo,
     dailyProgressRepo,
     consumedEventRepo,
+    validatedActivityRepo,
   );
 
   const suffix = Date.now();
@@ -123,10 +126,28 @@ async function main() {
   const rule = await ruleRepo.create({ programVersionId: version.id, activityType: `GATE_4B_ACTIVITY_${suffix}`, baseXp: 10, dailyCap: null });
 
   let entrySeq = 0;
+  // STABILIZATION-B -- `evaluateChallenges` ahora filtra por provenance real
+  // (`ValidatedGamificationActivity.activityType`), nunca por `xpAmount`.
+  // Esta fixture crea una actividad RESPUESTA_VALIDADA genuina (miembro de
+  // STUDY_ACTIVITY_TYPES) para que el mecanismo GENÉRICO de progresión que
+  // este gate ejercita siga siendo elegible tras el filtro nuevo.
   async function grantOtorgamiento(accountId: string, occurredAt: Date): Promise<{ id: string }> {
     entrySeq++;
+    const activity = await validatedActivityRepo.create({
+      accountId,
+      sourceDomain: 'PROGRESS',
+      sourceEntityType: 'StudentResponse',
+      sourceEntityId: randomUUID(),
+      activityType: 'RESPUESTA_VALIDADA',
+      validationStatus: 'VALID',
+      validationRuleVersion: 'v1',
+      occurredAt,
+      deduplicationKey: `gate-4b-activity-${suffix}-${entrySeq}`,
+      integrityStatus: 'OK',
+    });
     const { entry } = await ledgerRepo.createIdempotent({
       accountId,
+      validatedActivityId: activity.id,
       entryType: 'OTORGAMIENTO',
       xpAmount: 10,
       xpRuleId: rule.id,

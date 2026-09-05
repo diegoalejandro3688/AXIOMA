@@ -34,6 +34,7 @@ import { ChallengeDefinitionRepository } from '../src/gamification/challenge-def
 import { AccountChallengeRepository } from '../src/gamification/account-challenge.repository';
 import { AccountChallengeDailyProgressRepository } from '../src/gamification/account-challenge-daily-progress.repository';
 import { AccountChallengeConsumedEventRepository } from '../src/gamification/account-challenge-consumed-event.repository';
+import { ValidatedGamificationActivityRepository } from '../src/gamification/validated-gamification-activity.repository';
 import { GamificationProgramRepository } from '../src/gamification/gamification-program.repository';
 import { GamificationProgramVersionRepository } from '../src/gamification/gamification-program-version.repository';
 import { XpRuleRepository } from '../src/gamification/xp-rule.repository';
@@ -240,6 +241,7 @@ async function main() {
   const accountChallengeRepo = new AccountChallengeRepository(prisma);
   const dailyProgressRepo = new AccountChallengeDailyProgressRepository(prisma);
   const consumedEventRepo = new AccountChallengeConsumedEventRepository(prisma);
+  const validatedActivityRepo = new ValidatedGamificationActivityRepository(prisma);
 
   const worker = new RewardEvaluationWorker(
     prisma,
@@ -262,6 +264,7 @@ async function main() {
     accountChallengeRepo,
     dailyProgressRepo,
     consumedEventRepo,
+    validatedActivityRepo,
   );
   const challengeService = new ChallengeService(prisma, accountChallengeRepo, challengeDefinitionRepo, bundleRepo, worker);
 
@@ -348,10 +351,31 @@ async function main() {
 
   let seq = 0;
   const acctProg = randomUUID();
+  // STABILIZATION-B -- `evaluateChallenges` filtra por provenance real
+  // (`ValidatedGamificationActivity.activityType`), nunca por `xpAmount`. Un
+  // OTORGAMIENTO de este gate necesita una actividad RESPUESTA_VALIDADA
+  // genuina (miembro de STUDY_ACTIVITY_TYPES) para seguir siendo elegible.
   async function grant(entryType: 'OTORGAMIENTO' | 'BONO', occurredAt: Date): Promise<void> {
     seq++;
+    let validatedActivityId: string | null = null;
+    if (entryType === 'OTORGAMIENTO') {
+      const activity = await validatedActivityRepo.create({
+        accountId: acctProg,
+        sourceDomain: 'PROGRESS',
+        sourceEntityType: 'StudentResponse',
+        sourceEntityId: randomUUID(),
+        activityType: 'RESPUESTA_VALIDADA',
+        validationStatus: 'VALID',
+        validationRuleVersion: 'v1',
+        occurredAt,
+        deduplicationKey: `v1cat-activity-${suffix}-${seq}`,
+        integrityStatus: 'OK',
+      });
+      validatedActivityId = activity.id;
+    }
     const { entry } = await ledgerRepo.createIdempotent({
       accountId: acctProg,
+      validatedActivityId,
       entryType,
       xpAmount: 10,
       xpRuleId: entryType === 'OTORGAMIENTO' ? rule.id : null,

@@ -118,6 +118,22 @@ export class ValidatedGamificationActivityRepository {
   }
 
   /**
+   * STABILIZATION-B (Desafíos, filtro "actividad de estudio") -- lote de
+   * `activityType` por id, ÚNICA fuente de provenance real de una actividad
+   * (nunca se infiere desde el monto de XP otorgado -- dos `activityType`
+   * distintos pueden compartir el mismo `baseXp`). `Map` vacío si `ids` está
+   * vacío (sin round-trip innecesario).
+   */
+  async findActivityTypesByIds(ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.prisma.validatedGamificationActivity.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, activityType: true },
+    });
+    return new Map(rows.map((r) => [r.id, r.activityType]));
+  }
+
+  /**
    * Bloque IV, Incremento 1 -- "pendiente de otorgar League Points" =
    * relación PARALELA a `ledgerEntries` (XP), nunca la misma (§9.7). Sin
    * tabla de intentos/backoff propia (a diferencia de XP): se restringe a
