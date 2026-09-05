@@ -85,8 +85,9 @@ export class LeagueEnrollmentService {
     const existing = await this.participationRepo.findByAccountAndSeason(accountId, season.id);
     if (existing) return { participation: existing, created: false };
 
-    const targetLeagueDefinition = await this.resolveTargetTier(accountId);
-    if (!targetLeagueDefinition) return { outcome: 'NO_ACTIVE_SEASON' };
+    const resolvedTier = await this.resolveTargetTier(accountId);
+    if (!resolvedTier) return { outcome: 'NO_ACTIVE_SEASON' };
+    const { target: targetLeagueDefinition, surpassedTier, isTerminalReach } = resolvedTier;
 
     const result = await this.prisma.$transaction(
       async (tx) => {
@@ -130,15 +131,26 @@ export class LeagueEnrollmentService {
       { timeout: 30_000, maxWait: 30_000 },
     );
 
-    // COSMETICS-V1 §4/§9 -- al inscribirse REALMENTE en un tier por primera
-    // vez, entregar su marco de liga (permanente, idempotente, nunca
-    // autoequip). Fuera de la transacción (mismo criterio que la entrega de
-    // rewards de nivel en RewardEvaluationWorker) y "best-effort": un fallo
-    // de entrega NUNCA revierte la inscripción -- el grant queda
+    // STABILIZATION-B -- marcos de liga son PRESTIGIO: se otorgan por haber
+    // SUPERADO un tier, nunca por el mero hecho de jugar en él (empezar en
+    // Bronce NO otorga el marco Bronce). El único tier "PROMOTED" desde el
+    // que se resolvió `targetLeagueDefinition` es el que se acaba de
+    // superar -- ESE es el marco que corresponde entregar aquí, nunca el del
+    // tier al que se está ingresando. Excepción terminal: Gran Maestro no
+    // tiene un tier superior al que "ascender" para superarlo, así que su
+    // propio marco se entrega al alcanzarlo por primera vez (detectado por
+    // `surpassedTier` estar vacío exclusivamente por ser el tier más alto,
+    // ver `resolveTargetTier`). Fuera de la transacción y "best-effort": un
+    // fallo de entrega NUNCA revierte la inscripción -- el grant queda
     // `reward:LEAGUE:{leagueDefinitionId}` y se reintenta en la próxima
-    // inscripción a esa misma liga.
+    // inscripción/promoción a esa misma liga (idempotente por diseño).
     if (result.created) {
-      await this.deliverLeagueFrameReward(accountId, targetLeagueDefinition);
+      if (surpassedTier) {
+        await this.deliverLeagueFrameReward(accountId, surpassedTier);
+      }
+      if (isTerminalReach) {
+        await this.deliverLeagueFrameReward(accountId, targetLeagueDefinition);
+      }
     }
     return result;
   }
@@ -179,21 +191,46 @@ export class LeagueEnrollmentService {
    * Sin subdivisiones, sin saltos. `LeaderboardFinalizationService` es quien
    * decide PROMOTED/DEMOTED/RETAINED al cerrar el grupo (Incremento 2, ADR-0020).
    */
-  private async resolveTargetTier(accountId: string): Promise<LeagueDefinition | null> {
+  /**
+   * STABILIZATION-B -- además del tier de destino, resuelve qué marco de
+   * liga (si alguno) corresponde entregar en ESTA inscripción:
+   * `surpassedTier` = el tier que se acaba de SUPERAR (solo en una
+   * transición PROMOTED real, nunca en el ingreso inicial a Bronce ni en
+   * RETAINED/DEMOTED); `isTerminalReach` = true solo cuando el destino es el
+   * tier más alto ACTIVO (sin `findAdjacentActiveTier(..., 'up')` posible) --
+   * cubre la regla terminal de Gran Maestro (se entrega su propio marco al
+   * alcanzarlo, dado que no existe un tier superior que "superar").
+   */
+  private async resolveTargetTier(
+    accountId: string,
+  ): Promise<{ target: LeagueDefinition; surpassedTier: LeagueDefinition | null; isTerminalReach: boolean } | null> {
     const mostRecent = await this.participationRepo.findMostRecentByAccountId(accountId);
+    let target: LeagueDefinition | null = null;
+    let surpassedTier: LeagueDefinition | null = null;
+
     if (mostRecent) {
       const fromTier = await this.leagueDefinitionRepo.findById(mostRecent.leagueDefinitionId);
       if (fromTier && fromTier.status === 'ACTIVE') {
         if (mostRecent.participationStatus === 'PROMOTED') {
-          return (await this.leagueDefinitionRepo.findAdjacentActiveTier(fromTier.tierOrder, 'up')) ?? fromTier;
+          const above = await this.leagueDefinitionRepo.findAdjacentActiveTier(fromTier.tierOrder, 'up');
+          target = above ?? fromTier;
+          // Solo cuenta como "superado" si REALMENTE hubo un tier superior al
+          // que ascender -- si `fromTier` ya era el más alto, no hay marco
+          // nuevo que superar por esta vía (cubierto por `isTerminalReach`).
+          if (above) surpassedTier = fromTier;
+        } else if (mostRecent.participationStatus === 'DEMOTED') {
+          target = (await this.leagueDefinitionRepo.findAdjacentActiveTier(fromTier.tierOrder, 'down')) ?? fromTier;
+        } else {
+          target = fromTier;
         }
-        if (mostRecent.participationStatus === 'DEMOTED') {
-          return (await this.leagueDefinitionRepo.findAdjacentActiveTier(fromTier.tierOrder, 'down')) ?? fromTier;
-        }
-        return fromTier;
       }
     }
-    return this.leagueDefinitionRepo.findLowestActiveTier();
+    if (!target) target = await this.leagueDefinitionRepo.findLowestActiveTier();
+    if (!target) return null;
+
+    const aboveTarget = await this.leagueDefinitionRepo.findAdjacentActiveTier(target.tierOrder, 'up');
+    const isTerminalReach = aboveTarget == null;
+    return { target, surpassedTier, isTerminalReach };
   }
 
   /**
