@@ -23,6 +23,7 @@ import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { parseRequestBody } from '../platform/validation/parse-request-body';
 import { ObjectStorageService } from '../platform/object-storage/object-storage.service';
 import { QuickQuestionService } from './quick-question.service';
+import { QuickLpEligibilityService } from './quick-lp-eligibility.service';
 
 /** Mismo TTL que `EducationService` -- URL de lectura de corta duración, nunca persistida (ADR-0010). */
 const IMAGE_SIGNED_URL_TTL_SECONDS = 300;
@@ -53,6 +54,7 @@ export class QuickQuestionController {
   constructor(
     private readonly quickQuestionService: QuickQuestionService,
     private readonly objectStorage: ObjectStorageService,
+    private readonly lpEligibilityService: QuickLpEligibilityService,
   ) {}
 
   @Post()
@@ -118,11 +120,19 @@ export class QuickQuestionController {
       ? await this.resolveBlocks(explanationContentSchema.parse(result.explanationContent))
       : null;
 
+    // STABILIZATION-B7 -- elegibilidad de LP AUTORITATIVA (backend), para que
+    // el móvil sólo muestre "+2 LP pendiente" cuando el acierto puede
+    // realmente convertirse en LP en la temporada vigente. Mismo criterio que
+    // `LeaguePointGrantService`.
+    const lp = await this.lpEligibilityService.resolve(request.accountId);
+
     return answerQuickQuestionResponseSchema.parse({
       outcome: 'ANSWERED',
       isCorrect: result.attempt.isCorrect,
       correctAnswerOptionId: result.correctAnswerOptionId,
       explanationContent,
+      lpEligible: lp.eligible,
+      lpIneligibleReason: lp.reason,
     });
   }
 

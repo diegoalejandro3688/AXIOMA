@@ -95,6 +95,8 @@ function main() {
     isCorrect: true,
     correctAnswerOptionId: '00000000-0000-0000-0000-000000000001',
     explanationContent: null,
+    lpEligible: true,
+    lpIneligibleReason: null,
   };
   check('200 -> kind ok', mapAnswerResult(ok(answerOk)).kind === 'ok');
   check('400 -> kind invalid_option', mapAnswerResult(http(400)).kind === 'invalid_option');

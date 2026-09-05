@@ -79,6 +79,14 @@ type Screen =
       correctAnswerOptionId: string | null;
       selectedOptionId: string | null;
       explanationContent: ResourceContentBlockResponse[] | null;
+      /**
+       * STABILIZATION-B7 -- elegibilidad de LP AUTORITATIVA del backend
+       * (`ANSWERED.lpEligible`). `true` sólo si un acierto puede llegar a
+       * convertirse en League Points en la temporada vigente. `null` en `timeout`
+       * (nunca aplica). El móvil NUNCA lo infiere.
+       */
+      lpEligible: boolean | null;
+      lpIneligibleReason: 'NO_ACTIVE_SEASON' | 'NO_ACTIVE_PARTICIPATION' | null;
       loadingNext: boolean;
       nextError: string | null;
     };
@@ -191,6 +199,8 @@ export default function QuickQuestionScreen() {
           correctAnswerOptionId: outcome.kind === 'timed_out' ? outcome.correctAnswerOptionId : null,
           selectedOptionId: null,
           explanationContent: null,
+          lpEligible: null,
+          lpIneligibleReason: null,
           loadingNext: false,
           nextError: null,
         };
@@ -271,18 +281,21 @@ export default function QuickQuestionScreen() {
           correctAnswerOptionId: outcome.data.correctAnswerOptionId,
           selectedOptionId,
           explanationContent: null,
+          lpEligible: null,
+          lpIneligibleReason: null,
           loadingNext: false,
           nextError: null,
         });
         return;
       }
-      if (outcome.data.isCorrect) {
-        // STABILIZATION-B (Finding 3B) -- el otorgamiento real de LP es
+      if (outcome.data.isCorrect && outcome.data.lpEligible) {
+        // STABILIZATION-B (Finding 3B) + B7 -- el otorgamiento real de LP es
         // asíncrono (outbox -> GamificationScheduler -> LeaguePointGrantScheduler,
-        // ambos @Cron(EVERY_MINUTE)); esta respuesta HTTP no confirma el LP,
-        // solo indica que la pregunta fue correcta. Se registra como
-        // "pendiente" -- el hub de Competir reconcilia contra el saldo
-        // autoritativo real, nunca se suma aquí al total mostrado.
+        // ambos @Cron(EVERY_MINUTE)); esta respuesta HTTP no confirma el LP.
+        // Se registra como "pendiente" SÓLO si el backend declara el acierto
+        // elegible para LP en la temporada vigente (`lpEligible`). Sin
+        // temporada/participación activa: cero pendiente -- el hub reconcilia
+        // contra el saldo autoritativo real, nunca se suma aquí al total.
         addPendingLp(QUICK_QUESTION_CORRECT_LP);
       }
       setScreen({
@@ -293,6 +306,8 @@ export default function QuickQuestionScreen() {
         correctAnswerOptionId: outcome.data.correctAnswerOptionId,
         selectedOptionId,
         explanationContent: outcome.data.explanationContent,
+        lpEligible: outcome.data.lpEligible,
+        lpIneligibleReason: outcome.data.lpIneligibleReason,
         loadingNext: false,
         nextError: null,
       });
@@ -455,12 +470,14 @@ export default function QuickQuestionScreen() {
       </Text>
 
       {/*
-       * Economía real (Incremento 10): sólo la Pregunta rápida ACERTADA
-       * concede League Points; una respuesta incorrecta o un timeout no
-       * conceden ninguno. El backend es la autoridad del otorgamiento --
-       * esto sólo refleja honestamente el resultado, sin mensaje castigador.
+       * Economía real (Incremento 10 + STABILIZATION-B7): sólo una Pregunta
+       * rápida ACERTADA Y elegible para LP en la temporada vigente
+       * (`lpEligible`, autoridad del backend) muestra el trofeo con LP
+       * pendiente. Acierto sin temporada/participación activa: nota honesta,
+       * sin prometer LP. Incorrecta o timeout: sin LP. Nunca un mensaje
+       * castigador.
        */}
-      {screen.verdict === 'correct' ? (
+      {screen.verdict === 'correct' && screen.lpEligible ? (
         <View style={styles.rewardRow}>
           <LeagueTrophy size={22} accessibilityLabel="League Points" />
           <Text variant="bodySmall" weight="bold" color="secondary">
@@ -469,7 +486,13 @@ export default function QuickQuestionScreen() {
         </View>
       ) : (
         <Text variant="bodySmall" color="muted">
-          {screen.verdict === 'timeout' ? 'No respondiste a tiempo · Sin LP' : 'Sin LP'}
+          {screen.verdict === 'timeout'
+            ? 'No respondiste a tiempo · Sin LP'
+            : screen.verdict === 'correct' && screen.lpIneligibleReason === 'NO_ACTIVE_SEASON'
+              ? 'Sin LP: no hay una temporada activa.'
+              : screen.verdict === 'correct' && screen.lpIneligibleReason === 'NO_ACTIVE_PARTICIPATION'
+                ? 'Sin LP: no participas en la liga de esta temporada.'
+                : 'Sin LP'}
         </Text>
       )}
 

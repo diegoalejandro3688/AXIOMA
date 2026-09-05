@@ -76,6 +76,7 @@ import { QuickQuestionSessionRepository } from './quick-question-session.reposit
 import { QuickQuestionAttemptRepository } from './quick-question-attempt.repository';
 import { QuickQuestionService } from './quick-question.service';
 import { QuickQuestionController } from './quick-question.controller';
+import { QuickLpEligibilityService } from './quick-lp-eligibility.service';
 
 /**
  * Dominio GAMIFICATION, Learning Experience Foundation -- ver
@@ -341,6 +342,7 @@ import { QuickQuestionController } from './quick-question.controller';
     QuickQuestionSessionRepository,
     QuickQuestionAttemptRepository,
     QuickQuestionService,
+    QuickLpEligibilityService,
     CompetitiveHistoryService,
   ],
   exports: [

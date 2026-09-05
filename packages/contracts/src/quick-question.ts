@@ -97,12 +97,32 @@ export type AnswerQuickQuestionBody = z.infer<typeof answerQuickQuestionBodySche
  *    recompensa. Devuelve `correctAnswerOptionId` para que el móvil revele
  *    la correcta.
  */
+/**
+ * STABILIZATION-B7 -- por qué NO se puede otorgar LP por esta Pregunta
+ * rápida ahora mismo (el backend es la autoridad; el móvil nunca lo infiere
+ * llamando a varios endpoints):
+ *   - `NO_ACTIVE_SEASON`        -- no hay temporada de liga vigente.
+ *   - `NO_ACTIVE_PARTICIPATION` -- hay temporada, pero la cuenta no tiene una
+ *     participación elegible en ella.
+ * `null` cuando `lpEligible = true`.
+ */
+export const quickLpIneligibleReasonSchema = z.enum(['NO_ACTIVE_SEASON', 'NO_ACTIVE_PARTICIPATION']);
+export type QuickLpIneligibleReason = z.infer<typeof quickLpIneligibleReasonSchema>;
+
 export const answerQuickQuestionResponseSchema = z.discriminatedUnion('outcome', [
   z.object({
     outcome: z.literal('ANSWERED'),
     isCorrect: z.boolean(),
     correctAnswerOptionId: entityId,
     explanationContent: explanationContentResponseSchema.nullable(),
+    /**
+     * STABILIZATION-B7 -- ¿puede este acierto llegar a otorgar +2 LP en la
+     * temporada vigente? El móvil sólo muestra "+2 LP pendiente" cuando esto
+     * es `true` Y `isCorrect`. Incorrecta o `lpEligible = false` -> sin
+     * pendiente, y con `lpIneligibleReason` se muestra la nota honesta.
+     */
+    lpEligible: z.boolean(),
+    lpIneligibleReason: quickLpIneligibleReasonSchema.nullable(),
   }),
   z.object({
     outcome: z.literal('TIMED_OUT'),
