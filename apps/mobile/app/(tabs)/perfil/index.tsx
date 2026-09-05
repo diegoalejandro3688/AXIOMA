@@ -310,6 +310,10 @@ export default function PerfilScreen() {
           </Text>
           <IconButton name="close" accessibilityLabel="Cerrar ajustes" onPress={closeSettings} color="secondary" />
         </View>
+        {/* STABILIZATION-B8 (Polish D) -- agrupación visual (Cuenta / Preferencias / Privacidad / Plan). Sólo jerarquía y etiquetas: ningún control nuevo, ninguna funcionalidad nueva. */}
+        <Text variant="caption" color="muted" weight="semibold" style={styles.settingsGroupLabel}>
+          CUENTA
+        </Text>
         <View style={styles.settingsSection}>
           {editingName ? (
             <View style={styles.editor}>
@@ -380,6 +384,9 @@ export default function PerfilScreen() {
           cambia inmediatamente la preferencia en memoria (propagada por
           `ThemeProvider` a toda la app) y la persiste vía `localFlags`.
         */}
+        <Text variant="caption" color="muted" weight="semibold" style={styles.settingsGroupLabel}>
+          PREFERENCIAS
+        </Text>
         <View style={styles.settingsSection}>
           <Text variant="body" weight="semibold">
             Apariencia
@@ -399,6 +406,9 @@ export default function PerfilScreen() {
           </View>
         </View>
 
+        <Text variant="caption" color="muted" weight="semibold" style={styles.settingsGroupLabel}>
+          PRIVACIDAD
+        </Text>
         {publicProfileState === null || publicProfileState.status === 'loading' ? (
           <Text variant="bodySmall" color="secondary">
             Cargando identidad pública…
@@ -471,22 +481,7 @@ export default function PerfilScreen() {
         )}
 
         {/*
-          STABILIZATION-B -- Plan: estado autoritativo de entitlement
-          (`GET /me/entitlement`, ya consumido app-wide vía `EntitlementProvider`)
-          -- solo lectura, sin CTA de compra/restauración mientras Google Play
-          real permanezca congelado (ver `GOOGLE_PLAY_PROVIDER_IMPL`).
-        */}
-        <View style={styles.settingsSection}>
-          <Text variant="body" weight="semibold">
-            Plan
-          </Text>
-          <Text variant="bodySmall" color="secondary">
-            {entitlement.state.status === 'ready' ? (entitlement.isPremium ? 'ZETRYND Premium' : 'ZETRYND Free') : 'Cargando plan…'}
-          </Text>
-        </View>
-
-        {/*
-          STABILIZATION-B -- Cuenta: solicitud de eliminación reutilizando el
+          STABILIZATION-B -- Privacidad: solicitud de eliminación reutilizando el
           endpoint YA existente `POST /privacy/account-deletion` (202, crea
           una SOLICITUD de barrido asíncrono -- NUNCA borra al instante). La
           copia refleja exactamente ese comportamiento real, con confirmación
@@ -512,6 +507,21 @@ export default function PerfilScreen() {
               </Text>
             </Pressable>
           )}
+        </View>
+
+        {/*
+          STABILIZATION-B -- Plan: estado autoritativo de entitlement
+          (`GET /me/entitlement`, ya consumido app-wide vía `EntitlementProvider`)
+          -- solo lectura, sin CTA de compra/restauración mientras Google Play
+          real permanezca congelado (ver `GOOGLE_PLAY_PROVIDER_IMPL`).
+        */}
+        <Text variant="caption" color="muted" weight="semibold" style={styles.settingsGroupLabel}>
+          PLAN
+        </Text>
+        <View style={styles.settingsSection}>
+          <Text variant="bodySmall" color="secondary">
+            {entitlement.state.status === 'ready' ? (entitlement.isPremium ? 'ZETRYND Premium' : 'ZETRYND Free') : 'Cargando plan…'}
+          </Text>
         </View>
 
         <Button
@@ -565,6 +575,8 @@ function createStyles(t: ThemeTokens) {
     tabItemActive: { borderBottomColor: t.color.accent.default },
     settingsHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const },
     settingsSection: { gap: spacing.space2 },
+    // STABILIZATION-B8 (Polish D) -- etiqueta de grupo: separación clara arriba, mínima abajo (pegada a su sección).
+    settingsGroupLabel: { marginTop: spacing.space3, letterSpacing: 0.8 },
     appearanceRow: { flexDirection: 'row' as const, gap: spacing.space2 },
     settingsRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, gap: spacing.space2 },
     editor: { gap: spacing.space2 },
