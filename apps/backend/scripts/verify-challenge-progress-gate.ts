@@ -28,6 +28,8 @@ import { AccountChallengeRepository } from '../src/gamification/account-challeng
 import { AccountChallengeDailyProgressRepository } from '../src/gamification/account-challenge-daily-progress.repository';
 import { AccountChallengeConsumedEventRepository } from '../src/gamification/account-challenge-consumed-event.repository';
 import { ValidatedGamificationActivityRepository } from '../src/gamification/validated-gamification-activity.repository';
+import { CurriculumTopicRepository } from '../src/education/curriculum-topic.repository';
+import { CurriculumTopicProgressRepository } from '../src/progress/curriculum-topic-progress.repository';
 import { GamificationProgramRepository } from '../src/gamification/gamification-program.repository';
 import { GamificationProgramVersionRepository } from '../src/gamification/gamification-program-version.repository';
 import { XpRuleRepository } from '../src/gamification/xp-rule.repository';
@@ -108,6 +110,8 @@ async function main() {
     dailyProgressRepo,
     consumedEventRepo,
     validatedActivityRepo,
+    new CurriculumTopicRepository(prisma),
+    new CurriculumTopicProgressRepository(prisma),
   );
 
   const suffix = Date.now();
