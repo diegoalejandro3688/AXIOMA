@@ -2,16 +2,21 @@
 // Cubre lo que este incremento AÑADE sobre Bloque IV (Incrementos 1-5, ya
 // cerrados y con sus propios gates):
 //
-//   §32  configuración PRODUCTIVA de League Points (1/2/5, sin cap, exactamente
-//        los 3 activityType ya emitidos -- nunca uno nuevo) + idempotencia del
-//        seed.
+//   §32  configuración PRODUCTIVA de League Points -- V1 CONGELADO (PF1,
+//        LP-V1-HOTFIX `cb336a4`): EXACTAMENTE UNA regla,
+//        `QUICK_QUESTION_ANSWERED = +2`, sin cap. Las 2 reglas históricas de
+//        Estudio (`RESPUESTA_VALIDADA`=+1, `TEMA_COMPLETADO`=+5) se retiraron
+//        del catálogo -- Estudio NUNCA otorga LP. Idempotencia del seed.
 //   §33  gramática de zonas EN VIVO (`promotion-grammar.ts`) espejo EXACTO del
 //        cierre de grupo -- G=30 medio (1-6/7-24/25-30), G<3, Bronce, Gran
 //        Maestro, grupo parcial. Y que `LeaderboardFinalizationService`
 //        DELEGA en ese helper (no duplica la fórmula).
-//   §37  otorgamiento LP end-to-end por el pipeline REAL con los montos
-//        PRODUCTIVOS: RESPUESTA_VALIDADA +1, QUICK_QUESTION_ANSWERED +2,
-//        TEMA_COMPLETADO +5; reintento idempotente; sin participación -> sin LP.
+//   §37  otorgamiento LP end-to-end por el pipeline REAL con la economía
+//        CONGELADA: QUICK_QUESTION_ANSWERED acertada + participación vigente
+//        -> +2; toda actividad de Estudio (RESPUESTA_VALIDADA /
+//        RECURSO_COMPLETADO / TEMA_COMPLETADO / ENSAYO_COMPLETADO) -> 0 LP
+//        (`NO_ACTIVE_RULE`); Quick incorrecta -> 0; reintento idempotente;
+//        sin participación -> sin LP.
 //
 // Corre contra `axioma_gates_dev` vía run-gate.ts -- nunca `axioma_dev`.
 import 'dotenv/config';
@@ -59,7 +64,7 @@ import { TitleEligibilityService } from '../src/gamification/title-eligibility.s
 import { SubjectCompletionService } from '../src/gamification/subject-completion.service';
 import { SubjectRepository } from '../src/education/subject.repository';
 import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
-import { LEAGUE_POINT_RULES_V1, LEAGUE_POINT_RULE_V1_EFFECTIVE_FROM } from '../src/gamification/competitive-v1-config';
+import { LEAGUE_POINT_RULES_V1, LEAGUE_POINT_RULES_V1_STUDY_RETIRED, LEAGUE_POINT_RULE_V1_EFFECTIVE_FROM } from '../src/gamification/competitive-v1-config';
 import { computeZoneCounts, resolveCompetitiveZone, competitiveZoneFor, MINIMUM_PARTICIPANTS_FOR_PROMOTION } from '../src/gamification/promotion-grammar';
 
 let failures = 0;
@@ -82,22 +87,25 @@ async function main() {
   // ===========================================================================
   console.log('=== PARTE 1: config LP productiva + gramática de zonas (pura) ===\n');
 
-  console.log('--- §32. LEAGUE_POINT_RULES_V1: exactamente los 3 tipos, montos 1/2/5, sin cap ---');
+  console.log('--- §32. LEAGUE_POINT_RULES_V1 CONGELADO (PF1 / LP-V1-HOTFIX): SÓLO Quick +2 ---');
   const byType = new Map(LEAGUE_POINT_RULES_V1.map((r) => [r.activityType, r]));
-  check('exactamente 3 reglas', LEAGUE_POINT_RULES_V1.length === 3);
-  check('RESPUESTA_VALIDADA = +1 LP', byType.get('RESPUESTA_VALIDADA')?.basePoints === 1);
+  check('EXACTAMENTE una regla de LP V1', LEAGUE_POINT_RULES_V1.length === 1);
+  check('su activityType es QUICK_QUESTION_ANSWERED', LEAGUE_POINT_RULES_V1[0]?.activityType === 'QUICK_QUESTION_ANSWERED');
   check('QUICK_QUESTION_ANSWERED = +2 LP', byType.get('QUICK_QUESTION_ANSWERED')?.basePoints === 2);
-  check('TEMA_COMPLETADO = +5 LP', byType.get('TEMA_COMPLETADO')?.basePoints === 5);
-  check('ninguna regla tiene dailyCap (null = sin tope, §25)', LEAGUE_POINT_RULES_V1.every((r) => r.dailyCap === null));
-  check('activityType ⊆ {RESPUESTA_VALIDADA, QUICK_QUESTION_ANSWERED, TEMA_COMPLETADO} -- NUNCA un tipo nuevo', LEAGUE_POINT_RULES_V1.every((r) => ['RESPUESTA_VALIDADA', 'QUICK_QUESTION_ANSWERED', 'TEMA_COMPLETADO'].includes(r.activityType)));
-  // Los 3 tipos DEBEN existir en el mapeo del ingestor (`GamificationService.activityTypeFor`).
+  check('sin tope diario (dailyCap = null, §25)', LEAGUE_POINT_RULES_V1.every((r) => r.dailyCap === null));
+  check('NINGUNA actividad de Estudio es una regla de LP (RESPUESTA_VALIDADA / RECURSO_COMPLETADO / TEMA_COMPLETADO / ENSAYO_COMPLETADO)', ['RESPUESTA_VALIDADA', 'RECURSO_COMPLETADO', 'TEMA_COMPLETADO', 'ENSAYO_COMPLETADO'].every((t) => byType.get(t) === undefined));
+  // Las 2 reglas históricas de Estudio se conservan como constante SEPARADA e
+  // INERTE (nunca seedeada), sólo para preservar sus montos canónicos.
+  const retiredByType = new Map(LEAGUE_POINT_RULES_V1_STUDY_RETIRED.map((r) => [r.activityType, r]));
+  check('LEAGUE_POINT_RULES_V1_STUDY_RETIRED documenta las 2 reglas retiradas (RESPUESTA_VALIDADA=+1, TEMA_COMPLETADO=+5)', LEAGUE_POINT_RULES_V1_STUDY_RETIRED.length === 2 && retiredByType.get('RESPUESTA_VALIDADA')?.basePoints === 1 && retiredByType.get('TEMA_COMPLETADO')?.basePoints === 5);
+  // El único activityType de la regla productiva DEBE existir en el mapeo del ingestor.
   const gamServiceSource = readFileSync(join(__dirname, '..', 'src', 'gamification', 'gamification.service.ts'), 'utf8');
-  check('los 3 activityType existen en GamificationService.activityTypeFor', ['RESPUESTA_VALIDADA', 'QUICK_QUESTION_ANSWERED', 'TEMA_COMPLETADO'].every((t) => gamServiceSource.includes(`'${t}'`)));
+  check("QUICK_QUESTION_ANSWERED existe en GamificationService.activityTypeFor", gamServiceSource.includes("'QUICK_QUESTION_ANSWERED'"));
 
   console.log('--- §10 (Incremento 10). Correctness de LP: ACOTADA a QUICK_QUESTION_ANSWERED, productor intacto ---');
   const grantSource = readFileSync(join(__dirname, '..', 'src', 'gamification', 'league-point-grant.service.ts'), 'utf8');
   check("la excepción de correctness sólo mira activity.activityType === 'QUICK_QUESTION_ANSWERED'", grantSource.includes("activity.activityType === 'QUICK_QUESTION_ANSWERED'"));
-  check('RESPUESTA_VALIDADA / TEMA_COMPLETADO NO aparecen en el filtro de correctness (siguen incondicionales)', !grantSource.includes("=== 'RESPUESTA_VALIDADA'") && !grantSource.includes("=== 'TEMA_COMPLETADO'"));
+  check('el otorgamiento de LP NO ramifica por ninguna actividad de Estudio (RESPUESTA_VALIDADA / RECURSO_COMPLETADO / TEMA_COMPLETADO / ENSAYO_COMPLETADO): sin regla, `NO_ACTIVE_RULE`', !grantSource.includes("=== 'RESPUESTA_VALIDADA'") && !grantSource.includes("=== 'TEMA_COMPLETADO'") && !grantSource.includes("=== 'RECURSO_COMPLETADO'") && !grantSource.includes("=== 'ENSAYO_COMPLETADO'"));
   check('la QQ incorrecta se resuelve como NOT_REWARDABLE (nunca un OTORGAMIENTO de monto 0)', grantSource.includes("outcome: 'NOT_REWARDABLE'") && !/pointAmount:\s*0/.test(grantSource));
   const qqServiceSource = readFileSync(join(__dirname, '..', 'src', 'gamification', 'quick-question.service.ts'), 'utf8');
   const publishGuard = qqServiceSource.slice(qqServiceSource.indexOf('if (result.outcome'), qqServiceSource.indexOf('this.outbox.publish'));
@@ -209,11 +217,23 @@ async function main() {
   check('temporada de fixture ACTIVE', (await seasonRepo.findActive())?.id === season.id);
   void tier;
 
-  // Las 3 reglas PRODUCTIVAS (montos exactos de `LEAGUE_POINT_RULES_V1`).
+  // Higiene: la base de gates arrastra reglas de LP de corridas previas
+  // (incluidas las históricas de Estudio RESPUESTA_VALIDADA=+1 /
+  // TEMA_COMPLETADO=+5, retiradas del producto en LP-V1-HOTFIX). Se RETIRAN
+  // de forma no destructiva (`effective_until` a `now`, antes del instante de
+  // otorgamiento del test) para que `findApplicableRule` no las devuelva --
+  // sin esto los casos de "Estudio -> 0 LP" pasarían por accidente contra
+  // una regla residual.
+  await pg.query('UPDATE league_point_rule SET effective_until = $1 WHERE effective_until IS NULL', [now]);
+
+  // La ÚNICA regla PRODUCTIVA V1 (montos exactos de `LEAGUE_POINT_RULES_V1`).
   for (const rule of LEAGUE_POINT_RULES_V1) {
     await ruleRepo.create({ activityType: rule.activityType, basePoints: rule.basePoints, dailyCap: null, effectiveFrom: LEAGUE_POINT_RULE_V1_EFFECTIVE_FROM, ruleVersion: rule.ruleVersion });
   }
-  check('3 reglas LP productivas creadas', (await pg.query('SELECT count(*)::int AS n FROM league_point_rule')).rows[0].n >= 3);
+  check(
+    'EXACTAMENTE una regla de LP aplicable en el instante del test, y es QUICK_QUESTION_ANSWERED +2',
+    (await pg.query("SELECT activity_type, base_points FROM league_point_rule WHERE effective_from <= $1 AND (effective_until IS NULL OR effective_until > $1)", [new Date(now.getTime() + 60 * 1000)])).rows.map((r) => `${r.activity_type}:${r.base_points}`).join('|') === 'QUICK_QUESTION_ANSWERED:2',
+  );
 
   const account = randomUUID();
   const enroll = await enrollmentService.joinActiveSeason(account);
@@ -294,21 +314,24 @@ async function main() {
     return attemptId;
   }
 
-  console.log('--- §37 CASE A: RESPUESTA_VALIDADA -> +1 LP (ledger + balance) ---');
+  console.log('--- §37 CASE A: RESPUESTA_VALIDADA (Estudio) -> 0 LP: NO_ACTIVE_RULE, sin fila ---');
   const a = await grantOne('RESPUESTA_VALIDADA', `compv1-a-${suffix}`);
-  check('LP_GRANTED, pointAmount = 1', a.outcome.outcome === 'LP_GRANTED' && a.outcome.entry.pointAmount === 1);
+  check('RESPUESTA_VALIDADA -> NO_ACTIVE_RULE (Estudio nunca otorga LP)', a.outcome.outcome === 'NO_ACTIVE_RULE');
+  check('RESPUESTA_VALIDADA -> 0 filas en league_point_ledger_entry', (await pg.query('SELECT count(*)::int AS n FROM league_point_ledger_entry WHERE validated_activity_id = $1', [a.activity.id])).rows[0].n === 0);
 
-  console.log('--- §37 CASE B: QUICK_QUESTION_ANSWERED ACERTADA -> +2 LP (Incremento 10) ---');
+  console.log('--- §37 CASE B: QUICK_QUESTION_ANSWERED ACERTADA + participación vigente -> +2 LP ---');
   const correctAttemptId = await makeQuickQuestionAttempt(true);
   const b = await grantOne('QUICK_QUESTION_ANSWERED', `compv1-b-${suffix}`, { type: 'QuickQuestionAttempt', id: correctAttemptId });
   check('QQ correcta -> LP_GRANTED, pointAmount = 2', b.outcome.outcome === 'LP_GRANTED' && b.outcome.entry.pointAmount === 2);
 
-  console.log('--- §37 CASE C: TEMA_COMPLETADO -> +5 LP ---');
-  const c = await grantOne('TEMA_COMPLETADO', `compv1-c-${suffix}`);
-  check('LP_GRANTED, pointAmount = 5', c.outcome.outcome === 'LP_GRANTED' && c.outcome.entry.pointAmount === 5);
+  console.log('--- §37 CASE C: toda otra actividad de Estudio (RECURSO/TEMA/ENSAYO_COMPLETADO) -> 0 LP ---');
+  for (const studyType of ['RECURSO_COMPLETADO', 'TEMA_COMPLETADO', 'ENSAYO_COMPLETADO']) {
+    const s = await grantOne(studyType, `compv1-c-${studyType}-${suffix}`);
+    check(`${studyType} -> NO_ACTIVE_RULE, sin fila de ledger`, s.outcome.outcome === 'NO_ACTIVE_RULE' && (await pg.query('SELECT count(*)::int AS n FROM league_point_ledger_entry WHERE validated_activity_id = $1', [s.activity.id])).rows[0].n === 0);
+  }
 
   const balance = await participationRepo.findById(participationId);
-  check('balance leaguePoints de la participación = 1 + 2 + 5 = 8', balance?.leaguePoints === 8);
+  check('balance leaguePoints de la participación = 2 (SÓLO la Quick acertada; Estudio = 0)', balance?.leaguePoints === 2);
 
   console.log('--- §37 CASE B2: QUICK_QUESTION_ANSWERED FALLADA -> 0 LP, sin fila, hecho de dominio preservado (Incremento 10) ---');
   const incorrectAttemptId = await makeQuickQuestionAttempt(false);
@@ -317,7 +340,7 @@ async function main() {
   const wrongLedgerRows = await pg.query('SELECT count(*)::int AS n FROM league_point_ledger_entry WHERE validated_activity_id = $1', [bWrong.activity.id]);
   check('QQ incorrecta -> 0 filas en league_point_ledger_entry (nunca un OTORGAMIENTO de monto 0)', wrongLedgerRows.rows[0].n === 0);
   const balanceAfterWrong = await participationRepo.findById(participationId);
-  check('el balance de LP NO cambió por la QQ incorrecta (sigue en 8)', balanceAfterWrong?.leaguePoints === 8);
+  check('el balance de LP NO cambió por la QQ incorrecta (sigue en 2)', balanceAfterWrong?.leaguePoints === 2);
   const wrongActivityStillThere = await activityRepo.findById(bWrong.activity.id);
   check('§H: la validated_gamification_activity de la QQ incorrecta SIGUE existiendo (hecho de dominio preservado para XP / señales de desafío)', wrongActivityStillThere !== null);
 
@@ -327,13 +350,13 @@ async function main() {
   const bLedgerRows = await pg.query('SELECT count(*)::int AS n FROM league_point_ledger_entry WHERE validated_activity_id = $1', [b.activity.id]);
   check('sigue habiendo UNA sola fila de ledger para la QQ acertada (idempotencia intacta)', bLedgerRows.rows[0].n === 1);
 
-  console.log('--- §37 CASE D: reintento del mismo grant -> idempotente, sin duplicar ---');
-  const retry = await grantService.grantForActivity(a.activity);
-  check('reintento -> misma entrada', retry.outcome === 'LP_GRANTED' && a.outcome.outcome === 'LP_GRANTED' && retry.entry.id === a.outcome.entry.id);
-  const rowCount = await pg.query('SELECT count(*)::int AS n FROM league_point_ledger_entry WHERE validated_activity_id = $1', [a.activity.id]);
+  console.log('--- §37 CASE D: reintento del mismo grant (Quick acertada) -> idempotente, sin duplicar ---');
+  const retry = await grantService.grantForActivity(b.activity);
+  check('reintento -> misma entrada', retry.outcome === 'LP_GRANTED' && b.outcome.outcome === 'LP_GRANTED' && retry.entry.id === b.outcome.entry.id);
+  const rowCount = await pg.query('SELECT count(*)::int AS n FROM league_point_ledger_entry WHERE validated_activity_id = $1', [b.activity.id]);
   check('sigue habiendo UNA sola fila de ledger para esa actividad', rowCount.rows[0].n === 1);
   const balanceAfterRetry = await participationRepo.findById(participationId);
-  check('el balance NO volvió a incrementarse (sigue en 8)', balanceAfterRetry?.leaguePoints === 8);
+  check('el balance NO volvió a incrementarse (sigue en 2)', balanceAfterRetry?.leaguePoints === 2);
 
   console.log('--- §37 CASE E: cuenta NO inscrita -> sin LP, sin fila ---');
   const stranger = randomUUID();
