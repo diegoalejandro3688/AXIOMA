@@ -4,6 +4,7 @@ import type { CompetitiveContext } from '@axioma/contracts';
 import { describeMyPosition } from '../../lib/leaderboard/paginate-leaderboard';
 import { describePositionCardEmptyState, type PositionCardVariant } from '../../lib/competitive/position-card-copy';
 import { Text, Card, Button, Icon } from '../ui';
+import { LeagueEmblem } from './league-emblem';
 import { useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
@@ -47,7 +48,18 @@ export function CompetitivePositionCard({ competitive, variant }: { competitive:
   return (
     <Card variant="brand" style={styles.card}>
       <View style={styles.header}>
-        <Icon name="shield" size={18} color="onInverse" />
+        {/*
+          STABILIZATION-B6 (Finding D) -- escudo canónico de la liga, mismo
+          tratamiento que `identity-header.tsx` (Fix A de B1, que sólo tocó
+          el perfil propio). `competitive.leagueTier` ya viene en el prop
+          (`competitiveContextSchema`), sin una segunda llamada; el `Icon`
+          genérico queda sólo como fallback si el tier no está disponible.
+        */}
+        {competitive ? (
+          <LeagueEmblem tier={competitive.leagueTier} size={20} halo={false} accessibilityLabel={`Escudo de la liga ${view.leagueName}`} />
+        ) : (
+          <Icon name="shield" size={18} color="onInverse" />
+        )}
         <Text variant="titleMedium" weight="bold" color="onInverse">
           {view.leagueName}
         </Text>
