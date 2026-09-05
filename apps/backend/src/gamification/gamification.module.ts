@@ -64,6 +64,9 @@ import { LeaguePointGrantService } from './league-point-grant.service';
 import { LeaguePointGrantScheduler } from './league-point-grant.scheduler';
 import { SeasonTransitionService } from './season-transition.service';
 import { SeasonTransitionScheduler } from './season-transition.scheduler';
+import { SeasonProvisioningService } from './season-provisioning.service';
+import { SeasonRolloverService } from './season-rollover.service';
+import { SeasonOrchestrationService } from './season-orchestration.service';
 import { LeaderboardDefinitionRepository } from './leaderboard-definition.repository';
 import { LeaderboardEntryRepository } from './leaderboard-entry.repository';
 import { LeaderboardSnapshotRepository } from './leaderboard-snapshot.repository';
@@ -330,6 +333,9 @@ import { QuickLpEligibilityService } from './quick-lp-eligibility.service';
     LeaguePointGrantService,
     LeaguePointGrantScheduler,
     SeasonTransitionService,
+    SeasonProvisioningService,
+    SeasonRolloverService,
+    SeasonOrchestrationService,
     SeasonTransitionScheduler,
     LeaderboardDefinitionRepository,
     LeaderboardEntryRepository,

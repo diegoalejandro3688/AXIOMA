@@ -87,6 +87,16 @@ export class LeagueGroupRepository {
     return this.prisma.leagueGroup.findMany({ where: { status: 'LOCKED' } });
   }
 
+  /**
+   * PF2-B -- ¿le quedan a esta temporada grupos LOCKED pendientes de
+   * finalización? La orquestación de fronteras NO activa la temporada
+   * sucesora hasta que esto sea 0 (evita que un usuario aterrice en un tier
+   * antes de que su ascenso/descenso se haya resuelto).
+   */
+  countLockedForSeason(gameSeasonId: string, tx?: Prisma.TransactionClient): Promise<number> {
+    return (tx ?? this.prisma).leagueGroup.count({ where: { gameSeasonId, status: 'LOCKED' } });
+  }
+
   updateStatus(tx: Prisma.TransactionClient, id: string, status: 'FINALIZED', finalizedAt: Date): Promise<LeagueGroup> {
     return tx.leagueGroup.update({ where: { id }, data: { status, finalizedAt } });
   }

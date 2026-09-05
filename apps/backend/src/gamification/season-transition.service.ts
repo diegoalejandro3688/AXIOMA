@@ -29,8 +29,7 @@ export class SeasonTransitionService {
    * además que cualquier otorgamiento concurrente confirme después de este
    * cierre (§9.5).
    */
-  async closeExpiredSeasons(): Promise<{ closed: number }> {
-    const now = new Date();
+  async closeExpiredSeasons(now: Date = new Date()): Promise<{ closed: number }> {
     const expired = await this.seasonRepo.findActiveExpired(now);
 
     let closed = 0;
@@ -58,8 +57,7 @@ export class SeasonTransitionService {
    * configuración operativa, no un caso que este incremento deba resolver
    * automáticamente.
    */
-  async activateScheduledSeasons(): Promise<{ activated: number; skippedOverlap: number }> {
-    const now = new Date();
+  async activateScheduledSeasons(now: Date = new Date()): Promise<{ activated: number; skippedOverlap: number }> {
     const ready = await this.seasonRepo.findScheduledReadyToActivate(now);
 
     let activated = 0;

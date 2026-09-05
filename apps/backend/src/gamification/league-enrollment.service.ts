@@ -77,12 +77,16 @@ export class LeagueEnrollmentService {
    * bajo una carrera real de dos solicitudes concurrentes (Gate de
    * inscripción idempotente, §9.9).
    */
-  async joinActiveSeason(accountId: string): Promise<EnrollmentOutcome> {
+  async joinActiveSeason(accountId: string, now: Date = new Date()): Promise<EnrollmentOutcome> {
     // STABILIZATION-B7 -- temporada CANÓNICA vigente (status ACTIVE Y `now`
     // dentro de la ventana), la misma que resuelve el Ranking. Una temporada
     // ACTIVE fuera de ventana (contaminación, o un tick de scheduler de
     // retraso) nunca es "la temporada a la que inscribirse".
-    const season = await this.seasonRepo.findCurrent(new Date());
+    // PF2-B -- `now` es inyectable para que `SeasonOrchestrationService` corra
+    // todo un ciclo (provisión -> cierre -> finalización -> activación ->
+    // rollover) sobre UN instante coherente; el default cubre el camino real
+    // del controller.
+    const season = await this.seasonRepo.findCurrent(now);
     if (!season) return { outcome: 'NO_ACTIVE_SEASON' };
 
     // Idempotencia rápida sin lock: si ya existe, no hace falta serializar nada.

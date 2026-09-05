@@ -172,4 +172,38 @@ export class SeasonLeagueParticipationRepository {
     });
     return result.count;
   }
+
+  /**
+   * PF2-B -- ¿le quedan a esta temporada participaciones SEASON_ENDED sin
+   * resultado final (PROMOTED/DEMOTED/RETAINED)? La orquestación NO activa la
+   * sucesora hasta que esto sea 0.
+   */
+  countPendingOutcomeForSeason(gameSeasonId: string, tx?: Prisma.TransactionClient): Promise<number> {
+    return (tx ?? this.prisma).seasonLeagueParticipation.count({
+      where: { gameSeasonId, participationStatus: 'SEASON_ENDED' },
+    });
+  }
+
+  /**
+   * PF2-B (auto-rollover) -- página determinista de `accountId` DISTINTOS con
+   * una participación de resultado TERMINAL (PROMOTED/DEMOTED/RETAINED) en
+   * `gameSeasonId` (la temporada inmediatamente anterior). Cursor por
+   * `accountId` ascendente. Nunca carga toda la población en memoria.
+   */
+  async findTerminalAccountIdsForSeason(
+    gameSeasonId: string,
+    opts: { take: number; afterAccountId?: string },
+  ): Promise<string[]> {
+    const rows = await this.prisma.seasonLeagueParticipation.findMany({
+      where: {
+        gameSeasonId,
+        participationStatus: { in: ['PROMOTED', 'DEMOTED', 'RETAINED'] },
+        ...(opts.afterAccountId ? { accountId: { gt: opts.afterAccountId } } : {}),
+      },
+      select: { accountId: true },
+      orderBy: { accountId: 'asc' },
+      take: opts.take,
+    });
+    return rows.map((r) => r.accountId);
+  }
 }
