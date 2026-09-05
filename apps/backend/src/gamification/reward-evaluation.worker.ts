@@ -39,6 +39,9 @@ import { ValidatedGamificationActivityRepository } from './validated-gamificatio
 import { CurriculumTopicRepository } from '../education/curriculum-topic.repository';
 import { CurriculumTopicProgressRepository } from '../progress/curriculum-topic-progress.repository';
 import { HISTORIC_AVATAR_UNIT_MAP } from './cosmetics-v1-catalog';
+import { TitleDefinitionRepository } from './title-definition.repository';
+import { TitleEligibilityService } from './title-eligibility.service';
+import { TITLES_V1 } from './titles-v1-catalog';
 
 /**
  * STABILIZATION-B -- decisión de producto CONGELADA (§5 del brief): "actividad
@@ -147,6 +150,8 @@ export class RewardEvaluationWorker {
     private readonly validatedActivityRepo: ValidatedGamificationActivityRepository,
     private readonly curriculumTopicRepo: CurriculumTopicRepository,
     private readonly curriculumTopicProgressRepo: CurriculumTopicProgressRepository,
+    private readonly titleDefinitionRepo: TitleDefinitionRepository,
+    private readonly titleEligibilityService: TitleEligibilityService,
   ) {}
 
   /**
@@ -196,6 +201,9 @@ export class RewardEvaluationWorker {
 
     const historicalAvatarsResolved = await this.evaluateHistoricalAvatars(accountId, pendingEntries);
     if (!historicalAvatarsResolved) hasUnresolvedComponent = true;
+
+    const titlesResolved = await this.evaluateTitles(accountId);
+    if (!titlesResolved) hasUnresolvedComponent = true;
 
     if (hasUnresolvedComponent) {
       throw new Error(`No se pudieron resolver todas las recompensas pendientes (nivel y/o logros) para la cuenta ${accountId}.`);
@@ -654,6 +662,61 @@ export class RewardEvaluationWorker {
       // idempotencyKey global de RewardGrant, sin accountId propio).
       const { allResolved: delivered } = await this.deliverBundleComponents(accountId, bundle, 'STUDY_UNIT', `${accountId}:${unit.id}`);
       if (!delivered) allResolved = false;
+    }
+    return allResolved;
+  }
+
+  /**
+   * TITLES-V1 -- recompute puro sobre los 7 títulos congelados
+   * (`titles-v1-catalog.ts`), sin gate por `entryType`: a diferencia de
+   * Desafíos/avatares históricos (que solo reaccionan a `OTORGAMIENTO` de
+   * estudio), los 6 métricas de título dependen de superficies que NO
+   * siempre dejan una entrada de ledger (p.ej. Ascendente -- ascenso de
+   * liga -- o Desafiante -- reclamo de desafío) o dejan una de tipo
+   * distinto (`BONO`). Igual que `evaluateAchievements`/nivel, se
+   * recalcula desde el origen en CADA corrida de la cuenta -- ejecutarlo
+   * dos veces sobre el mismo estado no produce una segunda fila
+   * (`AccountTitleRepository.createIdempotent`, `UNIQUE(accountId,
+   * titleDefinitionId)` -- la misma frontera de idempotencia de
+   * ownership, sin pasar por `RewardGrant`/`RewardBundle`: un título NO es
+   * un componente de recompensa entregable, es una fila de propiedad
+   * directa -- ver ADR, no se construye un segundo sistema de entrega).
+   *
+   * Una cuenta que ya posee el título se salta sin volver a evaluar su
+   * métrica (excepto que sea barato hacerlo -- se prioriza claridad). Un
+   * `TitleDefinition` faltante (seed `titles:seed-v1` aún no corrido) es
+   * un no-op seguro para ESE título, nunca un error que bloquee los demás.
+   */
+  private async evaluateTitles(accountId: string): Promise<boolean> {
+    let allResolved = true;
+    for (const entry of TITLES_V1) {
+      try {
+        const definition = await this.titleDefinitionRepo.findByTitleKey(entry.titleKey);
+        if (!definition) continue;
+
+        const existing = await this.accountTitleRepo.findByAccountAndTitle(accountId, definition.id);
+        if (existing) continue;
+
+        const eligible = await this.titleEligibilityService.evaluateMetric(accountId, entry.metric, entry.threshold);
+        if (!eligible) continue;
+
+        await this.accountTitleRepo.createIdempotent({
+          accountId,
+          titleDefinitionId: definition.id,
+          acquisitionSourceType: 'TITLE_UNLOCK',
+          acquisitionSourceId: `${accountId}:${entry.titleKey}`,
+          acquiredAt: new Date(),
+        });
+      } catch (error) {
+        // Aislado por título -- un fallo (evaluando la métrica o
+        // otorgando) para UN título de los 7 nunca bloquea a los demás
+        // (mismo criterio que `evaluateAchievements`/`evaluateChallenges`
+        // por definición individual). `hasUnresolvedComponent` en
+        // `evaluateAccount` sigue asegurando que la cuenta reaparezca como
+        // pendiente en la siguiente corrida.
+        this.logger.error(`No se pudo evaluar/otorgar el título "${entry.titleKey}" a la cuenta ${accountId}: ${error}`);
+        allResolved = false;
+      }
     }
     return allResolved;
   }

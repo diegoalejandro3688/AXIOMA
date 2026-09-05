@@ -32,6 +32,7 @@ import { AchievementProgressRepository } from './achievement-progress.repository
 import { AchievementUnlockRepository } from './achievement-unlock.repository';
 import { TitleDefinitionRepository } from './title-definition.repository';
 import { AccountTitleRepository } from './account-title.repository';
+import { TitleEligibilityService } from './title-eligibility.service';
 import { EquippedTitleRepository } from './equipped-title.repository';
 import { TitleEquipmentService } from './title-equipment.service';
 import { ChallengeDefinitionRepository } from './challenge-definition.repository';
@@ -302,6 +303,7 @@ import { QuickQuestionController } from './quick-question.controller';
     AccountTitleRepository,
     EquippedTitleRepository,
     TitleEquipmentService,
+    TitleEligibilityService,
     ChallengeDefinitionRepository,
     AccountChallengeRepository,
     AccountChallengeDailyProgressRepository,

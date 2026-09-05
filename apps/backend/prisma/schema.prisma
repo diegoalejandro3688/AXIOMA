@@ -1064,6 +1064,11 @@ enum RewardSourceEntityType {
   /// esa unidad -- identidad estable, independiente de temporada/reintento
   /// (`idempotencyKey = reward:STUDY_UNIT:{curriculumTopicId}`).
   STUDY_UNIT
+  /// STABILIZATION-B (Titles V1) -- procedencia de un AccountTitle otorgado
+  /// al alcanzar uno de los 7 umbrales congelados de Títulos V1 (NUNCA vía
+  /// el motor de Logros -- Titles V1 no usa achievement_definition/
+  /// achievement_version). `sourceEntityId` = `{accountId}:{titleKey}`.
+  TITLE_UNLOCK
 
   @@map("reward_source_entity_type")
 }
