@@ -122,9 +122,17 @@ export class CompetitiveLeaderboardService {
       const rowAccountId = accountIdByParticipationId.get(entry.seasonLeagueParticipationId);
       const isCurrentUser = rowAccountId === accountId;
       const competitiveZone = zoneFor(entry.rankPosition);
+      // STABILIZATION-B8 (Polish G) -- la FILA PROPIA muestra el saldo VIVO
+      // de la participación (`participation.leaguePoints`), no el
+      // `leaderboard_entry` materializado -- así coincide de inmediato con el
+      // Hub tras un otorgamiento de LP. Las filas de terceros siguen con el
+      // valor materializado (no tenemos su saldo vivo de forma barata, y un
+      // retraso de <=15 min en el LP ajeno es aceptable). `rankPosition` de
+      // TODAS las filas sigue viniendo del entry.
+      const metricValue = isCurrentUser ? participation.leaguePoints : entry.metricValue;
 
       if (isCurrentUser && ownIdentity) {
-        return { presentable: true, isCurrentUser: true, rankPosition: entry.rankPosition, metricValue: entry.metricValue, competitiveZone, ...omitAccountId(ownIdentity) };
+        return { presentable: true, isCurrentUser: true, rankPosition: entry.rankPosition, metricValue, competitiveZone, ...omitAccountId(ownIdentity) };
       }
 
       const resolved = rowAccountId ? identities.get(rowAccountId) : undefined;
@@ -133,12 +141,12 @@ export class CompetitiveLeaderboardService {
           presentable: true,
           isCurrentUser,
           rankPosition: entry.rankPosition,
-          metricValue: entry.metricValue,
+          metricValue,
           competitiveZone,
           ...omitAccountId(resolved.identity),
         };
       }
-      return { presentable: false, isCurrentUser, rankPosition: entry.rankPosition, metricValue: entry.metricValue, competitiveZone };
+      return { presentable: false, isCurrentUser, rankPosition: entry.rankPosition, metricValue, competitiveZone };
     });
 
     const nextCursor = page.length === limit ? encodeLeaderboardCursor(page[page.length - 1]!.rankPosition) : null;

@@ -175,6 +175,10 @@ async function main() {
      VALUES ($1, $2, $3, $4, $5, 'OTORGAMIENTO', 42, 'cpe-gate-rule-v1', $6, $7)`,
     [randomUUID(), accountVisible.accountId, participationId, activityRow.rows[0].id, rule.rows[0].id, `cpe-gate-grant-${suffix}`, iso(now)],
   );
+  // STABILIZATION-B8 -- mantener el saldo denormalizado en sincronía con el
+  // ledger, como hace `LeaguePointGrantService` en producción (el Ranking
+  // muestra el saldo VIVO de la propia participación, Polish G).
+  await pg.query('UPDATE season_league_participation SET league_points = 42 WHERE id = $1', [participationId]);
 
   const leaderboardDefinition = await calculationService.ensureLeaderboardDefinition();
   await txRunner.run((tx) => calculationService.recalculateGroup(tx, leaderboardDefinition.id, season.id, groupId));

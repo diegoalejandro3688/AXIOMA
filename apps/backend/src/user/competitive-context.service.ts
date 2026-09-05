@@ -105,7 +105,19 @@ export class CompetitiveContextService {
       leagueName: definition.name,
       leagueTier: definition.tierOrder,
       rankPosition: entry.rankPosition,
-      metricValue: entry.metricValue,
+      // STABILIZATION-B8 (Polish G) -- los LP DE LA PROPIA POSICIÓN salen del
+      // saldo VIVO de la participación (`participation.leaguePoints`,
+      // actualizado ~cada minuto por `LeaguePointGrantService`), NO del
+      // `leaderboard_entry` materializado (recalculado sólo :00/:15/:30/:45).
+      // Así el número de LP del Ranking coincide de inmediato con el del Hub
+      // tras un otorgamiento -- el saldo vivo es la autoridad, la
+      // materialización es una proyección con retraso deliberado. El
+      // `rankPosition` SÍ sigue viniendo del entry (una posición con <=15 min
+      // de retraso es aceptable; dos pantallas propias mostrando LP distintos
+      // durante minutos no lo es). Esta ruta sólo resuelve la participación
+      // VIGENTE (`findCurrentByAccountId`); el historial finalizado usa
+      // `CompetitiveHistoryService` y su instantánea inmutable, intacta.
+      metricValue: participation.leaguePoints,
       competitiveZone,
       calculatedAt: entry.calculatedAt,
       snapshotVersion: entry.snapshotVersion,

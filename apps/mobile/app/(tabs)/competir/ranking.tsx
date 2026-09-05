@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import type { CompetitiveContext, CompetitiveZone, LeaderboardRow } from '@axioma/contracts';
 import { getLeaderboardPage } from '../../../lib/api/competitive';
+import { getPendingLp, subscribePendingLp } from '../../../lib/league/pending-lp-store';
 import { mergeLeaderboardPages, describeMyPosition, describeZone } from '../../../lib/leaderboard/paginate-leaderboard';
 import { leagueVisual } from '../../../lib/league/league-visual';
 import { LoadingState } from '../../../components/loading-state';
@@ -63,11 +64,14 @@ export default function RankingScreen() {
   const router = useRouter();
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
 
-  const load = useCallback(async () => {
-    setState({ status: 'loading' });
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    if (!silent) setState({ status: 'loading' });
     const result = await getLeaderboardPage();
     if (!result.ok) {
-      setState({ status: 'error', message: result.message });
+      // STABILIZATION-B8 -- un refresco silencioso que falla conserva la
+      // lista visible; sólo la carga inicial cae a ErrorState.
+      if (!silent) setState({ status: 'error', message: result.message });
       return;
     }
     setState({
@@ -81,7 +85,37 @@ export default function RankingScreen() {
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
+  }, [load]);
+
+  // STABILIZATION-B8 (Polish G) -- el Ranking retiene la pantalla entre
+  // navegaciones de tab; sin esto, tras un otorgamiento de LP (Quick) el
+  // usuario volvía a Ranking y seguía viendo el valor viejo. Ahora:
+  //   - al recuperar foco -> refresco SILENCIOSO (la primera carga ya la hizo el mount),
+  //   - cuando el LP pendiente cambia (un Quick acaba de sumar, o el hub
+  //     acaba de confirmarlo) -> refresco silencioso, para que el número del
+  //     Ranking (que el backend ya devuelve como saldo vivo de la propia
+  //     participación, Polish G) se ponga al día de inmediato.
+  const firstFocusRef = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocusRef.current) {
+        firstFocusRef.current = false;
+        return;
+      }
+      void load({ silent: true });
+    }, [load]),
+  );
+
+  const lastPendingRef = useRef(getPendingLp());
+  useEffect(() => {
+    return subscribePendingLp(() => {
+      const next = getPendingLp();
+      if (next !== lastPendingRef.current) {
+        lastPendingRef.current = next;
+        void load({ silent: true });
+      }
+    });
   }, [load]);
 
   async function handleLoadMore() {

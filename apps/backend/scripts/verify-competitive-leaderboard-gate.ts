@@ -158,6 +158,12 @@ async function main() {
        VALUES ($1, $2, $3, $4, $5, 'OTORGAMIENTO', $6, 'cple-gate-rule-v1', $7, $8)`,
       [randomUUID(), accountId, participationId, activityRow.rows[0].id, rule.rows[0].id, metricValue, `cple-gate-grant-${accountId}`, iso(now)],
     );
+    // STABILIZATION-B8 -- en producción `LeaguePointGrantService` mantiene el
+    // saldo denormalizado `season_league_participation.league_points` en
+    // sincronía con el ledger (es el saldo VIVO autoritativo). El fixture
+    // debe hacer lo mismo, si no `league_points` queda en 0 y diverge del
+    // `metricValue` materializado del leaderboard.
+    await pg.query('UPDATE season_league_participation SET league_points = $1 WHERE id = $2', [metricValue, participationId]);
     return participationId;
   }
 
@@ -373,6 +379,35 @@ async function main() {
     `una página de 3 filas (${queriesForThree} consultas) y una de 10 filas (${queriesForTen} consultas) emiten el MISMO número de consultas SQL -- independiente de la cantidad de filas`,
     queriesForThree === queriesForTen && queriesForThree > 0,
   );
+
+  // --- STABILIZATION-B8 (Polish G) -- LP del Ranking = saldo VIVO de la propia participación ---
+  // El `leaderboard_entry` se materializa sólo :00/:15/:30/:45. Tras un
+  // otorgamiento de LP entre recálculos, el Hub muestra el saldo vivo pero el
+  // Ranking mostraba el `metricValue` materializado (retrasado hasta 15 min).
+  // Fix: la PROPIA posición/fila del Ranking usa `participation.leaguePoints`.
+  const selfPartRow = await pg.query('SELECT id, league_points FROM season_league_participation WHERE account_id = $1', [self.accountId]);
+  const selfPartId = selfPartRow.rows[0].id as string;
+  const staleEntryLp = Number(selfPartRow.rows[0].league_points); // == metricValue materializado (100)
+  const staleEntryRow = await pg.query('SELECT metric_value, rank_position FROM leaderboard_entry WHERE season_league_participation_id = $1', [selfPartId]);
+  const staleRankPosition = Number(staleEntryRow.rows[0].rank_position);
+  check('precondición: leaderboard_entry.metric_value == saldo actual de la participación', Number(staleEntryRow.rows[0].metric_value) === staleEntryLp);
+
+  // Simula un otorgamiento de LP posterior al último recálculo del leaderboard.
+  await pg.query('UPDATE season_league_participation SET league_points = league_points + 7 WHERE id = $1', [selfPartId]);
+  const liveLp = staleEntryLp + 7;
+
+  const ctxAfterGrant = await contextServiceDirect.resolveByAccountId(self.accountId);
+  check('CompetitiveContext.metricValue refleja el saldo VIVO de la participación tras el otorgamiento (no el entry materializado)', ctxAfterGrant?.metricValue === liveLp);
+  check('CompetitiveContext.rankPosition sigue viniendo del leaderboard_entry (materializado, sin recálculo)', ctxAfterGrant?.rankPosition === staleRankPosition);
+
+  const pageAfterGrant = await leaderboardServiceDirect.resolvePage(self.accountId, { limit: 10 });
+  const ownRowAfter = pageAfterGrant.entries.find((r) => r.isCurrentUser);
+  check('la FILA PROPIA del Ranking muestra el saldo VIVO (no el metricValue materializado)', ownRowAfter?.metricValue === liveLp);
+  check('ninguna fila de TERCEROS muestra el saldo vivo propio (sólo la propia fila se override)', pageAfterGrant.entries.filter((r) => !r.isCurrentUser).every((r) => r.metricValue !== liveLp));
+  check('pageAfterGrant.competitiveContext.metricValue también es el saldo vivo', pageAfterGrant.competitiveContext?.metricValue === liveLp);
+
+  // Restaura el estado para no dejar el fixture divergente.
+  await pg.query('UPDATE season_league_participation SET league_points = league_points - 7 WHERE id = $1', [selfPartId]);
 
   await pg.end();
   await prisma.$disconnect();
