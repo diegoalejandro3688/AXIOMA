@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import type { MyAdvancedProfileResponse, PublicProfileResponse } from '@axioma/contracts';
@@ -7,6 +7,8 @@ import { useAuth } from '../../../lib/auth/auth-provider';
 import { getMyAdvancedProfile } from '../../../lib/api/advanced-profile';
 import { initializeProfile, updateProfile } from '../../../lib/api/user';
 import { claimPublicProfile, getMyPublicProfile, setPublicProfileVisibility } from '../../../lib/api/public-profile';
+import { requestAccountDeletion } from '../../../lib/api/privacy';
+import { useEntitlement } from '../../../lib/entitlement/entitlement-provider';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
 import { CompetitiveProfileSection } from '../../../components/competitive-profile-section';
@@ -87,6 +89,12 @@ export default function PerfilScreen() {
   const [claimError, setClaimError] = useState<string | null>(null);
   const [togglingVisibility, setTogglingVisibility] = useState(false);
   const [toggleVisibilityError, setToggleVisibilityError] = useState<string | null>(null);
+  // STABILIZATION-B -- Cuenta: solicitud de eliminación (confirmación destructiva explícita).
+  const [deletionConfirmVisible, setDeletionConfirmVisible] = useState(false);
+  const [deletionRequested, setDeletionRequested] = useState(false);
+  const [deletionRequesting, setDeletionRequesting] = useState(false);
+  const [deletionError, setDeletionError] = useState<string | null>(null);
+  const entitlement = useEntitlement();
 
   const load = useCallback(async () => {
     setState({ status: 'loading' });
@@ -139,6 +147,19 @@ export default function PerfilScreen() {
     setSaveError(null);
     setClaimError(null);
     setToggleVisibilityError(null);
+  }
+
+  async function handleConfirmAccountDeletion() {
+    setDeletionRequesting(true);
+    setDeletionError(null);
+    const result = await requestAccountDeletion();
+    setDeletionRequesting(false);
+    if (!result.ok) {
+      setDeletionError(result.message);
+      return;
+    }
+    setDeletionConfirmVisible(false);
+    setDeletionRequested(true);
   }
 
   async function handleSaveName() {
@@ -449,6 +470,50 @@ export default function PerfilScreen() {
           </View>
         )}
 
+        {/*
+          STABILIZATION-B -- Plan: estado autoritativo de entitlement
+          (`GET /me/entitlement`, ya consumido app-wide vía `EntitlementProvider`)
+          -- solo lectura, sin CTA de compra/restauración mientras Google Play
+          real permanezca congelado (ver `GOOGLE_PLAY_PROVIDER_IMPL`).
+        */}
+        <View style={styles.settingsSection}>
+          <Text variant="body" weight="semibold">
+            Plan
+          </Text>
+          <Text variant="bodySmall" color="secondary">
+            {entitlement.state.status === 'ready' ? (entitlement.isPremium ? 'ZETRYND Premium' : 'ZETRYND Free') : 'Cargando plan…'}
+          </Text>
+        </View>
+
+        {/*
+          STABILIZATION-B -- Cuenta: solicitud de eliminación reutilizando el
+          endpoint YA existente `POST /privacy/account-deletion` (202, crea
+          una SOLICITUD de barrido asíncrono -- NUNCA borra al instante). La
+          copia refleja exactamente ese comportamiento real, con confirmación
+          destructiva explícita antes de llamar al backend.
+        */}
+        <View style={styles.settingsSection}>
+          <Text variant="body" weight="semibold">
+            Eliminar cuenta
+          </Text>
+          {deletionRequested ? (
+            <Text variant="bodySmall" color="secondary">
+              Solicitud enviada. Tu cuenta se eliminará en los próximos días.
+            </Text>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Solicitar eliminación de cuenta"
+              onPress={() => setDeletionConfirmVisible(true)}
+              style={styles.settingsRow}
+            >
+              <Text variant="bodySmall" color="error">
+                Solicitar eliminación de cuenta
+              </Text>
+            </Pressable>
+          )}
+        </View>
+
         <Button
           label="Cerrar sesión"
           accessibilityLabel="Cerrar sesión"
@@ -457,6 +522,22 @@ export default function PerfilScreen() {
           size="small"
           style={styles.logoutButton}
         />
+      </Dialog>
+
+      <Dialog
+        visible={deletionConfirmVisible}
+        title="Eliminar cuenta"
+        message="Esto solicita la eliminación de tu cuenta -- no ocurre al instante, se procesará en los próximos días. Esta acción no se puede deshacer."
+        onRequestClose={() => setDeletionConfirmVisible(false)}
+        primaryAction={{ label: 'Solicitar eliminación', onPress: handleConfirmAccountDeletion, variant: 'danger' }}
+        secondaryAction={{ label: 'Cancelar', onPress: () => setDeletionConfirmVisible(false), variant: 'tertiary' }}
+      >
+        {deletionRequesting ? <ActivityIndicator color={tokens.color.accent.default} /> : null}
+        {deletionError ? (
+          <Text variant="bodySmall" color="error">
+            {deletionError}
+          </Text>
+        ) : null}
       </Dialog>
     </View>
   );

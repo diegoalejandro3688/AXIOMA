@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -10,10 +10,12 @@ import { selectHubChallenges } from '../../../lib/challenges/select-hub-challeng
 import { describeParticipation, type LeagueParticipationView } from '../../../lib/league/participation-view';
 import { seasonCountdown } from '../../../lib/league/season-countdown';
 import { leagueVisual } from '../../../lib/league/league-visual';
+import { getPendingLp, reconcilePendingLp, subscribePendingLp } from '../../../lib/league/pending-lp-store';
 import { describeMyPosition } from '../../../lib/leaderboard/paginate-leaderboard';
 import { Text, Card, Button, Icon, Divider } from '../../../components/ui';
 import { QuickQuestionIllustration } from '../../../components/competitive/quick-question-illustration';
 import { LeagueEmblem } from '../../../components/competitive/league-emblem';
+import { LeagueLadderDialog } from '../../../components/competitive/league-ladder-dialog';
 import { LeagueTrophy } from '../../../components/competitive/league-trophy';
 import { ChallengeRow } from '../../../components/challenges/challenge-row';
 import { useChallengeClaim } from '../../../components/challenges/use-challenge-claim';
@@ -114,6 +116,14 @@ export default function CompetirScreen() {
   const [finalizedSeason, setFinalizedSeason] = useState<SeasonHistoryEntry | null>(null);
   // Cuenta regresiva a nivel de minuto -- sin ticker por segundo.
   const [now, setNow] = useState(() => new Date());
+  // STABILIZATION-B (Finding 3B) -- "LP pendiente" honesto: nunca se suma al
+  // saldo autoritativo mostrado (`view.leaguePoints`); solo se reduce cuando
+  // ese saldo real sube. `lastKnownLp` es el último saldo autoritativo visto,
+  // para medir el delta real en el siguiente refresco.
+  const [pendingLp, setPendingLp] = useState(() => getPendingLp());
+  const lastKnownLpRef = useRef<number | null>(null);
+  // STABILIZATION-B (Finding 8) -- Dialog informativo estático de la escalera de ligas.
+  const [leagueInfoVisible, setLeagueInfoVisible] = useState(false);
 
   /**
    * COMPETITIVE V1 (Incremento 11) -- `silent` refresca en segundo plano al
@@ -138,6 +148,13 @@ export default function CompetirScreen() {
     }
     const view = describeParticipation(result.data);
     setLeagueState({ status: 'ready', view });
+    if (view.kind === 'enrolled') {
+      const previous = lastKnownLpRef.current;
+      if (previous != null && view.leaguePoints > previous) {
+        reconcilePendingLp(view.leaguePoints - previous);
+      }
+      lastKnownLpRef.current = view.leaguePoints;
+    }
     if (view.kind !== 'enrolled') {
       if (silent) {
         setMyContext('unknown');
@@ -196,6 +213,32 @@ export default function CompetirScreen() {
     load();
     loadLeague();
   }, [load, loadLeague]);
+
+  // STABILIZATION-B (Finding 3B) -- mientras haya LP pendiente, refresca el
+  // saldo autoritativo cada ~10s (acota tráfico) durante hasta ~150s (cubre
+  // el ciclo de dos etapas @Cron(EVERY_MINUTE): relay de outbox + otorgamiento
+  // de LP). Nunca fabrica el LP faltante -- si el acotado expira sin
+  // confirmación, se detiene el sondeo y el saldo real (aunque no refleje
+  // aún el pendiente) queda como única fuente de verdad.
+  useEffect(() => {
+    const unsubscribe = subscribePendingLp(() => setPendingLp(getPendingLp()));
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (pendingLp <= 0) return;
+    const POLL_INTERVAL_MS = 10_000;
+    const POLL_BOUND_MS = 150_000;
+    const startedAt = Date.now();
+    const id = setInterval(() => {
+      if (Date.now() - startedAt >= POLL_BOUND_MS) {
+        clearInterval(id);
+        return;
+      }
+      void loadLeague({ silent: true });
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [pendingLp, loadLeague]);
 
   // Refresca la hora cada minuto mientras la pantalla está montada, y al
   // recuperar el foco -- suficiente para una cuenta regresiva de días.
@@ -257,11 +300,18 @@ export default function CompetirScreen() {
 
   function lpValue(points: number) {
     return (
-      <View style={styles.lpValueRow}>
-        <LeagueTrophy size={26} />
-        <Text variant="titleLarge" weight="bold">
-          {points}
-        </Text>
+      <View>
+        <View style={styles.lpValueRow}>
+          <LeagueTrophy size={26} />
+          <Text variant="titleLarge" weight="bold">
+            {points}
+          </Text>
+        </View>
+        {pendingLp > 0 ? (
+          <Text variant="caption" color="secondary">
+            +{pendingLp} LP pendiente
+          </Text>
+        ) : null}
       </View>
     );
   }
@@ -362,9 +412,19 @@ export default function CompetirScreen() {
     const topRow = (kicker: string) => (
       <View style={styles.leagueTopRow}>
         <View style={styles.leagueTopText}>
-          <Text variant="caption" color="muted" style={styles.leagueKicker}>
-            {kicker}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text variant="caption" color="muted" style={styles.leagueKicker}>
+              {kicker}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Ver información de ligas"
+              onPress={() => setLeagueInfoVisible(true)}
+              hitSlop={10}
+            >
+              <Icon name="info" size={16} color="accent" />
+            </Pressable>
+          </View>
           <Text variant="heading2" weight="bold" numberOfLines={2} style={styles.leagueName}>
             {view.leagueName.toUpperCase()}
           </Text>
@@ -500,6 +560,7 @@ export default function CompetirScreen() {
   }
 
   return (
+    <>
     <ScrollView style={styles.scroll} contentContainerStyle={[styles.container, { paddingTop: insets.top + 16 }]}>
       <Text variant="heading1" accessibilityRole="header">
         Competir
@@ -533,6 +594,8 @@ export default function CompetirScreen() {
 
       {renderChallengesSection()}
     </ScrollView>
+    <LeagueLadderDialog visible={leagueInfoVisible} onRequestClose={() => setLeagueInfoVisible(false)} />
+    </>
   );
 }
 

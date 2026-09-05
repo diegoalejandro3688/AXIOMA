@@ -200,10 +200,10 @@ export default function EjercicioScreen() {
           <Icon name="check" size={28} color={tokens.color.state.success.text} />
         </View>
         <Text variant="heading2" accessibilityRole="header">
-          Unidad completada
+          Recurso completado
         </Text>
         <Text variant="body" color="secondary" style={styles.completedMessage}>
-          Respondiste todas las preguntas de esta unidad.
+          Respondiste todas las preguntas de este recurso.
         </Text>
         <Button variant="primary" label="Volver a Unidades" onPress={backToUnidades} style={styles.completedButton} />
       </View>

@@ -1,5 +1,6 @@
 import { Text as RNText, View } from 'react-native';
 import { Tabs } from 'expo-router';
+import { StackActions, type EventArg } from '@react-navigation/native';
 import { useTheme, typeScale, fontWeight, radii } from '../../theme';
 import { Icon } from '../../components/ui';
 import type { IconName } from '../../theme';
@@ -106,6 +107,24 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="estudio"
         options={{ title: 'Estudio', tabBarLabel: ({ focused }) => renderLabel('estudio', 'Estudio', focused) }}
+        listeners={({ navigation }) => ({
+          // STABILIZATION-B (Finding 7B) -- tocar explícitamente la pestaña
+          // Estudio SIEMPRE debe llevar a la raíz de Estudio, sin importar
+          // qué ruta anidada haya quedado (recurso/ejercicio/completado).
+          // React Navigation por defecto preserva el estado anidado de cada
+          // tab -- este listener solo intercepta el evento `tabPress` real
+          // (nunca la navegación push/back normal dentro de Estudio).
+          tabPress: (e: EventArg<'tabPress', true>) => {
+            const state = navigation.getState();
+            const estudioRoute = state.routes.find((r: { name: string }) => r.name === 'estudio');
+            const nestedState = estudioRoute?.state;
+            if (nestedState && nestedState.index != null && nestedState.index > 0 && nestedState.key) {
+              e.preventDefault();
+              navigation.dispatch({ ...StackActions.popToTop(), target: nestedState.key });
+              navigation.navigate('estudio');
+            }
+          },
+        })}
       />
       <Tabs.Screen name="ia" options={{ title: 'IA', tabBarLabel: ({ focused }) => renderLabel('ia', 'IA', focused) }} />
     </Tabs>

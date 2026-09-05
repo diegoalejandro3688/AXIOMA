@@ -28,6 +28,7 @@ import {
 } from '../../../lib/quick-question/quick-question-feedback';
 import { ContentBlockRenderer } from '../../../components/content-block-renderer';
 import { LeagueTrophy } from '../../../components/competitive/league-trophy';
+import { addPendingLp } from '../../../lib/league/pending-lp-store';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
 import { Text, Button, AnswerOption, Icon } from '../../../components/ui';
@@ -275,6 +276,15 @@ export default function QuickQuestionScreen() {
         });
         return;
       }
+      if (outcome.data.isCorrect) {
+        // STABILIZATION-B (Finding 3B) -- el otorgamiento real de LP es
+        // asíncrono (outbox -> GamificationScheduler -> LeaguePointGrantScheduler,
+        // ambos @Cron(EVERY_MINUTE)); esta respuesta HTTP no confirma el LP,
+        // solo indica que la pregunta fue correcta. Se registra como
+        // "pendiente" -- el hub de Competir reconcilia contra el saldo
+        // autoritativo real, nunca se suma aquí al total mostrado.
+        addPendingLp(QUICK_QUESTION_CORRECT_LP);
+      }
       setScreen({
         status: 'result',
         sessionId,
@@ -454,7 +464,7 @@ export default function QuickQuestionScreen() {
         <View style={styles.rewardRow}>
           <LeagueTrophy size={22} accessibilityLabel="League Points" />
           <Text variant="bodySmall" weight="bold" color="secondary">
-            +{QUICK_QUESTION_CORRECT_LP}
+            +{QUICK_QUESTION_CORRECT_LP} LP pendiente
           </Text>
         </View>
       ) : (

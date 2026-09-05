@@ -4,6 +4,7 @@ import { describeMyPosition } from '../../lib/leaderboard/paginate-leaderboard';
 import { useThemedStyles } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 import { Text, Avatar, Icon, LevelBadge } from '../ui';
+import { LeagueEmblem } from './league-emblem';
 
 /**
  * Cabecera de identidad competitiva -- compartida entre el perfil PROPIO
@@ -164,7 +165,11 @@ export function CompetitiveIdentityHeader({
           */}
           {positionView ? (
             <View style={styles.leagueRow}>
-              <Icon name="shield" size={14} color="muted" />
+              {positionView.kind === 'known' && competitive ? (
+                <LeagueEmblem tier={competitive.leagueTier} size={18} halo={false} accessibilityLabel={`Escudo de la liga ${positionView.leagueName}`} />
+              ) : (
+                <Icon name="shield" size={14} color="muted" />
+              )}
               <Text variant="caption" color="muted" numberOfLines={1}>
                 {positionView.kind === 'known' ? positionView.leagueName : 'Sin liga activa'}
               </Text>
