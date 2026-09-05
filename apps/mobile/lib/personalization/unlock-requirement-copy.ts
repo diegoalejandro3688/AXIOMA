@@ -17,6 +17,13 @@ export function describeUnlockRequirement(requirement: UnlockRequirement): strin
       return `Desbloquea el logro "${requirement.achievementName}"`;
     case 'CHALLENGE':
       return `Completa el desafío "${requirement.challengeName}"`;
+    // STABILIZATION-B6 -- el backend ya entrega la copia canónica
+    // (`curriculum_topic.name` para STUDY_UNIT, `TITLES_V1.lockedRequirementCopy`
+    // para TITLE_THRESHOLD) -- este módulo solo la muestra, nunca la fabrica.
+    case 'STUDY_UNIT':
+      return requirement.requirementCopy;
+    case 'TITLE_THRESHOLD':
+      return requirement.requirementCopy;
   }
 }
 

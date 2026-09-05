@@ -39,6 +39,17 @@ export class CurriculumTopicRepository {
     return this.prisma.curriculumTopic.findUnique({ where: { code } });
   }
 
+  /**
+   * STABILIZATION-B6 -- unidades canónicas cuyo `reward_bundle_id` está en
+   * `bundleIds`. Usado por `UnlockRequirementResolverService` para
+   * describir el requisito de un cosmético que se desbloquea completando
+   * una unidad (avatares históricos V1) -- lectura pura, `IN (...)`.
+   */
+  findManyByRewardBundleIds(bundleIds: string[]): Promise<CurriculumTopic[]> {
+    if (bundleIds.length === 0) return Promise.resolve([]);
+    return this.prisma.curriculumTopic.findMany({ where: { rewardBundleId: { in: bundleIds } } });
+  }
+
   /** Nodos de nivel superior (sin padre) dentro de una materia. */
   findRootsBySubjectId(subjectId: string): Promise<CurriculumTopic[]> {
     return this.prisma.curriculumTopic.findMany({

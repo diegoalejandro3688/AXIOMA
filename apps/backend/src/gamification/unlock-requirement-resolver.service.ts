@@ -3,28 +3,41 @@ import { RewardBundleRepository } from './reward-bundle.repository';
 import { LevelDefinitionRepository } from './level-definition.repository';
 import { AchievementVersionRepository } from './achievement-version.repository';
 import { ChallengeDefinitionRepository } from './challenge-definition.repository';
+import { TitleDefinitionRepository } from './title-definition.repository';
+import { CurriculumTopicRepository } from '../education/curriculum-topic.repository';
 import { parseUnlockRule } from './achievement-unlock-rule';
+import { TITLES_V1, type TitleV1Metric } from './titles-v1-catalog';
 import type { RewardComponentType } from '../generated/prisma/client';
 
 export type UnlockRequirementView =
   | { source: 'LEVEL'; levelNumber: number; minimumLifetimeXp: number }
   | { source: 'ACHIEVEMENT'; achievementKey: string; achievementName: string; unlockRule: { schemaVersion: 'v1'; type: 'XP_THRESHOLD'; value: number } }
-  | { source: 'CHALLENGE'; challengeKey: string; challengeName: string; challengeType: 'DAILY' | 'WEEKLY'; completionRule: string };
+  | { source: 'CHALLENGE'; challengeKey: string; challengeName: string; challengeType: 'DAILY' | 'WEEKLY'; completionRule: string }
+  | { source: 'STUDY_UNIT'; unitCode: string; unitName: string; requirementCopy: string }
+  | { source: 'TITLE_THRESHOLD'; metric: TitleV1Metric; threshold: number; requirementCopy: string };
 
 /**
  * LEF Bloque V, Incremento 6 ("Personalización con elementos bloqueados y
  * requisito de desbloqueo visible") -- ver docs/adr/LEF-BLOCK-V-DEFINITION.md
  * §14. Deriva el requisito de obtención de un TITLE/COSMETIC EXCLUSIVAMENTE
- * de datos ya persistidos y canónicos (`reward_bundle_item` -> `reward_bundle`
- * -> {`level_definition`|`achievement_version`|`challenge_definition`}) --
- * nunca inventa ni aproxima un requisito. Un artículo sin ningún
- * `reward_bundle_item` que lo referencie devuelve `[]` (requisito
- * desconocido, honesto), nunca un valor fabricado.
+ * de datos ya persistidos y canónicos -- nunca inventa ni aproxima un
+ * requisito. Un artículo sin ningún origen canónico conocido devuelve `[]`
+ * (requisito desconocido, honesto), nunca un valor fabricado.
+ *
+ * Rutas canónicas de requisito que este servicio entiende:
+ *   1. `reward_bundle_item -> reward_bundle -> level_definition`      (LEVEL)
+ *   2. `reward_bundle_item -> reward_bundle -> achievement_version`   (ACHIEVEMENT)
+ *   3. `reward_bundle_item -> reward_bundle -> challenge_definition`  (CHALLENGE)
+ *   4. `reward_bundle_item -> reward_bundle -> curriculum_topic.reward_bundle_id`
+ *      (STUDY_UNIT -- avatares históricos V1, STABILIZATION-B2)
+ *   5. `TitleDefinition.titleKey` en `TITLES_V1` (`titles-v1-catalog.ts`)
+ *      (TITLE_THRESHOLD -- Títulos V1, STABILIZATION-B3, que NO usan
+ *      `RewardBundle`: la propiedad vive directa en `account_title`)
  *
  * Lectura pura, sin escritura, sin reinterpretar `RewardEvaluationWorker`
- * ni ninguna regla de entrega -- este servicio solo lee la MISMA cadena
- * relacional que el worker ya usa para decidir qué entregar, nunca decide
- * elegibilidad ni evalúa progreso.
+ * ni ninguna regla de entrega -- solo lee la MISMA cadena relacional que
+ * el worker ya usa para decidir qué entregar, nunca decide elegibilidad ni
+ * evalúa progreso.
  */
 @Injectable()
 export class UnlockRequirementResolverService {
@@ -33,26 +46,47 @@ export class UnlockRequirementResolverService {
     private readonly levelDefinitionRepo: LevelDefinitionRepository,
     private readonly achievementVersionRepo: AchievementVersionRepository,
     private readonly challengeDefinitionRepo: ChallengeDefinitionRepository,
+    private readonly curriculumTopicRepo: CurriculumTopicRepository,
+    private readonly titleDefinitionRepo: TitleDefinitionRepository,
   ) {}
 
   /**
-   * Resolución por lote -- número de consultas FIJO (4), independiente de
-   * cuántos `referenceIds` se resuelvan: 1 para `reward_bundle_item`, 3
-   * para los tres tipos de origen posibles, todas `WHERE ... IN (...)`.
+   * Resolución por lote -- número de consultas ACOTADO (<=6),
+   * independiente de cuántos `referenceIds` se resuelvan: todas
+   * `WHERE ... IN (...)`.
    */
   async resolveMany(componentType: RewardComponentType, referenceIds: string[]): Promise<Map<string, UnlockRequirementView[]>> {
     const result = new Map<string, UnlockRequirementView[]>();
     for (const id of referenceIds) result.set(id, []);
     if (referenceIds.length === 0) return result;
 
+    // Ruta 5 -- TITLE_THRESHOLD (Títulos V1, sin RewardBundle). Debe
+    // ejecutarse ANTES de la salida temprana por `bundleLinks` vacío: un
+    // Título V1 no tiene ningún `reward_bundle_item` que lo referencie.
+    if (componentType === 'TITLE') {
+      const definitions = await this.titleDefinitionRepo.findManyByIds(referenceIds);
+      for (const definition of definitions) {
+        const entry = TITLES_V1.find((t) => t.titleKey === definition.titleKey);
+        if (!entry) continue;
+        result.get(definition.id)?.push({
+          source: 'TITLE_THRESHOLD',
+          metric: entry.metric,
+          threshold: entry.threshold,
+          requirementCopy: entry.lockedRequirementCopy,
+        });
+      }
+    }
+
+    // Rutas 1-4 -- basadas en `reward_bundle_item -> reward_bundle`.
     const bundleLinks = await this.rewardBundleRepo.findByComponentReferenceIds(componentType, referenceIds);
     if (bundleLinks.length === 0) return result;
 
     const bundleIds = [...new Set(bundleLinks.map((l) => l.rewardBundleId))];
-    const [levels, achievementVersions, challenges] = await Promise.all([
+    const [levels, achievementVersions, challenges, unitTopics] = await Promise.all([
       this.levelDefinitionRepo.findManyByRewardBundleIds(bundleIds),
       this.achievementVersionRepo.findManyApprovedByRewardBundleIds(bundleIds),
       this.challengeDefinitionRepo.findManyByRewardBundleIds(bundleIds),
+      this.curriculumTopicRepo.findManyByRewardBundleIds(bundleIds),
     ]);
 
     const requirementsByBundleId = new Map<string, UnlockRequirementView[]>();
@@ -81,6 +115,18 @@ export class UnlockRequirementResolverService {
         challengeName: challenge.name,
         challengeType: challenge.challengeType,
         completionRule: challenge.completionRule,
+      });
+    }
+    for (const topic of unitTopics) {
+      if (!topic.rewardBundleId) continue;
+      // Copia derivada de forma determinista del nombre canónico de la
+      // unidad -- nunca un string arbitrario ni cinco constantes en el
+      // cliente (STABILIZATION-B6 §7).
+      requirementsByBundleId.get(topic.rewardBundleId)?.push({
+        source: 'STUDY_UNIT',
+        unitCode: topic.code,
+        unitName: topic.name,
+        requirementCopy: `Completa la unidad ${topic.name}`,
       });
     }
 

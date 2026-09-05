@@ -190,10 +190,40 @@ export const challengeUnlockRequirementSchema = z.object({
   // Gramática abierta (String) -- misma forma canónica ya almacenada en challenge_definition.completion_rule, sin reinterpretar.
   completionRule: z.string(),
 });
+/**
+ * STABILIZATION-B6 -- variante ADITIVA. Los avatares históricos V1 (B2) se
+ * desbloquean completando su unidad canónica mapeada
+ * (`curriculum_topic.reward_bundle_id -> reward_bundle -> reward_bundle_item`),
+ * un mecanismo que el resolver original (nivel/logro/desafío) no describía,
+ * por lo que quedaban invisibles en el catálogo. `requirementCopy` lo
+ * deriva el backend de forma determinista a partir del nombre canónico de
+ * la unidad -- nunca un string arbitrario del cliente.
+ */
+export const studyUnitUnlockRequirementSchema = z.object({
+  source: z.literal('STUDY_UNIT'),
+  unitCode: z.string(),
+  unitName: z.string(),
+  requirementCopy: z.string(),
+});
+/**
+ * STABILIZATION-B6 -- variante ADITIVA. Los Títulos V1 (B3) NO usan
+ * `RewardBundle` (la propiedad vive directa en `account_title`); su
+ * requisito canónico vive en `TITLES_V1` (`titles-v1-catalog.ts`) +
+ * `TitleEligibilityService`. `requirementCopy` es EXACTAMENTE
+ * `TITLES_V1[].lockedRequirementCopy`, sin duplicar en el cliente.
+ */
+export const titleThresholdUnlockRequirementSchema = z.object({
+  source: z.literal('TITLE_THRESHOLD'),
+  metric: z.enum(['RESOURCES_COMPLETED', 'UNITS_COMPLETED', 'EXAMS_COMPLETED', 'CHALLENGES_CLAIMED', 'LEVEL_REACHED', 'LEAGUE_TIER_REACHED']),
+  threshold: z.number().int().positive(),
+  requirementCopy: z.string(),
+});
 export const unlockRequirementSchema = z.discriminatedUnion('source', [
   levelUnlockRequirementSchema,
   achievementUnlockRequirementSchema,
   challengeUnlockRequirementSchema,
+  studyUnitUnlockRequirementSchema,
+  titleThresholdUnlockRequirementSchema,
 ]);
 export type UnlockRequirement = z.infer<typeof unlockRequirementSchema>;
 

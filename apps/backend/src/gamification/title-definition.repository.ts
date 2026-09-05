@@ -33,6 +33,17 @@ export class TitleDefinitionRepository {
   }
 
   /**
+   * STABILIZATION-B6 -- resolución por lote para
+   * `UnlockRequirementResolverService`: dado un conjunto de
+   * `titleDefinitionId`, devuelve sus filas (para casar `titleKey` contra
+   * `TITLES_V1` y describir el requisito de umbral). Lectura pura, `IN (...)`.
+   */
+  findManyByIds(ids: string[]): Promise<TitleDefinition[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.prisma.titleDefinition.findMany({ where: { id: { in: ids } } });
+  }
+
+  /**
    * LEF Bloque V, Incremento 6 -- catálogo de títulos VISIBLES
    * (`visibilityStatus = PUBLIC`, `status = ACTIVE`) que la cuenta NO
    * posee todavía -- candidatos a "bloqueado". Mismo criterio que
