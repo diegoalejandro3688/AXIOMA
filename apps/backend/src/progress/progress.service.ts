@@ -288,6 +288,19 @@ export class ProgressService {
       // estaba COMPLETED (evita republicar el mismo hecho en cada
       // respuesta subsiguiente a una unidad ya completada).
       if (justCompleted && completedAt) {
+        // STABILIZATION-B6 -- la completitud del RECURSO ahora ocurre
+        // automáticamente al terminar el flujo de preguntas del tema-recurso
+        // (ya no hay botón manual "Completar recurso"). Reutiliza el MISMO
+        // núcleo idempotente que el endpoint legacy -- `learning_resource_
+        // progress.createIdempotent` garantiza `RECURSO_COMPLETADO` una sola
+        // vez aunque este bloque se re-ejecute. NUNCA se conflaciona con la
+        // completitud de tema (`curriculum_topic_completed` -> TEMA_COMPLETADO,
+        // abajo): son dos hechos académicos distintos, +20 XP cada uno.
+        const publishedResource = await this.resourceVersionRepo.findLatestPublishedByTopicId(topicId);
+        if (publishedResource) {
+          await this.recordResourceCompletion(accountId, topicId, publishedResource.learningResource.id);
+        }
+
         await this.outbox.publish({
           eventKey: 'curriculum_topic_completed',
           schemaVersion: GAMIFICATION_SCHEMA_VERSION,
@@ -432,13 +445,34 @@ export class ProgressService {
     const version = await this.resourceVersionRepo.findLatestPublishedByTopicId(topicId);
     if (!version) throw new NotFoundException('No hay ningún recurso publicado para este tema.');
 
-    const learningResourceId = version.learningResource.id;
-    const { progress, created } = await this.resourceProgressRepo.createIdempotent(accountId, learningResourceId);
+    const { progress, created } = await this.recordResourceCompletion(accountId, topicId, version.learningResource.id);
 
-    // Publicación best-effort al Outbox de plataforma, mismo criterio EXACTO
-    // que `student_response_recorded`: SOLO en la transición real
-    // (`created === true`), nunca en un reproceso de un recurso ya
-    // completado -- evita republicar el mismo hecho académico en cada tap.
+    return completeResourceResponseSchema.parse({
+      completion: toResourceCompletion(progress),
+      justCompleted: created,
+    });
+  }
+
+  /**
+   * STABILIZATION-B6 -- núcleo idempotente de la completitud de recurso,
+   * COMPARTIDO por:
+   *   - el endpoint legacy `POST /progress/topics/:topicId/resource-completion`
+   *     (`completeResource`, ya sin CTA en el móvil),
+   *   - la finalización automática del flujo de preguntas (`submitResponse`,
+   *     cuando el tema-recurso transiciona a COMPLETED por primera vez).
+   *
+   * `learning_resource_progress.createIdempotent` es la ÚNICA fuente de
+   * verdad de "una vez": el evento `resource_completed` (-> `RECURSO_COMPLETADO`,
+   * +20 XP) se publica EXCLUSIVAMENTE en la transición real (`created ===
+   * true`), nunca en un reproceso. `assertPremiumProgressWriteAllowed` lo
+   * ejecuta SIEMPRE el llamador antes de llegar aquí.
+   */
+  private async recordResourceCompletion(
+    accountId: string,
+    topicId: string,
+    learningResourceId: string,
+  ): Promise<{ progress: LearningResourceProgress; created: boolean }> {
+    const { progress, created } = await this.resourceProgressRepo.createIdempotent(accountId, learningResourceId);
     if (created) {
       await this.outbox.publish({
         eventKey: 'resource_completed',
@@ -454,11 +488,7 @@ export class ProgressService {
         },
       });
     }
-
-    return completeResourceResponseSchema.parse({
-      completion: toResourceCompletion(progress),
-      justCompleted: created,
-    });
+    return { progress, created };
   }
 
   /**

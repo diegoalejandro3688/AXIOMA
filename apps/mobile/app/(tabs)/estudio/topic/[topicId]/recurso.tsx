@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { LearningResourceResponse, ResourceContentBlockResponse, ResourceCompletion } from '@axioma/contracts';
 import { getPublishedResource, listPublishedQuestions } from '../../../../../lib/api/education';
-import { getResourceCompletion, completeResource } from '../../../../../lib/api/progress';
+import { getResourceCompletion } from '../../../../../lib/api/progress';
 import { isPremiumRequiredError } from '../../../../../lib/entitlement/premium-error';
 import { PremiumLockedScreen } from '../../../../../components/premium/premium-locked-screen';
 import { LoadingState } from '../../../../../components/loading-state';
@@ -52,7 +52,6 @@ export default function RecursoScreen() {
   const tokens = useTheme();
   const styles = useThemedStyles(createStyles);
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
-  const [completing, setCompleting] = useState(false);
 
   // Mismo tono de materia que STUDY-2/2A/STUDY-3 (`subjectIcon(name).tone`)
   // -- continuidad visual, sin token/color nuevo.
@@ -97,18 +96,6 @@ export default function RecursoScreen() {
 
     setState({ status: 'ready', resource: resourceResult.data, totalSteps: 1 + questionsResult.data.length, completion });
   }, [topicId]);
-
-  async function handleCompleteResource() {
-    if (completing || state.status !== 'ready' || state.completion.status === 'COMPLETED') return;
-    setCompleting(true);
-    const result = await completeResource(topicId);
-    setCompleting(false);
-    // XP-V1B-2 -- sin completitud optimista/permanente ante un fallo de
-    // red/API: el estado del servidor manda, se puede reintentar libremente.
-    if (result.ok) {
-      setState((prev) => (prev.status === 'ready' ? { ...prev, completion: result.data.completion } : prev));
-    }
-  }
 
   useEffect(() => {
     load();
@@ -174,18 +161,22 @@ export default function RecursoScreen() {
         <View style={[styles.titleAccent, { backgroundColor: accentColor }]} />
         <ContentBlockRenderer blocks={blocks} highlightFormulas />
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: state.completion.status === 'COMPLETED' || completing }}
-          disabled={state.completion.status === 'COMPLETED' || completing}
-          style={[styles.completeButton, state.completion.status === 'COMPLETED' && styles.completeButtonDone]}
-          onPress={handleCompleteResource}
-        >
-          <Icon name="check" size={18} color={state.completion.status === 'COMPLETED' ? 'accent' : 'secondary'} />
-          <Text variant="titleMedium" weight="semibold" style={state.completion.status === 'COMPLETED' ? styles.completeButtonTextDone : styles.completeButtonText}>
-            {state.completion.status === 'COMPLETED' ? 'Completado' : completing ? 'Completando…' : 'Completar recurso'}
-          </Text>
-        </Pressable>
+        {/*
+          STABILIZATION-B6 (Finding I) -- ya NO hay acción manual "Completar
+          recurso": un recurso se completa AUTOMÁTICAMENTE al terminar su
+          flujo de preguntas (servidor, `submitResponse` -> `RECURSO_COMPLETADO`).
+          Cuando ya está completado se muestra sólo un indicador NO
+          interactivo; mientras no lo esté, la única CTA académica es
+          "Continuar a las preguntas".
+        */}
+        {state.completion.status === 'COMPLETED' ? (
+          <View style={[styles.completeButton, styles.completeButtonDone]} accessibilityRole="text" accessibilityLabel="Recurso completado">
+            <Icon name="check" size={18} color="accent" />
+            <Text variant="titleMedium" weight="semibold" style={styles.completeButtonTextDone}>
+              Recurso completado
+            </Text>
+          </View>
+        ) : null}
       </ScrollView>
 
       <Pressable accessibilityRole="button" style={styles.continueButton} onPress={goToExercise}>
