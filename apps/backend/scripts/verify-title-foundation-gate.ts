@@ -26,6 +26,7 @@ import { TitleDefinitionRepository } from '../src/gamification/title-definition.
 import { AccountTitleRepository } from '../src/gamification/account-title.repository';
 import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
 import { TitleEligibilityService } from '../src/gamification/title-eligibility.service';
+import { SubjectCompletionService } from '../src/gamification/subject-completion.service';
 import { SubjectRepository } from '../src/education/subject.repository';
 import { CurriculumTopicRepository } from '../src/education/curriculum-topic.repository';
 import { CurriculumTopicProgressRepository } from '../src/progress/curriculum-topic-progress.repository';
@@ -101,6 +102,7 @@ async function main() {
     new CurriculumTopicProgressRepository(prisma),
     titleDefinitionRepo,
     new TitleEligibilityService(prisma, new SubjectRepository(prisma), new CurriculumTopicRepository(prisma), new CurriculumTopicProgressRepository(prisma), progressionService),
+    new SubjectCompletionService(new CurriculumTopicRepository(prisma), new CurriculumTopicProgressRepository(prisma), new SubjectRepository(prisma)),
   );
 
   const suffix = Date.now();

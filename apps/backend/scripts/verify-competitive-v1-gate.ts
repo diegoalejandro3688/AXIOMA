@@ -55,6 +55,7 @@ import { CurriculumTopicRepository } from '../src/education/curriculum-topic.rep
 import { CurriculumTopicProgressRepository } from '../src/progress/curriculum-topic-progress.repository';
 import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
 import { TitleEligibilityService } from '../src/gamification/title-eligibility.service';
+import { SubjectCompletionService } from '../src/gamification/subject-completion.service';
 import { SubjectRepository } from '../src/education/subject.repository';
 import { InventoryItemRepository } from '../src/gamification/inventory-item.repository';
 import { LEAGUE_POINT_RULES_V1, LEAGUE_POINT_RULE_V1_EFFECTIVE_FROM } from '../src/gamification/competitive-v1-config';
@@ -184,6 +185,7 @@ async function main() {
       new CurriculumTopicProgressRepository(prisma),
       new ProgressionService(new XpBalanceRepository(prisma), new XpLedgerEntryRepository(prisma), new LevelDefinitionRepository(prisma)),
     ),
+    new SubjectCompletionService(new CurriculumTopicRepository(prisma), new CurriculumTopicProgressRepository(prisma), new SubjectRepository(prisma)),
   );
   const enrollmentService = new LeagueEnrollmentService(prisma, seasonRepo, leagueDefinitionRepo, leagueGroupRepo, participationRepo, bundleRepo, rewardWorker);
   const quickQuestionAttemptRepo = new QuickQuestionAttemptRepository(prisma);

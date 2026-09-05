@@ -77,7 +77,7 @@
     "verify:cosmetics-v1-catalog-gate": "tsx scripts/run-gate.ts verify-cosmetics-v1-catalog-gate.ts",
     "verify:league-season-foundation-gate": "tsx scripts/run-gate.ts verify-league-season-foundation-gate.ts",
     "verify:league-frame-unlock-gate": "tsx scripts/run-gate.ts verify-league-frame-unlock-gate.ts",
-    "verify:historical-avatar-unlock-gate": "tsx scripts/run-gate.ts verify-historical-avatar-unlock-gate.ts",
+    "verify:historical-avatar-subject-unlock-gate": "tsx scripts/run-gate.ts verify-historical-avatar-subject-unlock-gate.ts",
     "verify:league-ranking-gate": "tsx scripts/run-gate.ts verify-league-ranking-gate.ts",
     "verify:competitive-v1-gate": "tsx scripts/run-gate.ts verify-competitive-v1-gate.ts",
     "verify:competitive-profile-foundation-gate": "tsx scripts/run-gate.ts verify-competitive-profile-foundation-gate.ts",

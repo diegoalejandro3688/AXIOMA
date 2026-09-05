@@ -39,6 +39,7 @@ import { CurriculumTopicRepository } from '../src/education/curriculum-topic.rep
 import { CurriculumTopicProgressRepository } from '../src/progress/curriculum-topic-progress.repository';
 import { TitleDefinitionRepository } from '../src/gamification/title-definition.repository';
 import { TitleEligibilityService } from '../src/gamification/title-eligibility.service';
+import { SubjectCompletionService } from '../src/gamification/subject-completion.service';
 import { SubjectRepository } from '../src/education/subject.repository';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
 import type { PrismaService } from '../src/platform/prisma/prisma.service';
@@ -126,6 +127,7 @@ async function main() {
     new CurriculumTopicProgressRepository(prisma),
     new TitleDefinitionRepository(prisma),
     new TitleEligibilityService(prisma, new SubjectRepository(prisma), new CurriculumTopicRepository(prisma), new CurriculumTopicProgressRepository(prisma), progressionService),
+    new SubjectCompletionService(new CurriculumTopicRepository(prisma), new CurriculumTopicProgressRepository(prisma), new SubjectRepository(prisma)),
   );
 
   // Este gate no ejercita logros -- pero desde 2.b, RewardEvaluationWorker
@@ -324,6 +326,7 @@ async function main() {
     new CurriculumTopicProgressRepository(prisma),
     new TitleDefinitionRepository(prisma),
     new TitleEligibilityService(prisma, new SubjectRepository(prisma), new CurriculumTopicRepository(prisma), new CurriculumTopicProgressRepository(prisma), progressionService),
+    new SubjectCompletionService(new CurriculumTopicRepository(prisma), new CurriculumTopicProgressRepository(prisma), new SubjectRepository(prisma)),
   );
 
   const accountC = randomUUID();
