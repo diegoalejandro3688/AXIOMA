@@ -36,6 +36,9 @@ import { AccountChallengeConsumedEventRepository } from './account-challenge-con
 import { parseCompletionRule, parseEligibilityRule } from './challenge-rule';
 import { utcDayStart } from './daily-activity-signal.reader';
 import { ValidatedGamificationActivityRepository } from './validated-gamification-activity.repository';
+import { CurriculumTopicRepository } from '../education/curriculum-topic.repository';
+import { CurriculumTopicProgressRepository } from '../progress/curriculum-topic-progress.repository';
+import { HISTORIC_AVATAR_UNIT_MAP } from './cosmetics-v1-catalog';
 
 /**
  * STABILIZATION-B -- decisión de producto CONGELADA (§5 del brief): "actividad
@@ -142,6 +145,8 @@ export class RewardEvaluationWorker {
     private readonly dailyProgressRepo: AccountChallengeDailyProgressRepository,
     private readonly consumedEventRepo: AccountChallengeConsumedEventRepository,
     private readonly validatedActivityRepo: ValidatedGamificationActivityRepository,
+    private readonly curriculumTopicRepo: CurriculumTopicRepository,
+    private readonly curriculumTopicProgressRepo: CurriculumTopicProgressRepository,
   ) {}
 
   /**
@@ -188,6 +193,9 @@ export class RewardEvaluationWorker {
 
     const challengesResolved = await this.evaluateChallenges(accountId, pendingEntries);
     if (!challengesResolved) hasUnresolvedComponent = true;
+
+    const historicalAvatarsResolved = await this.evaluateHistoricalAvatars(accountId, pendingEntries);
+    if (!historicalAvatarsResolved) hasUnresolvedComponent = true;
 
     if (hasUnresolvedComponent) {
       throw new Error(`No se pudieron resolver todas las recompensas pendientes (nivel y/o logros) para la cuenta ${accountId}.`);
@@ -601,6 +609,51 @@ export class RewardEvaluationWorker {
         const resolved = await this.evaluateChallengeEventForDefinition(accountId, definition, entry);
         if (!resolved) allResolved = false;
       }
+    }
+    return allResolved;
+  }
+
+  /**
+   * STABILIZATION-B -- avatares históricos V1. Recompute-desde-el-origen
+   * (mismo criterio que Erudito/Polímata de Títulos): NUNCA usa el
+   * `activityType` del evento como proxy de "unidad completa" -- cada vez
+   * que hay AL MENOS un OTORGAMIENTO pendiente, recalcula desde cero, para
+   * las 5 unidades mapeadas, si TODOS sus recursos canónicos
+   * (`CurriculumTopicRepository.findCanonicalResourceChildIds`, misma
+   * definición exacta que "Progreso por materia" de Perfil) están
+   * `curriculum_topic_progress.status = COMPLETED`. Una unidad sin
+   * `rewardBundleId` provisionado (seed de cosméticos aún no corrido)
+   * queda como no-op seguro -- nunca un error.
+   */
+  private async evaluateHistoricalAvatars(accountId: string, pendingEntries: XpLedgerEntry[]): Promise<boolean> {
+    const hasOtorgamiento = pendingEntries.some((entry) => entry.entryType === 'OTORGAMIENTO');
+    if (!hasOtorgamiento) return true;
+
+    let allResolved = true;
+    for (const unitCode of new Set(Object.values(HISTORIC_AVATAR_UNIT_MAP))) {
+      const unit = await this.curriculumTopicRepo.findByCode(unitCode);
+      if (!unit || !unit.rewardBundleId) continue;
+
+      const childIds = await this.curriculumTopicRepo.findCanonicalResourceChildIds(unit.id);
+      if (childIds.length === 0) continue;
+
+      const progressRows = await this.curriculumTopicProgressRepo.findManyByAccountAndTopicIds(accountId, childIds);
+      const completedCount = progressRows.filter((row) => row.status === 'COMPLETED').length;
+      if (completedCount < childIds.length) continue;
+
+      const bundle = await this.bundleRepo.findById(unit.rewardBundleId);
+      if (!bundle) {
+        this.logger.error(`Unidad "${unit.code}" referencia un reward_bundle_id inexistente (${unit.rewardBundleId}).`);
+        allResolved = false;
+        continue;
+      }
+      // STABILIZATION-B -- `sourceEntityId` incluye `accountId` (mismo
+      // criterio que LEVEL, `${accountId}:${levelNumber}`): `unit.id` solo
+      // es el MISMO para toda cuenta que complete esa unidad -- sin el
+      // prefijo, `deliverBundleComponents` colisionaría entre cuentas (ver
+      // idempotencyKey global de RewardGrant, sin accountId propio).
+      const { allResolved: delivered } = await this.deliverBundleComponents(accountId, bundle, 'STUDY_UNIT', `${accountId}:${unit.id}`);
+      if (!delivered) allResolved = false;
     }
     return allResolved;
   }

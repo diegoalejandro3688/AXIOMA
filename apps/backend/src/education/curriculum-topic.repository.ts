@@ -117,4 +117,21 @@ export class CurriculumTopicRepository {
     });
     return new Map(rows.map((r) => [r.subjectId, r._count._all]));
   }
+
+  /**
+   * STABILIZATION-B (avatares históricos V1) -- ids de los RECURSOS
+   * CANÓNICOS (hijo con `learning_resource_version` PUBLISHED, MISMA
+   * definición exacta que `countCanonicalResourceTopicsGroupedBySubjectId`)
+   * de una unidad raíz específica. Base para "unidad completa" = estos ids
+   * TODOS con `curriculum_topic_progress.status = COMPLETED` -- nunca
+   * inferido desde una sola completitud ni desde TEMA_COMPLETADO.
+   */
+  findCanonicalResourceChildIds(unitRootId: string): Promise<string[]> {
+    return this.prisma.curriculumTopic
+      .findMany({
+        where: { parentId: unitRootId, learningResourceVersions: { some: { editorialStatus: 'PUBLISHED' } } },
+        select: { id: true },
+      })
+      .then((rows) => rows.map((r) => r.id));
+  }
 }

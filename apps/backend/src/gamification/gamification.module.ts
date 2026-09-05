@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { EducationModule } from '../education/education.module';
+import { ProgressModule } from '../progress/progress.module';
 import { InternalOpsModule } from '../platform/internal-ops/internal-ops.module';
 import { ObjectStorageModule } from '../platform/object-storage/object-storage.module';
 import { OutboxModule } from '../platform/outbox/outbox.module';
@@ -264,7 +265,7 @@ import { QuickQuestionController } from './quick-question.controller';
  * existentes (Incremento 3).
  */
 @Module({
-  imports: [AuthModule, EducationModule, InternalOpsModule, ObjectStorageModule, OutboxModule],
+  imports: [AuthModule, EducationModule, ProgressModule, InternalOpsModule, ObjectStorageModule, OutboxModule],
   controllers: [
     GamificationController,
     ProgressionController,

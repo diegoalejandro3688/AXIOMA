@@ -59,10 +59,15 @@ async function main() {
     'manifest: itemKeys nuevos son kebab-case, sin asset1/asset2/timestamp',
     COSMETICS_V1_NEW.every((e) => /^[a-z][a-z0-9-]*$/.test(e.itemKey) && !/asset[12]|\d{10,}/.test(e.itemKey)),
   );
-  check(`manifest: Starter Kit = 32 (${COSMETICS_V1_STARTER_ITEM_KEYS.length})`, COSMETICS_V1_STARTER_ITEM_KEYS.length === 32);
+  // STABILIZATION-B -- Starter Kit bajó de 32 a 27: los 5 avatares
+  // históricos dejaron de ser `unlock: STARTER` (ahora `unlock: {kind:'unit'}`,
+  // se otorgan al completar su unidad canónica mapeada, nunca al crear cuenta).
+  check(`manifest: Starter Kit = 27 (${COSMETICS_V1_STARTER_ITEM_KEYS.length})`, COSMETICS_V1_STARTER_ITEM_KEYS.length === 27);
   const starterAvatars = COSMETICS_V1.filter((e) => e.unlock.kind === 'starter' && e.itemType === 'AVATAR').length;
   const starterBanners = COSMETICS_V1.filter((e) => e.unlock.kind === 'starter' && e.itemType === 'PROFILE_BANNER').length;
-  check(`manifest: Starter = 30 AVATAR + 2 PROFILE_BANNER (${starterAvatars} + ${starterBanners})`, starterAvatars === 30 && starterBanners === 2);
+  // STABILIZATION-B -- 30 -> 25 AVATAR starter: los 5 avatares históricos
+  // dejaron de ser Starter Kit (siguen siendo AVATAR, total sin cambio).
+  check(`manifest: Starter = 25 AVATAR + 2 PROFILE_BANNER (${starterAvatars} + ${starterBanners})`, starterAvatars === 25 && starterBanners === 2);
   check('manifest: ningún AVATAR_FRAME ni banner nuevo en Starter', COSMETICS_V1.every((e) => !(e.unlock.kind === 'starter' && (e.itemType === 'AVATAR_FRAME' || !e.legacy && e.itemType === 'PROFILE_BANNER'))));
 
   const historicKeys = COSMETICS_V1.filter((e) => e.category === 'historic').map((e) => e.itemKey).sort();

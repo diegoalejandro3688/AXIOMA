@@ -19,10 +19,19 @@ model CurriculumTopic {
   order     Int
   parentId  String? @map("parent_id") @db.Uuid
   subjectId String  @map("subject_id") @db.Uuid
+  /// STABILIZATION-B (avatares históricos V1) -- nullable: no toda unidad
+  /// raíz canónica otorga recompensa. Mismo patrón exacto que
+  /// `LevelDefinition.rewardBundleId`/`LeagueDefinition.rewardBundleId`:
+  /// columna aditiva, sin backfill, filas existentes quedan con NULL.
+  /// Nunca define completitud por sí sola -- la entrega solo ocurre cuando
+  /// el aggregate real de recursos canónicos de la unidad prueba que TODOS
+  /// están completados (ver `RewardEvaluationWorker`).
+  rewardBundleId String? @map("reward_bundle_id") @db.Uuid
 
-  subject  Subject           @relation(fields: [subjectId], references: [id], onDelete: Restrict)
-  parent   CurriculumTopic?  @relation("CurriculumTopicToParent", fields: [parentId], references: [id], onDelete: Restrict)
-  children CurriculumTopic[] @relation("CurriculumTopicToParent")
+  subject      Subject           @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  parent       CurriculumTopic?  @relation("CurriculumTopicToParent", fields: [parentId], references: [id], onDelete: Restrict)
+  children     CurriculumTopic[] @relation("CurriculumTopicToParent")
+  rewardBundle RewardBundle?     @relation(fields: [rewardBundleId], references: [id], onDelete: Restrict)
 
   learningResourceVersions LearningResourceVersion[]
   questionVersions         QuestionVersion[]
@@ -34,6 +43,7 @@ model CurriculumTopic {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([subjectId])
+  @@index([rewardBundleId])
   @@map("curriculum_topic")
 }
 
@@ -958,6 +968,8 @@ model RewardBundle {
   /// Bloque III, sub-incremento 4.a -- lado inverso de ChallengeDefinition.rewardBundleId.
   challengeDefinitions ChallengeDefinition[]
   leagueDefinitions    LeagueDefinition[]
+  /// STABILIZATION-B -- lado inverso de CurriculumTopic.rewardBundleId (avatares históricos V1).
+  curriculumTopics     CurriculumTopic[]
 
   @@map("reward_bundle")
 }
@@ -1046,6 +1058,12 @@ enum RewardSourceEntityType {
   /// misma liga en otra temporada nunca duplica la propiedad
   /// (`idempotencyKey = reward:LEAGUE:{leagueDefinitionId}`).
   LEAGUE
+  /// STABILIZATION-B -- procedencia de los avatares históricos V1 entregados
+  /// al completar TODOS los recursos canónicos de su unidad mapeada
+  /// (`RewardEvaluationWorker`). `sourceEntityId` = `CurriculumTopic.id` de
+  /// esa unidad -- identidad estable, independiente de temporada/reintento
+  /// (`idempotencyKey = reward:STUDY_UNIT:{curriculumTopicId}`).
+  STUDY_UNIT
 
   @@map("reward_source_entity_type")
 }

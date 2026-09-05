@@ -29,7 +29,16 @@ export type CosmeticV1Category = 'human' | 'symbol' | 'historic' | 'league-frame
 export type CosmeticV1Unlock =
   | { kind: 'starter' }
   | { kind: 'level'; level: number }
-  | { kind: 'league'; leagueKey: string };
+  | { kind: 'league'; leagueKey: string }
+  /**
+   * STABILIZATION-B -- avatares históricos V1: prestigio académico, se
+   * otorgan al completar TODOS los recursos canónicos visibles de UNA
+   * unidad raíz canónica específica (`unitCode` = `curriculum_topic.code`
+   * de esa unidad, nunca inferido desde TEMA_COMPLETADO ni desde una sola
+   * completitud de recurso). Mapeo PO-aprobado y congelado, ver
+   * `HISTORIC_AVATAR_UNIT_MAP`.
+   */
+  | { kind: 'unit'; unitCode: string };
 
 export interface CosmeticV1Entry {
   itemKey: string;
@@ -106,6 +115,21 @@ const SYMBOL_AVATARS: CosmeticV1Entry[] = ([
   unlock: STARTER,
 }));
 
+/**
+ * STABILIZATION-B -- mapeo PO-aprobado y CONGELADO (2026-09-05) avatar
+ * histórico -> unidad raíz canónica V1 (`curriculum_topic.code`, ya
+ * verificado existente en el catálogo real). Nunca inferido, nunca
+ * inventado -- cambiar este mapeo es una decisión de producto posterior,
+ * no de este incremento.
+ */
+export const HISTORIC_AVATAR_UNIT_MAP: Record<string, string> = {
+  'avatar-historic-euclides': 'M1.GEOMETRIA',
+  'avatar-historic-pitagoras': 'M2.GEOMETRIA',
+  'avatar-historic-shakespeare': 'LENGUAJE.INTERPRETAR',
+  'avatar-historic-marie-curie': 'CIENCIAS.QUIMICA',
+  'avatar-historic-napoleon': 'HISTORIA.MUNDO_AMERICA_CHILE',
+};
+
 const HISTORIC_AVATARS: CosmeticV1Entry[] = ([
   ['avatar-historic-euclides', 'Euclides', 'avatar euclides 1.webp'],
   ['avatar-historic-pitagoras', 'Pitágoras', 'avatar pitagoras 1.webp'],
@@ -119,7 +143,9 @@ const HISTORIC_AVATARS: CosmeticV1Entry[] = ([
   category: 'historic' as const,
   assetFile,
   objectKey: `cosmetics/v1/avatars/${itemKey}.webp`,
-  unlock: STARTER,
+  // STABILIZATION-B -- dejan de ser Starter Kit: ahora se otorgan al
+  // completar su unidad canónica mapeada (ver HISTORIC_AVATAR_UNIT_MAP).
+  unlock: { kind: 'unit' as const, unitCode: HISTORIC_AVATAR_UNIT_MAP[itemKey]! },
 }));
 
 // ---------------------------------------------------------------------------
@@ -244,8 +270,10 @@ const _bannerCount = COSMETICS_V1.filter((e) => e.itemType === 'PROFILE_BANNER')
 if (_avatarCount !== 30 || _frameCount !== 14 || _bannerCount !== 5 || COSMETICS_V1.length !== 49) {
   throw new Error(`cosmetics-v1-catalog: conteos inválidos (AVATAR=${_avatarCount} FRAME=${_frameCount} BANNER=${_bannerCount} total=${COSMETICS_V1.length}); se esperaba 30/14/5/49.`);
 }
-if (COSMETICS_V1_STARTER_ITEM_KEYS.length !== 32) {
-  throw new Error(`cosmetics-v1-catalog: Starter Kit = ${COSMETICS_V1_STARTER_ITEM_KEYS.length}, se esperaba 32.`);
+// STABILIZATION-B -- 32 -> 27: los 5 avatares históricos dejaron de ser
+// Starter Kit (ahora `unlock: {kind:'unit'}`, ver HISTORIC_AVATAR_UNIT_MAP).
+if (COSMETICS_V1_STARTER_ITEM_KEYS.length !== 27) {
+  throw new Error(`cosmetics-v1-catalog: Starter Kit = ${COSMETICS_V1_STARTER_ITEM_KEYS.length}, se esperaba 27.`);
 }
 if (new Set(COSMETICS_V1.map((e) => e.itemKey)).size !== 49) {
   throw new Error('cosmetics-v1-catalog: itemKey duplicado.');

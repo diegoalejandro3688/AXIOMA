@@ -35,6 +35,7 @@ import {
   COSMETICS_V1_NEW,
   COSMETICS_V1_STARTER_ITEM_KEYS,
   COSMETICS_V1_LEGACY_RETIRE_ITEM_KEYS,
+  HISTORIC_AVATAR_UNIT_MAP,
   LEAGUE_V1,
   LEAGUE_V1_PARTICIPANT_GROUP_SIZE,
   LEAGUE_V1_PROMOTION_RULE,
@@ -104,9 +105,10 @@ function validateAssets(): ValidatedAsset[] {
     validated.push({ entry, path, body, md5 });
   }
 
-  // Sanidad global de itemKeys (49) + starter (32).
+  // Sanidad global de itemKeys (49) + starter (27 -- STABILIZATION-B: los 5
+  // avatares históricos dejaron de ser Starter Kit).
   if (new Set(COSMETICS_V1.map((e) => e.itemKey)).size !== 49) fail('catálogo V1: itemKey duplicado.');
-  if (COSMETICS_V1_STARTER_ITEM_KEYS.length !== 32) fail(`Starter Kit: ${COSMETICS_V1_STARTER_ITEM_KEYS.length} claves, se esperaba 32.`);
+  if (COSMETICS_V1_STARTER_ITEM_KEYS.length !== 27) fail(`Starter Kit: ${COSMETICS_V1_STARTER_ITEM_KEYS.length} claves, se esperaba 27.`);
   console.log(`  ${validated.length} assets nuevos validados (dimensiones/formato/alpha/hashes OK).`);
   return validated;
 }
@@ -292,6 +294,21 @@ export async function seedCosmeticsV1(opts: { dryRun?: boolean } = {}): Promise<
     });
   }
   console.log('  7 LeagueDefinition (Bronce..Gran Maestro, tierOrder 1..7, grupo 30, top/bottom 20%) con marco conectado.');
+
+  console.log('\n--- 6b. Avatares históricos (5) + reward bundles conectados a su unidad canónica ---');
+  for (const [itemKey, unitCode] of Object.entries(HISTORIC_AVATAR_UNIT_MAP)) {
+    const avatarId = cosmeticIdByKey.get(itemKey);
+    if (!avatarId) fail(`avatar histórico: falta CosmeticItem "${itemKey}".`);
+    const bundleId = await ensureCosmeticBundle(`cosmetics-v1-historic-${itemKey}`, `Avatar histórico: ${itemKey}`, avatarId);
+    const unit = await prisma.curriculumTopic.findUnique({ where: { code: unitCode } });
+    if (!unit) fail(`avatar histórico "${itemKey}": unidad canónica "${unitCode}" no existe.`);
+    if (unit.rewardBundleId == null) {
+      await prisma.curriculumTopic.update({ where: { code: unitCode }, data: { rewardBundleId: bundleId } });
+    } else if (unit.rewardBundleId !== bundleId) {
+      fail(`unidad "${unitCode}" ya tiene rewardBundleId=${unit.rewardBundleId} (distinto del esperado ${bundleId}) -- no se sobrescribe en silencio.`);
+    }
+  }
+  console.log(`  5 avatares históricos conectados a su unidad canónica: ${Object.entries(HISTORIC_AVATAR_UNIT_MAP).map(([k, u]) => `${k}->${u}`).join(', ')}.`);
 
   console.log('\n--- 7. Retiro de marcos legacy ---');
   const retire = await prisma.cosmeticItem.updateMany({
