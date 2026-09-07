@@ -115,12 +115,16 @@ export type SetPublicProfileVisibilityRequest = z.infer<typeof setPublicProfileV
 
 export const publicProfileVisibilityStatusSchema = z.enum(['PRIVATE', 'VISIBLE']);
 export const publicProfileLifecycleStatusSchema = z.enum(['ACTIVE', 'RETIRED', 'ANONYMIZED']);
+/** PS-0C.2 -- `USERNAME_RESET` = un operador retiró el username por moderación; el usuario debe elegir uno nuevo válido. */
+export const publicProfileModerationStatusSchema = z.enum(['CLEAR', 'USERNAME_RESET']);
 
 export const publicProfileResponseSchema = z.object({
   accountId: entityId,
   username: z.string(),
   visibilityStatus: publicProfileVisibilityStatusSchema,
   lifecycleStatus: publicProfileLifecycleStatusSchema,
+  /** PS-0C.2 -- cuando es `USERNAME_RESET`, el `username` es un centinela interno; el móvil debe pedir uno nuevo. */
+  moderationStatus: publicProfileModerationStatusSchema,
   createdAt: isoDateTime,
   updatedAt: isoDateTime,
 });
@@ -471,11 +475,16 @@ export type MeCompetitiveProfileResponse = z.infer<typeof meCompetitiveProfileRe
 /**
  * Lista de ranking del propio grupo -- ver docs/adr/0021-perfil-competitivo-cross-cuenta.md,
  * sub-incremento 3.c. Unión discriminada por `presentable`: una fila
- * redactada contiene ÚNICAMENTE `presentable: false`, `isCurrentUser`,
- * `rankPosition`, `metricValue`, `competitiveZone` -- ninguna otra clave, ni
- * con valor `null` (mismo criterio que la redacción de perfil individual).
- * Nunca incluye `accountId`/`publicProfileId`/`seasonLeagueParticipationId`/
- * `groupId` -- ni una fila presentable ni una redactada.
+ * redactada contiene `presentable: false`, `isCurrentUser`, `rankPosition`,
+ * `metricValue`, `competitiveZone` y, opcionalmente (PS-0C.2),
+ * `redactionReason` -- ninguna otra clave, ni con valor `null` (mismo
+ * criterio que la redacción de perfil individual). Nunca incluye
+ * `accountId`/`publicProfileId`/`seasonLeagueParticipationId`/`groupId` -- ni
+ * una fila presentable ni una redactada. `redactionReason: 'BLOCKED'` indica
+ * que ESTE solicitante bloqueó a la cuenta de esa fila -- el `rankPosition` /
+ * `metricValue` / `competitiveZone` siguen siendo los reales (bloquear no
+ * cambia el ranking), sólo se oculta la identidad. Ausente = redacción por
+ * privacidad estándar (perfil PRIVATE / no presentable).
  */
 export const leaderboardRowSchema = z.discriminatedUnion('presentable', [
   z.object({
@@ -499,6 +508,8 @@ export const leaderboardRowSchema = z.discriminatedUnion('presentable', [
     rankPosition: z.number().int().positive(),
     metricValue: z.number().int(),
     competitiveZone: competitiveZoneSchema,
+    /** PS-0C.2 -- presente sólo cuando el solicitante bloqueó a esa cuenta. */
+    redactionReason: z.literal('BLOCKED').optional(),
   }),
 ]);
 export type LeaderboardRow = z.infer<typeof leaderboardRowSchema>;

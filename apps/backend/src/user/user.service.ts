@@ -1,5 +1,7 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { DEFAULT_USER_TIMEZONE } from '@axioma/contracts';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { COMPLIANCE_ERROR_CODES, DEFAULT_USER_TIMEZONE } from '@axioma/contracts';
+import { PublicParticipationTermsService } from '../compliance/public-participation-terms.service';
+import { AccountBlockRepository } from './account-block.repository';
 import { UserProfileRepository } from './user-profile.repository';
 import { PublicProfileRepository } from './public-profile.repository';
 import { isReservedOrOffensive } from './reserved-usernames';
@@ -78,6 +80,12 @@ export class UserService {
     private readonly competitiveProfileIdentityService: CompetitiveProfileIdentityService,
     private readonly competitiveContextService: CompetitiveContextService,
     private readonly competitiveLeaderboardService: CompetitiveLeaderboardService,
+    // PS-0C.2 -- opcionales (`@Optional`) para no romper la instanciación
+    // posicional de gates que ya construyen UserService a mano y no ejercitan
+    // el gate de Términos / bloqueo. En producción (DI completa) SIEMPRE
+    // están presentes y el gate se aplica.
+    @Optional() private readonly termsService?: PublicParticipationTermsService,
+    @Optional() private readonly accountBlockRepo?: AccountBlockRepository,
   ) {}
 
   /**
@@ -199,6 +207,19 @@ export class UserService {
     if (existing.lifecycleStatus !== 'ACTIVE') {
       throw new ConflictException('Esta identidad pública no está activa.');
     }
+    // PS-0C.2 -- HACER VISIBLE es publicar identidad pública: exige la
+    // versión VIGENTE de los Términos de participación pública aceptada.
+    // Backend authority: imposible saltarse el gate por API directa. Hacer
+    // PRIVADO nunca lo exige.
+    if (visible && existing.moderationStatus !== 'CLEAR') {
+      throw new ConflictException('Tu nombre de usuario fue restablecido por moderación. Elige uno nuevo antes de hacer público tu perfil.');
+    }
+    if (visible && this.termsService && !(await this.termsService.hasAcceptedCurrent(accountId))) {
+      throw new ForbiddenException({
+        code: COMPLIANCE_ERROR_CODES.PUBLIC_TERMS_ACCEPTANCE_REQUIRED,
+        message: 'Debes aceptar los Términos de uso y convivencia pública para hacer público tu perfil.',
+      });
+    }
     return this.publicProfileRepo.updateVisibility(accountId, visible ? 'VISIBLE' : 'PRIVATE');
   }
 
@@ -212,13 +233,20 @@ export class UserService {
     if (existing.lifecycleStatus !== 'ACTIVE') {
       throw new ConflictException('Esta identidad pública no está activa.');
     }
-    if (existing.usernameNormalized === desiredUsername) {
+    // PS-0C.2 -- recuperación tras un reset de moderación: el usuario DEBE
+    // poder elegir un nombre nuevo de inmediato (sin el cooldown de 30 días),
+    // y hacerlo devuelve el perfil a `moderationStatus = CLEAR`.
+    const isModerationRecovery = existing.moderationStatus === 'USERNAME_RESET';
+
+    if (!isModerationRecovery && existing.usernameNormalized === desiredUsername) {
       return existing;
     }
 
-    const earliestNextChangeAt = existing.usernameChangedAt.getTime() + USERNAME_CHANGE_COOLDOWN_MS;
-    if (Date.now() < earliestNextChangeAt) {
-      throw new ConflictException(`Solo se permite un cambio de nombre de usuario cada ${USERNAME_CHANGE_COOLDOWN_DAYS} días.`);
+    if (!isModerationRecovery) {
+      const earliestNextChangeAt = existing.usernameChangedAt.getTime() + USERNAME_CHANGE_COOLDOWN_MS;
+      if (Date.now() < earliestNextChangeAt) {
+        throw new ConflictException(`Solo se permite un cambio de nombre de usuario cada ${USERNAME_CHANGE_COOLDOWN_DAYS} días.`);
+      }
     }
     if (isReservedOrOffensive(desiredUsername)) {
       throw new ConflictException('Este nombre de usuario no está disponible.');
@@ -230,7 +258,9 @@ export class UserService {
     }
 
     try {
-      return await this.publicProfileRepo.changeUsernameWithHistory(accountId, existing.usernameNormalized, desiredUsername);
+      return isModerationRecovery
+        ? await this.publicProfileRepo.recoverUsernameFromModeration(accountId, existing.usernameNormalized, desiredUsername)
+        : await this.publicProfileRepo.changeUsernameWithHistory(accountId, existing.usernameNormalized, desiredUsername);
     } catch (error) {
       if (isUniqueConstraintViolation(error)) throw new ConflictException('Este nombre de usuario ya está en uso.');
       throw error;
@@ -452,11 +482,24 @@ export class UserService {
    * de consultar -- nunca compara contra el valor crudo del parámetro de
    * ruta.
    */
-  async getCompetitiveProfileByUsername(rawUsername: string): Promise<CompetitiveProfileView> {
+  async getCompetitiveProfileByUsername(rawUsername: string, requestingAccountId?: string): Promise<CompetitiveProfileView> {
     const usernameNormalized = rawUsername.normalize('NFC').toLowerCase();
     const profile = await this.publicProfileRepo.findByUsernameNormalized(usernameNormalized);
-    if (!profile || profile.lifecycleStatus !== 'ACTIVE' || profile.visibilityStatus !== 'VISIBLE') {
+    if (
+      !profile ||
+      profile.lifecycleStatus !== 'ACTIVE' ||
+      profile.visibilityStatus !== 'VISIBLE' ||
+      profile.moderationStatus !== 'CLEAR'
+    ) {
       throw new NotFoundException(COMPETITIVE_PROFILE_NOT_FOUND_MESSAGE);
+    }
+    // PS-0C.2 -- si el solicitante bloqueó a esta cuenta, el perfil es
+    // indistinguible de "no existe" para él (mismo 404 uniforme). Nunca al
+    // revés: el objetivo sigue viendo al solicitante con normalidad salvo
+    // que lo haya bloqueado por su cuenta.
+    if (requestingAccountId && this.accountBlockRepo) {
+      const blocked = await this.accountBlockRepo.isBlocked(requestingAccountId, profile.accountId);
+      if (blocked) throw new NotFoundException(COMPETITIVE_PROFILE_NOT_FOUND_MESSAGE);
     }
 
     const [resolved, competitive] = await Promise.all([

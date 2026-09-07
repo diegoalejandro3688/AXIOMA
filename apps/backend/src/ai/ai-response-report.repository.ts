@@ -31,4 +31,29 @@ export class AiResponseReportRepository {
     const client = tx ?? this.prisma;
     await client.aiResponseReport.deleteMany({ where: { accountId } });
   }
+
+  /**
+   * PS-0C.2 -- ruta de operador (CLI `dist/cli/ai-reports.js`, sin endpoint
+   * HTTP). Inspección de solo lectura: los más recientes primero, con el
+   * contenido del mensaje ASSISTANT reportado adjunto para poder revisarlo.
+   */
+  listRecent(options: { onlyUnreviewed?: boolean; limit?: number } = {}): Promise<
+    (AiResponseReport & { assistantMessage: { content: string; conversationId: string } })[]
+  > {
+    return this.prisma.aiResponseReport.findMany({
+      where: options.onlyUnreviewed ? { reviewedAt: null } : undefined,
+      orderBy: { createdAt: 'desc' },
+      take: options.limit ?? 200,
+      include: { assistantMessage: { select: { content: true, conversationId: true } } },
+    });
+  }
+
+  /** Marca `reviewedAt` sólo si estaba sin revisar -- idempotente, devuelve el conteo afectado. */
+  async markReviewed(id: string): Promise<number> {
+    const result = await this.prisma.aiResponseReport.updateMany({
+      where: { id, reviewedAt: null },
+      data: { reviewedAt: new Date() },
+    });
+    return result.count;
+  }
 }

@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { AccountBlockRepository } from './account-block.repository';
 import { SeasonLeagueParticipationRepository } from '../gamification/season-league-participation.repository';
 import { LeaderboardEntryRepository } from '../gamification/leaderboard-entry.repository';
 import { LeaderboardDefinitionRepository } from '../gamification/leaderboard-definition.repository';
@@ -15,7 +16,7 @@ export const MAX_LEADERBOARD_LIMIT = 100;
 
 export type LeaderboardRowView =
   | ({ presentable: true; isCurrentUser: boolean; rankPosition: number; metricValue: number; competitiveZone: CompetitiveZone } & Omit<CompetitiveProfileIdentity, 'accountId'>)
-  | { presentable: false; isCurrentUser: boolean; rankPosition: number; metricValue: number; competitiveZone: CompetitiveZone };
+  | { presentable: false; isCurrentUser: boolean; rankPosition: number; metricValue: number; competitiveZone: CompetitiveZone; redactionReason?: 'BLOCKED' };
 
 export interface LeaderboardPageView {
   entries: LeaderboardRowView[];
@@ -52,6 +53,9 @@ export class CompetitiveLeaderboardService {
     // posicional de gates que ya construyen este servicio a mano.
     private readonly leagueGroupRepo: LeagueGroupRepository,
     private readonly leagueDefinitionRepo: LeagueDefinitionRepository,
+    // PS-0C.2 -- opcional (`@Optional`), mismo criterio. Sin él, no hay
+    // redacción por bloqueo (sólo alcanzable en gates preexistentes).
+    @Optional() private readonly accountBlockRepo?: AccountBlockRepository,
   ) {}
 
   /**
@@ -94,10 +98,12 @@ export class CompetitiveLeaderboardService {
     const leaderboardDefinition = await this.leaderboardDefinitionRepo.findActiveByKey(LEADERBOARD_KEY);
     if (!leaderboardDefinition) return { entries: [], nextCursor: null, competitiveContext: null };
 
-    const [page, competitiveContext, zoneFor] = await Promise.all([
+    const [page, competitiveContext, zoneFor, blockedAccountIds] = await Promise.all([
       this.entryRepo.findByGroupPaginatedByRank(participation.leagueGroupId, { limit, afterRankPosition }),
       this.contextService.resolveByAccountId(accountId),
       this.buildZoneResolver(participation.leagueGroupId),
+      // PS-0C.2 -- cuentas que ESTE solicitante bloqueó (una sola consulta).
+      this.accountBlockRepo ? this.accountBlockRepo.findBlockedAccountIds(accountId) : Promise.resolve(new Set<string>()),
     ]);
     if (page.length === 0) return { entries: [], nextCursor: null, competitiveContext };
 
@@ -122,6 +128,10 @@ export class CompetitiveLeaderboardService {
       const rowAccountId = accountIdByParticipationId.get(entry.seasonLeagueParticipationId);
       const isCurrentUser = rowAccountId === accountId;
       const competitiveZone = zoneFor(entry.rankPosition);
+      // PS-0C.2 -- fila de una cuenta bloqueada por el solicitante: identidad
+      // redactada, pero `rankPosition` / `metricValue` / `competitiveZone`
+      // INTACTOS (bloquear no altera el ranking). Nunca redacta la fila propia.
+      const isBlocked = !isCurrentUser && rowAccountId !== undefined && blockedAccountIds.has(rowAccountId);
       // STABILIZATION-B8 (Polish G) -- la FILA PROPIA muestra el saldo VIVO
       // de la participación (`participation.leaguePoints`), no el
       // `leaderboard_entry` materializado -- así coincide de inmediato con el
@@ -130,6 +140,10 @@ export class CompetitiveLeaderboardService {
       // retraso de <=15 min en el LP ajeno es aceptable). `rankPosition` de
       // TODAS las filas sigue viniendo del entry.
       const metricValue = isCurrentUser ? participation.leaguePoints : entry.metricValue;
+
+      if (isBlocked) {
+        return { presentable: false, isCurrentUser, rankPosition: entry.rankPosition, metricValue, competitiveZone, redactionReason: 'BLOCKED' };
+      }
 
       if (isCurrentUser && ownIdentity) {
         return { presentable: true, isCurrentUser: true, rankPosition: entry.rankPosition, metricValue, competitiveZone, ...omitAccountId(ownIdentity) };

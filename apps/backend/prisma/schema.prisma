@@ -349,6 +349,17 @@ model Account {
   lastAuthenticatedAt DateTime?     @map("last_authenticated_at")
   deletionRequestedAt DateTime?     @map("deletion_requested_at")
   closedAt            DateTime?     @map("closed_at")
+  /// PS-0C.2 -- aceptación VERSIONADA de los "Términos de uso y convivencia
+  /// pública" (participación UGC). `null` mientras la cuenta nunca los haya
+  /// aceptado -- NUNCA se rellena retroactivamente (una cuenta existente con
+  /// username público pero sin aceptación queda no-presentable hasta que
+  /// acepte de forma afirmativa). La autoridad de "¿aceptó la versión
+  /// vigente?" es el backend: `publicTermsAcceptedVersion ===
+  /// CURRENT_PUBLIC_PARTICIPATION_TERMS_VERSION` (@axioma/contracts). El uso
+  /// PRIVADO de ZETRYND (estudio, ensayos, tutor IA, perfil privado) nunca
+  /// depende de estos campos.
+  publicTermsAcceptedVersion String?  @map("public_terms_accepted_version")
+  publicTermsAcceptedAt      DateTime? @map("public_terms_accepted_at")
 
   identities           AuthIdentity[]
   sessions             AuthSession[]
@@ -589,6 +600,14 @@ model PublicProfile {
   usernameChangedAt  DateTime                      @default(now()) @map("username_changed_at")
   retiredAt          DateTime?                     @map("retired_at")
   anonymizedAt       DateTime?                     @map("anonymized_at")
+  /// PS-0C.2 -- estado de moderación de la IDENTIDAD PÚBLICA, independiente
+  /// de `visibilityStatus`/`lifecycleStatus` (mismo criterio de atributos
+  /// ortogonales de ADR-0018 §4). `CLEAR` por defecto. `USERNAME_RESET` lo
+  /// fija un operador (`ForcePublicIdentityReset`, sin endpoint HTTP) sobre
+  /// un username infractor: el perfil deja de ser presentable en toda
+  /// superficie pública hasta que el usuario reclame un username válido y
+  /// vuelva a estar `CLEAR`. NUNCA toca cuenta/progreso/XP/LP/liga/ranking.
+  moderationStatus   PublicProfileModerationStatus @default(CLEAR) @map("moderation_status")
   createdAt          DateTime                      @default(now()) @map("created_at")
   updatedAt          DateTime                      @updatedAt @map("updated_at")
 
@@ -618,6 +637,14 @@ enum PublicProfileLifecycleStatus {
   @@map("public_profile_lifecycle_status")
 }
 
+/// PS-0C.2 -- ver `PublicProfile.moderationStatus`.
+enum PublicProfileModerationStatus {
+  CLEAR
+  USERNAME_RESET
+
+  @@map("public_profile_moderation_status")
+}
+
 /// §6.7 del Data Model. Append-only -- ningún código actualiza o borra una
 /// fila existente, solo agrega. `changeReason` documenta el origen del
 /// cambio para auditoría (nunca se usa para mostrar públicamente nombres
@@ -640,8 +667,80 @@ enum ProfileUsernameChangeReason {
   INITIAL_CLAIM
   USER_CHANGE
   ACCOUNT_CLOSURE
+  /// PS-0C.2 -- reset forzado por moderación. El username infractor pasa a
+  /// `previousUsernameNormalized`, quedando bajo la ventana de reserva de 30
+  /// días como cualquier username liberado (`findRecentRelease`).
+  MODERATION_RESET
 
   @@map("profile_username_change_reason")
+}
+
+/// PS-0C.2 -- reporte de una IDENTIDAD PÚBLICA (username / perfil público)
+/// por otro usuario. NO hay reportes de "contenido" arbitrario: la única
+/// superficie UGC de ZETRYND V1 es el username elegido, visible en Ranking y
+/// en el perfil público. Deliberadamente SIN texto libre del reportante
+/// (`description`) -- solo una de 3 categorías. Ciclo de vida mínimo
+/// (`OPEN -> DISMISSED | ACTIONED`), sin severidad / SLA / asignación /
+/// apelaciones (fuera de alcance -- ver la ruta de operador CLI
+/// `ListPublicProfileReports` / `ResolvePublicProfileReport`).
+///
+/// Sin FK a `account` -- mismo criterio de desacople entre dominios que
+/// `PrivacyRequest` / `UserProfile`. `targetPublicProfileId` se captura al
+/// reportar para conservar a QUÉ identidad apuntaba el reporte aunque el
+/// username cambie después.
+model PublicProfileReport {
+  id                    String                    @id @default(uuid()) @db.Uuid
+  reporterAccountId     String                    @map("reporter_account_id") @db.Uuid
+  targetAccountId       String                    @map("target_account_id") @db.Uuid
+  targetPublicProfileId String                    @map("target_public_profile_id") @db.Uuid
+  reportType            PublicProfileReportType   @map("report_type")
+  status                PublicProfileReportStatus @default(OPEN)
+  createdAt             DateTime                  @default(now()) @map("created_at")
+  reviewedAt            DateTime?                 @map("reviewed_at")
+  /// Código estable de resolución fijado por el operador (`DISMISSED_NO_ACTION`,
+  /// `ACTIONED_USERNAME_RESET`) -- nunca texto libre.
+  resolutionCode        String?                   @map("resolution_code")
+
+  /// Idempotencia de doble-toque / reintento: un mismo reportante no crea
+  /// dos filas para el mismo objetivo y categoría (el segundo intento
+  /// devuelve la fila existente). No re-abre una ya resuelta.
+  @@unique([reporterAccountId, targetAccountId, reportType])
+  @@index([status, createdAt])
+  @@index([targetAccountId])
+  @@map("public_profile_report")
+}
+
+enum PublicProfileReportType {
+  INAPPROPRIATE_USERNAME
+  IMPERSONATION
+  OTHER_SAFETY
+
+  @@map("public_profile_report_type")
+}
+
+enum PublicProfileReportStatus {
+  OPEN
+  DISMISSED
+  ACTIONED
+
+  @@map("public_profile_report_status")
+}
+
+/// PS-0C.2 -- relación de bloqueo unidireccional entre cuentas. Bloquear NO
+/// sanciona al objetivo ni altera ningún dato global (LP / rank / liga /
+/// snapshots): solo cambia lo que el BLOQUEADOR ve (identidad redactada en
+/// Ranking, perfil público inaccesible). Sin FK a `account` (mismo criterio
+/// que `PrivacyRequest`). `UNIQUE(blocker, blocked)` hace el bloqueo
+/// idempotente; desbloquear una relación inexistente es un no-op seguro.
+model AccountBlock {
+  id               String   @id @default(uuid()) @db.Uuid
+  blockerAccountId String   @map("blocker_account_id") @db.Uuid
+  blockedAccountId String   @map("blocked_account_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@unique([blockerAccountId, blockedAccountId])
+  @@index([blockerAccountId])
+  @@map("account_block")
 }
 
 /// Dominio GAMIFICATION, Bloque I de Learning Experience Foundation (Fase
@@ -2574,6 +2673,11 @@ model AiResponseReport {
   /// Comentario opcional del estudiante -- NUNCA usado por AiConversationService, expuesto únicamente para un futuro flujo humano de revisión (fuera de alcance de I6).
   description        String?
   createdAt          DateTime             @default(now()) @map("created_at")
+  /// PS-0C.2 -- marca de "revisado por un operador" (ruta CLI `ListAiResponseReports`
+  /// / `MarkAiResponseReportReviewed`, sin endpoint HTTP). Aditivo y puramente
+  /// operativo: ningún código de producto reacciona a este campo, sigue siendo
+  /// cierto que "un reporte no modifica automáticamente la respuesta" (PRD AI-015).
+  reviewedAt         DateTime?            @map("reviewed_at")
 
   assistantMessage AiMessage @relation(fields: [assistantMessageId], references: [id], onDelete: Restrict)
   account          Account   @relation(fields: [accountId], references: [id], onDelete: Restrict)

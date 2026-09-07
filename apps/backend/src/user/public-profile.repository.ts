@@ -75,6 +75,59 @@ export class PublicProfileRepository {
   }
 
   /**
+   * PS-0C.2 -- reset forzado por moderación de un username infractor. En UNA
+   * transacción:
+   *  - el username infractor pasa a `previous_username_normalized` de una
+   *    fila `MODERATION_RESET` de `profile_username_history` -> queda bajo la
+   *    ventana de reserva de 30 días (`findRecentRelease`), inalcanzable para
+   *    cualquier cuenta;
+   *  - la columna `username_normalized` toma un centinela `reset-<hex>` que
+   *    el `usernameInputSchema` (`^[a-zA-Z0-9_]{3,20}$`, sin `-`) NUNCA puede
+   *    producir -> nadie lo reclama;
+   *  - `moderation_status = USERNAME_RESET`, `visibility_status = PRIVATE`.
+   * NO toca cuenta / progreso / XP / LP / liga / ranking (mismo criterio que
+   * `anonymize`: sólo la capa de PRESENTACIÓN pública).
+   */
+  forceUsernameReset(accountId: string): Promise<PublicProfile> {
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.publicProfile.findUniqueOrThrow({ where: { accountId } });
+      const sentinel = `reset-${current.id.replace(/-/g, '').slice(0, 16)}`;
+      const profile = await tx.publicProfile.update({
+        where: { accountId },
+        data: { usernameNormalized: sentinel, moderationStatus: 'USERNAME_RESET', visibilityStatus: 'PRIVATE' },
+      });
+      await tx.profileUsernameHistory.create({
+        data: {
+          publicProfileId: profile.id,
+          previousUsernameNormalized: current.usernameNormalized,
+          newUsernameNormalized: sentinel,
+          changeReason: 'MODERATION_RESET',
+        },
+      });
+      return profile;
+    });
+  }
+
+  /**
+   * Cambio de username DESDE un estado de moderación -- en la misma
+   * transacción vuelve `moderation_status` a `CLEAR`. `usernameChangedAt` se
+   * refresca igual que un cambio normal. El llamador (UserService) ya validó
+   * disponibilidad/reserva y NO aplica el cooldown de 30 días en este camino.
+   */
+  recoverUsernameFromModeration(accountId: string, previousUsernameNormalized: string, newUsernameNormalized: string): Promise<PublicProfile> {
+    return this.prisma.$transaction(async (tx) => {
+      const profile = await tx.publicProfile.update({
+        where: { accountId },
+        data: { usernameNormalized: newUsernameNormalized, usernameChangedAt: new Date(), moderationStatus: 'CLEAR' },
+      });
+      await tx.profileUsernameHistory.create({
+        data: { publicProfileId: profile.id, previousUsernameNormalized, newUsernameNormalized, changeReason: 'USER_CHANGE' },
+      });
+      return profile;
+    });
+  }
+
+  /**
    * Cambio de username + historial en la misma transacción. `usernameChangedAt`
    * se actualiza aquí -- base de la verificación de frecuencia (30 días,
    * ADR-0018 §2), que el llamador (UserService) ya validó ANTES de invocar

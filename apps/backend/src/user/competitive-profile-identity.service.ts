@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ObjectStorageService } from '../platform/object-storage/object-storage.service';
+import { PublicParticipationTermsService } from '../compliance/public-participation-terms.service';
 import { PublicProfileRepository } from './public-profile.repository';
 import { EquippedTitleRepository } from '../gamification/equipped-title.repository';
 import { EquippedCosmeticRepository } from '../gamification/equipped-cosmetic.repository';
@@ -46,8 +47,26 @@ export type PresentableProfile = { presentable: true; identity: CompetitiveProfi
 /** URL de lectura de corta duración -- ver ADR-0010: nunca se persiste, se resuelve bajo demanda al servir cada superficie. */
 const COSMETIC_ASSET_URL_TTL_SECONDS = 300;
 
-function isPresentable(profile: PublicProfile): boolean {
-  return profile.lifecycleStatus === 'ACTIVE' && profile.visibilityStatus === 'VISIBLE';
+/**
+ * PS-0C.2 -- `PUBLIC_PROFILE_PRESENTABLE`:
+ *   lifecycleStatus == ACTIVE
+ *   AND visibilityStatus == VISIBLE
+ *   AND moderationStatus == CLEAR            (nuevo -- reset por moderación)
+ *   AND CURRENT public-participation terms accepted   (`termsAccepted`)
+ *
+ * `termsAccepted` lo resuelve el llamador por lote (una consulta
+ * `WHERE account_id IN (...)`). Cuando `PublicParticipationTermsService` no
+ * está inyectado (gates que construyen el servicio a mano y no ejercitan el
+ * gate de Términos) el llamador pasa `termsAccepted = true` -> comportamiento
+ * previo a PS-0C.2 para esos gates, nunca en producción.
+ */
+function isPresentable(profile: PublicProfile, termsAccepted: boolean): boolean {
+  return (
+    profile.lifecycleStatus === 'ACTIVE' &&
+    profile.visibilityStatus === 'VISIBLE' &&
+    profile.moderationStatus === 'CLEAR' &&
+    termsAccepted
+  );
 }
 
 function resolveLevelNumber(lifetimeXp: number, levels: LevelDefinition[]): number {
@@ -99,6 +118,9 @@ export class CompetitiveProfileIdentityService {
     private readonly achievementUnlockRepo: AchievementUnlockRepository,
     private readonly featuredAchievementRepo: FeaturedAchievementRepository,
     private readonly objectStorage: ObjectStorageService,
+    // PS-0C.2 -- opcional (`@Optional`) para no romper la instanciación
+    // posicional de gates preexistentes. En producción SIEMPRE presente.
+    @Optional() private readonly termsService?: PublicParticipationTermsService,
   ) {}
 
   /** Resolución individual -- delega en la versión de lote para no duplicar la lógica de ensamblado. */
@@ -121,7 +143,15 @@ export class CompetitiveProfileIdentityService {
     if (accountIds.length === 0) return result;
 
     const profiles = await this.publicProfileRepo.findManyByAccountIds(accountIds);
-    const presentableProfiles = profiles.filter(isPresentable);
+    // PS-0C.2 -- resolución por lote de "aceptó los Términos vigentes"
+    // (una sola consulta). Sin servicio inyectado -> todas cuentan como
+    // aceptadas (comportamiento previo, sólo alcanzable en gates).
+    const acceptedTermsAccountIds = this.termsService
+      ? await this.termsService.filterAcceptedCurrent(profiles.map((p) => p.accountId))
+      : null;
+    const presentableProfiles = profiles.filter((p) =>
+      isPresentable(p, acceptedTermsAccountIds === null || acceptedTermsAccountIds.has(p.accountId)),
+    );
 
     for (const accountId of accountIds) {
       result.set(accountId, { presentable: false });

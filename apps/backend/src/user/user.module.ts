@@ -3,10 +3,18 @@ import { AuthModule } from '../auth/auth.module';
 import { GamificationModule } from '../gamification/gamification.module';
 import { ProgressModule } from '../progress/progress.module';
 import { ObjectStorageModule } from '../platform/object-storage/object-storage.module';
+// PS-0C.2 -- gate de Términos de participación pública.
+import { ComplianceModule } from '../compliance/compliance.module';
 import { UserController } from './user.controller';
 import { UserProfileRepository } from './user-profile.repository';
 import { PublicProfileRepository } from './public-profile.repository';
 import { PublicProfileController } from './public-profile.controller';
+// PS-0C.2 -- reporte / bloqueo de identidades públicas + ruta de operador.
+import { AccountBlockRepository } from './account-block.repository';
+import { PublicProfileReportRepository } from './public-profile-report.repository';
+import { SafetyService } from './safety.service';
+import { SafetyController } from './safety.controller';
+import { PublicIdentityModerationService } from './public-identity-moderation.service';
 import { CosmeticEquipmentController } from './cosmetic-equipment.controller';
 import { TitleCatalogController } from './title-catalog.controller';
 import { UserService } from './user.service';
@@ -45,17 +53,34 @@ import { AdvancedProfileController } from './advanced-profile.controller';
  * dirección (USER -> PROGRESS) no crea ciclo.
  */
 @Module({
-  imports: [AuthModule, GamificationModule, ProgressModule, ObjectStorageModule],
-  controllers: [UserController, PublicProfileController, CosmeticEquipmentController, TitleCatalogController, AdvancedProfileController],
+  imports: [AuthModule, GamificationModule, ProgressModule, ObjectStorageModule, ComplianceModule],
+  controllers: [
+    UserController,
+    PublicProfileController,
+    CosmeticEquipmentController,
+    TitleCatalogController,
+    AdvancedProfileController,
+    SafetyController,
+  ],
   providers: [
     UserProfileRepository,
     PublicProfileRepository,
+    AccountBlockRepository,
+    PublicProfileReportRepository,
+    SafetyService,
+    PublicIdentityModerationService,
     UserService,
     CompetitiveProfileIdentityService,
     CompetitiveContextService,
     CompetitiveLeaderboardService,
     AdvancedProfileService,
   ],
-  exports: [UserService, CompetitiveProfileIdentityService, CompetitiveContextService, CompetitiveLeaderboardService],
+  exports: [
+    UserService,
+    CompetitiveProfileIdentityService,
+    CompetitiveContextService,
+    CompetitiveLeaderboardService,
+    PublicIdentityModerationService,
+  ],
 })
 export class UserModule {}

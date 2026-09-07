@@ -19,6 +19,8 @@ import { EntitlementModule } from './entitlement/entitlement.module';
 // PREMIUM V1 -- Capa 3 (Google Play Billing), C3.2.
 import { SubscriptionModule } from './subscription/subscription.module';
 import { AdministrationModule } from './administration/administration.module';
+// PS-0C.2 -- Minimum Compliance Remediation (Términos de participación pública).
+import { ComplianceModule } from './compliance/compliance.module';
 import { EditorialModule } from './editorial/editorial.module';
 // ENSAYOS-F1 -- dominio EXAMS / Ensayos V1 (ADR-0024).
 import { ExamsModule } from './exams/exams.module';
@@ -58,6 +60,7 @@ import { CoverageMatrixModule } from './editorial/coverage-matrix.module';
     EntitlementModule,
     SubscriptionModule,
     AdministrationModule,
+    ComplianceModule,
     EditorialModule,
     ExamsModule,
     CoverageMatrixModule,

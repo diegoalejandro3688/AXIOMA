@@ -34,6 +34,8 @@ function toPublicProfileResponse(profile: PublicProfile): PublicProfileResponse 
     username: profile.usernameNormalized,
     visibilityStatus: profile.visibilityStatus,
     lifecycleStatus: profile.lifecycleStatus,
+    // PS-0C.2 -- el móvil reacciona a `USERNAME_RESET` pidiendo un nuevo username.
+    moderationStatus: profile.moderationStatus,
     createdAt: profile.createdAt.toISOString(),
     updatedAt: profile.updatedAt.toISOString(),
   });
@@ -267,8 +269,13 @@ export class PublicProfileController {
    * no distingue ningún caso, solo traduce HTTP <-> dominio.
    */
   @Get(':username/competitive-profile')
-  async getCompetitiveProfileByUsername(@Param('username') username: string): Promise<CompetitiveProfileResponse> {
-    const view = await this.userService.getCompetitiveProfileByUsername(username);
+  async getCompetitiveProfileByUsername(
+    @Req() request: AuthenticatedRequest,
+    @Param('username') username: string,
+  ): Promise<CompetitiveProfileResponse> {
+    // PS-0C.2 -- pasa `request.accountId` para que un perfil de una cuenta
+    // que ESTE solicitante bloqueó responda el mismo 404 uniforme.
+    const view = await this.userService.getCompetitiveProfileByUsername(username, request.accountId);
     return toCompetitiveProfileResponse(view);
   }
 }
