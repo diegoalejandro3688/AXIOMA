@@ -152,6 +152,11 @@ async function main() {
   // separa los `endsAt` para mantener claves/orden distintos entre las
   // temporadas sucesivas del gate. Sólo una está ACTIVE a la vez
   // (`finalizeStaleGateSeasons` cierra la anterior).
+  // PF2-C.3A -- las claves de estas temporadas usan el prefijo `comp-v1-`
+  // (historial competitivo LEGÍTIMO): el join manual ahora deriva el tier de
+  // `findMostRecentCompetitiveTerminalBefore`, que sólo considera temporadas
+  // `comp-v1-*` anteriores a la activa. La marca epoch (`${suffix}`) al final
+  // mantiene el barrido de `finalizeStaleGateSeasons`.
   async function newActiveSeason(seasonKey: string, offsetDays: number): Promise<string> {
     await finalizeStaleGateSeasons(pg);
     const season = await seasonRepo.create({
@@ -174,7 +179,7 @@ async function main() {
   const accountB = randomUUID();
 
   console.log('--- A. Ingreso inicial (tier más bajo) -- 0 marcos otorgados ---');
-  await newActiveSeason(`gate-league-s1-${suffix}`, 0);
+  await newActiveSeason(`comp-v1-gate-s1-${suffix}`, 0);
   await enrollmentService.joinActiveSeason(accountA);
   await enrollmentService.joinActiveSeason(accountB);
   check('tier1 (inicial) NO otorga su propio marco por el mero ingreso', !(await ownsFrame(accountA, t1.cosmeticItemId)));
@@ -187,7 +192,7 @@ async function main() {
   const participationB1 = await participationRepo.findMostRecentByAccountId(accountB);
   await pg.query("UPDATE season_league_participation SET participation_status = 'SEASON_ENDED' WHERE id = $1", [participationB1!.id]);
   await pg.query("UPDATE season_league_participation SET participation_status = 'PROMOTED' WHERE id = $1", [participationB1!.id]);
-  await newActiveSeason(`gate-league-s2-${suffix}`, 10);
+  await newActiveSeason(`comp-v1-gate-s2-${suffix}`, 10);
   await enrollmentService.joinActiveSeason(accountA);
   await enrollmentService.joinActiveSeason(accountB);
   check('marco de tier1 (superado) otorgado a A', await ownsFrame(accountA, t1.cosmeticItemId));
@@ -203,7 +208,7 @@ async function main() {
   const participation2 = await participationRepo.findMostRecentByAccountId(accountA);
   await pg.query("UPDATE season_league_participation SET participation_status = 'SEASON_ENDED' WHERE id = $1", [participation2!.id]);
   await pg.query("UPDATE season_league_participation SET participation_status = 'PROMOTED' WHERE id = $1", [participation2!.id]);
-  await newActiveSeason(`gate-league-s3-${suffix}`, 20);
+  await newActiveSeason(`comp-v1-gate-s3-${suffix}`, 20);
   await enrollmentService.joinActiveSeason(accountA);
   check('marco de tier2 (superado) otorgado', await ownsFrame(accountA, t2.cosmeticItemId));
   check('marco de tier3 (terminal, alcanzado por primera vez) otorgado', await ownsFrame(accountA, t3.cosmeticItemId));
@@ -213,7 +218,7 @@ async function main() {
   const participation3 = await participationRepo.findMostRecentByAccountId(accountA);
   await pg.query("UPDATE season_league_participation SET participation_status = 'SEASON_ENDED' WHERE id = $1", [participation3!.id]);
   await pg.query("UPDATE season_league_participation SET participation_status = 'RETAINED' WHERE id = $1", [participation3!.id]);
-  await newActiveSeason(`gate-league-s4-${suffix}`, 30);
+  await newActiveSeason(`comp-v1-gate-s4-${suffix}`, 30);
   await enrollmentService.joinActiveSeason(accountA);
   check('RETAINED en terminal -- sigue habiendo exactamente 1 fila de marco tier3 (idempotente)', (await frameCount(accountA, t3.cosmeticItemId)) === 1);
   check('RETAINED no genera un marco tier2 adicional (no hubo superación nueva)', (await frameCount(accountA, t2.cosmeticItemId)) === 1);

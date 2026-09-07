@@ -249,11 +249,13 @@ async function main() {
   });
   // Estudiantes SIN historial previo entrarían al tier más bajo (bronze) --
   // para probar la capacidad de UN tier concreto, se les da historial
-  // previo en `capacityLeague` insertando una participación en una
-  // temporada ya archivada (finalizada), de modo que `resolveTargetTier`
-  // los ubique en `capacityLeague` al inscribirse en la temporada activa.
+  // COMPETITIVO LEGÍTIMO en `capacityLeague`: una participación TERMINAL
+  // (`RETAINED`) en una temporada `comp-v1-*` pasada, de modo que
+  // `resolveTargetTier` (join manual) los ubique en `capacityLeague`.
+  // PF2-C.3A -- la clave DEBE usar el prefijo `comp-v1-` y el estado DEBE ser
+  // terminal (`SEASON_ENDED` ya NO cuenta como fuente de tier).
   const priorSeason = await seasonRepo.create({
-    seasonKey: `prior-season-${suffix}`,
+    seasonKey: `comp-v1-prior-${suffix}`,
     name: 'Temporada anterior (solo historial)',
     startsAt: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
     endsAt: new Date(now.getTime() - 23 * 24 * 60 * 60 * 1000),
@@ -272,8 +274,8 @@ async function main() {
   const concurrentAccounts = Array.from({ length: 5 }, () => randomUUID());
   for (const accountId of concurrentAccounts) {
     await pg.query(
-      `INSERT INTO season_league_participation (id, game_season_id, account_id, league_definition_id, league_group_id, joined_at, participation_status, finalized_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'SEASON_ENDED', $6)`,
+      `INSERT INTO season_league_participation (id, game_season_id, account_id, league_definition_id, league_group_id, joined_at, participation_status, final_rank, finalized_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'RETAINED', 1, $6)`,
       [randomUUID(), priorSeason.id, accountId, capacityLeague.id, priorGroupId, priorSeason.endsAt],
     );
   }
