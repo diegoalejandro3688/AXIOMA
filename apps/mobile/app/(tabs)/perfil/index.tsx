@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { COMPLIANCE_ERROR_CODES, type MyAdvancedProfileResponse, type PublicProfileResponse } from '@axioma/contracts';
@@ -77,7 +77,19 @@ export default function PerfilScreen() {
   const tokens = useTheme();
   const { preference: appearancePreference, setPreference: setAppearancePreference } = useAppearancePreference();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const styles = useThemedStyles(createStyles);
+  // SETTINGS-HOTFIX -- el panel de Ajustes vive en el `Dialog` compartido
+  // (Modal centrado, `padding: space6` exterior + `space5` de card, sin scroll
+  // ni inset inferior). Con edge-to-edge de Android (Expo SDK 54 / RN 0.81),
+  // el contenido baja detrás de la barra de navegación del sistema y
+  // "Cerrar sesión" quedaba parcialmente oculta / no pulsable de forma fiable.
+  // Se acota la altura del contenido scrollable para que la card entera quepa
+  // entre los insets; el `paddingBottom` (abajo, en el JSX) usa `insets.bottom`.
+  const settingsScrollMaxHeight = Math.max(
+    240,
+    windowHeight - insets.top - insets.bottom - spacing.space6 * 2 - spacing.space5 * 2 - spacing.space8,
+  );
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
   const [tab, setTab] = useState<ProfileTab>('resumen');
 
@@ -374,6 +386,18 @@ export default function PerfilScreen() {
           </Text>
           <IconButton name="close" accessibilityLabel="Cerrar ajustes" onPress={closeSettings} color="secondary" />
         </View>
+        {/*
+          SETTINGS-HOTFIX -- el contenido del panel se hace scrollable y con
+          `paddingBottom: insets.bottom` para que, con edge-to-edge de Android,
+          "Cerrar sesión" (último elemento) quede siempre visible, separada de
+          la barra de navegación del sistema y pulsable. El header queda fijo
+          fuera del scroll (X siempre accesible).
+        */}
+        <ScrollView
+          style={{ maxHeight: settingsScrollMaxHeight }}
+          contentContainerStyle={[styles.settingsScrollContent, { paddingBottom: insets.bottom + spacing.space4 }]}
+          showsVerticalScrollIndicator={false}
+        >
         {/* STABILIZATION-B8 (Polish D) -- agrupación visual (Cuenta / Preferencias / Privacidad / Plan). Sólo jerarquía y etiquetas: ningún control nuevo, ninguna funcionalidad nueva. */}
         <Text variant="caption" color="muted" weight="semibold" style={styles.settingsGroupLabel}>
           CUENTA
@@ -654,6 +678,13 @@ export default function PerfilScreen() {
         <Text variant="caption" color="muted" weight="semibold" style={styles.settingsGroupLabel}>
           LEGAL Y SOPORTE
         </Text>
+        {/*
+          SETTINGS-HOTFIX (cosmético) -- el título largo "Términos de uso y
+          convivencia pública" hacía wrap poco natural y "Ver" quedaba
+          desalineado (RN no aplica `flexShrink:1` por defecto). El label toma
+          el ancho restante (`flex:1`) y la fila alinea al inicio para que
+          "Ver" quede junto a la primera línea del título.
+        */}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={PUBLIC_PARTICIPATION_TERMS_TITLE}
@@ -661,9 +692,9 @@ export default function PerfilScreen() {
             closeSettings();
             router.push('/(tabs)/perfil/terminos');
           }}
-          style={styles.settingsRow}
+          style={[styles.settingsRow, styles.settingsRowTop]}
         >
-          <Text variant="body" weight="semibold">
+          <Text variant="body" weight="semibold" style={styles.settingsRowLabelFill}>
             {PUBLIC_PARTICIPATION_TERMS_TITLE}
           </Text>
           <Text variant="bodySmall" color="secondary">
@@ -711,6 +742,7 @@ export default function PerfilScreen() {
           size="small"
           style={styles.logoutButton}
         />
+        </ScrollView>
       </Dialog>
 
       <Dialog
@@ -789,11 +821,19 @@ function createStyles(t: ThemeTokens) {
     tabItem: { paddingVertical: spacing.space2, borderBottomWidth: 2, borderBottomColor: 'transparent' },
     tabItemActive: { borderBottomColor: t.color.accent.default },
     settingsHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const },
+    // SETTINGS-HOTFIX -- separación entre grupos DENTRO del scroll (antes la
+    // daba el `gap: space3` de la card del `Dialog`, que ahora sólo separa el
+    // header fijo del scroll).
+    settingsScrollContent: { gap: spacing.space3 },
     settingsSection: { gap: spacing.space2 },
     // STABILIZATION-B8 (Polish D) -- etiqueta de grupo: separación clara arriba, mínima abajo (pegada a su sección).
     settingsGroupLabel: { marginTop: spacing.space3, letterSpacing: 0.8 },
     appearanceRow: { flexDirection: 'row' as const, gap: spacing.space2 },
     settingsRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, gap: spacing.space2 },
+    // SETTINGS-HOTFIX (cosmético, sólo fila de Términos) -- alinear al inicio y
+    // dejar que el label ocupe el ancho restante para un wrap natural.
+    settingsRowTop: { alignItems: 'flex-start' as const },
+    settingsRowLabelFill: { flex: 1 },
     editor: { gap: spacing.space2 },
     input: {
       borderWidth: 1,
