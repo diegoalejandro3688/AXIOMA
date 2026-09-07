@@ -2,6 +2,20 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../platform/prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
 import type { SeasonLeagueParticipation, GameSeason, LeagueDefinition } from '../generated/prisma/client';
+import { SEASON_KEY_PREFIX } from './competitive-v1-config';
+
+/**
+ * PF2-C.3A -- prefijo del `seasonKey` de TODA temporada competitiva canónica
+ * (`comp-v1-...`). Único identificador POSITIVO de "historial competitivo
+ * legítimo": excluye por construcción cualquier temporada de otro dominio
+ * (`lpg-season-*` de gates de participación, fixtures de test, etc.) sin
+ * enumerar prefijos ajenos ni filtrar sólo por `status`. Ver
+ * `competitive-v1-config.ts` (`SEASON_KEY_PREFIX`).
+ */
+const CANONICAL_COMPETITIVE_SEASON_KEY_PREFIX = `${SEASON_KEY_PREFIX}-`;
+
+/** PF2-C.3A -- estados de resultado CONGELADO de una temporada ya finalizada. */
+const TERMINAL_PARTICIPATION_STATUSES = ['PROMOTED', 'DEMOTED', 'RETAINED'] as const;
 
 export type FinalizedParticipationWithContext = SeasonLeagueParticipation & { gameSeason: GameSeason; leagueDefinition: LeagueDefinition };
 
@@ -78,23 +92,105 @@ export class SeasonLeagueParticipationRepository {
   }
 
   /**
-   * HISTORIAL / TRANSICIÓN ENTRE TEMPORADAS ÚNICAMENTE -- última
-   * participación de la cuenta en CUALQUIER temporada, por recencia
-   * (`joinedAt`). Usada por §9.2 (`LeagueEnrollmentService.resolveTargetTier`)
-   * para decidir el tier de entrada de un estudiante recurrente al INSCRIBIRSE
-   * en una temporada nueva -- el resultado congelado (PROMOTED/DEMOTED/
-   * RETAINED) de su temporada anterior.
+   * HISTORIAL genérico -- última participación de la cuenta en CUALQUIER
+   * temporada, por recencia de `joinedAt`, SIN filtro de dominio ni de
+   * estado.
    *
-   * STABILIZATION-B7 -- NUNCA usar esto para resolver "la participación
-   * actual" de una superficie de lectura: por definición puede devolver una
-   * participación de una temporada ya terminada. Para "actual" usar
-   * `findCurrentByAccountId`.
+   * STABILIZATION-B7 -- NUNCA para "la participación actual" de una
+   * superficie de lectura (usar `findCurrentByAccountId`).
+   *
+   * PF2-C.3A -- YA NO es la fuente de tier de `resolveTargetTier`. El
+   * defecto de la frontera natural (2026-09-07): una participación
+   * `RETAINED` de una temporada `lpg-season-*` de gate (ARCHIVED, `joinedAt`
+   * posterior) ensombreció al predecesor canónico `comp-v1-2026-08-31`
+   * (`PROMOTED`), y la cuenta se auto-inscribió un tier por debajo del que le
+   * correspondía. `joinedAt` es la decisión del usuario de CUÁNDO entró, no
+   * la cronología de la COMPETICIÓN. El auto-rollover ahora se ata al
+   * `previousSeasonId` exacto (`findTerminalForAccountInSeason`) y el
+   * join manual al historial competitivo legítimo por cronología de temporada
+   * (`findMostRecentCompetitiveTerminalBefore`). Se conserva este método
+   * para gates que aún asertan sobre él.
    */
   findMostRecentByAccountId(accountId: string, tx?: Prisma.TransactionClient): Promise<SeasonLeagueParticipation | null> {
     const client: Client = tx ?? this.prisma;
     return client.seasonLeagueParticipation.findFirst({
       where: { accountId },
       orderBy: { joinedAt: 'desc' },
+    });
+  }
+
+  /**
+   * PF2-C.3A (AUTO-ROLLOVER) -- la participación de resultado TERMINAL de la
+   * cuenta en UNA temporada EXACTA (`gameSeasonId`). Fuente única y explícita
+   * del tier de entrada durante el rollover automático N-1 -> N: el
+   * orquestador ya conoce `previousSeasonId`, así que NO se infiere de
+   * "historial más reciente" (que puede estar ensombrecido por residuo de
+   * gate). Devuelve `null` si la cuenta no tiene participación en esa
+   * temporada o si su participación aún NO es terminal
+   * (`ACTIVE`/`SEASON_ENDED`) -- el llamador NUNCA cae a un fallback global,
+   * marca la cuenta como fallida (§11). `@@unique([accountId, gameSeasonId])`
+   * garantiza <= 1 fila.
+   */
+  findTerminalForAccountInSeason(
+    accountId: string,
+    gameSeasonId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<SeasonLeagueParticipation | null> {
+    const client: Client = tx ?? this.prisma;
+    return client.seasonLeagueParticipation.findFirst({
+      where: {
+        accountId,
+        gameSeasonId,
+        participationStatus: { in: [...TERMINAL_PARTICIPATION_STATUSES] },
+      },
+    });
+  }
+
+  /**
+   * PF2-C.3A (JOIN MANUAL) -- la participación de resultado TERMINAL más
+   * reciente de la cuenta en su HISTORIAL COMPETITIVO LEGÍTIMO
+   * (`seasonKey` con prefijo `comp-v1-`) ESTRICTAMENTE ANTERIOR a la
+   * temporada activa. Para el estudiante que se salta una semana y vuelve a
+   * inscribirse manualmente: su progresión se deriva de la última temporada
+   * competitiva real en la que compitió, no del `joinedAt` global.
+   *
+   * Orden = CRONOLOGÍA DE LA TEMPORADA, no de la participación:
+   *   `gameSeason.endsAt DESC`  (la competición que terminó más tarde)
+   *   -> `gameSeason.startsAt DESC` -> `id DESC`  (desempate determinista)
+   * `endsAt` es canónico incluso cuando `startsAt` retiene un valor
+   * histórico no canónico (PF2-C Estrategia A) -- NO se exige `startsAt`
+   * byte-exacto (§7).
+   *
+   * "Anterior a la activa" = `startsAt <= activeSeason.startsAt` Y
+   * `id != activeSeason.id` -- excluye la propia temporada activa y toda
+   * SCHEDULED futura, y tolera el modelo de ventanas solapadas de algunos
+   * gates. El filtro de estado terminal ya excluye implícitamente cualquier
+   * fila `ACTIVE`/`SEASON_ENDED` (temporada en curso o sin instantánea).
+   *
+   * `null` -> el llamador aplica el tier base de jugador nuevo. Residuo
+   * `lpg-season-*` / fixtures de otro dominio NUNCA aparecen aquí.
+   */
+  findMostRecentCompetitiveTerminalBefore(
+    accountId: string,
+    activeSeason: { id: string; startsAt: Date },
+    tx?: Prisma.TransactionClient,
+  ): Promise<SeasonLeagueParticipation | null> {
+    const client: Client = tx ?? this.prisma;
+    return client.seasonLeagueParticipation.findFirst({
+      where: {
+        accountId,
+        participationStatus: { in: [...TERMINAL_PARTICIPATION_STATUSES] },
+        gameSeason: {
+          id: { not: activeSeason.id },
+          seasonKey: { startsWith: CANONICAL_COMPETITIVE_SEASON_KEY_PREFIX },
+          startsAt: { lte: activeSeason.startsAt },
+        },
+      },
+      orderBy: [
+        { gameSeason: { endsAt: 'desc' } },
+        { gameSeason: { startsAt: 'desc' } },
+        { id: 'desc' },
+      ],
     });
   }
 

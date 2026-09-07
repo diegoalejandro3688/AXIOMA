@@ -6,7 +6,7 @@ import { LeagueGroupRepository } from './league-group.repository';
 import { SeasonLeagueParticipationRepository } from './season-league-participation.repository';
 import { RewardBundleRepository } from './reward-bundle.repository';
 import { RewardEvaluationWorker } from './reward-evaluation.worker';
-import type { LeagueDefinition, SeasonLeagueParticipation } from '../generated/prisma/client';
+import type { GameSeason, LeagueDefinition, SeasonLeagueParticipation } from '../generated/prisma/client';
 
 /**
  * Namespace de advisory lock DISTINTO a los de ADR-0019 (`19`) y Bloque III
@@ -23,7 +23,26 @@ const LEAGUE_ENROLLMENT_LOCK_NAMESPACE = 21;
 /** Única política de asignación inicial conocida en este incremento -- ver §9.2. */
 const ASSIGNMENT_POLICY_VERSION = 'v1-lowest-tier';
 
-export type EnrollmentOutcome = { participation: SeasonLeagueParticipation; created: boolean } | { outcome: 'NO_ACTIVE_SEASON' };
+export type EnrollmentOutcome =
+  | { participation: SeasonLeagueParticipation; created: boolean }
+  /**
+   * `NO_ACTIVE_SEASON` -- no hay temporada canónica vigente, o no hay una
+   * escalera de tiers ACTIVE (config rota). `NO_TERMINAL_SOURCE_IN_PREVIOUS_SEASON`
+   * -- PF2-C.3A: SÓLO alcanzable en el auto-rollover, cuando la cuenta
+   * candidata no tiene una participación TERMINAL en el `previousSeasonId`
+   * exacto (deriva concurrente inesperada). NUNCA cae a historial global:
+   * `SeasonRolloverService` la contabiliza como fallida (§11).
+   */
+  | { outcome: 'NO_ACTIVE_SEASON' | 'NO_TERMINAL_SOURCE_IN_PREVIOUS_SEASON' };
+
+/**
+ * PF2-C.3A -- contexto opcional del auto-rollover. Cuando `sourcePreviousSeasonId`
+ * está presente, el tier de destino se resuelve EXCLUSIVAMENTE desde la
+ * participación terminal de esa temporada exacta -- nunca desde "historial más
+ * reciente". Ausente (join manual del controller) -> se resuelve desde el
+ * historial competitivo legítimo por cronología de temporada.
+ */
+export type JoinActiveSeasonOptions = { sourcePreviousSeasonId?: string };
 
 /** Vista sin IDs internos de una participación ya resuelta -- ver `describeParticipation`. */
 export type EnrolledParticipationView = {
@@ -77,7 +96,11 @@ export class LeagueEnrollmentService {
    * bajo una carrera real de dos solicitudes concurrentes (Gate de
    * inscripción idempotente, §9.9).
    */
-  async joinActiveSeason(accountId: string, now: Date = new Date()): Promise<EnrollmentOutcome> {
+  async joinActiveSeason(
+    accountId: string,
+    now: Date = new Date(),
+    opts: JoinActiveSeasonOptions = {},
+  ): Promise<EnrollmentOutcome> {
     // STABILIZATION-B7 -- temporada CANÓNICA vigente (status ACTIVE Y `now`
     // dentro de la ventana), la misma que resuelve el Ranking. Una temporada
     // ACTIVE fuera de ventana (contaminación, o un tick de scheduler de
@@ -90,11 +113,16 @@ export class LeagueEnrollmentService {
     if (!season) return { outcome: 'NO_ACTIVE_SEASON' };
 
     // Idempotencia rápida sin lock: si ya existe, no hace falta serializar nada.
+    // PF2-C.3A -- el tier NUNCA se recalcula para una participación ya
+    // existente: un `joinActiveSeason` repetido devuelve la fila tal cual
+    // (`@@unique([accountId, gameSeasonId])`); la reparación de una fila mal
+    // tiereada es responsabilidad de una reconciliación explícita (PF2-C.3B).
     const existing = await this.participationRepo.findByAccountAndSeason(accountId, season.id);
     if (existing) return { participation: existing, created: false };
 
-    const resolvedTier = await this.resolveTargetTier(accountId);
+    const resolvedTier = await this.resolveTargetTier(accountId, season, opts);
     if (!resolvedTier) return { outcome: 'NO_ACTIVE_SEASON' };
+    if ('failed' in resolvedTier) return { outcome: resolvedTier.failed };
     const { target: targetLeagueDefinition, surpassedTier, isTerminalReach } = resolvedTier;
 
     const result = await this.prisma.$transaction(
@@ -200,46 +228,80 @@ export class LeagueEnrollmentService {
   }
 
   /**
-   * §3 (decisión Product/TPM) -- estudiante nuevo (sin ninguna participación
-   * previa): tier más bajo (Bronce), sin excepción. Estudiante recurrente: se
-   * parte del tier de su ÚLTIMA participación y se aplica su resultado:
+   * §3 (decisión Product/TPM) -- estudiante nuevo (sin historial competitivo
+   * legítimo): tier más bajo (Bronce), sin excepción. Estudiante recurrente:
+   * se parte del tier de su participación FUENTE y se aplica su resultado
+   * congelado:
    *   PROMOTED -> tier ACTIVE inmediatamente superior (Gran Maestro: se queda)
    *   DEMOTED  -> tier ACTIVE inmediatamente inferior (Bronce: se queda)
-   *   cualquier otro estado (RETAINED / SEASON_ENDED / ACTIVE) -> mismo tier
-   * Sin subdivisiones, sin saltos. `LeaderboardFinalizationService` es quien
-   * decide PROMOTED/DEMOTED/RETAINED al cerrar el grupo (Incremento 2, ADR-0020).
-   */
-  /**
-   * STABILIZATION-B -- además del tier de destino, resuelve qué marco de
-   * liga (si alguno) corresponde entregar en ESTA inscripción:
-   * `surpassedTier` = el tier que se acaba de SUPERAR (solo en una
-   * transición PROMOTED real, nunca en el ingreso inicial a Bronce ni en
-   * RETAINED/DEMOTED); `isTerminalReach` = true solo cuando el destino es el
-   * tier más alto ACTIVO (sin `findAdjacentActiveTier(..., 'up')` posible) --
-   * cubre la regla terminal de Gran Maestro (se entrega su propio marco al
-   * alcanzarlo, dado que no existe un tier superior que "superar").
+   *   RETAINED -> mismo tier
+   * Sin subdivisiones, sin saltos. `LeaderboardFinalizationService` decide
+   * PROMOTED/DEMOTED/RETAINED al cerrar el grupo (Incremento 2, ADR-0020).
+   * La gramática de promoción/descenso NO se toca aquí.
+   *
+   * STABILIZATION-B -- `surpassedTier` = el tier que se acaba de SUPERAR
+   * (solo en una transición PROMOTED real, nunca en el ingreso inicial a
+   * Bronce ni en RETAINED/DEMOTED); `isTerminalReach` = true solo cuando el
+   * destino es el tier más alto ACTIVO -- cubre la regla terminal de Gran
+   * Maestro.
+   *
+   * PF2-C.3A -- la FUENTE del resultado congelado es EXPLÍCITA, nunca
+   * "la participación con el `joinedAt` más grande":
+   *   - AUTO-ROLLOVER (`opts.sourcePreviousSeasonId` presente):
+   *     la participación TERMINAL en ESA temporada exacta. Si no existe /
+   *     no es terminal -> `{ failed }` (el rollover marca la cuenta, sin
+   *     fallback, §11).
+   *   - JOIN MANUAL (sin `opts.sourcePreviousSeasonId`):
+   *     la participación TERMINAL más reciente del historial competitivo
+   *     `comp-v1-*` ESTRICTAMENTE anterior a la temporada activa, ordenada
+   *     por cronología de temporada. Sin historial legítimo -> tier base.
    */
   private async resolveTargetTier(
     accountId: string,
-  ): Promise<{ target: LeagueDefinition; surpassedTier: LeagueDefinition | null; isTerminalReach: boolean } | null> {
-    const mostRecent = await this.participationRepo.findMostRecentByAccountId(accountId);
+    activeSeason: GameSeason,
+    opts: JoinActiveSeasonOptions,
+  ): Promise<
+    | { target: LeagueDefinition; surpassedTier: LeagueDefinition | null; isTerminalReach: boolean }
+    | { failed: 'NO_TERMINAL_SOURCE_IN_PREVIOUS_SEASON' }
+    | null
+  > {
+    let source: SeasonLeagueParticipation | null;
+
+    if (opts.sourcePreviousSeasonId) {
+      source = await this.participationRepo.findTerminalForAccountInSeason(accountId, opts.sourcePreviousSeasonId);
+      if (!source) {
+        // Deriva concurrente inesperada: la cuenta fue candidata al rollover
+        // pero ya no tiene un resultado terminal en `previousSeasonId`.
+        // NUNCA adivinar un tier desde otro historial.
+        this.logger.warn(
+          `resolveTargetTier: cuenta ${accountId} sin participación TERMINAL en previousSeasonId=${opts.sourcePreviousSeasonId} -- rollover omitido para esta cuenta (sin fallback).`,
+        );
+        return { failed: 'NO_TERMINAL_SOURCE_IN_PREVIOUS_SEASON' };
+      }
+    } else {
+      source = await this.participationRepo.findMostRecentCompetitiveTerminalBefore(accountId, {
+        id: activeSeason.id,
+        startsAt: activeSeason.startsAt,
+      });
+    }
+
     let target: LeagueDefinition | null = null;
     let surpassedTier: LeagueDefinition | null = null;
 
-    if (mostRecent) {
-      const fromTier = await this.leagueDefinitionRepo.findById(mostRecent.leagueDefinitionId);
+    if (source) {
+      const fromTier = await this.leagueDefinitionRepo.findById(source.leagueDefinitionId);
       if (fromTier && fromTier.status === 'ACTIVE') {
-        if (mostRecent.participationStatus === 'PROMOTED') {
+        if (source.participationStatus === 'PROMOTED') {
           const above = await this.leagueDefinitionRepo.findAdjacentActiveTier(fromTier.tierOrder, 'up');
           target = above ?? fromTier;
           // Solo cuenta como "superado" si REALMENTE hubo un tier superior al
           // que ascender -- si `fromTier` ya era el más alto, no hay marco
           // nuevo que superar por esta vía (cubierto por `isTerminalReach`).
           if (above) surpassedTier = fromTier;
-        } else if (mostRecent.participationStatus === 'DEMOTED') {
+        } else if (source.participationStatus === 'DEMOTED') {
           target = (await this.leagueDefinitionRepo.findAdjacentActiveTier(fromTier.tierOrder, 'down')) ?? fromTier;
         } else {
-          target = fromTier;
+          target = fromTier; // RETAINED
         }
       }
     }

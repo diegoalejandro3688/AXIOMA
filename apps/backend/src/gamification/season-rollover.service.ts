@@ -20,13 +20,15 @@ const ROLLOVER_BATCH_SIZE = 200;
  * la temporada canónica sucesora, ya ACTIVE.
  *
  * NO duplica NADA: para cada cuenta invoca la ruta canónica
- * `LeagueEnrollmentService.joinActiveSeason(accountId)`, que ya resuelve el
- * tier (`resolveTargetTier` sobre la última participación finalizada),
- * materializa el grupo perezosamente, crea la participación idempotentemente
- * (`@@unique(accountId, gameSeasonId)`) con `leaguePoints = 0`, y entrega el
- * marco del tier SUPERADO / el terminal de Gran Maestro por el mismo camino
- * `reward:LEAGUE:{accountId}:{leagueId}`. Ascendente se detecta solo por la
- * nueva fila en Diamante+.
+ * `LeagueEnrollmentService.joinActiveSeason(accountId, now, { sourcePreviousSeasonId })`,
+ * que resuelve el tier de destino EXCLUSIVAMENTE desde la participación
+ * TERMINAL de `previousSeasonId` (PF2-C.3A -- ya NO desde "historial más
+ * reciente" por `joinedAt`, que podía quedar ensombrecido por residuo de gate
+ * `lpg-season-*`), materializa el grupo perezosamente, crea la participación
+ * idempotentemente (`@@unique(accountId, gameSeasonId)`) con `leaguePoints = 0`,
+ * y entrega el marco del tier SUPERADO / el terminal de Gran Maestro por el
+ * mismo camino `reward:LEAGUE:{accountId}:{leagueId}`. Ascendente se detecta
+ * solo por la nueva fila en Diamante+.
  *
  * Idempotente y multi-instancia: correr N veces / desde 2 backends converge a
  * UNA participación por cuenta y CERO marcos duplicados (la unicidad de
@@ -71,11 +73,24 @@ export class SeasonRolloverService {
       for (const accountId of accountIds) {
         candidates++;
         try {
-          const outcome = await this.enrollmentService.joinActiveSeason(accountId, now);
+          const outcome = await this.enrollmentService.joinActiveSeason(accountId, now, {
+            sourcePreviousSeasonId: previousSeasonId,
+          });
           if ('outcome' in outcome) {
-            // NO_ACTIVE_SEASON -- la sucesora no está ACTIVE. No debería pasar
-            // (el orquestador sólo llama tras activarla), pero es un no-op seguro.
-            notEligible++;
+            if (outcome.outcome === 'NO_TERMINAL_SOURCE_IN_PREVIOUS_SEASON') {
+              // PF2-C.3A -- deriva concurrente: la cuenta fue candidata pero ya
+              // no tiene resultado terminal en `previousSeasonId`. NUNCA se cae
+              // a historial global ni se adivina un tier (§11): se cuenta como
+              // fallida y el próximo ciclo la reintenta desde el estado real.
+              failed++;
+              this.logger.error(
+                `Rollover: cuenta ${accountId} sin participación TERMINAL en la temporada predecesora ${previousSeasonId} -- omitida (sin fallback a historial global).`,
+              );
+            } else {
+              // NO_ACTIVE_SEASON -- la sucesora no está ACTIVE. No debería pasar
+              // (el orquestador sólo llama tras activarla), pero es un no-op seguro.
+              notEligible++;
+            }
           } else if (outcome.created) {
             rolled++;
           } else {
