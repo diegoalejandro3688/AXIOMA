@@ -672,8 +672,18 @@ async function main() {
       !/from\s+['"]pg['"]|new\s+Client\(|DATABASE_URL/.test(i6CliCode) &&
       !/\bSELECT\b|\bINSERT\b|\bUPDATE\b|\bDELETE\b/.test(i6CliCode));
   const cliFiles = existsSync(join(srcDir, 'cli')) ? readdirSync(join(srcDir, 'cli')).filter((f) => f.endsWith('.ts')) : [];
-  check('`src/cli/` contiene exactamente las tres herramientas fuera de banda previas más el CLI editorial del I6, y ninguna herramienta más',
-    cliFiles.sort().join(',') === 'activate-cms018-exception.ts,create-admin-actor.ts,editorial.ts,recover-account.ts', cliFiles.join(','));
+  // Inventario canónico de `src/cli/` (herramientas fuera de banda). La lista
+  // sigue siendo un conjunto EXACTO -- su propósito es delatar cualquier CLI
+  // no autorizado, no "cualquier cantidad". Se amplía a seis por PS-0C.2
+  // (Minimum Compliance Remediation, commit 7fe94c7): `ai-reports.ts` y
+  // `moderate-public-identity.ts` son las dos CLIs de operador de esa
+  // remediación (revisión de reportes de Tutor IA / moderación de identidad
+  // pública), documentadas en
+  // docs/adr/PS-0C.2-MINIMUM-COMPLIANCE-REMEDIATION-CLOSURE-REPORT.md. Sin HTTP,
+  // sin ruta de escritura administrativa nueva (el bloque 9.b de este gate lo
+  // sigue verificando por separado).
+  check('`src/cli/` contiene exactamente las tres herramientas fuera de banda previas, el CLI editorial del I6 y las dos CLIs de operador de PS-0C.2, y ninguna herramienta más',
+    cliFiles.sort().join(',') === 'activate-cms018-exception.ts,ai-reports.ts,create-admin-actor.ts,editorial.ts,moderate-public-identity.ts,recover-account.ts', cliFiles.join(','));
   const cliCode = collectTsFiles(join(srcDir, 'cli')).map((f) => stripComments(readFileSync(f, 'utf8'))).join('\n');
   check('el CLI consume la matriz SOLO por `GET` de la API (§12.6) y ningún comando le abre una ruta de escritura: la matriz sigue siendo estrictamente de solo lectura (invariante 14)',
     new RegExp('coverage-matrix').test(cliCode) &&

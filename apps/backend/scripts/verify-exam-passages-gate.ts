@@ -25,7 +25,10 @@ import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identit
 
 const base = process.argv[2] ?? 'http://127.0.0.1:3000';
 const backendDir = join(__dirname, '..');
+const opsKey = process.env.INTERNAL_OPS_KEY ?? '';
 let failures = 0;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function check(label: string, condition: boolean, detail?: string) {
   if (condition) console.log(`  OK  ${label}`);
   else {
@@ -35,12 +38,24 @@ function check(label: string, condition: boolean, detail?: string) {
   }
 }
 
-async function req(method: string, path: string, headers: Record<string, string> = {}, body?: unknown) {
+/**
+ * Este gate hace decenas de solicitudes HTTP por corrida y el flujo de release
+ * lo ejecuta muchas veces seguidas. El limite GLOBAL de `ThrottlerModule`
+ * (300 req/60 s por IP, ver app.module.ts) puede devolver 429 a solicitudes
+ * legitimas cuando la suite corre en rafaga. Se absorbe con backoff acotado:
+ * NUNCA se relaja el limite real y ningun test de este archivo verifica un 429
+ * crudo (mismo criterio que verify-premium-exams-gate.ts / verify-ai-quota-gate.ts).
+ */
+async function req(method: string, path: string, headers: Record<string, string> = {}, body?: unknown, attempt = 0) {
   const res = await fetch(base + path, {
     method,
     headers: { 'content-type': 'application/json', ...headers },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 429 && attempt < 5) {
+    await sleep(12_000);
+    return req(method, path, headers, body, attempt + 1);
+  }
   const text = await res.text();
   let parsed: unknown = null;
   try {
@@ -69,6 +84,21 @@ async function newSession(label: string) {
     accountId: r.body?.accountId as string,
     authHeaders: { authorization: `Bearer ${idToken}`, 'x-session-id': r.body?.sessionId as string },
   };
+}
+
+/**
+ * Override de tier por la maquinaria de test canonica de PREMIUM V1 (mismo
+ * endpoint interno que usa verify-premium-exams-gate.ts). Desde PREMIUM V1
+ * C1.2 `POST /exams/:id/attempts` exige tier PREMIUM: el alumno que este gate
+ * usa para ejercitar el CONTRATO de textos compartidos (pasajes) debe poder
+ * INICIAR el ensayo. No se toca `ExamService` ni se hace bypass del gating --
+ * solo se le concede a este actor de prueba el entitlement que un alumno real
+ * de Ensayos ya tiene.
+ */
+async function setTier(accountId: string, tier: 'FREE' | 'PREMIUM' | null) {
+  const q = tier === null ? '' : `&tier=${tier}`;
+  const r = await req('POST', `/_internal/entitlement/set-tier-override?accountId=${accountId}${q}`, { 'x-internal-ops-key': opsKey });
+  if (r.status !== 200 && r.status !== 201) throw new Error(`set-tier-override(${accountId},${tier}) -> ${r.status} ${r.raw}`);
 }
 
 const TABLE_BLOCK = {
@@ -148,6 +178,7 @@ async function main() {
   const examKeyB = `ENSAYO.ZZTESTF2B.${runId}`;
   const trackedExamIds: string[] = [];
   const trackedAttemptIds: string[] = [];
+  const premiumOverrideAccounts: string[] = [];
 
   try {
     console.log('--- 1. Crear dos ensayos DRAFT aislados ---');
@@ -241,7 +272,10 @@ async function main() {
 
     console.log('--- 8. (D)(E) contrato del runtime: pasaje UNA vez, passageId compartido, tabla intacta ---');
     const student = await newSession('student');
+    await setTier(student.accountId, 'PREMIUM'); // C1.2: iniciar un ensayo exige PREMIUM
+    premiumOverrideAccounts.push(student.accountId);
     const startA = await req('POST', `/exams/${examA}/attempts`, student.authHeaders, {});
+    check('(C1.2) el alumno PREMIUM inicia el ensayo -> 200 con attemptId', startA.status === 200 && !!startA.body?.attemptId, `status=${startA.status} ${startA.raw.slice(0, 200)}`);
     const attemptId = startA.body?.attemptId as string;
     trackedAttemptIds.push(attemptId);
     const qs = await req('GET', `/exams/me/attempts/${attemptId}/questions`, student.authHeaders);
@@ -287,6 +321,9 @@ async function main() {
     }
   } finally {
     console.log('--- 11. Limpieza de fixtures del gate ---');
+    for (const acc of premiumOverrideAccounts) {
+      try { await setTier(acc, null); } catch { /* best-effort: el override es de la DB de gates */ }
+    }
     for (const attemptId of trackedAttemptIds) {
       await pg.query(`DELETE FROM exam_attempt_answer WHERE attempt_id=$1`, [attemptId]);
       await pg.query(`DELETE FROM exam_attempt WHERE id=$1`, [attemptId]);

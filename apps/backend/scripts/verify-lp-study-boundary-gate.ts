@@ -54,6 +54,28 @@ async function main() {
   // base real (`axioma_dev`). Debe correr contra una base desechable.
   await assertGateDbViaPrisma(prisma as unknown as { $queryRawUnsafe: <T>(q: string) => Promise<T> });
 
+  // --- Aislamiento entre corridas (la base de gates es COMPARTIDA) ---
+  // `game_season_single_active` admite UNA sola temporada ACTIVE global. El
+  // servidor de gates corre la app completa: `SeasonTransitionScheduler`
+  // provisiona/activa la temporada canónica `comp-v1-{fecha}` en cada bootstrap.
+  // Este gate necesita SU PROPIA temporada ACTIVE, así que finaliza cualquier
+  // ACTIVE preexistente (canónica del orquestador o residuo epoch de otro gate).
+  // SEGURO: `assertGateDbViaPrisma` ya hizo HARD FAIL si la base fuera
+  // `axioma_dev`; en la base de gates finalizar y dejar que el orquestador
+  // re-active es higiene legítima (equivalente Prisma de `finalizeStaleGateSeasons`,
+  // pero también sobre la canónica, que en la base de gates no protege nada real).
+  await prisma.gameSeason.updateMany({ where: { status: 'ACTIVE' }, data: { status: 'FINALIZED', finalizedAt: new Date() } });
+
+  // Este gate crea `league_point_rule` "históricas" para reproducir el bug y
+  // deja algunas vigentes (p.ej. QUICK) tras las Fases 2-4. Otros gates de LP
+  // (verify:competitive-v1-gate, ...) exigen "EXACTAMENTE una regla aplicable".
+  // Para no heredar NI dejar reglas vigentes: se retiran las preexistentes al
+  // entrar (Fase 1 determinista) y las propias al salir (`finally`). El
+  // `no_delete`/`RESTRICT` de `league_point_ledger_entry` impide borrarlas, así
+  // que la higiene es retirar (`effectiveUntil`), no borrar -- exactamente el
+  // patrón que verify-competitive-v1-gate ya usa.
+  await prisma.leaguePointRule.updateMany({ where: { effectiveUntil: null }, data: { effectiveUntil: new Date('2020-01-01T00:00:00.000Z') } });
+
   // --- Fixtures: 1 liga, 1 temporada ACTIVE, 1 grupo OPEN, 1 participante enrolado ---
   const leagueId = randomUUID();
   await prisma.leagueDefinition.create({
@@ -201,12 +223,31 @@ async function main() {
   const preJoinOutcome = await grantService.grantForActivity(preJoinActivity);
   check('actividad ANTES de joinedAt -> OUT_OF_WINDOW (sin cambios)', preJoinOutcome.outcome === 'OUT_OF_WINDOW');
 
+  // Higiene de salida: deja TODA `league_point_rule` con un `effectiveUntil`
+  // inequívocamente en el pasado. No basta con retirar las `NULL`: la Fase 2
+  // invoca `hotfixStudyLpBoundary` con T = ahora+2s, que escribe un
+  // `effective_until` naive (componentes UTC) vía Prisma; un gate posterior que
+  // lea esa columna con el driver `pg` crudo la interpreta en la TZ local
+  // (Santiago, UTC-3) y la ve ~3 h en el FUTURO -- lo que haría aparecer las
+  // reglas de Estudio ya retiradas como "vigentes" y rompería el
+  // "EXACTAMENTE una regla aplicable" de verify:competitive-v1-gate. Fijar a
+  // 2020-01-01 elimina esa ambigüedad de zona horaria para cualquier lector.
+  await prisma.leaguePointRule.updateMany({ where: {}, data: { effectiveUntil: new Date('2020-01-01T00:00:00.000Z') } });
+
   await prisma.$disconnect();
   if (failures > 0) {
     console.error(`\n${failures} verificacion(es) fallaron.`);
     process.exit(1);
   }
   console.log('\nTodas las verificaciones del gate de frontera LP Study/Competir pasaron.');
+  // La Fase 3.5 invoca DELIBERADAMENTE `hotfixStudyLpBoundary` por su camino de
+  // CONFLICTO (T divergente) para verificar que no sobrescribe en silencio. Esa
+  // helper, como haría para un operador real, fija `process.exitCode = 1` al
+  // detectar el conflicto. El resultado de ESTE gate lo determinan únicamente
+  // sus asserts (`failures`), así que salimos 0 explícitamente cuando están
+  // todos en verde -- sin heredar el exitCode de un camino negativo probado a
+  // propósito.
+  process.exit(0);
 }
 
 main().catch((e) => {

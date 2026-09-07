@@ -40,6 +40,7 @@ import { XpBalanceRepository } from '../src/gamification/xp-balance.repository';
 import { XpGrantAttemptRepository } from '../src/gamification/xp-grant-attempt.repository';
 import { XpGrantService } from '../src/gamification/xp-grant.service';
 import { seedXpV1 } from './seed-xp-v1';
+import { assertGateDbViaPrisma } from './gate-db-safety';
 
 let failures = 0;
 function check(label: string, ok: boolean) {
@@ -72,7 +73,44 @@ async function main() {
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
   const svcPrisma = prisma as unknown as PrismaService;
 
+  // STABILIZATION -- este gate se ejecuta DIRECTAMENTE (sin start-gates-server)
+  // y SIEMBRA `xp-core` (`xp:seed-v1`): HARD FAIL si apunta a `axioma_dev`.
+  // Debe correr contra la base desechable de gates (via run-gate.ts).
+  await assertGateDbViaPrisma(prisma as unknown as { $queryRawUnsafe: <T>(q: string) => Promise<T> });
+
   console.log('--- 0. Provisionar xp-core V1 (real xp:seed-v1, no dry-run) ---');
+  // Aislamiento: este gate CONSTRUYE su estado de cutover deliberado (T =
+  // 2026-10-01) y comprueba que NADA anterior a T recibe XP. La base de gates
+  // es COMPARTIDA -- `verify-resource-completion-gate` siembra `xp-core`/`v1`
+  // con un `effectiveFrom` dinamico distinto. Si quedo un `v1` incompatible y
+  // NADA lo fija (sin `xp_ledger_entry` que lo referencie), se retira aqui para
+  // que `seedXpV1` recree el cutover exacto que el gate necesita. Si esta fijado
+  // por asientos de una corrida previa, `seedXpV1` lo reutiliza (mismo T) o
+  // lanza `SeedConflictError` con un mensaje claro -- en cuyo caso el gate debe
+  // correr contra una base de gates recien migrada (debe ser el primer sembrador
+  // de `xp-core`/`v1`). NUNCA toca `xp-core` en `axioma_dev` -- assertGateDb ya
+  // hizo HARD FAIL si lo fuera.
+  try {
+    const staleProgram = await prisma.gamificationProgram.findUnique({ where: { programKey: 'xp-core' } });
+    if (staleProgram) {
+      const staleV1 = await prisma.gamificationProgramVersion.findUnique({
+        where: { gamificationProgramId_versionLabel: { gamificationProgramId: staleProgram.id, versionLabel: 'v1' } },
+      });
+      if (staleV1 && staleV1.effectiveFrom?.getTime() !== T.getTime()) {
+        const ruleIds = (await prisma.xpRule.findMany({ where: { programVersionId: staleV1.id }, select: { id: true } })).map((r) => r.id);
+        const pinned = ruleIds.length > 0 && (await prisma.xpLedgerEntry.count({ where: { xpRuleId: { in: ruleIds } } })) > 0;
+        if (!pinned) {
+          await prisma.xpRule.deleteMany({ where: { programVersionId: staleV1.id } });
+          await prisma.gamificationProgramVersion.delete({ where: { id: staleV1.id } });
+          console.log('  [aislamiento] retirado un `xp-core`/`v1` residual e incompatible (sin asientos que lo fijen).');
+        } else {
+          console.log('  [aislamiento] AVISO: existe un `xp-core`/`v1` incompatible fijado por asientos -- se espera SeedConflictError. Corre este gate contra una base de gates recien migrada.');
+        }
+      }
+    }
+  } catch (err) {
+    console.log(`  [aislamiento] limpieza best-effort de \`xp-core\`/\`v1\` no aplicada: ${err instanceof Error ? err.message : String(err)}`);
+  }
   await seedXpV1({ dryRun: false, effectiveFrom: T });
 
   const txRunner = new TransactionRunnerService(svcPrisma);
