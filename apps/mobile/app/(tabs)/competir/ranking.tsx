@@ -337,7 +337,7 @@ function LeaderboardRowCard({ row, styles, router }: { row: LeaderboardRow; styl
         </Text>
         <View style={styles.redactedMiddle}>
           <Text variant="body" color="muted" style={styles.redactedLabel}>
-            Perfil privado
+            {row.redactionReason === 'BLOCKED' ? 'Usuario bloqueado' : 'Perfil privado'}
           </Text>
           <ZoneIndicator zone={row.competitiveZone} styles={styles} />
         </View>

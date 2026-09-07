@@ -1,12 +1,15 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import type { MyAdvancedProfileResponse, PublicProfileResponse } from '@axioma/contracts';
+import { COMPLIANCE_ERROR_CODES, type MyAdvancedProfileResponse, type PublicProfileResponse } from '@axioma/contracts';
 import { useAuth } from '../../../lib/auth/auth-provider';
 import { getMyAdvancedProfile } from '../../../lib/api/advanced-profile';
 import { initializeProfile, updateProfile } from '../../../lib/api/user';
-import { claimPublicProfile, getMyPublicProfile, setPublicProfileVisibility } from '../../../lib/api/public-profile';
+import { changePublicUsername, claimPublicProfile, getMyPublicProfile, setPublicProfileVisibility } from '../../../lib/api/public-profile';
+import { acceptPublicParticipationTerms, getPublicParticipationTermsStatus } from '../../../lib/api/compliance';
+import { PUBLIC_PARTICIPATION_TERMS_INTRO, PUBLIC_PARTICIPATION_TERMS_TITLE } from '../../../lib/compliance/public-participation-terms-content';
+import { PRIVACY_POLICY_URL, SUPPORT_CONTACT, isConfigured } from '../../../lib/compliance/legal-links';
 import { requestAccountDeletion } from '../../../lib/api/privacy';
 import { useEntitlement } from '../../../lib/entitlement/entitlement-provider';
 import { LoadingState } from '../../../components/loading-state';
@@ -89,6 +92,14 @@ export default function PerfilScreen() {
   const [claimError, setClaimError] = useState<string | null>(null);
   const [togglingVisibility, setTogglingVisibility] = useState(false);
   const [toggleVisibilityError, setToggleVisibilityError] = useState<string | null>(null);
+  // PS-0C.2 -- gate de Términos de participación pública antes de HACER VISIBLE.
+  const [termsPromptVisible, setTermsPromptVisible] = useState(false);
+  const [acceptingTerms, setAcceptingTerms] = useState(false);
+  const [termsError, setTermsError] = useState<string | null>(null);
+  // PS-0C.2 -- recuperación tras un reset de username por moderación.
+  const [renameUsername, setRenameUsername] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
   // STABILIZATION-B -- Cuenta: solicitud de eliminación (confirmación destructiva explícita).
   const [deletionConfirmVisible, setDeletionConfirmVisible] = useState(false);
   const [deletionRequested, setDeletionRequested] = useState(false);
@@ -193,18 +204,71 @@ export default function PerfilScreen() {
     setClaimError(result.message);
   }
 
-  async function handleToggleVisibility() {
-    if (publicProfileState?.status !== 'ready' || publicProfileState.profile === null) return;
-    const nextVisible = publicProfileState.profile.visibilityStatus !== 'VISIBLE';
+  async function applyVisibility(nextVisible: boolean) {
     setToggleVisibilityError(null);
     setTogglingVisibility(true);
     const result = await setPublicProfileVisibility(nextVisible);
     setTogglingVisibility(false);
     if (result.ok) {
       setPublicProfileState({ status: 'ready', profile: result.data });
-      return;
+      return true;
+    }
+    // PS-0C.2 -- backend authority: si falta aceptar Términos, abre el prompt
+    // (por si el pre-chequeo de estado se saltó por una carrera).
+    if (result.kind === 'http' && result.code === COMPLIANCE_ERROR_CODES.PUBLIC_TERMS_ACCEPTANCE_REQUIRED) {
+      setTermsError(null);
+      setTermsPromptVisible(true);
+      return false;
     }
     setToggleVisibilityError(result.message);
+    return false;
+  }
+
+  async function handleToggleVisibility() {
+    if (publicProfileState?.status !== 'ready' || publicProfileState.profile === null) return;
+    const nextVisible = publicProfileState.profile.visibilityStatus !== 'VISIBLE';
+    // PS-0C.2 -- HACER VISIBLE exige la versión vigente de los Términos.
+    // Hacer PRIVADO nunca lo exige.
+    if (nextVisible) {
+      setToggleVisibilityError(null);
+      setTogglingVisibility(true);
+      const status = await getPublicParticipationTermsStatus();
+      setTogglingVisibility(false);
+      if (status.ok && !status.data.isCurrent) {
+        setTermsError(null);
+        setTermsPromptVisible(true);
+        return;
+      }
+    }
+    await applyVisibility(nextVisible);
+  }
+
+  async function handleAcceptTermsAndContinue() {
+    setTermsError(null);
+    setAcceptingTerms(true);
+    const result = await acceptPublicParticipationTerms();
+    setAcceptingTerms(false);
+    if (!result.ok) {
+      setTermsError(result.message);
+      return;
+    }
+    setTermsPromptVisible(false);
+    // Continúa la acción original: hacer visible el perfil.
+    await applyVisibility(true);
+  }
+
+  async function handleRecoverUsername() {
+    setRenameError(null);
+    setRenaming(true);
+    const result = await changePublicUsername(renameUsername.trim());
+    setRenaming(false);
+    if (result.ok) {
+      setRenameUsername('');
+      setPublicProfileState({ status: 'ready', profile: result.data });
+      await load();
+      return;
+    }
+    setRenameError(result.message);
   }
 
   if (state.status === 'loading') return <LoadingState message="Cargando perfil…" />;
@@ -454,6 +518,44 @@ export default function PerfilScreen() {
               />
             </View>
           </View>
+        ) : publicProfileState.profile.moderationStatus === 'USERNAME_RESET' ? (
+          /* PS-0C.2 -- un operador restableció el nombre de usuario por moderación. */
+          <View style={styles.settingsSection}>
+            <Text variant="body" weight="semibold">
+              Nombre de usuario restablecido
+            </Text>
+            <Text variant="bodySmall" color="secondary">
+              Tu nombre de usuario fue restablecido por moderación. Elige uno nuevo para volver a tener perfil público. Tu progreso, nivel y puntos no se ven afectados.
+            </Text>
+            <View style={styles.editor}>
+              <TextInput
+                accessibilityLabel="Nuevo nombre de usuario"
+                placeholder="Nuevo nombre de usuario"
+                placeholderTextColor={tokens.color.text.muted}
+                selectionColor={tokens.color.accent.default}
+                cursorColor={tokens.color.accent.default}
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={renameUsername}
+                onChangeText={setRenameUsername}
+                style={styles.input}
+              />
+              {renameError ? (
+                <Text variant="bodySmall" color="error">
+                  {renameError}
+                </Text>
+              ) : null}
+              <Button
+                label="Guardar nombre de usuario"
+                accessibilityLabel="Guardar nuevo nombre de usuario"
+                onPress={handleRecoverUsername}
+                loading={renaming}
+                disabled={!renameUsername.trim()}
+                variant="primary"
+                size="small"
+              />
+            </View>
+          </View>
         ) : (
           <View style={styles.settingsSection}>
             <Text variant="body" weight="semibold">
@@ -479,6 +581,24 @@ export default function PerfilScreen() {
             ) : null}
           </View>
         )}
+
+        {/* PS-0C.2 -- gestión de usuarios bloqueados. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Usuarios bloqueados"
+          onPress={() => {
+            closeSettings();
+            router.push('/(tabs)/perfil/usuarios-bloqueados');
+          }}
+          style={styles.settingsRow}
+        >
+          <Text variant="body" weight="semibold">
+            Usuarios bloqueados
+          </Text>
+          <Text variant="bodySmall" color="secondary">
+            Ver
+          </Text>
+        </Pressable>
 
         {/*
           STABILIZATION-B -- Privacidad: solicitud de eliminación reutilizando el
@@ -524,6 +644,65 @@ export default function PerfilScreen() {
           </Text>
         </View>
 
+        {/*
+          PS-0C.2 -- LEGAL Y SOPORTE. Los "Términos de uso y convivencia
+          pública" existen ya como pantalla interna versionada. Privacidad y
+          Soporte son WIRING preparado para PS-0D: si su URL/contacto no está
+          configurado (`legal-links.ts`), la fila se muestra deshabilitada
+          como "Disponible próximamente" y NUNCA abre un enlace falso.
+        */}
+        <Text variant="caption" color="muted" weight="semibold" style={styles.settingsGroupLabel}>
+          LEGAL Y SOPORTE
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={PUBLIC_PARTICIPATION_TERMS_TITLE}
+          onPress={() => {
+            closeSettings();
+            router.push('/(tabs)/perfil/terminos');
+          }}
+          style={styles.settingsRow}
+        >
+          <Text variant="body" weight="semibold">
+            {PUBLIC_PARTICIPATION_TERMS_TITLE}
+          </Text>
+          <Text variant="bodySmall" color="secondary">
+            Ver
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Política de privacidad"
+          disabled={!isConfigured(PRIVACY_POLICY_URL)}
+          onPress={() => {
+            if (isConfigured(PRIVACY_POLICY_URL)) void Linking.openURL(PRIVACY_POLICY_URL);
+          }}
+          style={styles.settingsRow}
+        >
+          <Text variant="body" weight="semibold" color={isConfigured(PRIVACY_POLICY_URL) ? 'primary' : 'muted'}>
+            Política de privacidad
+          </Text>
+          <Text variant="bodySmall" color="secondary">
+            {isConfigured(PRIVACY_POLICY_URL) ? 'Abrir' : 'Disponible próximamente'}
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Soporte"
+          disabled={!isConfigured(SUPPORT_CONTACT)}
+          onPress={() => {
+            if (isConfigured(SUPPORT_CONTACT)) void Linking.openURL(SUPPORT_CONTACT);
+          }}
+          style={styles.settingsRow}
+        >
+          <Text variant="body" weight="semibold" color={isConfigured(SUPPORT_CONTACT) ? 'primary' : 'muted'}>
+            Soporte
+          </Text>
+          <Text variant="bodySmall" color="secondary">
+            {isConfigured(SUPPORT_CONTACT) ? 'Contactar' : 'Disponible próximamente'}
+          </Text>
+        </Pressable>
+
         <Button
           label="Cerrar sesión"
           accessibilityLabel="Cerrar sesión"
@@ -546,6 +725,42 @@ export default function PerfilScreen() {
         {deletionError ? (
           <Text variant="bodySmall" color="error">
             {deletionError}
+          </Text>
+        ) : null}
+      </Dialog>
+
+      {/*
+        PS-0C.2 -- gate de Términos antes de HACER PÚBLICO el perfil. Aceptar
+        -> POST accept -> reintenta la acción original (hacer visible).
+        Cancelar -> no publica; el uso privado de ZETRYND sigue igual.
+      */}
+      <Dialog
+        visible={termsPromptVisible}
+        title={PUBLIC_PARTICIPATION_TERMS_TITLE}
+        onRequestClose={() => setTermsPromptVisible(false)}
+        primaryAction={{ label: 'Aceptar y continuar', onPress: handleAcceptTermsAndContinue }}
+        secondaryAction={{ label: 'Cancelar', onPress: () => setTermsPromptVisible(false), variant: 'tertiary' }}
+      >
+        <Text variant="bodySmall" color="secondary">
+          {PUBLIC_PARTICIPATION_TERMS_INTRO}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Ver términos completos"
+          onPress={() => {
+            setTermsPromptVisible(false);
+            closeSettings();
+            router.push('/(tabs)/perfil/terminos');
+          }}
+        >
+          <Text variant="bodySmall" style={{ color: tokens.color.accent.default, marginTop: spacing.space2 }}>
+            Ver términos completos
+          </Text>
+        </Pressable>
+        {acceptingTerms ? <ActivityIndicator color={tokens.color.accent.default} /> : null}
+        {termsError ? (
+          <Text variant="bodySmall" color="error">
+            {termsError}
           </Text>
         ) : null}
       </Dialog>

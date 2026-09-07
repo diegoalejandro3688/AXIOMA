@@ -32,3 +32,15 @@ export function getMyPublicProfile(): Promise<ApiResult<PublicProfileResponse>> 
 export function setPublicProfileVisibility(visible: boolean): Promise<ApiResult<PublicProfileResponse>> {
   return apiRequest('PATCH', '/user/public-profile/visibility', { body: { visible }, schema: publicProfileResponseSchema });
 }
+
+/**
+ * `PATCH /user/public-profile/username` -- cambio de nombre de usuario.
+ * Normalmente sujeto a 1 cambio / 30 días; el backend EXCEPTÚA ese cooldown
+ * cuando el perfil está en `moderationStatus = USERNAME_RESET` (recuperación
+ * tras un reset de moderación), y en ese caso el cambio devuelve el perfil a
+ * `CLEAR`. El cliente sólo traduce la acción; toda la política vive en el
+ * backend.
+ */
+export function changePublicUsername(username: string): Promise<ApiResult<PublicProfileResponse>> {
+  return apiRequest('PATCH', '/user/public-profile/username', { body: { username }, schema: publicProfileResponseSchema });
+}
