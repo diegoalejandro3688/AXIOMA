@@ -2,6 +2,21 @@ import { Stack } from 'expo-router';
 import { useTheme, typeScale, borders } from '../../../theme';
 
 /**
+ * CHALLENGES ESCAPE-PATH HOTFIX -- `index` (el hub) es la ruta ANCLA de este
+ * stack. `desafios` es la única pantalla anidada a la que se llega desde OTRA
+ * pestaña: Inicio -> "Ver todos los desafíos" -> `router.push('/(tabs)/competir/desafios')`
+ * (`app/(tabs)/index.tsx`). Sin ancla, esa navegación cross-tab dejaba
+ * `desafios` como raíz del stack de Competir -> `navigation.canGoBack()` era
+ * `false` -> el header nativo se pintaba SIN flecha de volver y Android Back no
+ * tenía destino coherente -> el usuario quedaba atrapado. `initialRouteName`
+ * garantiza que `competir/index` siempre quede por debajo, así que la flecha
+ * nativa de volver aparece y Android Back regresa al hub -- exactamente el
+ * comportamiento que ya tiene Ranking (que sólo se abre desde el hub). No
+ * cambia nada para las entradas que ya vienen del propio hub.
+ */
+export const unstable_settings = { initialRouteName: 'index' };
+
+/**
  * Sub-navegación de Competir -- ver docs/adr/LEF-BLOCK-IV-DEFINITION.md,
  * Incremento 5. Sigue siendo la misma pestaña, no una ruta nueva -- mismo
  * patrón que `estudio/_layout.tsx`. `index` es el hub (Desafíos +
