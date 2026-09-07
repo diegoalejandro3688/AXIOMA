@@ -12,6 +12,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { ObjectStorageService } from '../src/platform/object-storage/object-storage.service';
 import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identity.provider';
+import { CURRENT_PUBLIC_PARTICIPATION_TERMS_VERSION } from '@axioma/contracts';
 import { GameSeasonRepository } from '../src/gamification/game-season.repository';
 import { LeagueDefinitionRepository } from '../src/gamification/league-definition.repository';
 import { LeaderboardDefinitionRepository } from '../src/gamification/leaderboard-definition.repository';
@@ -173,6 +174,14 @@ async function main() {
        VALUES ($1, $2, $3, $4, $5, now(), now(), now())`,
       [randomUUID(), accountId, username, visibility, lifecycle],
     );
+    // PS-0C.2 -- un perfil VISIBLE representa una cuenta que aceptó los
+    // Términos de participación pública vigentes (única vía para volverse
+    // visible en producción). Algunas fixtures usan accountIds sintéticos
+    // sin fila `account`; se materializa la mínima + la aceptación.
+    if (visibility === 'VISIBLE' && lifecycle === 'ACTIVE') {
+      await pg.query('INSERT INTO account (id, updated_at) VALUES ($1, now()) ON CONFLICT (id) DO NOTHING', [accountId]);
+      await pg.query('UPDATE account SET public_terms_accepted_version = $2, public_terms_accepted_at = now() WHERE id = $1', [accountId, CURRENT_PUBLIC_PARTICIPATION_TERMS_VERSION]);
+    }
   }
 
   await profile(self.accountId, `cple-self-${suffix}`.toLowerCase(), 'PRIVATE', 'ACTIVE');

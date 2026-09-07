@@ -11,6 +11,7 @@ import { assertGateDb, finalizeStaleGateSeasons, retireStaleGateLeagues } from '
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identity.provider';
+import { CURRENT_PUBLIC_PARTICIPATION_TERMS_VERSION } from '@axioma/contracts';
 import { GameSeasonRepository } from '../src/gamification/game-season.repository';
 import { LeagueDefinitionRepository } from '../src/gamification/league-definition.repository';
 import { LeaderboardDefinitionRepository } from '../src/gamification/leaderboard-definition.repository';
@@ -64,10 +65,10 @@ async function createSession(uidSuffix: string): Promise<{ accountId: string; he
   if (session.status !== 200 || !session.body?.accountId) {
     throw new Error(`No se pudo crear la sesión de prueba (uid=${uid}): ${session.status} ${session.raw}`);
   }
-  return {
-    accountId: session.body.accountId as string,
-    headers: { authorization: `Bearer ${idToken}`, 'x-session-id': session.body.sessionId },
-  };
+  const headers = { authorization: `Bearer ${idToken}`, 'x-session-id': session.body.sessionId };
+  // PS-0C.2 -- toda cuenta con perfil pÃºblico visible acepta los TÃ©rminos vigentes (estado real post-PS-0C.2).
+  await req('POST', '/me/public-participation-terms/accept', headers, { version: CURRENT_PUBLIC_PARTICIPATION_TERMS_VERSION });
+  return { accountId: session.body.accountId as string, headers };
 }
 
 async function main() {

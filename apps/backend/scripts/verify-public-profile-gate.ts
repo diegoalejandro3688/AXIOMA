@@ -16,6 +16,7 @@ import { Client } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identity.provider';
+import { CURRENT_PUBLIC_PARTICIPATION_TERMS_VERSION } from '@axioma/contracts';
 import { UserService } from '../src/user/user.service';
 import { UserProfileRepository } from '../src/user/user-profile.repository';
 import { PublicProfileRepository } from '../src/user/public-profile.repository';
@@ -64,10 +65,14 @@ async function createSession(uidSuffix: string): Promise<{ accountId: string; he
   if (session.status !== 200 || !session.body?.accountId) {
     throw new Error(`No se pudo crear la sesión de prueba (uid=${uid}): ${session.status} ${session.raw}`);
   }
-  return {
-    accountId: session.body.accountId as string,
-    headers: { authorization: `Bearer ${idToken}`, 'x-session-id': session.body.sessionId },
-  };
+  const headers = { authorization: `Bearer ${idToken}`, 'x-session-id': session.body.sessionId };
+  // PS-0C.2 -- hacer VISIBLE un perfil exige la versión vigente de los
+  // Términos de participación pública. Toda cuenta de este gate la acepta
+  // en su creación (representa el estado real de una cuenta que participa
+  // públicamente); las aserciones de Términos en sí viven en
+  // verify-public-participation-terms-gate.ts.
+  await req('POST', '/me/public-participation-terms/accept', headers, { version: CURRENT_PUBLIC_PARTICIPATION_TERMS_VERSION });
+  return { accountId: session.body.accountId as string, headers };
 }
 
 function recoverViaCli(accountId: string): { status: number; stdout: string } {
@@ -157,7 +162,7 @@ async function main() {
   console.log('--- 2. Ningún campo prohibido alcanzable (Decision Gate 2) ---');
   const getAlice = await req('GET', '/user/public-profile', alice.headers);
   const exposedKeys = Object.keys(getAlice.body ?? {}).sort();
-  const allowedKeys = ['accountId', 'createdAt', 'lifecycleStatus', 'updatedAt', 'username', 'visibilityStatus'].sort();
+  const allowedKeys = ['accountId', 'createdAt', 'lifecycleStatus', 'moderationStatus', 'updatedAt', 'username', 'visibilityStatus'].sort();
   check(
     'la respuesta expone EXACTAMENTE los campos autorizados (Data Model §6.5) -- sin avatarReference ni ningún otro campo interno',
     JSON.stringify(exposedKeys) === JSON.stringify(allowedKeys),
