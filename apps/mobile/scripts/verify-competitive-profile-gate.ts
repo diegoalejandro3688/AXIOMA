@@ -243,17 +243,26 @@ function main() {
   const tabsLayoutSource = readSource('app', '(tabs)', '_layout.tsx');
   check('app/(tabs)/_layout.tsx sigue declarando exactamente 5 <Tabs.Screen> (index/estudio/competir/ia/perfil) -- sin una tab nueva para preview', (tabsLayoutSource.match(/<Tabs\.Screen/g) ?? []).length === 5 && tabsLayoutSource.includes('name="perfil"'));
   const perfilLayoutSource = readSource('app', '(tabs)', 'perfil', '_layout.tsx');
-  // PROFILE-2 (decisión del Product Owner, 2026-08-22): se agregó
-  // `personalizacion` como TERCERA pantalla de la misma sub-navegación de
-  // Perfil (nunca una tab independiente) -- extensión intencional, no una
-  // regresión de la cobertura original (index + preview siguen presentes sin
-  // cambio).
+  // Sub-navegación de Perfil (misma pestaña, nunca tabs independientes). El
+  // conjunto AUTORIZADO ha crecido por extensiones intencionales del Product
+  // Owner, no por regresión -- `index` + `preview` siguen presentes sin cambio:
+  //   - PROFILE-2 (2026-08-22): `personalizacion` (3ª pantalla).
+  //   - PS-0C.2 (commit 0ac78a9, `feat(mobile): add public participation safety
+  //     controls`): `terminos` + `usuarios-bloqueados` (Términos de participación
+  //     pública versionados + gestión de usuarios bloqueados). Documentado en
+  //     docs/adr/PS-0C.2-MINIMUM-COMPLIANCE-REMEDIATION-CLOSURE-REPORT.md; que
+  //     ambas rutas ESTÉN registradas ya lo verifica verify-public-participation-
+  //     safety-gate (F3). Este check mantiene la propiedad complementaria: el
+  //     stack de Perfil registra EXACTAMENTE el conjunto autorizado y NADA más
+  //     (una 6ª ruta no autorizada sigue haciendo fallar el gate).
   check(
-    'app/(tabs)/perfil/_layout.tsx declara EXACTAMENTE index + preview + personalizacion como Stack (misma pestaña, sub-navegación interna)',
+    'app/(tabs)/perfil/_layout.tsx declara EXACTAMENTE index + preview + personalizacion + terminos + usuarios-bloqueados como Stack (misma pestaña, sub-navegación interna)',
     perfilLayoutSource.includes('name="index"') &&
       perfilLayoutSource.includes('name="preview"') &&
       perfilLayoutSource.includes('name="personalizacion"') &&
-      (perfilLayoutSource.match(/<Stack\.Screen/g) ?? []).length === 3,
+      perfilLayoutSource.includes('name="terminos"') &&
+      perfilLayoutSource.includes('name="usuarios-bloqueados"') &&
+      (perfilLayoutSource.match(/<Stack\.Screen/g) ?? []).length === 5,
   );
 
   console.log('');
