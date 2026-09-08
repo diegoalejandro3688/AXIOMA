@@ -28,6 +28,7 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
 import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identity.provider';
+import { verifyMobileTreeOnlySanctionedResidue } from './protected-residue';
 
 const base = process.argv[2] ?? 'http://127.0.0.1:3000';
 const backendDir = join(__dirname, '..');
@@ -900,9 +901,14 @@ async function main() {
   });
   check('invariante 19: los lectores de contenido siguen BYTE-IDÉNTICOS respecto a HEAD -- I4 no tocó ninguno (diff vacío)',
     readerDiff.status === 0 && (readerDiff.stdout ?? '').trim() === '', (readerDiff.stdout ?? '').slice(0, 400));
-  const mobileDiff = spawnSync('git', ['diff', '--stat', 'HEAD', '--', 'apps/mobile'], { cwd: repoRoot, encoding: 'utf8' });
-  check('invariante 13: `apps/mobile` sin ningún cambio (diff vacío respecto a HEAD)',
-    mobileDiff.status === 0 && (mobileDiff.stdout ?? '').trim() === '', (mobileDiff.stdout ?? '').slice(0, 400));
+  // Invariante 13 -- "I4 no tocó `apps/mobile`". El working tree arrastra un
+  // residuo mobile preexistente y sancionado (branding + iconos Android +
+  // onboarding, ver `scripts/protected-residue.ts`) que NO es de este
+  // incremento; se excluye por lista EXACTA. Cualquier cambio mobile nuevo
+  // -- trackeado o sin seguimiento -- fuera de ese residuo sigue fallando.
+  const mobileResidue = verifyMobileTreeOnlySanctionedResidue(repoRoot);
+  check('invariante 13: `apps/mobile` sin ningún cambio fuera del residuo protegido sancionado (I4 no tocó mobile)',
+    mobileResidue.clean, mobileResidue.offenders.join('\n').slice(0, 400));
 
   // `apps/` sigue conteniendo exactamente `backend` y `mobile` (§13.7 punto 4).
   const apps = readdirSync(join(repoRoot, 'apps'), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();

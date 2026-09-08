@@ -262,15 +262,40 @@ async function main() {
     );
     check('DB: las QuestionVersions NO cuelgan del subject académico del Exam (separación editorial vs académico)', qSubject.rows.every((r) => r.subject_key !== 'lenguaje'));
 
-    console.log('--- 10. Frontera estática: exam-admin.controller no toca PROGRESS/Outbox/StudentResponse ---');
+    console.log('--- 10. Frontera estática: exam-admin.controller / exam.service no acoplan PROGRESS ---');
     const { readFileSync } = await import('node:fs');
     const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     const adminSrc = strip(readFileSync(join(backendDir, 'src', 'exams', 'exam-admin.controller.ts'), 'utf8'));
     const svcSrc = strip(readFileSync(join(backendDir, 'src', 'exams', 'exam.service.ts'), 'utf8'));
-    const forbidden = ['StudentResponse', 'CurriculumTopicProgress', 'ProgressService', 'OutboxService', 'OutboxModule', 'XpGrant'];
+
+    // exam-admin.controller.ts sigue siendo superficie editorial/admin PURA:
+    // ninguna de estas referencias.
+    const adminForbidden = ['StudentResponse', 'CurriculumTopicProgress', 'ProgressService', 'OutboxService', 'OutboxModule', 'XpGrant'];
     check(
-      `ni exam-admin.controller ni exam.service usan ${forbidden.join('/')} (fuera de comentarios)`,
-      !forbidden.some((s) => adminSrc.includes(s) || svcSrc.includes(s)),
+      `exam-admin.controller no usa ${adminForbidden.join('/')} (fuera de comentarios)`,
+      !adminForbidden.some((s) => adminSrc.includes(s)),
+    );
+
+    // exam.service.ts NO acopla PROGRESS: nada de student_response,
+    // curriculum_topic_progress, ProgressService, OutboxModule ni XpGrant
+    // (la escritura de XP la hace GAMIFICATION al consumir el evento).
+    const svcForbidden = ['StudentResponse', 'CurriculumTopicProgress', 'ProgressService', 'OutboxModule', 'XpGrant'];
+    check(
+      `exam.service no acopla PROGRESS ni escribe XP directamente (${svcForbidden.join('/')}, fuera de comentarios)`,
+      !svcForbidden.some((s) => svcSrc.includes(s)),
+    );
+
+    // ÚNICA excepción autorizada de outbox en exam.service: `exam_completed`
+    // (XP-V1B, commit ebd8d8a) -- best-effort post-commit, SOLO en la
+    // transición real de primera completitud -> ENSAYO_COMPLETADO +100 XP.
+    // Eliminarlo rompería el contrato XP V1 congelado. Se acota: exactamente
+    // 1 `outbox.publish`, y su único eventKey es `exam_completed`.
+    const publishCalls = (svcSrc.match(/\.outbox\.publish\(/g) ?? []).length;
+    const eventKeys = [...svcSrc.matchAll(/eventKey:\s*'([^']+)'/g)].map((m) => m[1]);
+    check(
+      'exam.service publica EXACTAMENTE 1 evento de outbox y su eventKey es EXACTAMENTE `exam_completed` (XP-V1B, única excepción autorizada)',
+      publishCalls === 1 && eventKeys.length === 1 && eventKeys[0] === 'exam_completed',
+      `publishCalls=${publishCalls} eventKeys=${JSON.stringify(eventKeys)}`,
     );
   } finally {
     console.log('--- 11. Limpieza de fixtures del gate ---');

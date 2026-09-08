@@ -8,7 +8,7 @@
 // ni aunque quisiera.
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -263,20 +263,61 @@ async function main() {
   console.log('--- 8. Decision Gate 2 (Bloque I): no-autoridad académica -- verificación estática de frontera de dominio ---');
   const gamificationDir = join(__dirname, '..', 'src', 'gamification');
   const gamificationFiles = readdirSync(gamificationDir).filter((f) => f.endsWith('.ts'));
-  const forbiddenReferences = ['StudentResponseRepository', 'CurriculumTopicProgressRepository', 'prisma.studentResponse', 'prisma.curriculumTopicProgress'];
+
+  // Invariante congelado: GAMIFICATION puede CONSUMIR (leer) evidencia
+  // académica donde esté explícitamente autorizado, pero NUNCA puede
+  // poseer/escribir la evidencia académica canónica.
+  //
+  //  - `StudentResponse*` y el acceso Prisma directo a esas tablas siguen
+  //    TOTALMENTE prohibidos (no existe ninguna lectura legítima).
+  //  - `CurriculumTopicProgressRepository` se permite SÓLO en los 3
+  //    consumidores de sólo-lectura autorizados (avatares históricos por
+  //    materia + elegibilidad de Títulos V1, commits b654906 / 597a2dd):
+  //      subject-completion.service.ts, title-eligibility.service.ts,
+  //      reward-evaluation.worker.ts
+  //    Cualquier otro archivo que lo referencie, o CUALQUIER llamada a un
+  //    método de escritura del repo (createIfMissing / touchActivity /
+  //    deleteByAccountId), es una violación de frontera.
+  const HARD_FORBIDDEN = [
+    'StudentResponseRepository',
+    'prisma.studentResponse',
+    'prisma.curriculumTopicProgress',
+    'from student_response',
+    'INTO student_response',
+    'UPDATE student_response',
+  ];
+  const AUTHORIZED_PROGRESS_READERS = new Set([
+    'subject-completion.service.ts',
+    'title-eligibility.service.ts',
+    'reward-evaluation.worker.ts',
+  ]);
+  const PROGRESS_WRITE_CALL = /\b(?:curriculumTopicProgressRepo|topicProgressRepo)\.(createIfMissing|touchActivity|deleteByAccountId)\b/;
   const offendingFiles: string[] = [];
   for (const file of gamificationFiles) {
     const content = readFileSync(join(gamificationDir, file), 'utf-8');
-    if (forbiddenReferences.some((ref) => content.includes(ref))) {
-      offendingFiles.push(file);
+    if (HARD_FORBIDDEN.some((ref) => content.includes(ref))) {
+      offendingFiles.push(`${file} (evidencia académica prohibida)`);
+    }
+    if (content.includes('CurriculumTopicProgressRepository') && !AUTHORIZED_PROGRESS_READERS.has(file)) {
+      offendingFiles.push(`${file} (consumidor de progreso NO autorizado)`);
+    }
+    if (PROGRESS_WRITE_CALL.test(content)) {
+      offendingFiles.push(`${file} (ESCRITURA sobre curriculum_topic_progress)`);
     }
   }
   check(
-    `ningún archivo de src/gamification/ (${gamificationFiles.length} revisados) referencia StudentResponse/CurriculumTopicProgress -- GAMIFICATION no puede escribir evidencia académica`,
+    `src/gamification/ (${gamificationFiles.length} archivos): no posee/escribe evidencia académica; sólo los 3 consumidores de progreso autorizados la LEEN`,
     offendingFiles.length === 0,
   );
   if (offendingFiles.length > 0) {
     console.error(`  archivos que violan la frontera de dominio: ${offendingFiles.join(', ')}`);
+  }
+  // El invariante sigue siendo verificable en positivo: los 3 lectores
+  // autorizados existen y sólo llaman métodos de lectura del repo.
+  for (const reader of AUTHORIZED_PROGRESS_READERS) {
+    const p = join(gamificationDir, reader);
+    check(`consumidor autorizado presente y sin escritura de progreso: ${reader}`,
+      existsSync(p) && !PROGRESS_WRITE_CALL.test(readFileSync(p, 'utf-8')));
   }
 
   await pg.end();

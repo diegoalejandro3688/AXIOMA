@@ -276,7 +276,15 @@ async function main() {
   // histórica en BLOCK-III-DEFINITION.md §4.1), el propio worker para
   // crear reward_grant de fuente LEVEL. La frontera que SIGUE vigente
   // (PROGRESS/Public Profile/equipamiento) no cambió y se verifica igual.
-  const forbiddenSymbols = ['StudentResponse', 'CurriculumTopicProgress', 'PublicProfile', 'equippedTitle', 'equippedCosmetic'];
+  // El worker puede LEER evidencia de progreso académico donde esté
+  // autorizado (avatares históricos por materia completada, commit b654906:
+  // inyecta `CurriculumTopicProgressRepository` y delega en
+  // `SubjectCompletionService`), pero NO puede: escribir/poseer progreso,
+  // tocar `student_response`, depender de Public Profile, ni mutar
+  // equipamiento (títulos/cosméticos equipados) -- esas fronteras siguen
+  // vigentes sin cambio.
+  const forbiddenSymbols = ['StudentResponse', 'PublicProfile', 'equippedTitle', 'equippedCosmetic', 'prisma.curriculumTopicProgress'];
+  const PROGRESS_WRITE_CALL = /\b(?:curriculumTopicProgressRepo|topicProgressRepo)\.(createIfMissing|touchActivity|deleteByAccountId)\b/;
   let boundaryViolationFound = false;
   for (const file of filesToCheck) {
     const contents = readFileSync(join(__dirname, '..', 'src', 'gamification', file), 'utf8');
@@ -286,8 +294,12 @@ async function main() {
         console.error(`  ${file} referencia el símbolo prohibido "${symbol}"`);
       }
     }
+    if (PROGRESS_WRITE_CALL.test(contents)) {
+      boundaryViolationFound = true;
+      console.error(`  ${file} ESCRIBE sobre curriculum_topic_progress (createIfMissing/touchActivity/deleteByAccountId)`);
+    }
   }
-  check('el worker no referencia PROGRESS/Public Profile/equipamiento', !boundaryViolationFound);
+  check('el worker no escribe/posee PROGRESS y no toca Public Profile ni equipamiento (lectura de progreso autorizada permitida)', !boundaryViolationFound);
 
   await pg.end();
   await prisma.$disconnect();

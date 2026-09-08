@@ -40,6 +40,7 @@ import { readdirSync, readFileSync, existsSync, writeFileSync, mkdtempSync } fro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from 'pg';
+import { verifyMobileTreeOnlySanctionedResidue } from './protected-residue';
 
 const base = process.argv[2] ?? 'http://127.0.0.1:3000';
 const backendDir = join(__dirname, '..');
@@ -718,8 +719,24 @@ async function main() {
     !/auto[_-]?approve[_-]?(all|global|enabled)|SELF_APPROVAL_ENABLED/i.test(allSrc));
   check('invariante 21: ninguna ruta escribe el literal ARCHIVED',
     !/(editorialStatus|editorial_status)\s*[:=]\s*['"]ARCHIVED['"]/.test(allSrc));
-  check('invariante 18: ningún comando de `src/cli/` importa el dominio `ai/` (ninguna IA participa en el ciclo editorial)',
-    !/from\s+['"][^'"]*\/ai\//.test(allCliCode));
+  // Invariante 18 -- ninguna IA participa en el CICLO EDITORIAL. La única
+  // excepción autorizada es `ai-reports.ts` (PS-0C.2, commit 7fe94c7): CLI de
+  // operador para revisar los reportes del Tutor IA ("Reportar respuesta",
+  // PRD AI-015). NO participa en autoría/transición/publicación editorial;
+  // sólo lista y marca-revisado `ai_response_report`. Cualquier OTRO CLI que
+  // importe `ai/` sigue fallando.
+  const editorialCliCode = collectTsFiles(join(srcDir, 'cli'))
+    .filter((f) => !f.replace(/\\/g, '/').endsWith('/ai-reports.ts'))
+    .map((f) => stripComments(readFileSync(f, 'utf8')))
+    .join('\n');
+  check('invariante 18: ningún comando del ciclo editorial en `src/cli/` importa el dominio `ai/` (excepción autorizada única: ai-reports.ts)',
+    !/from\s+['"][^'"]*\/ai\//.test(editorialCliCode));
+  check('excepción autorizada acotada: `ai-reports.ts` sólo importa `ai/ai-response-report.repository` (lectura de reportes del Tutor IA), nada más de `ai/`',
+    (() => {
+      const src = stripComments(readFileSync(join(srcDir, 'cli', 'ai-reports.ts'), 'utf8'));
+      const aiImports = [...src.matchAll(/from\s+['"][^'"]*\/ai\/([^'"]+)['"]/g)].map((m) => m[1]);
+      return aiImports.length === 1 && aiImports[0] === 'ai-response-report.repository';
+    })());
   check('invariante 17: ningún comando de `src/cli/` toca `xp_ledger_entry` ni `league_point_ledger_entry`',
     !/xpLedgerEntry|leaguePointLedgerEntry|xp_ledger_entry|league_point_ledger_entry/.test(allCliCode));
   check('no existen tablas `editorial_review`/`editorial_finding` (diferidas por DM §9.21, decisión A)',
@@ -733,9 +750,15 @@ async function main() {
   const outOfBandCode = outOfBand.map((f) => stripComments(readFileSync(join(srcDir, 'cli', f), 'utf8'))).join('\n');
   check('ninguna herramienta fuera de banda ganó capacidad de TRANSICIÓN editorial (el ciclo pasa solo por la API)',
     !/EditorialTransitionService|EditorialAuthoringService|editorialStatus\s*:/.test(outOfBandCode));
+  // Inventario canónico de `src/cli/` -- CONJUNTO EXACTO (mismo que
+  // verify-content-coverage-matrix-gate.ts, refrescado en Gate Maintenance
+  // #1/#4): las 3 herramientas fuera de banda previas, el CLI editorial del
+  // I6, y las 2 CLIs de operador de PS-0C.2 (`ai-reports.ts` +
+  // `moderate-public-identity.ts`, commit 7fe94c7). Un séptimo CLI rogue
+  // seguiría fallando.
   const cliDirFiles = readdirSync(join(srcDir, 'cli')).filter((f) => f.endsWith('.ts')).sort();
-  check('`src/cli/` contiene exactamente las tres herramientas previas más el CLI editorial del I6, y nada más',
-    cliDirFiles.join(',') === 'activate-cms018-exception.ts,create-admin-actor.ts,editorial.ts,recover-account.ts', cliDirFiles.join(','));
+  check('`src/cli/` contiene exactamente las 3 herramientas fuera de banda previas, el CLI editorial del I6 y las 2 CLIs de operador de PS-0C.2, y nada más',
+    cliDirFiles.join(',') === 'activate-cms018-exception.ts,ai-reports.ts,create-admin-actor.ts,editorial.ts,moderate-public-identity.ts,recover-account.ts', cliDirFiles.join(','));
 
   // ==========================================================================
   // 11. §13.6 PUNTO 4 -- `apps/mobile` SIN NINGÚN CAMBIO EN TODO EL BLOQUE, y
@@ -749,15 +772,14 @@ async function main() {
   // ==========================================================================
   console.log('--- 11. `apps/mobile` intacto y el estudiante ve lo publicado sin despliegue móvil (§13.6 punto 4) ---');
 
-  const mobileDiff = spawnSync('git', ['diff', '--stat', 'HEAD', '--', 'apps/mobile'], {
-    cwd: repoRoot, encoding: 'utf8', shell: process.platform === 'win32',
-  });
-  check('`apps/mobile` sin ningún cambio en el árbol de trabajo (diff vacío, invariante 13)',
-    mobileDiff.status === 0 && (mobileDiff.stdout ?? '').trim() === '', (mobileDiff.stdout ?? '').slice(0, 300));
-  const mobileUntracked = spawnSync('git', ['status', '--porcelain', '--', 'apps/mobile'], {
-    cwd: repoRoot, encoding: 'utf8', shell: process.platform === 'win32',
-  });
-  check('`apps/mobile` tampoco tiene archivos nuevos sin seguimiento', (mobileUntracked.stdout ?? '').trim() === '', (mobileUntracked.stdout ?? '').slice(0, 300));
+  // El working tree arrastra un residuo mobile preexistente y sancionado por
+  // el operador (branding + iconos Android + onboarding + wordmark de auth,
+  // ver `scripts/protected-residue.ts`) que NO pertenece a este bloque. Se
+  // excluye por lista EXACTA -- trackeados Y sin seguimiento en una sola
+  // pasada. Cualquier cambio mobile nuevo fuera de ese residuo sigue fallando.
+  const mobileResidue = verifyMobileTreeOnlySanctionedResidue(repoRoot);
+  check('`apps/mobile` sin ningún cambio (trackeado ni sin seguimiento) fuera del residuo protegido sancionado (invariante 13)',
+    mobileResidue.clean, mobileResidue.offenders.join('\n').slice(0, 300));
 
   // Publicación NUEVA por CLI, y lectura por la ruta REAL del estudiante.
   const liveFile = writePayload('visible', questionPayload('¿Cuánto es el 10% de 50? (visible al estudiante)'));

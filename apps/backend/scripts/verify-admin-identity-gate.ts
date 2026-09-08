@@ -588,7 +588,34 @@ async function main() {
   );
 
   const schema = readFileSync(join(backendDir, 'prisma', 'schema.prisma'), 'utf8');
-  const adminModelsBlock = schema.slice(schema.indexOf('model AdminActor '));
+  // Invariante 6 -- ningún MODELO administrativo declara relación/FK a
+  // `Account`. Conjunto EXACTO y ACOTADO: se extrae el bloque `{ ... }` de
+  // cada modelo administrativo por nombre (NO `slice` hasta EOF, que
+  // arrastraría modelos ajenos como `ExamAttempt` -- `accountId` denormalizado
+  // SIN FK -- o `AccountSubscription` -- FK legítima de Play Billing). El
+  // invariante fuerte a nivel de PostgreSQL se sigue verificando abajo.
+  const ADMIN_MODELS = [
+    'AdminActor',
+    'AdminActorRole',
+    'AdminActorToken',
+    'AdminAccessLogEntry',
+    'AdminCms018ExceptionActivation',
+    'AdminAction',
+  ] as const;
+  function prismaModelBlock(src: string, name: string): string | null {
+    const start = src.indexOf(`model ${name} {`);
+    if (start === -1) return null;
+    const end = src.indexOf('\n}', start);
+    return src.slice(start, end === -1 ? undefined : end + 2);
+  }
+  const adminModelBlocks = ADMIN_MODELS.map((m) => ({ m, block: prismaModelBlock(schema, m) }));
+  const missingAdminModels = adminModelBlocks.filter((x) => x.block === null).map((x) => x.m);
+  if (missingAdminModels.length > 0) console.error(`  modelos administrativos ausentes: ${missingAdminModels.join(', ')}`);
+  check(
+    'los 6 modelos administrativos canónicos existen en schema.prisma (conjunto acotado, no slice-a-EOF)',
+    missingAdminModels.length === 0,
+  );
+  const adminModelsBlock = adminModelBlocks.map((x) => x.block ?? '').join('\n');
   check(
     'ninguna tabla administrativa tiene FK hacia Account (invariante 6)',
     !/Account\s+@relation|accountId/.test(adminModelsBlock),
