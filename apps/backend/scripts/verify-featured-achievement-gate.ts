@@ -10,6 +10,7 @@ import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { CURRENT_PUBLIC_PARTICIPATION_TERMS_VERSION } from '@axioma/contracts';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identity.provider';
 import { AchievementDefinitionRepository } from '../src/gamification/achievement-definition.repository';
@@ -44,9 +45,17 @@ async function createSession(uidSuffix: string): Promise<{ accountId: string; he
   if (session.status !== 200 || !session.body?.accountId) {
     throw new Error(`No se pudo crear la sesión de prueba (uid=${uid}): ${session.status} ${session.raw}`);
   }
+  const headers = { authorization: `Bearer ${idToken}`, 'x-session-id': session.body.sessionId };
+  // PS-0C.2 -- hacer VISIBLE un perfil exige la versión vigente de los
+  // Términos de participación pública. Toda cuenta de este gate la acepta en
+  // su creación (representa el estado real de una cuenta que participa
+  // públicamente); las aserciones de Términos en sí viven en
+  // verify-public-participation-terms-gate.ts. Mismo patrón que
+  // verify-public-profile-gate.ts / verify-competitive-profile-endpoint-gate.ts.
+  await req('POST', '/me/public-participation-terms/accept', headers, { version: CURRENT_PUBLIC_PARTICIPATION_TERMS_VERSION });
   return {
     accountId: session.body.accountId as string,
-    headers: { authorization: `Bearer ${idToken}`, 'x-session-id': session.body.sessionId },
+    headers,
   };
 }
 

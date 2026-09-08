@@ -80,13 +80,33 @@ async function main() {
     `SELECT id FROM question_version WHERE curriculum_topic_id = $1 AND editorial_status = 'PUBLISHED' ORDER BY published_at ASC`,
     [topicId],
   );
-  const [qv1, qv2] = questionVersions.rows.map((r) => r.id);
+  // El tema semilla `M1.NUMEROS.PORCENTAJES` NO tiene un número fijo de
+  // preguntas publicadas (TEST-CONTENT-1 lo amplió; hoy son varias). Este
+  // gate necesita: (a) una primera respuesta que deje el tema IN_PROGRESS,
+  // (b) responder TODO el resto para provocar la transición a COMPLETED. Por
+  // eso se resuelve el conjunto real en tiempo de ejecución en vez de asumir
+  // "exactamente 2".
+  const publishedQvIds: string[] = questionVersions.rows.map((r) => r.id as string);
+  if (publishedQvIds.length < 2) {
+    throw new Error(
+      `El tema ${topicId} tiene ${publishedQvIds.length} pregunta(s) publicada(s); el gate necesita al menos 2 para probar IN_PROGRESS -> COMPLETED.`,
+    );
+  }
+  const totalPublishedQuestions = publishedQvIds.length;
+  const [qv1, ...restQvIds] = publishedQvIds;
   const opt1Correct = (
     await pg.query(`SELECT id FROM answer_option WHERE question_version_id = $1 AND is_correct = true`, [qv1])
   ).rows[0].id;
-  const opt2Wrong = (
-    await pg.query(`SELECT id FROM answer_option WHERE question_version_id = $1 AND is_correct = false LIMIT 1`, [qv2])
-  ).rows[0].id;
+  // Una alternativa cualquiera (la correcta, siempre existe) por cada
+  // pregunta restante -- este gate no calcula XP ni depende de isCorrect en
+  // las respuestas que solo sirven para completar el tema.
+  const restAnswers: { qvId: string; optionId: string }[] = [];
+  for (const qvId of restQvIds) {
+    const optionId = (
+      await pg.query(`SELECT id FROM answer_option WHERE question_version_id = $1 AND is_correct = true`, [qvId])
+    ).rows[0].id;
+    restAnswers.push({ qvId, optionId });
+  }
 
   console.log('--- -1. Decision Gate 5 (Bloque I): autoridad exclusiva de servidor -- sin clave de operaciones -> 401 ---');
   const relayNoKey = await req('POST', '/gamification/_internal/relay');
@@ -110,7 +130,7 @@ async function main() {
     operationId: opA1,
   });
   check('respuesta correcta -> 201', r1.status === 201);
-  check('topicStatus IN_PROGRESS (falta una pregunta)', r1.body?.topicStatus === 'IN_PROGRESS');
+  check('topicStatus IN_PROGRESS (faltan preguntas)', r1.body?.topicStatus === 'IN_PROGRESS');
 
   const studentResponse1 = (
     await pg.query('SELECT id FROM student_response WHERE account_id = $1 AND question_version_id = $2', [a.accountId, qv1])
@@ -148,23 +168,29 @@ async function main() {
   check('replay no generó un segundo evento', outboxResponse1AfterReplay.rows[0].n === 1);
 
   // ============================================================
-  // 2. Segunda respuesta: completa el tema -> publica AMBOS eventos.
+  // 2. Responder el resto de las preguntas publicadas: la última completa el
+  //    tema -> publica AMBOS eventos (student_response_recorded + el
+  //    curriculum_topic_completed que hasta aquí NO existía).
   // ============================================================
-  console.log('--- 2. Segunda respuesta: completa el tema -> publica curriculum_topic_completed.v1 ---');
-  const opA2 = randomUUID();
-  const r2 = await req('POST', `/progress/topics/${topicId}/responses`, a.authHeaders, {
-    questionVersionId: qv2,
-    answerOptionId: opt2Wrong,
-    operationId: opA2,
-  });
-  check('respuesta incorrecta -> 201', r2.status === 201);
-  check('topicStatus COMPLETED', r2.body?.topicStatus === 'COMPLETED');
+  console.log(`--- 2. Responder las ${restAnswers.length} pregunta(s) restante(s): la última completa el tema -> curriculum_topic_completed.v1 ---`);
+  let r2: Awaited<ReturnType<typeof req>> | undefined;
+  for (const [i, { qvId, optionId }] of restAnswers.entries()) {
+    r2 = await req('POST', `/progress/topics/${topicId}/responses`, a.authHeaders, {
+      questionVersionId: qvId,
+      answerOptionId: optionId,
+      operationId: randomUUID(),
+    });
+    check(`respuesta ${i + 2}/${totalPublishedQuestions} -> 201`, r2.status === 201);
+    const expectedStatus = i === restAnswers.length - 1 ? 'COMPLETED' : 'IN_PROGRESS';
+    check(`respuesta ${i + 2}/${totalPublishedQuestions}: topicStatus ${expectedStatus}`, r2.body?.topicStatus === expectedStatus);
+  }
+  check('la última respuesta dejó el tema COMPLETED', r2?.body?.topicStatus === 'COMPLETED');
 
   const outboxResponse2 = await pg.query(
     "SELECT count(*)::int AS n FROM outbox_event WHERE aggregate_id = $1 AND event_key = 'student_response_recorded'",
     [a.accountId],
   );
-  check('ahora 2 eventos student_response_recorded en total', outboxResponse2.rows[0].n === 2);
+  check(`ahora ${totalPublishedQuestions} eventos student_response_recorded en total`, outboxResponse2.rows[0].n === totalPublishedQuestions);
 
   const outboxCompleted2 = await pg.query(
     "SELECT id, payload FROM outbox_event WHERE aggregate_id = $1 AND event_key = 'curriculum_topic_completed'",
@@ -179,7 +205,10 @@ async function main() {
   console.log('--- 3. Relay de GAMIFICATION: crea validated_gamification_activity ---');
   const relayResult = await relayGamification();
   check('relay status 200', relayResult.status === 200);
-  check('relay procesó al menos los 3 eventos nuevos (2 respuestas + 1 completado)', relayResult.body?.processed >= 3);
+  check(
+    `relay procesó al menos los ${totalPublishedQuestions + 1} eventos nuevos (${totalPublishedQuestions} respuestas + 1 completado)`,
+    relayResult.body?.processed >= totalPublishedQuestions + 1,
+  );
 
   const activityResponse1 = await pg.query(
     "SELECT id, source_entity_type, source_entity_id, activity_type, deduplication_key FROM validated_gamification_activity WHERE deduplication_key = $1",

@@ -218,12 +218,42 @@ async function main() {
     check('9. gate DESPUÉS de la idempotencia de negocio (resolveAgainstExisting)', iBiz !== -1 && iGate > iBiz);
     check('9. gate ANTES de responseRepo.create', iCreate !== -1 && iGate < iCreate);
     check('9. assertPremiumProgressWriteAllowed solo consulta el tier para PREMIUM_UNIT', /if \(klass !== 'PREMIUM_UNIT'\) return;[\s\S]{0,140}getEntitlement\(accountId\)/.test(src));
-    // El único call-site vive entre la idempotencia de negocio y responseRepo.create
-    // (ya verificado por iBiz < iGate < iCreate). Aquí: NO hay ningún otro.
-    check('9. assertPremiumProgressWriteAllowed tiene EXACTAMENTE 1 call-site (la escritura nueva)',
-      (src.match(/this\.assertPremiumProgressWriteAllowed\(/g) ?? []).length === 1);
-    check('9. el único call-site está dentro de submitResponse (entre resolveAgainstExisting y responseRepo.create)',
-      src.indexOf('this.assertPremiumProgressWriteAllowed(') > iBiz && src.indexOf('this.assertPremiumProgressWriteAllowed(') < iCreate);
+    // El gate de acceso Premium tiene EXACTAMENTE 3 call-sites autorizados, y
+    // ninguno más -- la propiedad que protege esta sección es "no existe ningún
+    // punto de entrada de ESCRITURA de progreso que salte el entitlement":
+    //   1. submitResponse            -- crear un student_response nuevo (C1.4).
+    //   2. getResourceCompletion     -- XP-V1B-2: leer/derivar completitud del
+    //                                   recurso premium del tema.
+    //   3. completeResource          -- XP-V1B-2: acción explícita "Completar
+    //                                   recurso"; reutiliza LITERALMENTE el
+    //                                   mismo guard (ver comentario en
+    //                                   progress.service.ts: "Reutiliza
+    //                                   EXACTAMENTE el mismo gate de acceso").
+    // (2) y (3) llegaron por XP-V1B-2 y comparten el guard a propósito; el gate
+    // se romperá si aparece un 4º call-site o si alguno se mueve fuera de su
+    // método autorizado.
+    const callIdxs = [...src.matchAll(/this\.assertPremiumProgressWriteAllowed\(/g)].map((m) => m.index ?? -1);
+    check('9. assertPremiumProgressWriteAllowed tiene EXACTAMENTE 3 call-sites (submitResponse + XP-V1B-2 getResourceCompletion/completeResource)',
+      callIdxs.length === 3);
+
+    const iSubmitFn = src.indexOf('async submitResponse(');
+    const iGetResourceCompletionFn = src.indexOf('async getResourceCompletion(');
+    const iCompleteResourceFn = src.indexOf('async completeResource(');
+    const iRecordResourceCompletionFn = src.indexOf('async recordResourceCompletion(');
+    check('9. las 4 firmas de método usadas como límites de ventana existen y están en orden',
+      iSubmitFn !== -1 && iGetResourceCompletionFn > iSubmitFn && iCompleteResourceFn > iGetResourceCompletionFn && iRecordResourceCompletionFn > iCompleteResourceFn);
+    const callsInWindow = (lo: number, hi: number) => callIdxs.filter((i) => i > lo && i < hi).length;
+
+    check('9. call-site 1/3 -> submitResponse, y ahí está entre resolveAgainstExisting y responseRepo.create',
+      callsInWindow(iSubmitFn, iGetResourceCompletionFn) === 1 && iGate > iBiz && iGate < iCreate);
+    check('9. call-site 2/3 -> getResourceCompletion (XP-V1B-2)',
+      callsInWindow(iGetResourceCompletionFn, iCompleteResourceFn) === 1);
+    check('9. call-site 3/3 -> completeResource (XP-V1B-2)',
+      callsInWindow(iCompleteResourceFn, iRecordResourceCompletionFn) === 1);
+    check('9. NINGÚN call-site fuera de esas tres ventanas autorizadas (sin punto de entrada de escritura sin gatear)',
+      callsInWindow(iSubmitFn, iGetResourceCompletionFn) +
+        callsInWindow(iGetResourceCompletionFn, iCompleteResourceFn) +
+        callsInWindow(iCompleteResourceFn, iRecordResourceCompletionFn) === 3);
   } finally {
     console.log('--- Limpieza (contenido publicado inmutable permanece; respuestas de prueba borradas; materia retirada) ---');
     for (const acc of accounts) {
