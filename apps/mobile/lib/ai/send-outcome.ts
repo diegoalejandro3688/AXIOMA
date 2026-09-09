@@ -48,7 +48,10 @@ export type SendMessageOutcome =
 
 export function mapSendMessageResult(result: ApiResult<SendAiMessageResponse>): SendMessageOutcome {
   if (result.ok) return { kind: 'ok', data: result.data };
-  if (result.kind === 'network') return { kind: 'network', message: result.message };
+  // `!== 'http'` cubre `network` Y `schema` (RQ-06): una desviación de
+  // contrato en la respuesta se trata como el mismo estado ambiguo que "sin
+  // respuesta del servidor" -- el reintento reutiliza el mismo operationId.
+  if (result.kind !== 'http') return { kind: 'network', message: result.message };
   if (result.status === 422 && result.code === AI_SAFETY_BLOCKED_CODE) {
     return { kind: 'safety_blocked', message: AI_SAFETY_BLOCKED_MESSAGE };
   }

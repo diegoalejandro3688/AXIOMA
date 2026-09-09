@@ -157,6 +157,52 @@ async function main() {
     check('kind === "network"', result.ok === false && result.kind === 'network');
   }
 
+  console.log('--- AR-2B / RQ-06: una respuesta 2xx que NO satisface el esquema -> `kind:"schema"` TIPADO, nunca un throw ---');
+  {
+    const { z } = await import('zod');
+    const strictSchema = z.object({ username: z.string(), moderationStatus: z.string() });
+
+    // (a) payload válido -> ok con los datos parseados.
+    (globalThis as { fetch: typeof fetch }).fetch = (async () =>
+      jsonResponse({ username: 'ana', moderationStatus: 'CLEAR', extra: 'ignorado' }, 200)) as typeof fetch;
+    const okResult = await apiRequest('GET', '/user/public-profile', { schema: strictSchema });
+    check('payload válido -> ok === true con datos parseados', okResult.ok === true && okResult.ok && okResult.data.username === 'ana');
+
+    // (b) payload que le falta un campo requerido (deriva de contrato: el
+    // backend desplegado va por detrás y no envía `moderationStatus`) ->
+    // NUNCA lanza; devuelve `kind:'schema'` con un mensaje accionable.
+    (globalThis as { fetch: typeof fetch }).fetch = (async () => jsonResponse({ username: 'ana' }, 200)) as typeof fetch;
+    let threw = false;
+    let schemaResult: Awaited<ReturnType<typeof apiRequest>> | undefined;
+    try {
+      schemaResult = await apiRequest('GET', '/user/public-profile', { schema: strictSchema });
+    } catch {
+      threw = true;
+    }
+    check('payload inválido -> NO lanza (sin promesa rechazada sin capturar)', !threw);
+    check('payload inválido -> ok === false && kind === "schema"', !!schemaResult && !schemaResult.ok && schemaResult.kind === 'schema');
+    check('payload inválido -> trae un mensaje accionable (no vacío, sugiere actualizar la app)', !!schemaResult && !schemaResult.ok && /actualizar la app/i.test(schemaResult.message));
+
+    // (c) fallo HTTP con esquema pedido -> se conserva el comportamiento `kind:'http'` (nunca se enmascara como schema).
+    (globalThis as { fetch: typeof fetch }).fetch = (async () =>
+      jsonResponse({ error: { code: 'NOT_FOUND', message: 'No encontrado.' } }, 404)) as typeof fetch;
+    const httpResult = await apiRequest('GET', '/user/public-profile', { schema: strictSchema });
+    check('fallo HTTP con schema pedido -> sigue siendo kind:"http" (no enmascarado)', !httpResult.ok && httpResult.kind === 'http' && httpResult.status === 404);
+
+    // (d) 2xx con cuerpo NO-JSON donde se esperaba JSON -> `kind:'network'` recuperable, nunca throw.
+    (globalThis as { fetch: typeof fetch }).fetch = (async () =>
+      new Response('<html>bad gateway</html>', { status: 200, headers: { 'content-type': 'text/html' } })) as typeof fetch;
+    let threwJson = false;
+    let jsonFail: Awaited<ReturnType<typeof apiRequest>> | undefined;
+    try {
+      jsonFail = await apiRequest('GET', '/user/public-profile', { schema: strictSchema });
+    } catch {
+      threwJson = true;
+    }
+    check('2xx con cuerpo no-JSON -> NO lanza', !threwJson);
+    check('2xx con cuerpo no-JSON -> kind:"network" recuperable', !!jsonFail && !jsonFail.ok && jsonFail.kind === 'network');
+  }
+
   console.log('');
   if (failures > 0) {
     console.error(`${failures} verificación(es) fallaron.`);

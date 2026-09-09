@@ -20,7 +20,8 @@ export type EquipTitleOutcome =
  */
 export function mapEquipTitleResult(result: ApiResult<EquippedTitleResponse | null>): EquipTitleOutcome {
   if (result.ok) return { kind: 'ok', data: result.data };
-  if (result.kind === 'network') return { kind: 'network', message: result.message };
+  // `!== 'http'` cubre `network` Y `schema` (RQ-06): sin respuesta HTTP interpretable, mismo estado recuperable.
+  if (result.kind !== 'http') return { kind: 'network', message: result.message };
   if (result.status === 404) return { kind: 'reload' };
   if (result.status === 409) return { kind: 'conflict', message: result.message };
   return { kind: 'error', message: result.message, status: result.status };

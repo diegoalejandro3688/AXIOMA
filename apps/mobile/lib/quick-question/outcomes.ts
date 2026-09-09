@@ -29,7 +29,9 @@ export function mapNextResult(result: ApiResult<QuickQuestionNextResponse>): Nex
   if (result.ok) {
     return result.data.outcome === 'QUESTION_PRESENTED' ? { kind: 'question_presented', question: result.data } : { kind: 'no_questions' };
   }
-  if (result.kind === 'network') return { kind: 'network', message: result.message };
+  // `!== 'http'` cubre `network` Y `schema` (RQ-06): sin una respuesta HTTP
+  // interpretable, el resultado de dominio es el mismo estado ambiguo/recuperable.
+  if (result.kind !== 'http') return { kind: 'network', message: result.message };
   if (result.status === 409) return { kind: 'session_closed' };
   return { kind: 'error', message: result.message };
 }
@@ -51,7 +53,9 @@ export type AnswerOutcomeView =
 
 export function mapAnswerResult(result: ApiResult<AnswerQuickQuestionResponse>): AnswerOutcomeView {
   if (result.ok) return { kind: 'ok', data: result.data };
-  if (result.kind === 'network') return { kind: 'network', message: result.message };
+  // `!== 'http'` cubre `network` Y `schema` (RQ-06): sin una respuesta HTTP
+  // interpretable, el resultado de dominio es el mismo estado ambiguo/recuperable.
+  if (result.kind !== 'http') return { kind: 'network', message: result.message };
   if (result.status === 400) return { kind: 'invalid_option', message: result.message };
   if (result.status === 409) return { kind: 'conflict' };
   return { kind: 'error', message: result.message };
@@ -80,7 +84,9 @@ export function mapTimeoutResult(result: ApiResult<TimeoutQuickQuestionResponse>
     if (result.data.outcome === 'NOT_EXPIRED') return { kind: 'not_expired', deadlineAt: result.data.deadlineAt };
     return { kind: 'no_pending' };
   }
-  if (result.kind === 'network') return { kind: 'network', message: result.message };
+  // `!== 'http'` cubre `network` Y `schema` (RQ-06): sin una respuesta HTTP
+  // interpretable, el resultado de dominio es el mismo estado ambiguo/recuperable.
+  if (result.kind !== 'http') return { kind: 'network', message: result.message };
   if (result.status === 409) return { kind: 'session_closed' };
   return { kind: 'error', message: result.message };
 }

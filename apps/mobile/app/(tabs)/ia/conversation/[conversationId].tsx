@@ -85,6 +85,23 @@ export default function AiConversationScreen() {
     return () => sub.remove();
   }, []);
 
+  /**
+   * RQ-08 -- acuse visible inmediato al enviar. La burbuja pendiente (echo del
+   * mensaje del estudiante) y el `AiThinkingIndicator` se montan al final del
+   * ScrollView en el MISMO tick que `setSendState('sending')`. En Android, con
+   * el teclado abierto y `KeyboardAvoidingView` (`behavior="height"`)
+   * redimensionando el contenedor en ese mismo frame, el autoscroll de
+   * `onContentSizeChange` no siempre alcanza ese tail -> el usuario pasa 2-3 s
+   * sin ver ningún acuse. Este scroll DETERMINISTA se programa tras el commit
+   * de React (doble `requestAnimationFrame`) + un respaldo por si el layout
+   * del teclado tarda un poco más en asentarse.
+   */
+  const scrollToPendingTail = useCallback(() => {
+    const jump = () => scrollRef.current?.scrollToEnd({ animated: true });
+    requestAnimationFrame(() => requestAnimationFrame(jump));
+    setTimeout(jump, 250);
+  }, []);
+
   async function submit(content: string) {
     if (sendState.status === 'sending') return; // anti doble-toque local.
     if (state.status !== 'ready') return;
@@ -95,6 +112,9 @@ export default function AiConversationScreen() {
     const operationId = resolveSendOperationId(pending, trimmed, randomUUID);
     setPending({ content: trimmed, operationId });
     setSendState({ status: 'sending' });
+    // RQ-08 -- garantiza que el echo del mensaje + el indicador "pensando"
+    // queden a la vista de inmediato, sin depender solo de `onContentSizeChange`.
+    scrollToPendingTail();
 
     const outcome = mapSendMessageResult(await sendAiMessage(conversationId, { content: trimmed, operationId, requestedMode: mode }));
 

@@ -27,7 +27,8 @@ export type ClaimChallengeOutcome =
  */
 export function mapClaimResult(result: ApiResult<ChallengeSummary>): ClaimChallengeOutcome {
   if (result.ok) return { kind: 'ok', data: result.data };
-  if (result.kind === 'network') return { kind: 'network', message: result.message };
+  // `!== 'http'` cubre `network` Y `schema` (RQ-06): sin respuesta HTTP interpretable, mismo estado recuperable.
+  if (result.kind !== 'http') return { kind: 'network', message: result.message };
   if (result.status === 404) return { kind: 'not_found' };
   if (result.status === 409) return { kind: 'not_completed' };
   if (result.status === 503) return { kind: 'retryable', message: result.message };

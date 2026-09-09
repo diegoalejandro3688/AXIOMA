@@ -77,7 +77,17 @@ const API_BASE_URL = resolveApiBaseUrl(
 export type ApiResult<T> =
   | { ok: true; data: T }
   | { ok: false; kind: 'network'; message: string }
-  | { ok: false; kind: 'http'; status: number; code?: string; message: string; body?: unknown };
+  | { ok: false; kind: 'http'; status: number; code?: string; message: string; body?: unknown }
+  // AR-2B / RQ-06: el servidor respondió 2xx pero el cuerpo NO satisface el
+  // esquema del contrato (típicamente: deriva de contrato -- el backend
+  // desplegado va por detrás del build del móvil y omite un campo que el
+  // esquema exige). ANTES esto escapaba como un `throw` de Zod sin capturar
+  // -> promesa rechazada -> pantallas atascadas en "Cargando…" para siempre
+  // (RQ-06, "Cargando identidad pública…"). Ahora es un resultado TIPADO más,
+  // nunca una excepción. NO se relaja el esquema para tolerar contratos
+  // viejos: se falla de forma explícita y visible. `kind: 'schema'` comparte
+  // la forma mínima de `network` (`ok:false` + `message`), sin `status`.
+  | { ok: false; kind: 'schema'; message: string };
 
 let unauthorizedHandler: (() => void) | null = null;
 
@@ -161,7 +171,26 @@ export async function apiRequest<T = void>(
     return { ok: true, data: undefined as T };
   }
 
-  const json: unknown = await response.json();
-  const data = options.schema ? options.schema.parse(json) : (json as T);
-  return { ok: true, data };
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch {
+    // 2xx con cuerpo vacío/no-JSON donde se esperaba JSON -- se trata como un
+    // fallo de red recuperable (mismo criterio que un `fetch` que no llega).
+    return { ok: false, kind: 'network', message: 'No se pudo leer la respuesta del servidor. Vuelve a intentarlo.' };
+  }
+
+  if (!options.schema) return { ok: true, data: json as T };
+
+  // `safeParse` (no `parse`) -- RQ-06: una desviación de contrato NUNCA debe
+  // propagarse como excepción sin capturar. Ver el comentario de `ApiResult`.
+  const parsed = options.schema.safeParse(json);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      kind: 'schema',
+      message: 'La respuesta del servidor no tiene el formato esperado. Puede que necesites actualizar la app.',
+    };
+  }
+  return { ok: true, data: parsed.data };
 }

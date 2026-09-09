@@ -59,7 +59,8 @@ export async function submitResponse(topicId: string, input: SubmitResponseInput
   if (result.ok) {
     return { kind: 'ok', data: submitResponseResponseSchema.parse(result.data) };
   }
-  if (result.kind === 'network') {
+  // `!== 'http'` cubre `network` Y `schema` (RQ-06): sin respuesta HTTP interpretable, mismo estado ambiguo/recuperable.
+  if (result.kind !== 'http') {
     return { kind: 'network', message: result.message };
   }
   if (result.status === 409) {

@@ -140,6 +140,17 @@ function main() {
   check('tras un envío OK, cuota/turnos se sustituyen por los del servidor (reconciliación, sin optimismo)', conversationSource.includes('dailyQuota: outcome.data.dailyQuota') && conversationSource.includes('turnCount: outcome.data.turnCount'));
   check('los mensajes pintados son los canónicos del servidor (userMessage/assistantMessage), nunca uno construido localmente', conversationSource.includes('outcome.data.userMessage, outcome.data.assistantMessage'));
 
+  console.log('--- 9b. RQ-08: acuse visible inmediato al enviar (echo pendiente + indicador "pensando" + scroll determinista) ---');
+  check('9b-1. `sending` se deriva síncronamente de sendState (transición inmediata al enviar)', conversationSource.includes("const sending = sendState.status === 'sending';"));
+  check('9b-2. submit() pasa a sending ANTES del await de red (setSendState sync, luego await sendAiMessage)', /setSendState\(\{ status: 'sending' \}\);[\s\S]{0,400}await sendAiMessage/.test(conversationSource));
+  check('9b-3. la burbuja de echo del mensaje pendiente se monta mientras `sending && pending`', conversationSource.includes('{sending && pending ?') && conversationSource.includes('styles.pendingUser'));
+  check('9b-4. el AiThinkingIndicator se monta mientras `sending`', conversationSource.includes('{sending ? <AiThinkingIndicator /> : null}'));
+  check('9b-5. importa el componente visual existente AiThinkingIndicator (sin spinner grande, sin rediseño)', conversationSource.includes("import { AiThinkingIndicator } from '../../../../components/ai/ai-thinking-indicator'"));
+  check('9b-6. submit() programa un scroll DETERMINISTA al tail justo tras marcar sending', /setSendState\(\{ status: 'sending' \}\);[\s\S]{0,300}scrollToPendingTail\(\);/.test(conversationSource));
+  check('9b-7. scrollToPendingTail usa doble requestAnimationFrame + respaldo por timeout (layout del teclado en Android)', conversationSource.includes('requestAnimationFrame(() => requestAnimationFrame(jump))') && conversationSource.includes('setTimeout(jump, 250)'));
+  check('9b-8. éxito -> sendState vuelve a idle (el indicador se desmonta)', conversationSource.includes("setSendState({ status: 'idle' })"));
+  check('9b-9. fallo -> sendState pasa a failed (el indicador se desmonta, no queda "pensando" colgado)', conversationSource.includes("setSendState({ status: 'failed'"));
+
   console.log('--- 10. Cuota agotada bloquea el envío y explica el límite con el resetAt real ---');
   const exhausted = resolveSendAvailability({ dailyQuota: quota({ consumed: 7, remaining: 0 }), turnCount: 1, maxTurns: 9 });
   check('remaining = 0 -> canSend false, motivo quota_exhausted', !exhausted.canSend && exhausted.reason === 'quota_exhausted');

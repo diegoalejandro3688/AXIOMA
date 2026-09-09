@@ -141,7 +141,17 @@ export default function PerfilScreen() {
 
   const loadPublicProfile = useCallback(async () => {
     setPublicProfileState({ status: 'loading' });
-    const result = await getMyPublicProfile();
+    // RQ-06: `getMyPublicProfile` ya nunca lanza por desviación de esquema
+    // (`apiRequest` devuelve `kind:'schema'`), pero este `try/catch` garantiza
+    // un estado TERMINAL pase lo que pase -- "Cargando identidad pública…"
+    // nunca puede quedar colgado indefinidamente.
+    let result;
+    try {
+      result = await getMyPublicProfile();
+    } catch {
+      setPublicProfileState({ status: 'error', message: 'No se pudo cargar tu identidad pública. Vuelve a intentarlo.' });
+      return;
+    }
     if (result.ok) {
       setPublicProfileState({ status: 'ready', profile: result.data });
       return;
