@@ -10,7 +10,69 @@ import { loadSession } from '../auth/session-storage';
  * §4.15: "Sin conexión" vs. "Error recuperable").
  */
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
+/**
+ * Resolución del API base URL -- AR-1A (release safety foundation).
+ *
+ * DEV (`isDev === true`): usa `EXPO_PUBLIC_API_BASE_URL` si está presente; si
+ * falta, cae a `http://localhost:3000` -- preserva el workflow local de QA
+ * (`EXPO_PUBLIC_API_BASE_URL=http://localhost:3000` + `adb reverse tcp:3000`).
+ *
+ * RELEASE (`isDev === false`): `EXPO_PUBLIC_API_BASE_URL` es OBLIGATORIA y
+ * debe ser una URL `https://` cuyo host NO sea de desarrollo. Cualquier fallo
+ * lanza un error determinista -- un bundle release nunca debe hablar con
+ * `localhost` ni por `http://` de forma silenciosa, ni depender de `adb
+ * reverse`. El endpoint productivo real lo aporta el bloque de backend.
+ */
+const DEV_FALLBACK_API_BASE_URL = 'http://localhost:3000';
+const DEV_ONLY_HOSTS = new Set(['localhost', '127.0.0.1', '10.0.2.2', '0.0.0.0', '::1']);
+
+function stripTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
+export function resolveApiBaseUrl(rawEnvUrl: string | undefined, isDev: boolean): string {
+  const envUrl = rawEnvUrl?.trim();
+
+  if (isDev) {
+    return stripTrailingSlash(envUrl && envUrl.length > 0 ? envUrl : DEV_FALLBACK_API_BASE_URL);
+  }
+
+  if (!envUrl) {
+    throw new Error(
+      'EXPO_PUBLIC_API_BASE_URL no está definida: un build release exige un endpoint HTTPS explícito.',
+    );
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(envUrl);
+  } catch {
+    throw new Error(`EXPO_PUBLIC_API_BASE_URL no es una URL válida: "${envUrl}".`);
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error(
+      `EXPO_PUBLIC_API_BASE_URL debe usar https:// en un build release (recibido: "${parsed.protocol}//").`,
+    );
+  }
+
+  if (DEV_ONLY_HOSTS.has(parsed.hostname)) {
+    throw new Error(
+      `EXPO_PUBLIC_API_BASE_URL apunta a un host de desarrollo ("${parsed.hostname}"), no permitido en un build release.`,
+    );
+  }
+
+  return stripTrailingSlash(envUrl);
+}
+
+// `__DEV__` es un global inyectado por Metro (`true` en dev, `false` en el
+// bundle release). `typeof` lo cubre para herramientas Node puras (gates),
+// donde se trata como dev-permisivo; solo un `__DEV__ === false` explícito
+// activa la validación fail-closed de release.
+const API_BASE_URL = resolveApiBaseUrl(
+  process.env.EXPO_PUBLIC_API_BASE_URL,
+  typeof __DEV__ === 'undefined' || __DEV__ !== false,
+);
 
 export type ApiResult<T> =
   | { ok: true; data: T }

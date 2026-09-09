@@ -21,3 +21,13 @@ prisma/generated/
 apps/backend/*.log
 
 .tmp/
+
+# Android release signing material -- AR-1A (B10 hardening). NUNCA debe
+# trackearse una upload/release key ni sus contraseñas, esté donde esté
+# (dentro o fuera de `android/`, que ya está ignorado más arriba). No se
+# crea ninguna key aquí; esto solo endurece el ignore de forma preventiva.
+*.jks
+*.keystore
+key.properties
+keystore.properties
+*.signing.properties

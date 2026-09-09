@@ -40,7 +40,33 @@ async function main() {
   const secureStore = (await import('./__stubs__/expo-secure-store.stateful')) as unknown as {
     __seed: (k: string, v: string) => void;
   };
-  const { apiRequest } = await import('../lib/api/client');
+  const { apiRequest, resolveApiBaseUrl } = await import('../lib/api/client');
+
+  console.log('--- AR-1A: resolveApiBaseUrl -- DEV permisivo, RELEASE fail-closed ---');
+  {
+    check('DEV + env URL -> usa la env URL', resolveApiBaseUrl('http://localhost:3000', true) === 'http://localhost:3000');
+    check('DEV + env ausente -> fallback a localhost', resolveApiBaseUrl(undefined, true) === 'http://localhost:3000');
+    check('DEV + env vacía/whitespace -> fallback a localhost', resolveApiBaseUrl('   ', true) === 'http://localhost:3000');
+    check(
+      'RELEASE + HTTPS válida -> aceptada (sin trailing slash)',
+      resolveApiBaseUrl('https://zetrynd.example.com/', false) === 'https://zetrynd.example.com',
+    );
+    const throws = (v: string | undefined) => {
+      try {
+        resolveApiBaseUrl(v, false);
+        return false;
+      } catch {
+        return true;
+      }
+    };
+    check('RELEASE + env ausente -> lanza', throws(undefined));
+    check('RELEASE + env whitespace -> lanza', throws('   '));
+    check('RELEASE + http:// -> lanza', throws('http://zetrynd.example.com'));
+    check('RELEASE + https://localhost -> lanza', throws('https://localhost:3000'));
+    check('RELEASE + https://127.0.0.1 -> lanza', throws('https://127.0.0.1'));
+    check('RELEASE + https://10.0.2.2 -> lanza', throws('https://10.0.2.2'));
+    check('RELEASE + URL inválida -> lanza', throws('not a url'));
+  }
 
   console.log('--- 0. RC1A: credencial de sesión = solo X-Session-Id, nunca Authorization ---');
   {
