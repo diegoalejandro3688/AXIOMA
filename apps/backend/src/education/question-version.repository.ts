@@ -92,6 +92,33 @@ export class QuestionVersionRepository {
    * en V1 -- "dificultad" no existe en el esquema hoy (auditoría §12).
    * `tx` opcional -- pasado por QuickQuestionService dentro de la
    * transacción bloqueada por sesión.
+   *
+   * AR-2B / RQ-01 -- ELEGIBILIDAD AUTOCONTENIDA. La QA física de la release
+   * encontró Preguntas rápidas cuyo enunciado dice "según la fuente / el
+   * texto / el gráfico" pero sin estímulo visible: el DTO de `/next` sólo
+   * entrega `stemContent` + `answerOptions`, nunca un pasaje. Antes esta
+   * selección aceptaba CUALQUIER `question_version` PUBLISHED, incluidas las
+   * que el importador de Ensayos crea para Comprensión Lectora / ítems con
+   * fuente, vinculadas a un `exam_question` con `passage_id` (el estímulo
+   * vive en `exam_passage`, sólo servido por el flujo de Ensayos).
+   *
+   * ALCANCE DELIBERADAMENTE MÍNIMO (verificado contra el contrato CONGELADO
+   * de LEF-BLOCK-IV-DEFINITION.md, decisiones aprobadas por el Product Owner
+   * sobre los "5 vacíos de §12.4"):
+   *   - decisión #2: "preguntas ACTIVAS/elegibles (`editorialStatus = PUBLISHED`)"
+   *     -> se añade `question.status = 'ACTIVE'` a la SELECCIÓN (antes sólo se
+   *     comprobaba al responder). "activas" es palabra literal del contrato.
+   *   - decisión #3: "Exclusión de preguntas de ensayos activos: NO APLICA
+   *     **mientras el concepto de 'ensayo' no exista en el esquema**". Ese
+   *     concepto YA existe (ADR-0024: `exam`/`exam_passage`/`exam_question`),
+   *     así que la condición que dejaba la regla en `NO APLICA` caducó. Se
+   *     implementa el CORTE MÍNIMO que resuelve el defecto observado: excluir
+   *     las preguntas atadas a un `exam_question` con `passage_id` (las que el
+   *     usuario ve "según la fuente" sin fuente).
+   * NO se añade filtro por materia/dificultad NI por forma del `curriculum_topic`
+   * (el contrato congelado dice explícitamente "cualquier pregunta `PUBLISHED`
+   * de cualquier tema es elegible" y rechaza filtros de selección más ricos).
+   * No se edita ni un solo enunciado; no hay migración ni flag nuevo.
    */
   async findRandomEligible(excludeQuestionVersionIds: string[], tx?: Prisma.TransactionClient): Promise<QuestionVersionWithAnswerOptions | null> {
     const client = tx ?? this.prisma;
@@ -103,9 +130,17 @@ export class QuestionVersionRepository {
     // segunda consulta en el llamador). Sin problema de rendimiento
     // conocido con el volumen actual del catálogo.
     const rows = await client.$queryRaw<{ id: string }[]>`
-      SELECT "id" FROM "question_version"
-      WHERE "editorial_status" = 'PUBLISHED'
-        AND "id" != ALL(${excludeQuestionVersionIds}::uuid[])
+      SELECT qv."id"
+      FROM "question_version" qv
+      JOIN "question" q ON q."id" = qv."question_id"
+      WHERE qv."editorial_status" = 'PUBLISHED'
+        AND q."status" = 'ACTIVE'
+        AND NOT EXISTS (
+          SELECT 1 FROM "exam_question" eq
+          WHERE eq."question_version_id" = qv."id"
+            AND eq."passage_id" IS NOT NULL
+        )
+        AND qv."id" != ALL(${excludeQuestionVersionIds}::uuid[])
       ORDER BY random()
       LIMIT 1
     `;

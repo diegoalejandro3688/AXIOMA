@@ -33,18 +33,25 @@ export class EquippedCosmeticRepository {
     });
   }
 
+  /**
+   * AR-2B / RQ-03 -- una selección de slot que apunta a un cosmético RETIRADO
+   * del catálogo V1 se lee como slot VACÍO: la fila `equipped_cosmetic` NO se
+   * borra (sin mutación de datos, la historia se conserva), simplemente deja
+   * de servirse. El producto trata ese slot como no equipado / fallback.
+   * `equip()` ya impide crear una selección así hacia adelante.
+   */
   findByPublicProfileId(publicProfileId: string): Promise<EquippedCosmeticWithDetails[]> {
     return this.prisma.equippedCosmetic.findMany({
-      where: { publicProfileId },
+      where: { publicProfileId, inventoryItem: { cosmeticItem: { status: 'ACTIVE' } } },
       include: { inventoryItem: { include: { cosmeticItem: true } } },
     });
   }
 
-  /** Bloque IV, Incremento 3, sub-incremento 3.a -- lote, UNA sola consulta `WHERE public_profile_id IN (...)`. */
+  /** Bloque IV, Incremento 3, sub-incremento 3.a -- lote, UNA sola consulta `WHERE public_profile_id IN (...)`. AR-2B / RQ-03: mismo filtro de catálogo RETIRADO que `findByPublicProfileId`. */
   findManyByPublicProfileIds(publicProfileIds: string[]): Promise<EquippedCosmeticWithDetails[]> {
     if (publicProfileIds.length === 0) return Promise.resolve([]);
     return this.prisma.equippedCosmetic.findMany({
-      where: { publicProfileId: { in: publicProfileIds } },
+      where: { publicProfileId: { in: publicProfileIds }, inventoryItem: { cosmeticItem: { status: 'ACTIVE' } } },
       include: { inventoryItem: { include: { cosmeticItem: true } } },
     });
   }

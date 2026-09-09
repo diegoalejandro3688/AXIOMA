@@ -69,6 +69,12 @@ export class CosmeticEquipmentService {
     if (!cosmeticItem || cosmeticItem.itemType !== slot) {
       throw new ConflictException(`Este cosmético no corresponde al slot "${slot}".`);
     }
+    // AR-2B / RQ-03 -- un cosmético RETIRADO del catálogo V1 no puede
+    // equiparse aunque la cuenta lo posea históricamente (la fila
+    // `inventory_item` se conserva; solo se bloquea la ACCIÓN de equipar).
+    if (cosmeticItem.status !== 'ACTIVE') {
+      throw new ConflictException('Este cosmético ya no está disponible para equipar.');
+    }
 
     await this.equippedCosmeticRepo.upsert(publicProfileId, slot, inventoryItemId);
     const equipped = await this.equippedCosmeticRepo.findByPublicProfileId(publicProfileId);

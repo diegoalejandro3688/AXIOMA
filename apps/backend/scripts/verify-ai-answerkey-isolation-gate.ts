@@ -321,7 +321,7 @@ async function main() {
   const promptAnswered = buildSystemPrompt({ academicContext: ctxAnswered, assistanceMode: 'WORKED_SOLUTION' });
   const positivePromptOk = answeredFragments.every((f) => promptAnswered.includes(f));
   check('5d. CON StudentResponse -> la explicación validada SÍ aparece en el system prompt construido', positivePromptOk);
-  check('5e. CON StudentResponse -> el system prompt declara que la pauta validada está disponible', promptAnswered.includes('El contexto incluye la pauta validada de Axioma'));
+  check('5e. CON StudentResponse -> el system prompt declara que la pauta validada está disponible', promptAnswered.includes('El contexto incluye la pauta validada de ZETRYND'));
   if (!positiveContextOk || !positivePromptOk) {
     invalidated = true;
     console.error('GATE INVÁLIDO: el control positivo falló. Las aserciones negativas de las secciones 2-4 NO prueban nada si el dato nunca es alcanzable por ninguna ruta.');

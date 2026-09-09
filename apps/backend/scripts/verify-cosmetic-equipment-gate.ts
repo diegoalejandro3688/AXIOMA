@@ -208,6 +208,56 @@ async function main() {
   const mismatchedSlot = await req('PUT', `/gamification/me/cosmetics/equipped/AVATAR_FRAME`, alice.headers, { inventoryItemId: aliceBadge.id });
   check('equipar un BADGE en el slot AVATAR_FRAME -> 409 (aunque encima esté REVOKED, cualquiera de los dos motivos basta)', mismatchedSlot.status === 409);
 
+  console.log('--- 8b. AR-2B / RQ-03: cosmético RETIRADO del catálogo V1 -- no usable, no equipable, propiedad histórica intacta ---');
+  {
+    // Se crea ACTIVE, Alice lo posee y lo equipa (estado legado válido)...
+    const retiredFrame = await cosmeticItemRepo.create({
+      itemKey: `gate-rq03-retired-frame-${suffix}`,
+      itemType: 'AVATAR_FRAME',
+      name: 'Marco bronce legacy (gate RQ-03)',
+      rarityClass: 'COMMON',
+      assetReference: 'gate://retired-frame',
+      visibilityStatus: 'PUBLIC',
+    });
+    const { inventoryItem: aliceRetiredFrame } = await inventoryItemRepo.createIdempotent({
+      accountId: alice.accountId,
+      cosmeticItemId: retiredFrame.id,
+      acquisitionSourceType: 'LEVEL',
+      acquisitionSourceId: `${alice.accountId}:rq03`,
+      acquiredAt: new Date(),
+    });
+    const equipWhileActive = await req('PUT', `/gamification/me/cosmetics/equipped/AVATAR_FRAME`, alice.headers, { inventoryItemId: aliceRetiredFrame.id });
+    check('8b-0. fixture: se equipa mientras está ACTIVE -> 200', equipWhileActive.status === 200);
+
+    // ...y DESPUÉS el catálogo lo retira (COSMETICS_V1_LEGACY_RETIRE_ITEM_KEYS).
+    await pg.query("UPDATE cosmetic_item SET status = 'RETIRED', retired_at = now() WHERE id = $1", [retiredFrame.id]);
+
+    const listAfterRetire = await req('GET', '/gamification/me/cosmetics', alice.headers);
+    const ownedIdsAfter = new Set((listAfterRetire.body.owned as { inventoryItemId: string }[]).map((i) => i.inventoryItemId));
+    check('8b-1. el cosmético RETIRADO desaparece de la colección USABLE (owned)', !ownedIdsAfter.has(aliceRetiredFrame.id));
+    check('8b-2. los cosméticos ACTIVE de Alice siguen en owned', ownedIdsAfter.has(aliceFrame1.id) && ownedIdsAfter.has(aliceFrame2.id));
+    check('8b-3. el slot AVATAR_FRAME se lee como VACÍO/fallback (no expone el cosmético retirado)', listAfterRetire.body.equipped.AVATAR_FRAME === null);
+
+    // La fila equipped_cosmetic NO se borró (sin mutación de datos), sólo deja de servirse.
+    const equippedRowStillThere = await pg.query(
+      "SELECT count(*)::int AS n FROM equipped_cosmetic WHERE inventory_item_id = $1",
+      [aliceRetiredFrame.id],
+    );
+    check('8b-4. la fila equipped_cosmetic del ítem retirado SIGUE en la base (no se borra, sólo se filtra al leer)', equippedRowStillThere.rows[0].n === 1);
+
+    // La propiedad histórica se conserva.
+    const inventoryRowStillThere = await pg.query('SELECT ownership_status FROM inventory_item WHERE id = $1', [aliceRetiredFrame.id]);
+    check('8b-5. la fila inventory_item (propiedad histórica) permanece intacta y ACTIVE', inventoryRowStillThere.rows[0]?.ownership_status === 'ACTIVE');
+
+    // Ya NO se puede equipar.
+    const equipRetired = await req('PUT', `/gamification/me/cosmetics/equipped/AVATAR_FRAME`, alice.headers, { inventoryItemId: aliceRetiredFrame.id });
+    check('8b-6. equipar un cosmético RETIRADO -> 409 (aunque la cuenta lo posea)', equipRetired.status === 409);
+
+    // Un cosmético ACTIVE sigue equipándose sin problema (regresión negativa).
+    const equipActiveAgain = await req('PUT', `/gamification/me/cosmetics/equipped/AVATAR_FRAME`, alice.headers, { inventoryItemId: aliceFrame1.id });
+    check('8b-7. un cosmético ACTIVE se sigue equipando normalmente (el filtro no afecta al catálogo vigente)', equipActiveAgain.status === 200 && equipActiveAgain.body.inventoryItemId === aliceFrame1.id);
+  }
+
   console.log('--- 9. Gate 68 (parcial, funcional): frontera de dominio -- GamificationModule no importa UserModule ---');
   const { readFileSync } = await import('node:fs');
   const { join } = await import('node:path');

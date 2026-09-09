@@ -65,10 +65,20 @@ export class InventoryItemRepository {
     return this.prisma.inventoryItem.findMany({ where: { accountId } });
   }
 
-  /** §4.20 (5.b) -- solo `ACTIVE`, con `cosmetic_item` ya unido, para el listado `GET .../cosmetics`. */
+  /**
+   * §4.20 (5.b) -- solo `ACTIVE`, con `cosmetic_item` ya unido, para el
+   * listado `GET .../cosmetics`.
+   *
+   * AR-2B / RQ-03 -- también excluye los cosméticos cuyo `cosmetic_item` está
+   * `RETIRED` en el catálogo (`COSMETICS_V1_LEGACY_RETIRE_ITEM_KEYS`: marcos
+   * bronce/plata/madera legacy). La cuenta CONSERVA la fila `inventory_item`
+   * (historial de propiedad intacto, sin mutación de datos) pero un cosmético
+   * fuera del catálogo V1 nunca vuelve a aparecer como parte de la colección
+   * USABLE. Los ítems `ACTIVE` no se ven afectados.
+   */
   findActiveByAccountIdWithCosmeticItem(accountId: string): Promise<InventoryItemWithCosmeticItem[]> {
     return this.prisma.inventoryItem.findMany({
-      where: { accountId, ownershipStatus: 'ACTIVE' },
+      where: { accountId, ownershipStatus: 'ACTIVE', cosmeticItem: { status: 'ACTIVE' } },
       include: { cosmeticItem: true },
       orderBy: { acquiredAt: 'desc' },
     });

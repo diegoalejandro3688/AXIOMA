@@ -556,6 +556,82 @@ async function main() {
   const inWindowAnswer = await service.answer(acc, tSession.session.id, inWindowOption, randomUUID());
   check('C. answer() dentro de la ventana -> ANSWERED, intento creado, semántica intacta', inWindowAnswer.outcome === 'ANSWERED' && inWindowAnswer.created === true);
 
+  console.log('--- 12c. AR-2B / RQ-01: elegibilidad AUTOCONTENIDA -- nunca se sirve una pregunta con pasaje ni una identidad retirada ---');
+  {
+    // (a) Autocontenida -- question ACTIVE, sin exam_question. DEBE poder servirse.
+    const selfContained = await makePublishedQuestion();
+    trackedQuestionIds.push(selfContained.questionVersionId);
+
+    // (b) Pregunta dependiente de un PASAJE de Ensayos: se vincula a un
+    // `exam_question` con `passage_id`. Su enunciado "según la fuente" no
+    // tiene estímulo en el DTO de `/next` -> NUNCA debe seleccionarse.
+    const passageBound = await makePublishedQuestion();
+    trackedQuestionIds.push(passageBound.questionVersionId);
+    const examId = randomUUID();
+    const passageId = randomUUID();
+    const examQuestionId = randomUUID();
+    await pg.query(
+      `INSERT INTO exam (id, exam_key, title, subject_id, duration_seconds, status, created_at, updated_at)
+       VALUES ($1, $2, 'Ensayo fixture del gate QQ (RQ-01)', $3, 3600, 'DRAFT', now(), now())`,
+      [examId, `GATE.QQE.EXAM.${suffix}-${Math.random().toString(36).slice(2, 8)}`, subjectId],
+    );
+    await pg.query(
+      `INSERT INTO exam_passage (id, exam_id, passage_key, display_order, title, content, created_at)
+       VALUES ($1, $2, 'p1', 0, 'Fuente', '[{"type":"paragraph","order":0,"text":"Texto fuente."}]', now())`,
+      [passageId, examId],
+    );
+    await pg.query(
+      `INSERT INTO exam_question (id, exam_id, question_version_id, display_order, passage_id, created_at)
+       VALUES ($1, $2, $3, 0, $4, now())`,
+      [examQuestionId, examId, passageBound.questionVersionId, passageId],
+    );
+
+    // (c) Pregunta cuya identidad lógica está RETIRADA -- antes sólo se
+    // filtraba al responder, ahora también al seleccionar.
+    const retired = await makePublishedQuestion();
+    trackedQuestionIds.push(retired.questionVersionId);
+    await pg.query(`UPDATE question SET status = 'RETIRED' WHERE id = (SELECT question_id FROM question_version WHERE id = $1)`, [retired.questionVersionId]);
+
+    // Aísla el universo de esta sesión a EXACTAMENTE estas 3.
+    const rq01Account = randomUUID();
+    const rq01Session = await service.openSession(rq01Account);
+    trackedSessionIds.push(rq01Session.session.id);
+    await isolateEligibleUniverse(rq01Session.session.id, rq01Account, [
+      selfContained.questionVersionId,
+      passageBound.questionVersionId,
+      retired.questionVersionId,
+    ]);
+
+    // Con exactamente {autocontenida, con-pasaje, retirada} elegibles POR
+    // SESIÓN, la ÚNICA que el predicado deja pasar es la autocontenida.
+    const firstDraw = await service.next(rq01Account, rq01Session.session.id);
+    check(
+      '12c-1. /next -> QUESTION_PRESENTED y es la pregunta AUTOCONTENIDA (nunca la de pasaje ni la retirada)',
+      firstDraw.outcome === 'QUESTION_PRESENTED' && firstDraw.questionVersion.id === selfContained.questionVersionId,
+    );
+
+    // Se consume vía el propio servicio (respuesta real).
+    if (firstDraw.outcome === 'QUESTION_PRESENTED') {
+      const opt = await answerOptionForQuestion(firstDraw.questionVersion.id);
+      await service.answer(rq01Account, rq01Session.session.id, opt, randomUUID());
+    }
+
+    // Consumida la única elegible -> NO_QUESTIONS_AVAILABLE (nunca error, la
+    // sesión sigue ACTIVE): confirma que la de pasaje y la retirada NUNCA
+    // entraron al universo servible.
+    const exhausted = await service.next(rq01Account, rq01Session.session.id);
+    check(
+      '12c-2. agotada la única elegible -> NO_QUESTIONS_AVAILABLE (la de pasaje y la retirada nunca fueron servibles), sesión sigue ACTIVE',
+      exhausted.outcome === 'NO_QUESTIONS_AVAILABLE' && exhausted.session.status === 'ACTIVE',
+    );
+
+    // Teardown de las fixtures de Ensayos (DELETE permitido para teardown; el
+    // exam nunca se publicó).
+    await pg.query('DELETE FROM exam_question WHERE id = $1', [examQuestionId]);
+    await pg.query('DELETE FROM exam_passage WHERE id = $1', [passageId]);
+    await pg.query('DELETE FROM exam WHERE id = $1', [examId]);
+  }
+
   console.log('--- 13. Frontera de dominio: QuickQuestionService no escribe en PROGRESS ---');
   const { readFileSync } = await import('node:fs');
   const { join } = await import('node:path');

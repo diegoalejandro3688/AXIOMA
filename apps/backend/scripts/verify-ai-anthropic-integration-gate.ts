@@ -392,10 +392,10 @@ async function runDeterministicAdapterTests() {
     // restaura y la equivalencia NO se reintroduce -- §29 permanece vigente,
     // ni en el prompt (intacto) ni en la redacción de este check.
     //
-    // QUÉ VERIFICA AHORA: la política REALMENTE vigente en V6_1, que no es
+    // QUÉ VERIFICA AHORA: la política REALMENTE vigente (V6_2), que no es
     // "no reveles" sino "sin `StudentResponse` el contexto NO trae la pauta
     // oficial, y el modelo no debe inventarla ni presentar su propio
-    // razonamiento como la corrección validada de Axioma". Se verifica como
+    // razonamiento como la corrección validada de ZETRYND". Se verifica como
     // PROPIEDAD ESTRUCTURAL del bloque de contexto académico -- rama
     // excluyente y forma del bloque -- en lugar de depender de una única
     // frase literal frágil (exactamente el modo de fallo que produjo este
@@ -413,7 +413,7 @@ async function runDeterministicAdapterTests() {
     //       ausente.
     //   (4) INSTRUCCIÓN VIGENTE: sobrevive una instrucción explícita
     //       anti-fabricación / anti-atribución ("nunca las inventes" +
-    //       "corrección validada de Axioma"), que es el equivalente vigente,
+    //       "corrección validada de ZETRYND"), que es el equivalente vigente,
     //       con el vocabulario que SÍ sobrevivió a §29, de la garantía que la
     //       frase retirada expresaba con el vocabulario antiguo. Es el único
     //       anclaje textual que queda, y es deliberadamente corto y
@@ -439,13 +439,13 @@ async function runDeterministicAdapterTests() {
     const unansweredBranchMarker = 'El estudiante NO ha respondido esta pregunta todavía';
     const answeredBranchGrant = 'puedes identificar la alternativa correcta';
     check(
-      'A14a. pregunta SIN responder -> el bloque de contexto académico está en la rama SIN pauta (estructura: 1 bloque delimitado, marcador de rama respondida ausente, concesión de la rama respondida ausente) y conserva la instrucción vigente de no inventar la pauta ni atribuir el propio razonamiento a Axioma',
+      'A14a. pregunta SIN responder -> el bloque de contexto académico está en la rama SIN pauta (estructura: 1 bloque delimitado, marcador de rama respondida ausente, concesión de la rama respondida ausente) y conserva la instrucción vigente de no inventar la pauta ni atribuir el propio razonamiento a ZETRYND',
       academicBlocks.length === 1 &&
         academicBlock.includes(unansweredBranchMarker) &&
         !academicBlock.includes(answeredBranchMarker) &&
         !academicBlock.includes(answeredBranchGrant) &&
         academicBlock.includes('nunca las inventes') &&
-        academicBlock.includes('corrección validada de Axioma'),
+        academicBlock.includes('corrección validada de ZETRYND'),
     );
     check('A14b. pregunta SIN responder -> el prompt NUNCA incluye una "explicación validada"', !systemUnanswered.includes('Explicación validada'));
 
