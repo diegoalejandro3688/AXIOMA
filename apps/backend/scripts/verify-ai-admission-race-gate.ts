@@ -141,7 +141,7 @@ async function turnRace(pg: Client, iteration: number): Promise<RaceOutcome> {
   if (override.status !== 200 && override.status !== 201) throw new Error(`No se pudo aplicar el override PREMIUM: ${override.status} ${override.raw}`);
   const maxTurns = 15; // Premium -- ver AiEntitlementService.
   const conv = await newConversation(account.headers);
-  // Sin ledger: la cuota Premium (50) NO debe ser vinculante -- solo el límite de turnos.
+  // Sin ledger: la cuota Premium (20 -- PB-1C) NO debe ser vinculante -- solo el límite de turnos.
   await seedConsumedTurns(pg, account.accountId, conv, maxTurns - 1, false);
   const [a, b] = await Promise.all([
     req('POST', `/ai/me/conversations/${conv}/messages`, account.headers, { content: 'último turno A', operationId: crypto.randomUUID() }),

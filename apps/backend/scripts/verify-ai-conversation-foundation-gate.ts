@@ -197,8 +197,8 @@ async function main() {
   console.log('--- A-C. Enforcement real del límite de turnos (independiente de la cuota diaria, Incremento 3) ---');
   // Este bloque necesita más de 3 consultas EXITOSAS (cuota FREE/día) en una sola cuenta para poder
   // probar el límite de turnos hasta agotarlo -- se usa una cuenta dedicada con override PREMIUM
-  // (50 consultas/día, ver AiInternalAdminController, solo alcanzable en gate/desarrollo, NUNCA en
-  // producción). El límite de turnos verificado sigue siendo el MISMO mecanismo (turnCount >= maxTurns)
+  // (20 consultas/día -- PB-1C; ver AiInternalAdminController, solo alcanzable en gate/desarrollo,
+  // NUNCA en producción). El límite de turnos verificado sigue siendo el MISMO mecanismo (turnCount >= maxTurns)
   // -- probarlo con maxTurns=15 (Premium) en vez de 6 (Free) es una prueba igual de válida del mecanismo,
   // nunca del valor numérico específico (ese ya está cubierto por el punto A siguiente).
   const turnLimitTester = await createSession('turnlimit-premium');
@@ -210,7 +210,7 @@ async function main() {
   const maxTurns = turnLimitConversation.body?.maxTurns as number;
   check('A. conversación nueva: turnCount == 0', turnLimitConversation.body?.turnCount === 0);
   check('A. conversación nueva: maxTurns == 15 (Premium, vía override de prueba)', maxTurns === 15);
-  check('A. dailyQuota.limit == 50 (Premium)', turnLimitConversation.body?.dailyQuota?.limit === 50);
+  check('A. dailyQuota.limit == 20 (Premium -- PB-1C)', turnLimitConversation.body?.dailyQuota?.limit === 20);
 
   const turnOperationIds: string[] = [];
   const turnResponses: Array<{ userMessageId: string; assistantMessageId: string }> = [];
@@ -251,27 +251,34 @@ async function main() {
   check('D. el replay NO consumió cuota adicional (sigue en el mismo consumed que antes)', detailAfterReplayAtLimit.body?.dailyQuota?.consumed === maxTurns);
 
   console.log('--- E/F. Fallo técnico dentro del turno pendiente (justo antes del límite) no consume turno ni cuota; el retry de ESE turno sigue permitido ---');
-  const nearLimitConversation = await req('POST', '/ai/me/conversations', turnLimitTester.headers, {});
+  // PB-1C -- cuenta PREMIUM DEDICADA: `turnLimitTester` ya consumió 15 consultas
+  // en A-C; con la cuota PREMIUM en 20 (antes 50), reutilizarla aquí (14 turnos
+  // más) chocaría con el límite DIARIO en vez del de TURNOS. Este bloque prueba
+  // el límite de TURNOS aislado, así que necesita su propio presupuesto diario.
+  const nearLimitTester = await createSession('nearlimit-premium');
+  const nearLimitOverride = await req('POST', `/ai/_internal/set-tier-override?accountId=${nearLimitTester.accountId}&tier=PREMIUM`, { 'x-internal-ops-key': opsKey });
+  check('E/F fixture: override PREMIUM aplicado a la cuenta dedicada de este bloque', nearLimitOverride.status === 200 || nearLimitOverride.status === 201);
+  const nearLimitConversation = await req('POST', '/ai/me/conversations', nearLimitTester.headers, {});
   const nearLimitConversationId = nearLimitConversation.body?.conversationId as string;
   const turnsBeforeLast = maxTurns - 1;
   for (let turn = 1; turn <= turnsBeforeLast; turn++) {
-    await req('POST', `/ai/me/conversations/${nearLimitConversationId}/messages`, turnLimitTester.headers, { content: `Turno ${turn}`, operationId: randomOperationId() });
+    await req('POST', `/ai/me/conversations/${nearLimitConversationId}/messages`, nearLimitTester.headers, { content: `Turno ${turn}`, operationId: randomOperationId() });
   }
-  const detailBeforeLast = await req('GET', `/ai/me/conversations/${nearLimitConversationId}`, turnLimitTester.headers);
+  const detailBeforeLast = await req('GET', `/ai/me/conversations/${nearLimitConversationId}`, nearLimitTester.headers);
   check(`E/F. fixture: turnCount == ${turnsBeforeLast} antes del último turno permitido`, detailBeforeLast.body?.turnCount === turnsBeforeLast);
   const consumedBeforeLastAttempt = detailBeforeLast.body?.dailyQuota?.consumed as number;
 
   const lastOperationId = randomOperationId();
-  const lastFailedSend = await req('POST', `/ai/me/conversations/${nearLimitConversationId}/messages`, turnLimitTester.headers, { content: FAKE_AI_PROVIDER_FAILURE_TRIGGER, operationId: lastOperationId });
+  const lastFailedSend = await req('POST', `/ai/me/conversations/${nearLimitConversationId}/messages`, nearLimitTester.headers, { content: FAKE_AI_PROVIDER_FAILURE_TRIGGER, operationId: lastOperationId });
   check('E. el último turno permitido falla técnicamente -> 503, nunca 409 (el límite SÍ permitía este turno)', lastFailedSend.status === 503);
-  const detailAfterLastFailure = await req('GET', `/ai/me/conversations/${nearLimitConversationId}`, turnLimitTester.headers);
+  const detailAfterLastFailure = await req('GET', `/ai/me/conversations/${nearLimitConversationId}`, nearLimitTester.headers);
   check('E. turnCount SIGUE en el mismo valor -- el fallo técnico no consumió el turno (sin ASSISTANT persistido)', detailAfterLastFailure.body?.turnCount === turnsBeforeLast);
   check('E. el mensaje USER del último turno SÍ quedó persistido (1 USER huérfano legítimo, reintentable)', (detailAfterLastFailure.body?.messages ?? []).length === turnsBeforeLast * 2 + 1);
   check('E. el fallo técnico NO consumió cuota diaria', detailAfterLastFailure.body?.dailyQuota?.consumed === consumedBeforeLastAttempt);
 
-  const lastRetry = await req('POST', `/ai/me/conversations/${nearLimitConversationId}/messages`, turnLimitTester.headers, { content: FAKE_AI_PROVIDER_FAILURE_TRIGGER, operationId: lastOperationId });
+  const lastRetry = await req('POST', `/ai/me/conversations/${nearLimitConversationId}/messages`, nearLimitTester.headers, { content: FAKE_AI_PROVIDER_FAILURE_TRIGGER, operationId: lastOperationId });
   check('F. reintento del MISMO operationId (turno pendiente) -> sigue permitido (503 por el mismo fallo determinista, NUNCA 409 por límite)', lastRetry.status === 503);
-  const detailAfterLastRetry = await req('GET', `/ai/me/conversations/${nearLimitConversationId}`, turnLimitTester.headers);
+  const detailAfterLastRetry = await req('GET', `/ai/me/conversations/${nearLimitConversationId}`, nearLimitTester.headers);
   check('F. sin duplicar el USER del turno pendiente tras el retry', (detailAfterLastRetry.body?.messages ?? []).length === turnsBeforeLast * 2 + 1);
   check('F. turnCount sigue igual -- el turno pendiente todavía no cuenta como completado', detailAfterLastRetry.body?.turnCount === turnsBeforeLast);
   check('F. el retry técnico tampoco consumió cuota diaria', detailAfterLastRetry.body?.dailyQuota?.consumed === consumedBeforeLastAttempt);

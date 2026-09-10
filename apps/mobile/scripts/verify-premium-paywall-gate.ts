@@ -164,12 +164,12 @@ function main() {
     ].map(stripComments).join('\n');
     return !/usePaywall|<PremiumPaywall\b|<PremiumBadge\b|<PremiumLockedScreen\b|useEntitlement/.test(flow);
   })());
-  check('ninguna superficie IA gana subcadenas de plan (Premium/Free/3-6-15-50)', (() => {
+  check('ninguna superficie IA gana subcadenas de plan (Premium/Free/3-6-15-20-50 -- 20 = cuota PREMIUM PB-1C, 50 obsoleta)', (() => {
     const aiFiles = [
       read('app', '(tabs)', 'ia', 'index.tsx'),
       read('app', '(tabs)', 'ia', 'conversation', '[conversationId].tsx'),
     ].map(stripComments).join('\n');
-    return !/\b(?:3|50|6|15)\s*(?:consultas|turnos)\b|Free|Premium|premium/.test(aiFiles);
+    return !/\b(?:3|50|6|15|20)\s*(?:consultas|turnos)\b|Free|Premium|premium/.test(aiFiles);
   })());
 
   // --------------------------------------------------------------------

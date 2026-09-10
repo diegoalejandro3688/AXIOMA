@@ -143,9 +143,9 @@ function classifyError(error: unknown): { category: AiProviderErrorCategory; saf
  * `AXIOMA_TUTOR_V3`) -- AUDITADO explícitamente en el Incremento 3 (no se
  * cambia por intuición, ver reporte de cierre):
  * - Coste: acota el gasto máximo por llamada de forma predecible,
- *   proporcional a la cuota diaria (3/50 consultas) -- un techo generoso por
- *   consulta no es grave cuando el NÚMERO de consultas ya está acotado por
- *   cuenta y día.
+ *   proporcional a la cuota diaria (3/20 consultas, FREE/PREMIUM -- ver
+ *   `AiEntitlementService`, PB-1C) -- un techo generoso por consulta no es
+ *   grave cuando el NÚMERO de consultas ya está acotado por cuenta y día.
  * - UX: ~350-450 palabras es suficiente para una explicación o pista
  *   tutorial completa y enfocada en una interfaz conversacional; una
  *   respuesta más larga sistemáticamente sugeriría que falta dividir la

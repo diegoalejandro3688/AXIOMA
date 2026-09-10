@@ -56,7 +56,7 @@ function classifyRace<T extends { status: number }>(a: T, b: T): { winner: T; lo
 
 /**
  * Este gate hace MUCHAS más peticiones que los demás (Incremento 3, PARTE F
- * de concurrencia + secuencias de hasta 49 consultas) -- puede chocar con el
+ * de concurrencia + secuencias de hasta ~19 consultas -- PB-1C) -- puede chocar con el
  * límite GLOBAL de `ThrottlerModule` (100 req/60s, ver app.module.ts), que
  * es infraestructura compartida de todo el backend, no algo propio de este
  * dominio. Absorbido con backoff acotado -- NUNCA se relaja el límite real,
@@ -470,15 +470,16 @@ async function main() {
     check('F5. replay tras las pruebas de concurrencia sigue devolviendo el mismo resultado', first.body?.assistantMessage?.id === replayF5.body?.assistantMessage?.id);
   }
 
-  console.log('--- F6. PREMIUM: mismo mecanismo de carrera de cuota, límite 50 (override exclusivo de gate) ---');
+  console.log('--- F6. PREMIUM: mismo mecanismo de carrera de cuota, límite 20 (PB-1C, override exclusivo de gate) ---');
   {
     const premiumF6 = await createSession('premiumF6');
     const overrideF6 = await req('POST', `/ai/_internal/set-tier-override?accountId=${premiumF6.accountId}&tier=PREMIUM`, { 'x-internal-ops-key': opsKey });
     check('F6 fixture: override PREMIUM aplicado', overrideF6.status === 200 || overrideF6.status === 201);
-    // maxTurns Premium == 15 -- la cuota (50) es POR CUENTA, el límite de turnos es POR CONVERSACIÓN;
-    // hace falta rotar de conversación cada 10 turnos para acumular 49 consultas sin chocar con maxTurns.
+    // PB-1C -- cuota PREMIUM == 20 (antes 50). Es POR CUENTA; el límite de
+    // turnos (15) es POR CONVERSACIÓN -> rotar de conversación cada 10 turnos
+    // para acumular 19 consultas sin chocar con maxTurns.
     let convF6 = await newConversation(premiumF6.headers);
-    for (let i = 1; i <= 49; i++) {
+    for (let i = 1; i <= 19; i++) {
       if (i > 1 && (i - 1) % 10 === 0) convF6 = await newConversation(premiumF6.headers);
       const sendF6 = await req('POST', `/ai/me/conversations/${convF6}/messages`, premiumF6.headers, { content: `consulta ${i}`, operationId: randomOperationId() });
       if (sendF6.status !== 200 && sendF6.status !== 201) {
@@ -486,17 +487,17 @@ async function main() {
       }
     }
     const detailBeforePremiumRace = await req('GET', `/ai/me/conversations/${convF6}`, premiumF6.headers);
-    check('F6 fixture: dailyQuota.consumed == 49, remaining == 1 (Premium, límite 50)', detailBeforePremiumRace.body?.dailyQuota?.consumed === 49 && detailBeforePremiumRace.body?.dailyQuota?.remaining === 1);
+    check('F6 fixture: dailyQuota.consumed == 19, remaining == 1 (Premium, límite 20 -- PB-1C)', detailBeforePremiumRace.body?.dailyQuota?.consumed === 19 && detailBeforePremiumRace.body?.dailyQuota?.remaining === 1);
 
     const convF6Race = await newConversation(premiumF6.headers);
     const [premiumRaceA, premiumRaceB] = await Promise.all([
-      req('POST', `/ai/me/conversations/${convF6Race}/messages`, premiumF6.headers, { content: 'consulta 50 -- A', operationId: randomOperationId() }),
-      req('POST', `/ai/me/conversations/${convF6Race}/messages`, premiumF6.headers, { content: 'consulta 50 -- B', operationId: randomOperationId() }),
+      req('POST', `/ai/me/conversations/${convF6Race}/messages`, premiumF6.headers, { content: 'consulta 20 -- A', operationId: randomOperationId() }),
+      req('POST', `/ai/me/conversations/${convF6Race}/messages`, premiumF6.headers, { content: 'consulta 20 -- B', operationId: randomOperationId() }),
     ]);
     const premiumSuccesses = [premiumRaceA, premiumRaceB].filter((r) => r.status === 200 || r.status === 201);
     check('F6a. EXACTAMENTE una de las dos tuvo éxito', premiumSuccesses.length === 1);
     const detailAfterPremiumRace = await req('GET', `/ai/me/conversations/${convF6Race}`, premiumF6.headers);
-    check('F6b. dailyQuota.consumed == 50 EXACTAMENTE (nunca 51) -- mismo mecanismo, límite Premium', detailAfterPremiumRace.body?.dailyQuota?.consumed === 50);
+    check('F6b. dailyQuota.consumed == 20 EXACTAMENTE (nunca 21) -- mismo mecanismo, límite Premium', detailAfterPremiumRace.body?.dailyQuota?.consumed === 20);
   }
 
   console.log('--- F7. Verificación estática: ninguna transacción envuelve la llamada al proveedor ---');

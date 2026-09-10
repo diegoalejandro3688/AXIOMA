@@ -12,13 +12,21 @@ export interface AiEntitlement {
 }
 
 /**
- * Free = 6 turnos / 3 consultas diarias, Premium = 15 turnos / 50 consultas
- * diarias -- ambos pares son contractuales y definitivos del bloque IA. NO
- * migran fuera de este archivo.
+ * Free = 6 turnos / 3 consultas diarias, Premium = 15 turnos / 20 consultas
+ * diarias -- ambos pares son contractuales del bloque IA. NO migran fuera de
+ * este archivo.
+ *
+ * PB-1C (2026-09-10): la cuota diaria PREMIUM baja de 50 -> 20 para alinear el
+ * codigo con la decision de lanzamiento CONGELADA en PB-0B-R1 (unit-economics
+ * del Tutor: 20/dia es el unico valor donde el tope diario por si solo
+ * mantiene contribucion-positiva a un usuario que agota la cuota, con margen
+ * frente a FX y peso de peticion). `maxTurns` (6/15) sin cambios. Semantica de
+ * consumo/reset/lease/TQ-02 sin cambios. Los ADR de cierre del Bloque VI/VII
+ * (fechados) NO se reescriben -- registran el valor de su epoca.
  */
 const ENTITLEMENTS: Record<AiTier, Omit<AiEntitlement, 'tier'>> = {
   FREE: { maxTurns: 6, dailyRequestLimit: 3 },
-  PREMIUM: { maxTurns: 15, dailyRequestLimit: 50 },
+  PREMIUM: { maxTurns: 15, dailyRequestLimit: 20 },
 };
 
 /**

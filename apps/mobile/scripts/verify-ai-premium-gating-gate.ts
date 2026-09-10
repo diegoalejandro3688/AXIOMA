@@ -17,7 +17,7 @@
 //      (`availability.canSend` / `homeAvailability`), NO importan
 //      `usePaywall`/`useEntitlement`/`open('ai_quota')`, y no introducen
 //      ninguna subcadena prohibida por el gate legacy (Free/Premium/premium,
-//      3/6/15/50 consultas/turnos).
+//      3/6/15/20/50 consultas/turnos -- 20 = cuota PREMIUM vigente PB-1C, 50 = valor obsoleto).
 //   D. `verify:ai-mobile-gate.ts` sin editar (byte-identico).
 //   E. package.json registra el script.
 import { execFileSync } from 'node:child_process';
@@ -44,8 +44,15 @@ const HUB = 'app/(tabs)/ia/index.tsx';
 const CONVO = 'app/(tabs)/ia/conversation/[conversationId].tsx';
 const LEGACY_GATE = 'apps/mobile/scripts/verify-ai-mobile-gate.ts';
 
-/** El mismo regex de "numeros/planes de negocio" del gate legacy (verify-ai-mobile-gate.ts). */
-const BUSINESS_STRINGS = /\b(?:3|50|6|15)\s*(?:consultas|turnos)\b|Free|Premium|premium/;
+/**
+ * Regex de "numeros/planes de negocio" -- deriva del gate legacy
+ * (verify-ai-mobile-gate.ts) pero PB-1C-R1 añade `20` (la cuota PREMIUM
+ * vigente desde PB-1C) al conjunto prohibido. Se conserva `50` (valor
+ * obsoleto) para seguir atrapando copy histórico stale. El gate legacy sigue
+ * con `50`-solo a propósito: está CONGELADO byte-idéntico (ver §D) y no es la
+ * fuente de la cuota; esta divergencia de regex es deliberada.
+ */
+const BUSINESS_STRINGS = /\b(?:3|50|6|15|20)\s*(?:consultas|turnos)\b|Free|Premium|premium/;
 
 async function main() {
   // --------------------------------------------------------------------
@@ -65,7 +72,7 @@ async function main() {
 
   const predCode = stripComments(read(PREDICATE));
   check('el predicado es RN-free (no importa react/react-native)', !/from 'react'|from 'react-native'/.test(predCode));
-  check('el predicado NO hace requests ni conoce numeros de plan', !/fetch\(|apiRequest|\b(?:3|6|15|50)\b/.test(predCode));
+  check('el predicado NO hace requests ni conoce numeros de plan (3/6/15/20/50)', !/fetch\(|apiRequest|\b(?:3|6|15|20|50)\b/.test(predCode));
 
   // --------------------------------------------------------------------
   console.log('--- B. componente AiLimitUpsell (fuera del scan legacy) ---');
@@ -80,7 +87,7 @@ async function main() {
   check('open(\'ai_quota\') SOLO desde un onPress (nunca al renderizar / en el cuerpo)', /onPress=\{\(\) => open\('ai_quota'\)\}/.test(compCode) && !/^\s*open\('ai_quota'\)/m.test(compCode));
   check('NO contiene "sin límites"', !/sin l[ií]mites/i.test(compCode));
   check('sin Billing / compra / suscripcion / override', !/billing|purchase|comprar|checkout|suscrip|subscription|override|setTier|play billing/i.test(compCode));
-  check('sin autoridad numerica de plan (3/6/15/50 consultas|turnos, limit:/remaining:/consumed:)', !/\b(?:3|6|15|50)\s*(?:consultas|turnos)\b/.test(compCode) && !/\b(?:limit|remaining|consumed)\s*:\s*\d/.test(compCode));
+  check('sin autoridad numerica de plan (3/6/15/20/50 consultas|turnos, limit:/remaining:/consumed:)', !/\b(?:3|6|15|20|50)\s*(?:consultas|turnos)\b/.test(compCode) && !/\b(?:limit|remaining|consumed)\s*:\s*\d/.test(compCode));
   check('copy modesto: no promete mejor modelo / mas rapido / mas inteligente / ilimitado', !/mejor modelo|m[aá]s r[aá]pid|m[aá]s inteligente|ilimitad|unlimited/i.test(compCode));
   check('usa tokens del tema (useThemedStyles/ThemeTokens), sin hex sueltos', /useThemedStyles/.test(compCode) && /ThemeTokens/.test(compCode) && !/#[0-9a-fA-F]{3,8}\b/.test(compCode));
 
