@@ -360,6 +360,18 @@ model Account {
   /// depende de estos campos.
   publicTermsAcceptedVersion String?  @map("public_terms_accepted_version")
   publicTermsAcceptedAt      DateTime? @map("public_terms_accepted_at")
+  /// PB-1A -- referencia OPACA de cuenta de facturación. Hacia el móvil se
+  /// expone como `billingAccountRef`; Google Play la recibe como
+  /// `obfuscatedAccountId` en `launchBillingFlow` y ZETRYND la usa para
+  /// atribuir RTDN. Valor ALEATORIO server-side (`crypto.randomUUID()`),
+  /// aprovisionado PEREZOSAMENTE en el primer
+  /// `POST /me/subscription/google-play/billing-context` -- nunca en el alta,
+  /// nunca derivado de `id` / Firebase UID / username / email / reloj, nunca
+  /// rotado en llamadas ordinarias. `null` mientras la cuenta nunca haya
+  /// pedido contexto de facturación. Identificador PSEUDÓNIMO sensible, jamás
+  /// una credencial: en logs sólo fingerprint; nunca en `GET /me/entitlement`
+  /// ni en ningún contrato de auth/perfil.
+  obfuscatedAccountId String? @unique @map("obfuscated_account_id")
 
   identities           AuthIdentity[]
   sessions             AuthSession[]

@@ -55,4 +55,42 @@ export class AccountRepository {
       data: { status, deletionRequestedAt: null },
     });
   }
+
+  /**
+   * PB-1A -- lookup por la referencia OPACA de facturación (`billingAccountRef`
+   * / `obfuscatedAccountId` de Google). Único camino de atribución de RTDN
+   * cuando no hay fila ni predecesor por `purchaseToken`. Proyección mínima
+   * (`id` + `status`): quien atribuye NUNCA reactiva ni cambia el estado de la
+   * cuenta -- una cuenta CLOSED puede seguir siendo atribuible (ver PB-1A §15).
+   */
+  findByObfuscatedAccountId(ref: string): Promise<{ id: string; status: AccountStatus } | null> {
+    return this.prisma.account.findUnique({
+      where: { obfuscatedAccountId: ref },
+      select: { id: true, status: true },
+    });
+  }
+
+  /** PB-1A -- lee SÓLO la referencia opaca de facturación de la cuenta (o `null`). */
+  async findObfuscatedAccountId(id: string): Promise<string | null> {
+    const row = await this.prisma.account.findUnique({
+      where: { id },
+      select: { obfuscatedAccountId: true },
+    });
+    return row?.obfuscatedAccountId ?? null;
+  }
+
+  /**
+   * PB-1A -- aprovisiona la referencia opaca SÓLO si la cuenta sigue en `NULL`
+   * (UPDATE condicional atómico, nunca read-modify-write). Devuelve `true` si
+   * ESTA llamada fijó el valor, `false` si otra escritura concurrente ganó la
+   * carrera (el llamador re-lee el valor ganador). NUNCA sobrescribe un valor
+   * ya existente.
+   */
+  async tryProvisionObfuscatedAccountId(id: string, ref: string): Promise<boolean> {
+    const { count } = await this.prisma.account.updateMany({
+      where: { id, obfuscatedAccountId: null },
+      data: { obfuscatedAccountId: ref },
+    });
+    return count === 1;
+  }
 }

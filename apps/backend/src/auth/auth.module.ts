@@ -41,6 +41,10 @@ import { OutboxModule } from '../platform/outbox/outbox.module';
       },
     },
   ],
-  exports: [AuthService, AuthGuard],
+  // `AccountRepository` se exporta para `SubscriptionModule` (PB-1A): la
+  // identidad de facturacion (`BillingIdentityService`) y la atribucion de RTDN
+  // leen/escriben SOLO la columna `obfuscated_account_id` de `account`, a
+  // traves de este repositorio -- nunca con Prisma directo fuera de `auth/`.
+  exports: [AuthService, AuthGuard, AccountRepository],
 })
 export class AuthModule {}

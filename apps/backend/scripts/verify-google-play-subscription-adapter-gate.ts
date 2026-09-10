@@ -76,13 +76,24 @@ async function makeSession(pg: Client, label: string) {
     [randomUUID(), accountId, uid, `${uid}@example.com`],
   );
   await pg.query(`INSERT INTO auth_session (id, account_id, session_version, created_at, expires_at) VALUES ($1,$2,1,now(),now()+interval '1 day')`, [sessionId, accountId]);
+  // PB-1A -- toda cuenta de prueba tiene su `billingAccountRef` opaco ya
+  // aprovisionado (el movil lo pide antes de `launchBillingFlow`). Un
+  // reconcile de PRIMER CONTACTO exige que el snapshot verificado traiga un
+  // `obfuscatedExternalAccountId` que coincida con este valor.
+  const obfRef = `obf-${randomUUID()}`;
+  await pg.query(`UPDATE account SET obfuscated_account_id = $1 WHERE id = $2`, [obfRef, accountId]);
   createdAccountIds.push(accountId);
   const idToken = StubIdentityProvider.encode({ providerSubject: uid, email: `${uid}@example.com`, emailVerified: true });
-  return { accountId, auth: { authorization: `Bearer ${idToken}`, 'x-session-id': sessionId } };
+  return { accountId, obfRef, auth: { authorization: `Bearer ${idToken}`, 'x-session-id': sessionId } };
 }
 
 const HOUR = 3_600_000;
 const now = new Date();
+// PB-1A -- los fixtures de PRIMER CONTACTO llevan
+// `obfuscatedExternalAccountId: <sesion>.obfRef` inyectado (coincide con el
+// `billingAccountRef` aprovisionado en `makeSession`) para pasar el cross-check
+// de atribucion. Los fixtures que se reconcilian sobre una fila/predecesor
+// existente NO lo necesitan (ruta advisory: ausencia tolerada).
 
 async function main() {
   // ========================================================================
@@ -304,7 +315,7 @@ async function main() {
     // B1 -- ACTIVE + futuro -> verified -> PREMIUM -> acked -> latest_event_time NULL.
     {
       const s = await makeSession(pg, 'b1');
-      const token = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
       const r = await reconcile(s.auth, token);
       check('B1: reconcile ACTIVE -> 200 { status: "verified" }', r.status === 200 && JSON.stringify(r.body) === JSON.stringify({ status: 'verified' }));
       check('B1: GET /me/entitlement -> PREMIUM', (await tierOf(s.auth)) === 'PREMIUM');
@@ -317,7 +328,7 @@ async function main() {
     // B2 -- PENDING -> pending -> FREE -> NO acknowledge.
     {
       const s = await makeSession(pg, 'b2');
-      const token = encodeFakeSubscriptionToken({ state: 'PENDING', expiryDeltaMs: 30 * 24 * HOUR });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'PENDING', expiryDeltaMs: 30 * 24 * HOUR });
       const r = await reconcile(s.auth, token);
       check('B2: reconcile PENDING -> 200 { status: "pending" }', r.status === 200 && (r.body as { status?: string })?.status === 'pending');
       check('B2: GET /me/entitlement -> FREE (una compra pendiente nunca concede)', (await tierOf(s.auth)) === 'FREE');
@@ -327,7 +338,7 @@ async function main() {
     // B3 -- idempotencia: mismo token dos veces -> una sola fila, mismo dueno.
     {
       const s = await makeSession(pg, 'b3');
-      const token = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 20 * 24 * HOUR });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 20 * 24 * HOUR });
       await reconcile(s.auth, token);
       const r2 = await reconcile(s.auth, token);
       check('B3: segundo reconcile del mismo token -> 200 verified (idempotente)', r2.status === 200);
@@ -349,7 +360,7 @@ async function main() {
     // B5 -- producto equivocado -> 400 -> ninguna fila.
     {
       const s = await makeSession(pg, 'b5');
-      const token = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, productId: 'com.otro.producto' });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, productId: 'com.otro.producto' });
       const r = await reconcile(s.auth, token);
       check('B5: snapshot con productId != zetrynd_premium -> 400 SUBSCRIPTION_INVALID', r.status === 400 && (r.body as { error?: { code?: string } })?.error?.code === 'SUBSCRIPTION_INVALID');
       check('B5: ninguna fila', (await rowOf(token)) === undefined);
@@ -367,7 +378,7 @@ async function main() {
     // B7 -- estado no reconocido -> fail-closed: fila EXPIRED, FREE, sin acknowledge.
     {
       const s = await makeSession(pg, 'b7');
-      const token = encodeFakeSubscriptionToken({ state: 'EXPIRED', recognizedState: false, rawSubscriptionState: 'SUBSCRIPTION_STATE_FUTURE_2027', expiryDeltaMs: 99 * 24 * HOUR });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'EXPIRED', recognizedState: false, rawSubscriptionState: 'SUBSCRIPTION_STATE_FUTURE_2027', expiryDeltaMs: 99 * 24 * HOUR });
       const r = await reconcile(s.auth, token);
       check('B7: estado de Google no reconocido -> 200 verified (se persiste fail-closed)', r.status === 200);
       check('B7: fila state=EXPIRED, FREE', (await rowOf(token))?.state === 'EXPIRED' && (await tierOf(s.auth)) === 'FREE');
@@ -379,7 +390,7 @@ async function main() {
       const s = await makeSession(pg, 'b8-canceled');
       // Usuario cancela la auto-renovacion antes de que el backend termine:
       // Google reporta CANCELED, expiryTime futuro, ackState PENDING.
-      const token = encodeFakeSubscriptionToken({ state: 'CANCELED', expiryDeltaMs: 20 * 24 * HOUR, autoRenewing: false });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'CANCELED', expiryDeltaMs: 20 * 24 * HOUR, autoRenewing: false });
       const r = await reconcile(s.auth, token);
       check('B8: CANCELED + expiry futuro + no-ack -> 200 verified', r.status === 200);
       check('B8: -> PREMIUM (el periodo pagado sigue vigente)', (await tierOf(s.auth)) === 'PREMIUM');
@@ -387,14 +398,14 @@ async function main() {
     }
     {
       const s = await makeSession(pg, 'b8-grace');
-      const token = encodeFakeSubscriptionToken({ state: 'IN_GRACE_PERIOD', expiryDeltaMs: 3 * 24 * HOUR });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'IN_GRACE_PERIOD', expiryDeltaMs: 3 * 24 * HOUR });
       const r = await reconcile(s.auth, token);
       check('B8: GRACE valido + no-ack -> 200 verified, PREMIUM, ACKNOWLEDGED', r.status === 200 && (await tierOf(s.auth)) === 'PREMIUM' && (await rowOf(token))?.acknowledgement_state === 'ACKNOWLEDGED');
     }
     {
       const s = await makeSession(pg, 'b8-ackd');
       // Ya acknowledgeada de origen (una renovacion) -> no se re-acknowledgea, 200.
-      const token = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true });
       const r = await reconcile(s.auth, token);
       check('B8: ya acknowledgeada -> 200 verified, sigue ACKNOWLEDGED (sin re-acknowledge)', r.status === 200 && (await rowOf(token))?.acknowledgement_state === 'ACKNOWLEDGED');
     }
@@ -402,7 +413,7 @@ async function main() {
     // B8-retry -- fallo de acknowledge = 503 REINTENTABLE, fila preservada, sin duplicar.
     {
       const s = await makeSession(pg, 'b8-retry');
-      const token = encodeFakeAckFailToken(1, { state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
+      const token = encodeFakeAckFailToken(1, { obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
 
       const r1 = await reconcile(s.auth, token);
       check('B8-retry: #1 con ack fallido -> 503 REINTENTABLE (no "verified")', r1.status === 503);
@@ -422,7 +433,7 @@ async function main() {
     {
       const a = await makeSession(pg, 'b9a');
       const b = await makeSession(pg, 'b9b');
-      const token = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: a.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
       await reconcile(a.auth, token);
       const r = await reconcile(b.auth, token);
       check('B9: token de otra cuenta -> 409 SUBSCRIPTION_ACCOUNT_MISMATCH', r.status === 409 && (r.body as { error?: { code?: string } })?.error?.code === 'SUBSCRIPTION_ACCOUNT_MISMATCH');
@@ -433,7 +444,7 @@ async function main() {
     // B10 -- linked token: A_tok -> SUPERSEDED, B_tok current, sin inventar latestEventTime.
     {
       const s = await makeSession(pg, 'b10');
-      const oldToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 10 * 24 * HOUR });
+      const oldToken = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 10 * 24 * HOUR });
       await reconcile(s.auth, oldToken);
       const newToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 40 * 24 * HOUR, linkedPurchaseToken: oldToken });
       const r = await reconcile(s.auth, newToken);
@@ -447,7 +458,7 @@ async function main() {
     {
       const owner = await makeSession(pg, 'b10b-owner');
       const other = await makeSession(pg, 'b10b-other');
-      const oldToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 10 * 24 * HOUR });
+      const oldToken = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: owner.obfRef, state: 'ACTIVE', expiryDeltaMs: 10 * 24 * HOUR });
       await reconcile(owner.auth, oldToken);
       const newToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 40 * 24 * HOUR, linkedPurchaseToken: oldToken });
       const r = await reconcile(other.auth, newToken);
@@ -461,10 +472,10 @@ async function main() {
     // vigente. A NO se marca SUPERSEDED.
     {
       const s = await makeSession(pg, 'b11');
-      const aToken = encodeFakeSubscriptionToken({ state: 'EXPIRED', expiryDeltaMs: -5 * 24 * HOUR }); // startTime default = now-30d
+      const aToken = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'EXPIRED', expiryDeltaMs: -5 * 24 * HOUR }); // startTime default = now-30d
       await reconcile(s.auth, aToken);
       check('B11: pre -- A EXPIRED, cuenta X en FREE', (await rowOf(aToken))?.state === 'EXPIRED' && (await tierOf(s.auth)) === 'FREE');
-      const bToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 28 * 24 * HOUR, startDeltaMs: -1 * HOUR }); // startTime nuevo
+      const bToken = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 28 * 24 * HOUR, startDeltaMs: -1 * HOUR }); // startTime nuevo
       const r = await reconcile(s.auth, bToken);
       check('B11: reconcile(B) -> 200 verified', r.status === 200 && (r.body as { status?: string })?.status === 'verified');
       check('B11: GET /me/entitlement -> PREMIUM DE INMEDIATO (no espera el SUBSCRIPTION_PURCHASED RTDN)', (await tierOf(s.auth)) === 'PREMIUM');
@@ -478,7 +489,7 @@ async function main() {
     {
       const x = await makeSession(pg, 'b12-x');
       const z = await makeSession(pg, 'b12-z');
-      const aToken = encodeFakeSubscriptionToken({ state: 'EXPIRED', expiryDeltaMs: -5 * 24 * HOUR });
+      const aToken = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: x.obfRef, state: 'EXPIRED', expiryDeltaMs: -5 * 24 * HOUR });
       await reconcile(x.auth, aToken);
       const bToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 28 * 24 * HOUR, expiredPurchaseToken: aToken });
       const r = await reconcile(z.auth, bToken);
@@ -491,7 +502,7 @@ async function main() {
     console.log('--- PARTE C. forma del endpoint ---');
     {
       const s = await makeSession(pg, 'c');
-      const token = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
       const extra = await req('POST', '/me/subscription/google-play/reconcile', s.auth, { purchaseToken: token, accountId: 'x', tier: 'PREMIUM', state: 'ACTIVE', expiryTime: 'y', autoRenowing: true, productId: 'z' });
       check('C: body con campos extra (accountId/tier/state/...) -> 400 VALIDATION_ERROR (.strict())', extra.status === 400 && (extra.body as { error?: { code?: string } })?.error?.code === 'VALIDATION_ERROR');
       const noAuth = await req('POST', '/me/subscription/google-play/reconcile', {}, { purchaseToken: token });
@@ -567,7 +578,7 @@ async function main() {
       // Comportamiento: una fila con latestEventTime NO-null (simula una RTDN
       // previa) NO se borra ni se reemplaza al reconciliar directo.
       const s = await makeSession(pg, 'e');
-      const token = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
       await reconcile(s.auth, token); // crea la fila (latest_event_time NULL)
       const rtdnTime = new Date(now.getTime() - 2 * HOUR);
       await pg.query(`UPDATE account_subscription SET latest_event_time = $1, latest_notification_type = 'SUBSCRIPTION_RENEWED' WHERE purchase_token = $2`, [rtdnTime, token]);
@@ -628,7 +639,7 @@ async function main() {
     //       PREMIUM). A sin cambios, NO SUPERSEDED; B nunca es fila.
     {
       const s = await makeSession(pg, 'g2');
-      const aToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
+      const aToken = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
       await reconcile(s.auth, aToken);
       const bToken = encodeFakePendingPurchaseCanceledToken(aToken);
       const r = await reconcile(s.auth, bToken);
@@ -641,7 +652,7 @@ async function main() {
     // G3 -- linked a A CANCELED + expiry futuro -> status `canceled`, PREMIUM.
     {
       const s = await makeSession(pg, 'g3');
-      const aToken = encodeFakeSubscriptionToken({ state: 'CANCELED', expiryDeltaMs: 15 * 24 * HOUR, autoRenewing: false });
+      const aToken = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'CANCELED', expiryDeltaMs: 15 * 24 * HOUR, autoRenewing: false });
       await reconcile(s.auth, aToken);
       const bToken = encodeFakePendingPurchaseCanceledToken(aToken);
       const r = await reconcile(s.auth, bToken);
@@ -651,7 +662,7 @@ async function main() {
     // G4 -- linked a A EXPIRED -> status `canceled`, entitlement FREE.
     {
       const s = await makeSession(pg, 'g4');
-      const aToken = encodeFakeSubscriptionToken({ state: 'EXPIRED', expiryDeltaMs: -5 * 24 * HOUR });
+      const aToken = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'EXPIRED', expiryDeltaMs: -5 * 24 * HOUR });
       await reconcile(s.auth, aToken);
       const bToken = encodeFakePendingPurchaseCanceledToken(aToken);
       const r = await reconcile(s.auth, bToken);
@@ -663,7 +674,7 @@ async function main() {
     //       (contraste directo con el reemplazo COMPLETADO de G7).
     {
       const s = await makeSession(pg, 'g5');
-      const aToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 20 * 24 * HOUR });
+      const aToken = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 20 * 24 * HOUR });
       await reconcile(s.auth, aToken);
       await reconcile(s.auth, encodeFakePendingPurchaseCanceledToken(aToken));
       check('G5: A jamas pasa a SUPERSEDED por una compra pendiente cancelada', (await rowOf(aToken))?.state === 'ACTIVE');
@@ -673,7 +684,7 @@ async function main() {
     //        idempotente -- sigue `canceled`, A intacta, sin fila para B.
     {
       const s = await makeSession(pg, 'g5b');
-      const aToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 25 * 24 * HOUR });
+      const aToken = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 25 * 24 * HOUR });
       await reconcile(s.auth, aToken);
       const bToken = encodeFakePendingPurchaseCanceledToken(aToken);
       await reconcile(s.auth, bToken);
@@ -688,7 +699,7 @@ async function main() {
     {
       const owner = await makeSession(pg, 'g6-owner');
       const other = await makeSession(pg, 'g6-other');
-      const aToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
+      const aToken = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: owner.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
       await reconcile(owner.auth, aToken);
       const r = await reconcile(other.auth, encodeFakePendingPurchaseCanceledToken(aToken));
       check('G6: reemplazo pendiente cancelado cuyo linked es de otra cuenta -> 409 SUBSCRIPTION_ACCOUNT_MISMATCH', r.status === 409 && (r.body as { error?: { code?: string } })?.error?.code === 'SUBSCRIPTION_ACCOUNT_MISMATCH');
@@ -701,7 +712,7 @@ async function main() {
     //       solo para PENDING_PURCHASE_CANCELED.
     {
       const s = await makeSession(pg, 'g7');
-      const aToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 10 * 24 * HOUR });
+      const aToken = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 10 * 24 * HOUR });
       await reconcile(s.auth, aToken);
       const bToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 40 * 24 * HOUR, linkedPurchaseToken: aToken });
       const r = await reconcile(s.auth, bToken);
@@ -718,7 +729,7 @@ async function main() {
     // G9 -- NUNCA se acknowledgea el token de una compra pendiente cancelada.
     {
       const s = await makeSession(pg, 'g9');
-      const aToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true });
+      const aToken = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true });
       await reconcile(s.auth, aToken);
       const bToken = encodeFakePendingPurchaseCanceledToken(aToken);
       await reconcile(s.auth, bToken);

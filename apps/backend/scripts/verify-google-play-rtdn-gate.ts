@@ -94,9 +94,12 @@ async function makeSession(pg: Client, label: string) {
     [randomUUID(), accountId, uid, `${uid}@example.com`],
   );
   await pg.query(`INSERT INTO auth_session (id, account_id, session_version, created_at, expires_at) VALUES ($1,$2,1,now(),now()+interval '1 day')`, [sessionId, accountId]);
+  // PB-1A -- billingAccountRef opaco ya aprovisionado (ver adapter gate).
+  const obfRef = `obf-${randomUUID()}`;
+  await pg.query(`UPDATE account SET obfuscated_account_id = $1 WHERE id = $2`, [obfRef, accountId]);
   createdAccountIds.push(accountId);
   const idToken = StubIdentityProvider.encode({ providerSubject: uid, email: `${uid}@example.com`, emailVerified: true });
-  return { accountId, auth: { authorization: `Bearer ${idToken}`, 'x-session-id': sessionId } };
+  return { accountId, obfRef, auth: { authorization: `Bearer ${idToken}`, 'x-session-id': sessionId } };
 }
 
 const HOUR = 3_600_000;
@@ -319,7 +322,7 @@ async function main() {
     console.log('--- PARTE D. dedup por messageId (durable) ---');
     {
       const s = await makeSession(pg, 'd');
-      const token = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
       await reconcile(s.auth, token);
       const dn = developerNotification({ eventTimeMillis: String(now.getTime()), subscription: { notificationType: 2, purchaseToken: token } });
       const first = await postRtdn(oidcBearer(), envelope('d-dup', dn));
@@ -335,7 +338,7 @@ async function main() {
       const s = await makeSession(pg, 'e1');
       // seq: reconcile del movil ve ACTIVE; el worker RTDN reconsulta y ve CANCELED (periodo vigente).
       const token = encodeFakeSequenceToken([
-        { state: 'ACTIVE', expiryDeltaMs: 20 * 24 * HOUR, acknowledged: true },
+        { obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 20 * 24 * HOUR, acknowledged: true },
         { state: 'CANCELED', expiryDeltaMs: 20 * 24 * HOUR, autoRenewing: false, acknowledged: true },
       ]);
       await reconcile(s.auth, token);
@@ -353,7 +356,7 @@ async function main() {
     // E.2 cronologia fuera de orden: un RTDN mas VIEJO no retrocede latest_event_time.
     {
       const s = await makeSession(pg, 'e2');
-      const token = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 40 * 24 * HOUR, acknowledged: true });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 40 * 24 * HOUR, acknowledged: true });
       await reconcile(s.auth, token);
       const newer = String(now.getTime());
       const older = String(now.getTime() - 6 * HOUR);
@@ -385,6 +388,8 @@ async function main() {
     }
     // E.5 RTDN antes que el reconcile del movil -> no atribuible -> RETRYABLE (no FAILED de una).
     {
+      // PB-1A -- sin `obfuscatedExternalAccountId`: la RTDN NO puede atribuir
+      // por ningun camino (ni fila, ni predecesor, ni ref opaca) -> RETRYABLE.
       const token = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
       usedPurchaseTokens.push(token);
       await postRtdn(oidcBearer(), envelope('e5-early', developerNotification({ eventTimeMillis: String(now.getTime()), subscription: { notificationType: 4, purchaseToken: token } })));
@@ -406,7 +411,7 @@ async function main() {
     ];
     for (const [name, type, expectedState, secondSpec, expectedTier] of lifecycle) {
       const s = await makeSession(pg, `f-${type}`);
-      const token = encodeFakeSequenceToken([{ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true }, secondSpec as never]);
+      const token = encodeFakeSequenceToken([{ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true }, secondSpec as never]);
       await reconcile(s.auth, token);
       await postRtdn(oidcBearer(), envelope(`f-${type}`, developerNotification({ eventTimeMillis: String(now.getTime()), subscription: { notificationType: type, purchaseToken: token } })));
       await processRtdn();
@@ -417,7 +422,7 @@ async function main() {
     {
       const s = await makeSession(pg, 'f-revoke');
       const token = encodeFakeSequenceToken([
-        { state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true },
+        { obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true },
         { state: 'EXPIRED', expiryDeltaMs: 20 * 24 * HOUR }, // Google: post-revoke el estado es terminal aunque el timestamp fuera futuro
       ]);
       await reconcile(s.auth, token);
@@ -431,7 +436,7 @@ async function main() {
     // F.pending-purchase-canceled -- type 20 fluye por el camino C3.2 aprobado.
     {
       const s = await makeSession(pg, 'f-ppc');
-      const aToken = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true });
+      const aToken = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true });
       await reconcile(s.auth, aToken);
       // El token del RTDN (B) es una compra pendiente cancelada linkeada a A.
       const bToken = encodeFakeSubscriptionToken({ state: 'EXPIRED', pendingPurchaseCanceled: true, linkedPurchaseToken: aToken });
@@ -453,7 +458,7 @@ async function main() {
       [22, 'SUBSCRIPTION_PRICE_STEP_UP_CONSENT_UPDATED'],
     ] as Array<[number, string]>) {
       const s = await makeSession(pg, `f-t${type}`);
-      const token = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true });
       await reconcile(s.auth, token);
       await postRtdn(oidcBearer(), envelope(`f-t${type}`, developerNotification({ eventTimeMillis: String(now.getTime()), subscription: { notificationType: type, purchaseToken: token } })));
       await processRtdn();
@@ -471,7 +476,7 @@ async function main() {
     {
       const s = await makeSession(pg, 'g1');
       const token = encodeFakeSequenceToken([
-        { state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true }, // reconcile movil
+        { obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true }, // reconcile movil
         { state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true }, // 1er intento worker (lo forzamos a fallar con err token? no: seq no lanza)
       ]);
       await reconcile(s.auth, token);
@@ -512,7 +517,7 @@ async function main() {
     // G.3 acknowledge fallido -> RETRYABLE -> reintento del worker lo acknowledgea (recuperacion autonoma).
     {
       const s = await makeSession(pg, 'g3');
-      const token = encodeFakeAckFailToken(1, { state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
+      const token = encodeFakeAckFailToken(1, { obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR });
       usedPurchaseTokens.push(token);
       const first = await reconcile(s.auth, token);
       check('G3: reconcile del movil con ack fallido -> 503 reintentable, fila PREMIUM sin ack', first.status === 503 && (await subRowOf(token))?.acknowledgement_state === 'PENDING' && (await tierOf(s.auth)) === 'PREMIUM');
@@ -562,7 +567,7 @@ async function main() {
     console.log('--- PARTE I. procedencia: reconcile directo del movil no fija cronologia ---');
     {
       const s = await makeSession(pg, 'i');
-      const token = encodeFakeSubscriptionToken({ state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true });
+      const token = encodeFakeSubscriptionToken({ obfuscatedExternalAccountId: s.obfRef, state: 'ACTIVE', expiryDeltaMs: 30 * 24 * HOUR, acknowledged: true });
       await reconcile(s.auth, token);
       check('I: fila creada por reconcile directo -> latest_event_time NULL', (await subRowOf(token))?.latestEventMs === null);
       // ahora una RTDN fija la cronologia; un segundo reconcile directo NO la borra.

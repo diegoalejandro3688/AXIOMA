@@ -1,12 +1,15 @@
 import { Body, Controller, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
+  googlePlayBillingContextResponseSchema,
   subscriptionReconcileRequestSchema,
   subscriptionReconcileResponseSchema,
+  type GooglePlayBillingContextResponse,
   type SubscriptionReconcileResponse,
 } from '@axioma/contracts';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { parseRequestBody } from '../platform/validation/parse-request-body';
+import { BillingIdentityService } from './billing-identity.service';
 import { SubscriptionReconciliationService } from './subscription-reconciliation.service';
 
 /**
@@ -26,7 +29,29 @@ import { SubscriptionReconciliationService } from './subscription-reconciliation
 @Controller('me/subscription/google-play')
 @UseGuards(AuthGuard)
 export class SubscriptionController {
-  constructor(private readonly reconciliation: SubscriptionReconciliationService) {}
+  constructor(
+    private readonly reconciliation: SubscriptionReconciliationService,
+    private readonly billingIdentity: BillingIdentityService,
+  ) {}
+
+  /**
+   * PB-1A -- `POST /me/subscription/google-play/billing-context`. El movil lo
+   * llama UNA vez antes de `launchBillingFlow`. Aprovisiona (perezosamente) y
+   * devuelve `billingAccountRef` -- el `obfuscatedAccountId` opaco y estable de
+   * la cuenta. Es POST y no GET porque la PRIMERA llamada ESCRIBE
+   * (`Account.obfuscatedAccountId`); las siguientes devuelven el mismo valor
+   * (idempotente desde la vista del cliente). SIN body: el `accountId` sale
+   * SIEMPRE de la sesion, nunca del cliente, y no se acepta `billingAccountRef`
+   * entrante. La respuesta NUNCA lleva `accountId` / Firebase UID /
+   * `purchaseToken` / estado de suscripcion.
+   */
+  @Post('billing-context')
+  @Throttle({ default: { limit: 100, ttl: 60_000 } })
+  @HttpCode(200)
+  async billingContext(@Req() request: AuthenticatedRequest): Promise<GooglePlayBillingContextResponse> {
+    const billingAccountRef = await this.billingIdentity.provisionBillingAccountRef(request.accountId);
+    return googlePlayBillingContextResponseSchema.parse({ billingAccountRef });
+  }
 
   @Post('reconcile')
   // Reconciliar es idempotente y seguro de reintentar; un cliente legitimo lo

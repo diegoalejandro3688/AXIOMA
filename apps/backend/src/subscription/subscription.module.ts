@@ -11,6 +11,7 @@ import { FakeSubscriptionProviderAdapter } from './fake-subscription-provider.ad
 import { DisabledSubscriptionProviderAdapter } from './disabled-subscription-provider.adapter';
 import { SUBSCRIPTION_PROVIDER_ADAPTER } from './subscription-provider.port';
 import { resolveSubscriptionProviderChoice } from './subscription-provider-choice';
+import { BillingIdentityService } from './billing-identity.service';
 import { SubscriptionReconciliationService } from './subscription-reconciliation.service';
 import { SubscriptionController } from './subscription.controller';
 import { GooglePlayRtdnController } from './rtdn/google-play-rtdn.controller';
@@ -128,6 +129,7 @@ const RTDN_AUTH_FALLBACK: RtdnAuthConfig = {
           resolveRtdnAuthChoice(config.get<string>('NODE_ENV'), config.get<string>('GOOGLE_PLAY_RTDN_AUTH_IMPL')),
         ),
     },
+    BillingIdentityService,
     SubscriptionReconciliationService,
     GooglePlayRtdnEventRepository,
     RtdnIngestionService,

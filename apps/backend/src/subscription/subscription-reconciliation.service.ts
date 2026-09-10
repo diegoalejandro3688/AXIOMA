@@ -5,12 +5,15 @@ import {
   Injectable,
   Logger,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import {
   SUBSCRIPTION_ACCOUNT_MISMATCH_CODE,
   SUBSCRIPTION_INVALID_CODE,
+  SUBSCRIPTION_UNVERIFIABLE_CODE,
   type SubscriptionReconcileStatus,
 } from '@axioma/contracts';
+import { AccountRepository } from '../auth/account.repository';
 import { TransactionRunnerService } from '../platform/prisma/transaction-runner.service';
 import {
   AccountSubscriptionRepository,
@@ -52,9 +55,20 @@ interface ReconcileContext {
   providerEventTime: Date | null;
   /** `subscriptionNotification.notificationType` (entero de Google) -- contexto de revocacion. `null` = movil. */
   notificationType: number | null;
+  /**
+   * PB-1A -- `true` SOLO para el reconcile DIRECTO iniciado por el movil
+   * (`reconcilePurchase`, `accountId` de la sesion). En ese caso, y solo si es
+   * de PRIMER CONTACTO (sin fila previa ni predecesor linkeado/re-alta), se
+   * EXIGE que el snapshot verificado traiga un `obfuscatedExternalAccountId`
+   * que COINCIDA con el `billingAccountRef` de la cuenta autenticada. `false`
+   * para la ruta RTDN (`reconcileFromNotification`) y para la recursion
+   * interna de compra-pendiente-cancelada (efecto colateral sobre una
+   * suscripcion previa, no una compra de primer contacto del usuario).
+   */
+  direct: boolean;
 }
 
-const DIRECT: ReconcileContext = { depth: 0, providerEventTime: null, notificationType: null };
+const DIRECT: ReconcileContext = { depth: 0, providerEventTime: null, notificationType: null, direct: true };
 
 /**
  * PREMIUM V1 -- Capa 3 (Google Play Billing), C3.2 + C3.3.
@@ -84,6 +98,7 @@ export class SubscriptionReconciliationService {
   constructor(
     @Inject(SUBSCRIPTION_PROVIDER_ADAPTER) private readonly provider: SubscriptionProviderAdapter,
     private readonly subscriptions: AccountSubscriptionRepository,
+    private readonly accounts: AccountRepository,
     private readonly tx: TransactionRunnerService,
   ) {}
 
@@ -112,6 +127,7 @@ export class SubscriptionReconciliationService {
       depth: 0,
       providerEventTime: input.providerEventTime,
       notificationType: input.notificationType,
+      direct: false,
     });
   }
 
@@ -185,9 +201,11 @@ export class SubscriptionReconciliationService {
     //    predecesor pasa a `SUPERSEDED`. RTDN sin cuenta: se HEREDA la del
     //    predecesor (ADR D.4.1).
     let predecessorId: string | null = null;
+    let linkedRowFound = false;
     if (snapshot.linkedPurchaseToken) {
       const predecessor = await this.subscriptions.findByPurchaseToken(snapshot.linkedPurchaseToken);
       if (predecessor) {
+        linkedRowFound = true;
         if (accountId !== null && predecessor.accountId !== accountId) {
           throw new ConflictException({ code: SUBSCRIPTION_ACCOUNT_MISMATCH_CODE, message: 'La suscripción anterior pertenece a otra cuenta.' });
         }
@@ -217,6 +235,64 @@ export class SubscriptionReconciliationService {
       }
       // `expired` no existe como fila -> no se puede atribuir por aqui; si
       // `accountId` sigue null cae al 4b (reintento acotado, NO fila fabricada).
+    }
+
+    // 4a.5 PB-1A -- RTDN (`accountId === null`) sin fila ni predecesor por
+    //      purchaseToken/linked/re-alta: ultimo recurso de atribucion via el
+    //      `obfuscatedExternalAccountId` opaco del snapshot -> `Account`. Una
+    //      cuenta CLOSED sigue siendo atribuible (PB-1A §15): NO se reactiva,
+    //      NO se toca `status`/`sessionVersion` -- eso es dominio de auth, no
+    //      de aqui. Si no resuelve, cae al 4b (reintento acotado, nunca fila
+    //      fabricada, nunca cuenta creada, nunca "adivinar" el dueno).
+    if (accountId === null && snapshot.obfuscatedExternalAccountId) {
+      const attributed = await this.accounts.findByObfuscatedAccountId(snapshot.obfuscatedExternalAccountId);
+      if (attributed) {
+        accountId = attributed.id;
+        this.logger.log(`RTDN atribuida por obfuscatedExternalAccountId: ${this.tokenHint(purchaseToken)}`);
+      }
+    }
+
+    // 4a.6 PB-1A -- reconcile DIRECTO del movil (accountId de la sesion) de
+    //      PRIMER CONTACTO: sin fila previa por este purchaseToken, sin
+    //      predecesor linkeado y sin predecesor de re-alta. Toda compra V1 se
+    //      lanza con `obfuscatedAccountId = billingAccountRef`, asi que su
+    //      ausencia / no-coincidencia aqui es anomala. Regla congelada
+    //      (PB-0A-R2 §B/§D): PRESENTE + COINCIDE -> sigue; AUSENTE (o la cuenta
+    //      no tiene billingAccountRef aprovisionado) -> 422 SUBSCRIPTION_UNVERIFIABLE;
+    //      PRESENTE pero mapea a OTRA cuenta -> 409 SUBSCRIPTION_ACCOUNT_MISMATCH;
+    //      PRESENTE pero no mapea a nadie y no coincide -> 422 (atribucion
+    //      inverificable). SIN excepcion por `testPurchase` (una compra de
+    //      License Tester usa el mismo flujo real de Google). En las rutas
+    //      con fila/predecesor la propiedad ya esta establecida -> este
+    //      cross-check NO corre ahi (ausencia tolerada, desacuerdo = senal de
+    //      fraude solo-log, nunca re-vincula -- se maneja en el pre-check 1/4).
+    if (ctx.direct && accountIdInput !== null && existing === null && !linkedRowFound && resubscribedFrom === null) {
+      const storedRef = await this.accounts.findObfuscatedAccountId(accountIdInput);
+      const snapRef = snapshot.obfuscatedExternalAccountId;
+      if (!storedRef || !snapRef) {
+        const snapRefPresent = Boolean(snapRef);
+        const accountRefProvisioned = Boolean(storedRef);
+        this.logger.warn(
+          `reconcile de primer contacto inverificable ${this.tokenHint(purchaseToken)} ` +
+            `(refPresent=${snapRefPresent} accountRefProvisioned=${accountRefProvisioned})`,
+        );
+        throw new UnprocessableEntityException({
+          code: SUBSCRIPTION_UNVERIFIABLE_CODE,
+          message: 'No se pudo verificar la atribución de esta compra.',
+        });
+      }
+      if (snapRef !== storedRef) {
+        const other = await this.accounts.findByObfuscatedAccountId(snapRef);
+        if (other) {
+          this.logger.warn(`reconcile de primer contacto: obfuscatedExternalAccountId de ${this.tokenHint(purchaseToken)} pertenece a otra cuenta`);
+          throw new ConflictException({ code: SUBSCRIPTION_ACCOUNT_MISMATCH_CODE, message: 'Esta compra está asociada a otra cuenta.' });
+        }
+        this.logger.warn(`reconcile de primer contacto: obfuscatedExternalAccountId de ${this.tokenHint(purchaseToken)} no coincide y no mapea a ninguna cuenta`);
+        throw new UnprocessableEntityException({
+          code: SUBSCRIPTION_UNVERIFIABLE_CODE,
+          message: 'No se pudo verificar la atribución de esta compra.',
+        });
+      }
     }
 
     // 4b. Sin cuenta resoluble -> la RTDN llego antes que el reconcile del movil.
@@ -341,7 +417,7 @@ export class SubscriptionReconciliationService {
     // que el cliente envio. NO se propaga la cronologia/tipo de la RTDN de B:
     // el evento no es sobre el token de A y `subscriptionsv2.get(A)` ya da el
     // estado actual de A (C3.3 §12 -- la RTDN no trae estado autoritativo).
-    await this.reconcileToken(resolvedAccount, linked, { depth: ctx.depth + 1, providerEventTime: null, notificationType: null });
+    await this.reconcileToken(resolvedAccount, linked, { depth: ctx.depth + 1, providerEventTime: null, notificationType: null, direct: false });
     this.logger.log(
       `compra pendiente cancelada para ${this.tokenHint(purchaseToken)}; suscripcion previa reconciliada -> canceled`,
     );
