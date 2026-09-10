@@ -23,7 +23,7 @@
 //
 // Uso:
 //   ANTHROPIC_API_KEY=... npx tsx scripts/verify-ai-anthropic-integration-gate.ts <baseUrlNormal> [<baseUrlShortTimeout>] [<logFilePath>]
-//   - <baseUrlNormal>: backend con AI_PROVIDER_IMPL=anthropic, ANTHROPIC_TIMEOUT_MS por defecto (10000 desde V5; era 8000).
+//   - <baseUrlNormal>: backend con AI_PROVIDER_IMPL=anthropic, ANTHROPIC_TIMEOUT_MS por defecto (24000 desde TUTOR-MICRO-REMEDIATION-V1; era 10000 desde V5; era 8000).
 //   - <baseUrlShortTimeout> (opcional): backend con AI_PROVIDER_IMPL=anthropic, ANTHROPIC_TIMEOUT_MS muy corto (ej. 1) -- para la propiedad 6 (timeout). Si se omite, esa comprobación se salta explícitamente (SKIP, no FALLO).
 //   - <logFilePath> (opcional): archivo donde el backend <baseUrlNormal> escribió su stdout -- para la propiedad 5 (API key nunca en logs). Si se omite, esa comprobación se salta explícitamente (SKIP, no FALLO).
 import 'dotenv/config';
@@ -72,6 +72,25 @@ function fakeClient(impls: FakeCreateImpl[]): { client: Anthropic; callCount: ()
 
 function textMessage(text: string): Anthropic.Message {
   return { content: [{ type: 'text', text, citations: null }] } as unknown as Anthropic.Message;
+}
+
+/**
+ * TUTOR-MICRO-REMEDIATION-V1 -- construye una `Anthropic.Message` con `stop_reason`,
+ * `usage` y bloques de contenido arbitrarios (incluidos `thinking`/no-texto). Necesario
+ * para ejercitar `stop_reason: 'max_tokens'` / `'model_context_window_exceeded'` y la
+ * unión ordenada de múltiples bloques `text`. `textMessage` (sin `stop_reason`) se
+ * mantiene intacto para no tocar A1-A15.
+ */
+function fullMessage(opts: {
+  content: Array<{ type: string; text?: string; thinking?: string }>;
+  stopReason: Anthropic.StopReason | null;
+  outputTokens?: number;
+}): Anthropic.Message {
+  return {
+    content: opts.content.map((b) => (b.type === 'text' ? { type: 'text', text: b.text ?? '', citations: null } : b)),
+    stop_reason: opts.stopReason,
+    usage: { input_tokens: 100, output_tokens: opts.outputTokens ?? 50, cache_creation_input_tokens: null, cache_read_input_tokens: null, server_tool_use: null },
+  } as unknown as Anthropic.Message;
 }
 
 // ---------------------------------------------------------------------------
@@ -284,14 +303,16 @@ async function runDeterministicAdapterTests() {
   }
 
   // -------------------------------------------------------------------------
-  // A15 (V5). El nuevo valor por defecto (10000ms) sigue siendo un deadline
-  // TOTAL de la operación, NUNCA "10s por intento". Prueba la propiedad exacta
-  // que el Product Owner pidió volver a demostrar con el valor nuevo:
-  // "10s + 10s" (deadline duplicado por acumulación de reintentos) es
-  // imposible por construcción, porque el segundo intento recibe exactamente
-  // el tiempo que resta hasta el MISMO instante absoluto de expiración.
+  // A15 (V5 -> TUTOR-MICRO-REMEDIATION-V1). El valor por defecto (ahora 24000ms,
+  // era 10000) sigue siendo un deadline TOTAL de la operación, NUNCA "por intento".
+  // Prueba la propiedad exacta que el Product Owner pidió volver a demostrar con
+  // cada valor nuevo: "budget + budget" (deadline duplicado por acumulación de
+  // reintentos) es imposible por construcción, porque el segundo intento recibe
+  // exactamente el tiempo que resta hasta el MISMO instante absoluto de
+  // expiración. Solo cambia la constante; la garantía estructural es idéntica.
   // -------------------------------------------------------------------------
-  console.log('--- A15 (V5). Presupuesto por DEFECTO == 10000ms TOTAL: intento inicial + 1 reintento elegible caben en el MISMO deadline, nunca 10s+10s ---');
+  const DEFAULT_BUDGET_MS = 24_000;
+  console.log(`--- A15. Presupuesto por DEFECTO == ${DEFAULT_BUDGET_MS}ms TOTAL: intento inicial + 1 reintento elegible caben en el MISMO deadline, nunca budget+budget ---`);
   {
     const headers = new Headers();
     const observed: { timeout: number; elapsedAtStart: number }[] = [];
@@ -317,21 +338,97 @@ async function runDeterministicAdapterTests() {
     await provider.generateReply([], 'hola');
     const elapsedMs = Date.now() - startedAt;
 
-    check('A15a. el presupuesto por DEFECTO del provider es 10000ms (valor productivo V5, sin override)', observed[0].timeout > 9800 && observed[0].timeout <= 10000);
+    check(`A15a. el presupuesto por DEFECTO del provider es ${DEFAULT_BUDGET_MS}ms (TUTOR-MICRO-REMEDIATION-V1, sin override)`, observed[0].timeout > DEFAULT_BUDGET_MS - 200 && observed[0].timeout <= DEFAULT_BUDGET_MS);
     check('A15b. hubo exactamente 2 intentos físicos (inicial + 1 reintento elegible)', calls === 2);
     check(
-      'A15c. el 2º intento NO recibe 10000ms otra vez: recibe el RESTO (~10000 - lo ya consumido)',
-      observed[1].timeout > 0 && observed[1].timeout <= 10000 - 1000,
+      `A15c. el 2º intento NO recibe ${DEFAULT_BUDGET_MS}ms otra vez: recibe el RESTO (~${DEFAULT_BUDGET_MS} - lo ya consumido)`,
+      observed[1].timeout > 0 && observed[1].timeout <= DEFAULT_BUDGET_MS - 1000,
     );
     check(
-      'A15d. DEADLINE ABSOLUTO COMPARTIDO: (tiempo ya transcurrido al iniciar el 2º intento) + (presupuesto del 2º intento) == 10000ms, no 20000ms',
-      Math.abs(observed[1].elapsedAtStart + observed[1].timeout - 10000) <= 50,
+      `A15d. DEADLINE ABSOLUTO COMPARTIDO: (tiempo ya transcurrido al iniciar el 2º intento) + (presupuesto del 2º intento) == ${DEFAULT_BUDGET_MS}ms, no ${DEFAULT_BUDGET_MS * 2}ms`,
+      Math.abs(observed[1].elapsedAtStart + observed[1].timeout - DEFAULT_BUDGET_MS) <= 50,
     );
     check(
-      'A15e. la suma de los presupuestos concedidos NUNCA equivale a 2x10000: el techo agregado de la operación sigue siendo 10000ms',
-      observed[0].elapsedAtStart + observed[0].timeout <= 10_050 && observed[1].elapsedAtStart + observed[1].timeout <= 10_050,
+      `A15e. la suma de los presupuestos concedidos NUNCA equivale a 2x${DEFAULT_BUDGET_MS}: el techo agregado de la operación sigue siendo ${DEFAULT_BUDGET_MS}ms`,
+      observed[0].elapsedAtStart + observed[0].timeout <= DEFAULT_BUDGET_MS + 50 && observed[1].elapsedAtStart + observed[1].timeout <= DEFAULT_BUDGET_MS + 50,
     );
-    check('A15f. la operación completa terminó holgadamente dentro de un solo presupuesto de 10000ms', elapsedMs < 10_000);
+    check(`A15f. la operación completa terminó holgadamente dentro de un solo presupuesto de ${DEFAULT_BUDGET_MS}ms`, elapsedMs < DEFAULT_BUDGET_MS);
+  }
+
+  // -------------------------------------------------------------------------
+  // A16-A19 (TUTOR-MICRO-REMEDIATION-V1 / TQ-02). Endurecimiento de truncación.
+  // -------------------------------------------------------------------------
+  console.log('--- A16. stop_reason == "max_tokens" -> provider_incomplete_output, prosa PARCIAL NUNCA devuelta como éxito, SIN reintento ---');
+  {
+    const { client, callCount } = fakeClient([
+      () => fullMessage({ content: [{ type: 'text', text: 'La corbeta Esmeralda enfrentó al monitor Huáscar mientras la goleta Covad' }], stopReason: 'max_tokens', outputTokens: 1536 }),
+      () => textMessage('esto NUNCA debería llamarse'),
+    ]);
+    const provider = new AnthropicAiProvider(fakeConfig(), client);
+    let category: AiProviderErrorCategory | undefined;
+    let returnedContent: string | undefined;
+    try {
+      const reply = await provider.generateReply([], 'combate naval del 21 de mayo de 1879');
+      returnedContent = reply.content;
+    } catch (error) {
+      if (error instanceof AiProviderTechnicalError) category = error.category;
+    }
+    check('A16a. categoría == provider_incomplete_output', category === 'provider_incomplete_output');
+    check('A16b. NUNCA se devuelve la prosa parcial como respuesta exitosa', returnedContent === undefined);
+    check('A16c. EXACTAMENTE 1 llamada física -- max_tokens NUNCA es reintentable (reintentar daría el mismo corte)', callCount() === 1);
+  }
+
+  console.log('--- A17. stop_reason == "model_context_window_exceeded" -> también provider_incomplete_output, sin reintento ---');
+  {
+    const { client, callCount } = fakeClient([
+      () => fullMessage({ content: [{ type: 'text', text: 'respuesta parcial por ventana de contexto' }], stopReason: 'model_context_window_exceeded' }),
+    ]);
+    const provider = new AnthropicAiProvider(fakeConfig(), client);
+    let category: AiProviderErrorCategory | undefined;
+    try {
+      await provider.generateReply([], 'hola');
+    } catch (error) {
+      if (error instanceof AiProviderTechnicalError) category = error.category;
+    }
+    check('A17a. categoría == provider_incomplete_output', category === 'provider_incomplete_output');
+    check('A17b. EXACTAMENTE 1 llamada física', callCount() === 1);
+  }
+
+  console.log('--- A18. end_turn LARGO con múltiples bloques text (+ bloque thinking intercalado) -> unión ordenada byte-a-byte, thinking NUNCA en el texto, éxito ---');
+  {
+    const part1 = 'El Combate de Iquique (21 de mayo de 1879, por la mañana) enfrentó a la corbeta chilena Esmeralda contra el monitor peruano Huáscar. ';
+    const part2 = 'El Combate de Punta Gruesa, el mismo día pero más al sur, enfrentó a la goleta Covadonga contra la fragata blindada Independencia, que encalló. ';
+    const part3 = 'Son dos enfrentamientos distintos y no deben confundirse.';
+    const { client, callCount } = fakeClient([
+      () =>
+        fullMessage({
+          content: [
+            { type: 'text', text: part1 },
+            { type: 'thinking', thinking: 'razonamiento interno que NUNCA debe persistirse ni mostrarse' },
+            { type: 'text', text: part2 },
+            { type: 'text', text: part3 },
+          ],
+          stopReason: 'end_turn',
+          outputTokens: 900,
+        }),
+    ]);
+    const provider = new AnthropicAiProvider(fakeConfig(), client);
+    const reply = await provider.generateReply([], 'distingue Iquique y Punta Gruesa');
+    check('A18a. el texto es la concatenación EXACTA de los bloques text en orden (byte-a-byte, sin separador)', reply.content === part1 + part2 + part3);
+    check('A18b. el contenido del bloque thinking NUNCA aparece en el texto devuelto', !reply.content.includes('razonamiento interno'));
+    check('A18c. sin slice/truncación -- la longitud es la suma exacta de los 3 bloques text', reply.content.length === (part1 + part2 + part3).length);
+    check('A18d. EXACTAMENTE 1 llamada física (end_turn, éxito al primer intento)', callCount() === 1);
+    check('A18e. usage.outputTokens conservado (900)', reply.usage?.outputTokens === 900);
+    check('A18f. usage.stopReason == "end_turn"', reply.usage?.stopReason === 'end_turn');
+  }
+
+  console.log('--- A19. stop_reason presente en usage para una respuesta normal ---');
+  {
+    const { client } = fakeClient([() => fullMessage({ content: [{ type: 'text', text: 'respuesta normal completa.' }], stopReason: 'end_turn' })]);
+    const provider = new AnthropicAiProvider(fakeConfig(), client);
+    const reply = await provider.generateReply([], 'hola');
+    check('A19a. reply.usage.stopReason == "end_turn"', reply.usage?.stopReason === 'end_turn');
+    check('A19b. contenido intacto', reply.content === 'respuesta normal completa.');
   }
 
   console.log('--- A12. maxRetries del cliente SDK == 0 -- el reintento propio reemplaza por completo al del SDK ---');
@@ -580,7 +677,7 @@ async function main() {
   // PARTE A es DETERMINISTA y SIN RED (cliente Anthropic falso inyectado): se ejecuta SIEMPRE,
   // exista o no una API key. Corrección de V5: antes quedaba detrás del mismo SKIP que la PARTE B,
   // de modo que la propiedad de deadline TOTAL (la que el Product Owner exige volver a demostrar
-  // con el valor nuevo de 10000 ms) solo era verificable en un entorno con credenciales reales
+  // con cada valor nuevo del presupuesto, hoy 24000 ms) solo era verificable en un entorno con credenciales reales
   // -- justo el entorno donde NO se quiere ejecutar una regresión rutinaria. PARTE B sigue siendo
   // OPT-IN estricto (ver docs/adr/LEF-BLOCK-VI-DEFINITION.md §22): requiere API key Y base URL.
   await runDeterministicAdapterTests();

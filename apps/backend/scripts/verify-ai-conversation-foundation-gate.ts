@@ -9,7 +9,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
 import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identity.provider';
-import { FAKE_AI_PROVIDER_FAILURE_TRIGGER } from '../src/ai/fake-ai-provider';
+import { FAKE_AI_PROVIDER_FAILURE_TRIGGER, FAKE_AI_PROVIDER_INCOMPLETE_OUTPUT_TRIGGER } from '../src/ai/fake-ai-provider';
 
 const base = process.argv[2] ?? 'http://127.0.0.1:3000';
 const opsKey = process.env.INTERNAL_OPS_KEY ?? '';
@@ -156,6 +156,43 @@ async function main() {
   check('reintento con el MISMO operationId -> sigue fallando (mismo contenido determinista), pero sin error de servidor genérico', retryAfterFailure.status === 503);
   const detailAfterRetry = await req('GET', `/ai/me/conversations/${failConversationId}`, alice.headers);
   check('tras el reintento, SIGUE habiendo EXACTAMENTE 1 mensaje USER -- nunca se duplicó', (detailAfterRetry.body?.messages ?? []).length === 1);
+
+  // TUTOR-MICRO-REMEDIATION-V1 (TQ-02) -- una generación cortada por `stop_reason: 'max_tokens'`
+  // (categoría `provider_incomplete_output`) recibe EXACTAMENTE el mismo trato de dominio que
+  // cualquier otro fallo técnico: 503, cero ASSISTANT persistido, cero consumo de turno, mensaje
+  // USER reintentable. Cierra el hueco por el que una respuesta parcial (prosa a mitad de palabra)
+  // se persistía como ASSISTANT "exitoso". CASO B del runbook.
+  console.log('--- 17b. Respuesta incompleta del proveedor (max_tokens) -> mismo estado reintentable, NUNCA un ASSISTANT parcial persistido ---');
+  // Cuenta dedicada (cuota FREE limpia) -- `alice` ya consumió turnos exitosos y reservas de
+  // admisión residuales de §17 arriba, que contarían contra su cuota (mecanismo 1). Este bloque
+  // solo prueba el trato de `provider_incomplete_output`, no la cuota, así que se aísla.
+  const incompleteTester = await createSession('incomplete-output');
+  const incompleteConversation = await req('POST', '/ai/me/conversations', incompleteTester.headers, {});
+  const incompleteConversationId = incompleteConversation.body?.conversationId as string;
+  const incompleteOperationId = randomOperationId();
+  const incompleteSend = await req('POST', `/ai/me/conversations/${incompleteConversationId}/messages`, incompleteTester.headers, {
+    content: FAKE_AI_PROVIDER_INCOMPLETE_OUTPUT_TRIGGER,
+    operationId: incompleteOperationId,
+  });
+  check('respuesta incompleta -> 503 (degradación controlada, nunca 200 con prosa parcial)', incompleteSend.status === 503);
+  const detailAfterIncomplete = await req('GET', `/ai/me/conversations/${incompleteConversationId}`, incompleteTester.headers);
+  check(
+    'NINGÚN mensaje ASSISTANT persistido -- solo el USER, reintentable',
+    (detailAfterIncomplete.body?.messages ?? []).length === 1 && detailAfterIncomplete.body?.messages?.[0]?.role === 'USER',
+  );
+  check('turnCount sigue en 0 -- una respuesta incompleta NUNCA consume el turno', detailAfterIncomplete.body?.turnCount === 0);
+  // El mismo operationId reintenta la MISMA operación pendiente (idéntico patrón que §17): sigue
+  // devolviendo 503 deterministamente y NUNCA duplica el mensaje USER ni deja un ASSISTANT parcial.
+  const incompleteRetry = await req("POST", `/ai/me/conversations/${incompleteConversationId}/messages`, incompleteTester.headers, {
+    content: FAKE_AI_PROVIDER_INCOMPLETE_OUTPUT_TRIGGER,
+    operationId: incompleteOperationId,
+  });
+  check('reintento del MISMO operationId -> sigue 503 (mismo corte determinista), estado coherente', incompleteRetry.status === 503);
+  const detailAfterIncompleteRetry = await req("GET", `/ai/me/conversations/${incompleteConversationId}`, incompleteTester.headers);
+  check(
+    'tras el reintento: SIGUE EXACTAMENTE 1 USER, 0 ASSISTANT -- nunca se persistió prosa parcial',
+    (detailAfterIncompleteRetry.body?.messages ?? []).length === 1 && detailAfterIncompleteRetry.body?.messages?.[0]?.role === 'USER',
+  );
 
   console.log('--- A-C. Enforcement real del límite de turnos (independiente de la cuota diaria, Incremento 3) ---');
   // Este bloque necesita más de 3 consultas EXITOSAS (cuota FREE/día) en una sola cuenta para poder

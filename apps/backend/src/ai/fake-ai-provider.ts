@@ -38,6 +38,18 @@ export const FAKE_AI_PROVIDER_FAIL_ONCE_PREFIX = '__FAKE_AI_PROVIDER_FAIL_ONCE__
 export const FAKE_AI_PROVIDER_SAFETY_REFUSAL_TRIGGER = '__FAKE_AI_PROVIDER_FORCE_SAFETY_REFUSAL__';
 
 /**
+ * Sentinel de entrada que fuerza un `AiProviderTechnicalError` con categoría
+ * `provider_incomplete_output` -- TUTOR-MICRO-REMEDIATION-V1 (TQ-02). Permite
+ * al gate ejercitar de punta a punta que una generación cortada por
+ * `stop_reason: 'max_tokens'` NUNCA se persiste como ASSISTANT exitoso: mismo
+ * outcome de dominio y HTTP (503, cero consumo, USER reintentable) que
+ * cualquier otro fallo técnico, SIN depender de `AnthropicAiProvider`/de un
+ * `stop_reason` real -- mismo espíritu que `FAKE_AI_PROVIDER_FAILURE_TRIGGER`
+ * y `FAKE_AI_PROVIDER_SAFETY_REFUSAL_TRIGGER`.
+ */
+export const FAKE_AI_PROVIDER_INCOMPLETE_OUTPUT_TRIGGER = '__FAKE_AI_PROVIDER_FORCE_INCOMPLETE_OUTPUT__';
+
+/**
  * Implementación fake/determinista de `AiProvider` -- ver
  * docs/adr/LEF-BLOCK-VI-DEFINITION.md §7 (mismo espíritu que
  * `StubIdentityProvider` en AUTH). Sin red, sin SDK, sin variabilidad --
@@ -126,6 +138,9 @@ export class FakeAiProvider implements AiProvider {
     }
     if (newMessage === FAKE_AI_PROVIDER_SAFETY_REFUSAL_TRIGGER) {
       throw new AiProviderTechnicalError('Rechazo de seguridad simulado por FakeAiProvider (solo para gates/desarrollo).', 'provider_safety_refusal');
+    }
+    if (newMessage === FAKE_AI_PROVIDER_INCOMPLETE_OUTPUT_TRIGGER) {
+      throw new AiProviderTechnicalError('Respuesta incompleta simulada por FakeAiProvider (solo para gates/desarrollo).', 'provider_incomplete_output');
     }
     if (newMessage.startsWith(FAKE_AI_PROVIDER_FAIL_ONCE_PREFIX)) {
       const attempts = this.failOnceAttempts.get(newMessage) ?? 0;

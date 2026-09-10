@@ -77,6 +77,18 @@ export interface AiProviderUsage {
   inputTokens: number | null;
   outputTokens: number | null;
   latencyMs: number;
+  /**
+   * TUTOR-MICRO-REMEDIATION-V1 -- razón de fin de la generación tal como la
+   * reporta el proveedor (Anthropic `stop_reason`: `end_turn`, `max_tokens`,
+   * `stop_sequence`, `refusal`, ...). `null` cuando el proveedor no la provee
+   * (`FakeAiProvider`) o no la expone. Metadata numérica/enum de coste/estado,
+   * NUNCA contenido -- misma frontera que el resto de `AiProviderUsage`. Hoy
+   * `AiConversationService` no la persiste (no hay columna en `ai_usage_ledger`
+   * en este incremento) -- existe para que la observabilidad estructurada del
+   * adapter pueda distinguir `end_turn` de `max_tokens`/`refusal` sin mirar el
+   * texto de la respuesta.
+   */
+  stopReason?: string | null;
 }
 
 export interface AiProviderReply {
@@ -99,6 +111,19 @@ export interface AiProviderReply {
  * lo mismo que un rechazo de seguridad). Nunca se expone `category`/`message`
  * crudos del SDK por HTTP en ningún caso -- ambos outcomes usan textos
  * propios de Axioma.
+ *
+ * TUTOR-MICRO-REMEDIATION-V1 -- `provider_incomplete_output` (Anthropic
+ * `stop_reason: 'max_tokens'` o `'model_context_window_exceeded'`): el
+ * proveedor SÍ respondió pero la generación se cortó por límite de longitud,
+ * así que el texto es prosa PARCIAL, potencialmente a mitad de palabra --
+ * inutilizable como respuesta pedagógica. Se trata como fallo técnico: mismo
+ * comportamiento de dominio que cualquier otra categoría (cero consumo, cero
+ * ASSISTANT, cero fila de ledger, mensaje USER persistido y reintentable),
+ * outcome HTTP 503 genérico, y -- crítico -- NUNCA elegible para reintento
+ * automático (no está en `RETRY_ELIGIBLE_CATEGORIES`): reintentar la misma
+ * generación produciría el mismo corte. El estudiante reintenta manualmente
+ * con la UX existente. Cierra el hueco de TQ-02: hasta este incremento una
+ * respuesta `max_tokens` se persistía como ASSISTANT "exitoso".
  */
 export type AiProviderErrorCategory =
   | 'timeout'
@@ -108,7 +133,8 @@ export type AiProviderErrorCategory =
   | 'provider_invalid_request'
   | 'provider_unavailable'
   | 'unknown_provider_error'
-  | 'provider_safety_refusal';
+  | 'provider_safety_refusal'
+  | 'provider_incomplete_output';
 
 /**
  * Lanzado por una implementación de `AiProvider` ante un fallo técnico

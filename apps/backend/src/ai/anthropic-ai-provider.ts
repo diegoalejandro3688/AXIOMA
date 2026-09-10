@@ -22,6 +22,18 @@ const RETRY_ELIGIBLE_CATEGORIES: ReadonlySet<AiProviderErrorCategory> = new Set(
 ]);
 
 /**
+ * TUTOR-MICRO-REMEDIATION-V1 -- `stop_reason` de Anthropic que significan
+ * "la generación se cortó por límite de longitud, el texto es prosa
+ * PARCIAL". Se convierten en `AiProviderTechnicalError('provider_incomplete_output')`
+ * ANTES de extraer/devolver el texto -- ver `RETRY_ELIGIBLE_CATEGORIES`
+ * (no están ahí a propósito: reintentar daría el mismo corte) y el docstring
+ * de `AiProviderErrorCategory`. `refusal` NO va aquí: tiene su propia
+ * categoría (`provider_safety_refusal`) y outcome HTTP (422) desde el
+ * Incremento 6.
+ */
+const INCOMPLETE_OUTPUT_STOP_REASONS: ReadonlySet<string> = new Set(['max_tokens', 'model_context_window_exceeded']);
+
+/**
  * Presupuesto mínimo (ms) para que valga la pena iniciar el reintento
  * técnico -- decisión de ingeniería, no contractual (el Product Owner fijó
  * el presupuesto TOTAL de 8000ms; este valor solo evita iniciar un segundo
@@ -56,8 +68,24 @@ const MIN_RETRY_BUDGET_MS = 1000;
  * La otra mitad de la mitigación de latencia es la COMPRESIÓN SEMÁNTICA del
  * system prompt en `AXIOMA_TUTOR_V5` (ver `ai-pedagogy.ts`): se ataca el
  * tamaño de entrada, no se compran reintentos.
+ *
+ * -> `24000` desde TUTOR-MICRO-REMEDIATION-V1 (era 10000 desde V5). Va
+ * ACOPLADO al aumento de `ANTHROPIC_MAX_OUTPUT_TOKENS` 768 -> 1536 -- son
+ * dos mitigaciones del MISMO defecto (TQ-02, ver TUTOR-MICRO-AUDIT-V1): en
+ * producción una respuesta real terminó EXACTAMENTE en 768 tokens de salida
+ * (`stop_reason` casi con certeza `max_tokens`), con el texto cortado a
+ * mitad de palabra ("...en un ac"), y esa misma generación tardó ~9.913 ms
+ * contra el techo de 10.000. Duplicar el techo de salida sin ampliar el
+ * presupuesto de tiempo solo cambiaría el modo de fallo de "truncada" a
+ * "timeout". Evidencia de la razón de escala: ~10 ms/token de salida +
+ * ~2 s de overhead fijo -> una generación de 1536 tokens ronda los ~18-20 s;
+ * 24000 deja ~4-6 s de holgura en el intento inicial y mantiene coherente el
+ * deadline TOTAL compartido (sigue sin reiniciarse entre intentos, sigue
+ * habiendo máximo 2 intentos físicos, `timeout`/`max_tokens` siguen FUERA de
+ * `RETRY_ELIGIBLE_CATEGORIES`). NO se toca el número de intentos, la política
+ * de categorías, la idempotencia (`operationId`) ni ninguna cuota.
  */
-const DEFAULT_TIMEOUT_MS = '10000';
+const DEFAULT_TIMEOUT_MS = '24000';
 
 function toAnthropicRole(role: 'USER' | 'ASSISTANT'): 'user' | 'assistant' {
   return role === 'USER' ? 'user' : 'assistant';
@@ -99,18 +127,21 @@ function classifyError(error: unknown): { category: AiProviderErrorCategory; saf
  * Semántica de timeout/reintento (decisión EXACTA del Product Owner, ver
  * reporte de cierre del Incremento 2 y, para el valor vigente, el docstring de
  * `DEFAULT_TIMEOUT_MS`): presupuesto TOTAL wall-clock de
- * `timeoutMs` (default 10000 desde V5; era 8000) para la operación lógica completa. Máximo 2
+ * `timeoutMs` (default 24000 desde TUTOR-MICRO-REMEDIATION-V1; era 10000 desde V5; era 8000)
+ * para la operación lógica completa. Máximo 2
  * intentos físicos (inicial + 1 reintento técnico), ambos comparten el mismo
  * deadline absoluto -- nunca se reinicia el reloj. El reintento recibe
  * únicamente el tiempo restante hasta el deadline; si no queda presupuesto
  * razonable (`MIN_RETRY_BUDGET_MS`), no se inicia. Solo las categorías en
  * `RETRY_ELIGIBLE_CATEGORIES` son elegibles -- timeout, error de
- * autenticación/configuración, solicitud inválida y error no clasificado
- * NUNCA se reintentan automáticamente.
+ * autenticación/configuración, solicitud inválida, error no clasificado y
+ * `provider_incomplete_output` (`stop_reason: 'max_tokens'`) NUNCA se
+ * reintentan automáticamente.
  *
- * `maxOutputTokens` (default 768 desde la corrección V4; era 512 hasta la
- * evaluación pedagógica de `AXIOMA_TUTOR_V3`) -- AUDITADO explícitamente en el
- * Incremento 3 (no se cambia por intuición, ver reporte de cierre):
+ * `maxOutputTokens` (default 1536 desde TUTOR-MICRO-REMEDIATION-V1; era 768
+ * desde la corrección V4; era 512 hasta la evaluación pedagógica de
+ * `AXIOMA_TUTOR_V3`) -- AUDITADO explícitamente en el Incremento 3 (no se
+ * cambia por intuición, ver reporte de cierre):
  * - Coste: acota el gasto máximo por llamada de forma predecible,
  *   proporcional a la cuota diaria (3/50 consultas) -- un techo generoso por
  *   consulta no es grave cuando el NÚMERO de consultas ya está acotado por
@@ -151,13 +182,35 @@ function classifyError(error: unknown): { category: AiProviderErrorCategory; saf
  * componente de salida en el peor caso, sobre un gasto medido en centavos de
  * dólar por corrida completa de evaluación).
  *
+ * -> REAPERTURA EJECUTADA (768 -> 1536), TUTOR-MICRO-REMEDIATION-V1 sobre la
+ * evidencia de PRODUCCIÓN de TQ-02 (ver TUTOR-MICRO-AUDIT-V1). La afirmación
+ * "V4 demostró 0 truncamientos semánticos con 768" quedó DESMENTIDA por el
+ * ledger real: una respuesta de producción (una pregunta de Historia, prompt
+ * `AXIOMA_TUTOR_V6_2`, `claude-sonnet-5`) terminó con `outputTokens` == 768
+ * EXACTO -- el techo, no fin de turno -- y el texto persistido terminaba a
+ * mitad de palabra ("...en un ac"). La ventana de eval de V4 (~350-450
+ * palabras) simplemente no contenía el peor caso real. 1536 = mínimo aumento
+ * que cubre esa clase de turno con holgura; la regla de BREVEDAD Y FORMATO DE
+ * CHAT del prompt (120-220 palabras, máx 300; ver `ai-pedagogy.ts`) sigue
+ * siendo la que acota la longitud VISIBLE -- el techo solo evita el corte a
+ * mitad de frase, no invita al muro de texto. El techo sigue siendo único,
+ * sin partición por tier; el coste máximo por llamada sigue acotado y
+ * predecible (la cuota diaria por cuenta ya lo limita). ACOPLADO a
+ * `DEFAULT_TIMEOUT_MS` 10000 -> 24000 (ver su docstring) -- dos mitigaciones
+ * del mismo defecto. Y -- lo que cierra TQ-02 de verdad -- desde este
+ * incremento un `stop_reason: 'max_tokens'` ya NO se persiste como respuesta
+ * exitosa: se convierte en `AiProviderTechnicalError('provider_incomplete_output')`
+ * antes de extraer el texto (ver `generateReply` e `INCOMPLETE_OUTPUT_STOP_REASONS`).
+ *
  * Incremento 3 (ver reporte de cierre): `generateReply` ahora puebla
  * `AiProviderReply.usage` (attempts/inputTokens/outputTokens/latencyMs) a
  * partir de `response.usage`, exactamente el campo que I2 documentó como
  * "descartado deliberadamente" -- I3 empieza a consumirlo SIN rediseñar esta
  * clase ni `AiProvider` (el campo ya era opcional desde I2). Sigue sin
  * incluir contenido conversacional: `usage` nunca lleva prompt/mensaje/
- * respuesta, solo metadata numérica de coste/latencia.
+ * respuesta, solo metadata numérica de coste/latencia. TUTOR-MICRO-REMEDIATION-V1
+ * añade `usage.stopReason` (enum de estado, nunca contenido) y lo emite
+ * también en la observabilidad estructurada del adapter.
  */
 @Injectable()
 export class AnthropicAiProvider implements AiProvider {
@@ -183,7 +236,7 @@ export class AnthropicAiProvider implements AiProvider {
     this.model = config.get<string>('ANTHROPIC_MODEL', 'claude-sonnet-5');
     this.timeoutMs = Number(config.get<string>('ANTHROPIC_TIMEOUT_MS', DEFAULT_TIMEOUT_MS));
     // PROVISIONAL -- ver docstring de la clase. No inferir de este valor ningún límite adicional Free/Premium.
-    this.maxOutputTokens = Number(config.get<string>('ANTHROPIC_MAX_OUTPUT_TOKENS', '768'));
+    this.maxOutputTokens = Number(config.get<string>('ANTHROPIC_MAX_OUTPUT_TOKENS', '1536'));
 
     // maxRetries: 0 -- el reintento propio (deadline-aware) reemplaza por completo el reintento incorporado del SDK,
     // que no conoce nuestro presupuesto total ni nuestra política de categorías elegibles.
@@ -228,8 +281,30 @@ export class AnthropicAiProvider implements AiProvider {
         // técnico -- degradación controlada uniforme, nunca se muestra al estudiante contenido parcial de un rechazo
         // de seguridad, nunca se intenta "reformular" automáticamente para evadirlo.
         if (response.stop_reason === 'refusal') {
-          this.logObservability({ attempt, durationMs: Date.now() - startedAt, result: 'provider_safety_refusal' });
+          this.logObservability({ attempt, durationMs: Date.now() - startedAt, result: 'provider_safety_refusal', stopReason: 'refusal' });
           throw new AiProviderTechnicalError('El proveedor de IA rehusó generar una respuesta para esta solicitud.', 'provider_safety_refusal');
+        }
+
+        // TUTOR-MICRO-REMEDIATION-V1 (TQ-02) -- la generación se cortó por límite de longitud
+        // (`max_tokens`) o de ventana de contexto: el texto es prosa PARCIAL, potencialmente a
+        // mitad de palabra. Igual que `refusal`: la llamada HTTP fue exitosa pero NO hay respuesta
+        // pedagógica utilizable. Se convierte en fallo técnico ANTES de extraer/devolver el texto,
+        // así que `AiConversationService` NUNCA lo persiste como ASSISTANT ni escribe ledger.
+        // NUNCA elegible para reintento automático (no está en `RETRY_ELIGIBLE_CATEGORIES`):
+        // reintentar la misma generación daría el mismo corte. El estudiante reintenta manualmente.
+        if (response.stop_reason && INCOMPLETE_OUTPUT_STOP_REASONS.has(response.stop_reason)) {
+          this.logObservability({
+            attempt,
+            durationMs: Date.now() - startedAt,
+            result: 'provider_incomplete_output',
+            stopReason: response.stop_reason,
+            outputTokens: response.usage?.output_tokens ?? null,
+            maxOutputTokens: this.maxOutputTokens,
+          });
+          throw new AiProviderTechnicalError(
+            'El proveedor de IA devolvió una respuesta incompleta (se alcanzó el límite de longitud).',
+            'provider_incomplete_output',
+          );
         }
 
         const text = response.content
@@ -237,7 +312,13 @@ export class AnthropicAiProvider implements AiProvider {
           .map((block) => block.text)
           .join('');
 
-        this.logObservability({ attempt, durationMs: Date.now() - startedAt, result: 'success' });
+        this.logObservability({
+          attempt,
+          durationMs: Date.now() - startedAt,
+          result: 'success',
+          stopReason: response.stop_reason ?? null,
+          outputTokens: response.usage?.output_tokens ?? null,
+        });
 
         if (!text) {
           throw new AiProviderTechnicalError('El proveedor de IA no devolvió contenido de texto utilizable.', 'unknown_provider_error');
@@ -252,6 +333,7 @@ export class AnthropicAiProvider implements AiProvider {
             inputTokens: response.usage?.input_tokens ?? null,
             outputTokens: response.usage?.output_tokens ?? null,
             latencyMs: Date.now() - operationStartedAt,
+            stopReason: response.stop_reason ?? null,
           },
         };
       } catch (error) {
@@ -274,14 +356,30 @@ export class AnthropicAiProvider implements AiProvider {
     throw new AiProviderTechnicalError(lastError?.safeMessage ?? 'Fallo técnico no clasificado del proveedor de IA.', lastError?.category ?? 'unknown_provider_error');
   }
 
-  /** Observabilidad mínima -- NUNCA incluye API key, prompt completo, mensaje del usuario ni respuesta del modelo (ver docs/adr/0007-logging-error-handling.md). */
-  private logObservability(entry: { attempt: number; durationMs: number; result: string }): void {
+  /**
+   * Observabilidad mínima -- NUNCA incluye API key, prompt completo, mensaje del usuario ni
+   * respuesta del modelo (ver docs/adr/0007-logging-error-handling.md). TUTOR-MICRO-REMEDIATION-V1
+   * añade `stopReason`/`outputTokens`/`maxOutputTokens` (metadata numérica/enum, nunca contenido):
+   * permite diagnosticar `max_tokens` vs `end_turn` vs `refusal` retrospectivamente desde los logs
+   * de runtime, sin inspeccionar el texto persistido -- el hueco que hizo lento diagnosticar TQ-02.
+   */
+  private logObservability(entry: {
+    attempt: number;
+    durationMs: number;
+    result: string;
+    stopReason?: string | null;
+    outputTokens?: number | null;
+    maxOutputTokens?: number;
+  }): void {
     this.logger.log('Llamada a proveedor de IA', {
       provider: 'anthropic',
       model: this.model,
       attempt: entry.attempt,
       durationMs: entry.durationMs,
       result: entry.result,
+      ...(entry.stopReason !== undefined ? { stopReason: entry.stopReason } : {}),
+      ...(entry.outputTokens !== undefined ? { outputTokens: entry.outputTokens } : {}),
+      ...(entry.maxOutputTokens !== undefined ? { maxOutputTokens: entry.maxOutputTokens } : {}),
     });
   }
 }
