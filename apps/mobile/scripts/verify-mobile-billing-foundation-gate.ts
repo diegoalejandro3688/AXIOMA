@@ -7,6 +7,12 @@
 // nativo + humo en Samsung se produce EXTERNAMENTE (maquina del PO) y se
 // documenta en el reporte de cierre de PB-2A.
 //
+// PB-2B: los checks L / O / P / T de "sin compra" quedan SUPERSEDIDOS (no
+// borrados) -- PB-2B implementa compra/restore/reconcile y su superficie
+// completa la prueba `verify:billing-purchase-gate` (15 invariantes). Aqui se
+// conservan solo los limites que siguen vigentes (sin acknowledge cliente, sin
+// grant local, sin log/persistencia de token, sin precio estatico comprable).
+//
 // Cubre A..T:
 //   A. expo-iap fijado EXACTAMENTE a 5.5.1 en apps/mobile/package.json.
 //   B. pnpm-lock.yaml resuelve expo-iap@5.5.1 (specifier + entrada + integrity).
@@ -165,8 +171,15 @@ check('J: la oferta seleccionada preserva offerTokenAndroid', /offerTokenAndroid
 check('K: el precio se toma de la fase recurrenceMode === 1 (INFINITE_RECURRING)', /RECURRENCE_MODE_INFINITE_RECURRING\s*=\s*1/.test(constantsCode) && /recurrenceMode === RECURRENCE_MODE_INFINITE_RECURRING/.test(constantsCode));
 check('K: NO usa pricingPhaseList[last] / .at(-1) / [length - 1] a ciegas', !/pricingPhaseList\[[^\]]*(?:length\s*-\s*1|last)[^\]]*\]|pricingPhaseList\.at\(-1\)/.test(constantsCode));
 
-// --- L ---------------------------------------------------------------------
-check('L: ningun archivo de lib/billing menciona purchaseToken', !/purchaseToken/i.test(billingBlob));
+// --- L (PB-2B SUPERSEDES / supersede) -------------------------------------
+// PB-2A prohibia TODA mencion de `purchaseToken` en lib/billing. PB-2B lo
+// maneja legitimamente: lo extrae del callback de compra y lo pasa SOLO al
+// reconcile del backend. El invariante vigente -- el token nunca se loggea,
+// ni se persiste, ni se renderiza -- lo prueba `verify:billing-purchase-gate`
+// (check 11). Aqui solo se conserva la parte que sigue siendo cierta:
+const billingFilesRaw = billingFiles.map((f) => readMobile('lib', 'billing', f)).join('\n');
+check('L (PB-2B): lib/billing NO tiene console.* (ningun log, ni de token ni de nada)', !/console\.(log|info|warn|error|debug)\(/.test(billingFilesRaw));
+check('L (PB-2B): lib/billing NO persiste nada (AsyncStorage / SecureStore / MMKV)', !/AsyncStorage|SecureStore|expo-secure-store|MMKV/.test(billingBlob));
 
 // --- M ---------------------------------------------------------------------
 const useIapCount = (providerCode.match(/useIAP\(/g) ?? []).length;
@@ -179,14 +192,23 @@ check("N: gate de runtime -- Platform.OS !== 'android' no soportado", /Platform\
 check('N: unsupported_runtime como estado de producto', /unsupported_runtime/.test(providerCode));
 check('N: useIAP() NO se monta en runtime no soportado (guard antes del hook)', /if \(!isNativeBillingRuntime\(\)\)[\s\S]{0,200}return[\s\S]{0,200}FALLBACK/.test(providerCode));
 
-// --- O ---------------------------------------------------------------------
-const purchaseVerbs = /requestPurchase|getAvailablePurchases|finishTransaction|acknowledgePurchase|restorePurchases|launchBillingFlow|verifyPurchase/;
-check('O: el provider NO orquesta compra/restore (sin requestPurchase / restore / finishTransaction / etc.)', !purchaseVerbs.test(billingBlob));
-check('O: el provider NO expone purchase() ni restore() en su value/context', !/\bpurchase\s*:/.test(providerCode) && !/\brestore\s*:/.test(providerCode));
+// --- O (PB-2B SUPERSEDES / supersede) -------------------------------------
+// PB-2A prohibia orquestar compra/restore. PB-2B lo IMPLEMENTA (ese es su
+// objetivo): el provider llama `requestPurchase` / `getAvailablePurchases` y
+// expone `purchase()` / `restore()`. El detalle de esos flujos lo prueba
+// `verify:billing-purchase-gate`. Aqui se conserva el UNICO limite que
+// sigue vigente: el movil NUNCA acknowledgea con Google (eso es del backend).
+const clientAckVerbs = /finishTransaction|acknowledgePurchaseAndroid|consumePurchaseAndroid|\backnowledgePurchase\b|launchBillingFlow|BillingClient/;
+check('O (PB-2B): el provider NUNCA acknowledgea/finaliza la transaccion en el cliente (finishTransaction / acknowledge / consume / launchBillingFlow)', !clientAckVerbs.test(billingBlob));
+check('O (PB-2B): el provider expone purchase() y restore() (PB-2B los implementa)', /purchase,\s*\n\s*restore,/.test(providerCode) || /\bpurchase:\s*\(\)/.test(providerCode));
 
-// --- P ---------------------------------------------------------------------
-check('P: lib/billing NO importa entitlement / billing-context / reconcile', !/entitlement-provider|paywall-context|billing-context|reconcile|\/api\/entitlement/.test(billingBlob));
-check('P: lib/billing NO llama al backend (sin fetch / api client)', !/\bfetch\(|lib\/api\/client|apiFetch|from '\.\.\/api/.test(billingBlob));
+// --- P (PB-2B SUPERSEDES / supersede) -------------------------------------
+// PB-2A prohibia que lib/billing llamara billing-context / reconcile. PB-2B
+// lo REQUIERE (via `lib/api/subscription.ts`). El limite vigente: lib/billing
+// NUNCA concede Premium local ni toca el entitlement salvo `refresh()`.
+check('P (PB-2B): lib/billing solo toca el entitlement via entitlement.refresh() (sin set/grant/activate)', /entitlement\.refresh\(\)/.test(providerCode) && !/set(Premium|Tier|Entitlement|IsPremium)\s*\(/i.test(billingBlob));
+check('P (PB-2B): lib/billing NO importa el override interno de tier (_internal/entitlement / set-tier-override)', !/_internal\/entitlement|set-tier-override|entitlement-internal/i.test(billingBlob));
+check('P (PB-2B): lib/billing pega al backend SOLO via lib/api/subscription (billing-context + reconcile), nunca fetch crudo', /from '\.\.\/api\/subscription'/.test(providerCode) && !/\bfetch\(/.test(billingBlob));
 
 // --- Q ---------------------------------------------------------------------
 const layoutSrc = readMobile('app', '_layout.tsx');
@@ -215,12 +237,18 @@ try {
 }
 check('S: apps/mobile/android/ NO esta trackeado por git (CNG / generado / gitignored)', androidTracked === '');
 
-// --- T ---------------------------------------------------------------------
+// --- T (PB-2B SUPERSEDES / supersede) -------------------------------------
+// PB-2A: la paywall NO cablea compra; "Disponible proximamente" es texto.
+// PB-2B: la paywall SI cablea `useBilling().purchase()` / `restore()` (cableado
+// minimo; PB-2C es el rediseño comercial). El limite vigente: pricing.ts sigue
+// siendo la UNICA fuente del precio estatico, y ese string NUNCA se presenta
+// como precio comprable en vivo (eso lo prueba `verify:billing-purchase-gate`
+// checks 15).
 const pricingSrc = readMobile('lib', 'entitlement', 'pricing.ts');
-check('T: pricing.ts conserva la constante estatica PREMIUM_PRICE_DISPLAY', /export const PREMIUM_PRICE_DISPLAY\s*=/.test(pricingSrc));
+check('T (PB-2B): pricing.ts conserva la constante estatica PREMIUM_PRICE_DISPLAY', /export const PREMIUM_PRICE_DISPLAY\s*=/.test(pricingSrc));
 const paywallSrc = stripComments(readMobile('components', 'premium', 'premium-paywall.tsx'));
-check('T: la paywall NO cablea compra (sin useBilling / requestPurchase / BillingProvider)', !/useBilling|requestPurchase|useIAP/.test(paywallSrc));
-check('T: el CTA de la paywall sigue siendo "Disponible proximamente"', /Disponible pr[oó]ximamente/.test(readMobile('components', 'premium', 'premium-paywall.tsx')));
+check('T (PB-2B): la paywall NO hard-codea el literal de precio (6.990 / CLP) -- solo via pricing.ts / metadata Google', !/6[.,]990|\bCLP\b/.test(paywallSrc));
+check('T (PB-2B): "Disponible proximamente" sigue como <Text> no interactivo (rama sin metadata Google)', /<Text[^>]*>\s*Disponible próximamente\s*<\/Text>/.test(paywallSrc) && !/label=(['"])Disponible próximamente\1/.test(paywallSrc));
 
 // --- META (anti-regresion PB-2A-R3) --------------------------------------
 // Impide que se reintroduzca la resolucion hard-codeada de expo-iap contra la

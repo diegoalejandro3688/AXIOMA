@@ -35,10 +35,13 @@
  *   E. `apps/mobile/app.json`: `android.package` sigue `com.zetrynd.app` y
  *      `plugins` === EXACTAMENTE `["expo-router", "expo-iap"]` -- la excepcion
  *      controlada de PB-2A agrega solo el string `"expo-iap"`, nada mas.
- *   F. `expo-iap` se importa SOLO desde `apps/mobile/lib/billing/`; NINGUN
- *      archivo movil orquesta COMPRA/restore (requestPurchase /
- *      launchBillingFlow / finishTransaction / getAvailablePurchases /
- *      restorePurchases) ni introduce una segunda pila de billing.
+ *   F. `expo-iap` y el flujo de compra/restore (`requestPurchase` /
+ *      `getAvailablePurchases`) viven SOLO en `apps/mobile/lib/billing/`
+ *      (PB-2B). En NINGUN lado -- lib/billing incluido -- el CLIENTE
+ *      acknowledgea/finaliza con Google (`finishTransaction` /
+ *      `acknowledgePurchaseAndroid` / `consumePurchaseAndroid` /
+ *      `launchBillingFlow` / `BillingClient`) ni hay una segunda pila de
+ *      billing -- el acknowledge es 100% del backend.
  *   G. Higiene: `apps/mobile/metro.config.js` = solo `getDefaultConfig(__dirname)`
  *      (PB-2A-M1 quito el override stale `unstable_serverRoot`, sin BOM); sin
  *      `apps/mobile/android/` trackeado por git (CNG/generado/gitignored).
@@ -168,37 +171,45 @@ check('E: "expo-iap" figura SOLO como string, sin objeto de opciones', (appJson.
 // F. Alcance: sin orquestacion de compra en el codigo movil
 // ---------------------------------------------------------------------------
 // PB-2A: `apps/mobile/lib/billing/` es el UNICO lugar autorizado para importar
-// expo-iap (el provider de conexion + metadata). En cualquier otro lado sigue
-// prohibido. En TODAS partes -- lib/billing incluido -- sigue prohibida la
-// orquestacion de COMPRA/restore.
-const purchaseOrchestration = /react-native-iap|react-native-purchases|RevenueCat|launchBillingFlow|BillingClient|queryProductDetails|requestPurchase|getAvailablePurchases|finishTransaction|acknowledgePurchase|restorePurchases/;
+// expo-iap. PB-2B: ese mismo directorio orquesta compra/restore
+// (`requestPurchase` / `getAvailablePurchases`). Lo que sigue PROHIBIDO EN TODAS
+// PARTES -- lib/billing incluido -- es: (a) una segunda pila de billing;
+// (b) que el CLIENTE acknowledgee/finalice la transaccion con Google
+// (`finishTransaction` / `acknowledgePurchaseAndroid` / `consumePurchaseAndroid`
+// / `launchBillingFlow` / `BillingClient`) -- el acknowledge es 100% del backend.
+// Se escanea CODIGO (comentarios fuera).
+const clientAckOrSecondStack = /react-native-iap|react-native-purchases|RevenueCat|purchasely|launchBillingFlow|BillingClient|finishTransaction|acknowledgePurchaseAndroid|consumePurchaseAndroid|\backnowledgePurchase\b/;
+// `requestPurchase` / `getAvailablePurchases` solo dentro de lib/billing/ (PB-2B).
+const purchaseFlowOutsideBilling = /\brequestPurchase\b|\bgetAvailablePurchases\b|\brestorePurchases\b/;
 const iapImportOutsideProvider = /\bexpo-iap\b|\bExpoIap\b/;
-// Se escanea CODIGO, no prosa: `apps/mobile/lib/billing/**` DESCRIBE su propia
-// frontera PB-2A en JSDoc ("NO llama requestPurchase", "NO expone restore()",
-// "PB-2B pasara offerToken a requestPurchase") -- esas menciones en comentarios
-// no son orquestacion. Antes de que lib/billing/ estuviera trackeado el scan no
-// las veia; ahora se quitan comentarios primero (misma intencion, sin falsos
-// positivos). Un `requestPurchase(...)` real en el codigo sigue siendo detectado.
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1');
-let orchestrationHits = [];
+let clientAckHits = [];
+let strayPurchaseFlowHits = [];
 let strayIapImportHits = [];
 try {
   const listed = execFileSync('git', ['-C', ROOT, 'ls-files', 'apps/mobile/app', 'apps/mobile/lib', 'apps/mobile/components'], { encoding: 'utf8' })
     .split('\n')
     .filter((f) => /\.(ts|tsx)$/.test(f));
   for (const f of listed) {
-    const body = readFileSync(rel(f), 'utf8');
-    if (purchaseOrchestration.test(stripComments(body))) orchestrationHits.push(f);
-    if (iapImportOutsideProvider.test(body) && !f.startsWith('apps/mobile/lib/billing/')) strayIapImportHits.push(f);
+    const code = stripComments(readFileSync(rel(f), 'utf8'));
+    const inBilling = f.startsWith('apps/mobile/lib/billing/');
+    if (clientAckOrSecondStack.test(code)) clientAckHits.push(f);
+    if (!inBilling && purchaseFlowOutsideBilling.test(code)) strayPurchaseFlowHits.push(f);
+    if (iapImportOutsideProvider.test(code) && !inBilling) strayIapImportHits.push(f);
   }
 } catch (error) {
   check(`F: se pudo listar el codigo movil (git ls-files) -- ${error.message}`, false);
 }
 check(
-  'F: NINGUN archivo movil orquesta COMPRA/restore (requestPurchase / launchBillingFlow / finishTransaction / getAvailablePurchases / restorePurchases / segunda pila)',
-  orchestrationHits.length === 0,
+  'F: NINGUN archivo movil acknowledgea en el cliente ni trae segunda pila (finishTransaction / acknowledge / consume / launchBillingFlow / RevenueCat / react-native-iap)',
+  clientAckHits.length === 0,
 );
-if (orchestrationHits.length) console.error('       archivos con orquestacion de compra prohibida: ' + orchestrationHits.join(', '));
+if (clientAckHits.length) console.error('       archivos prohibidos: ' + clientAckHits.join(', '));
+check(
+  'F: requestPurchase / getAvailablePurchases / restorePurchases SOLO dentro de apps/mobile/lib/billing/ (PB-2B)',
+  strayPurchaseFlowHits.length === 0,
+);
+if (strayPurchaseFlowHits.length) console.error('       flujo de compra fuera de lib/billing: ' + strayPurchaseFlowHits.join(', '));
 check(
   'F: expo-iap se importa SOLO desde apps/mobile/lib/billing/ (excepcion controlada PB-2A)',
   strayIapImportHits.length === 0,

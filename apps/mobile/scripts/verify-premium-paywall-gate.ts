@@ -81,17 +81,29 @@ function main() {
   check('el titulo del Dialog es "ZETRYND Premium"', /title="ZETRYND Premium"/.test(paywallCode));
 
   // --------------------------------------------------------------------
-  console.log('--- D. Precio ---');
-  check('importa PREMIUM_PRICE_DISPLAY de lib/entitlement/pricing', /import \{ PREMIUM_PRICE_DISPLAY \} from '\.\.\/\.\.\/lib\/entitlement\/pricing'/.test(paywallCode));
-  check('renderiza {PREMIUM_PRICE_DISPLAY}', /\{PREMIUM_PRICE_DISPLAY\}/.test(paywallCode));
-  check('el paywall NO hardcodea el literal de precio (6.990 / CLP)', !/6[.,]990|CLP/.test(paywallCode));
+  // D. Precio -- PB-2B: cuando hay metadata de Google Play, el precio en vivo
+  //    (autoridad de compra) sale de `billing.premiumProduct.localizedPrice`.
+  //    `PREMIUM_PRICE_DISPLAY` de pricing.ts queda como fallback EXPLICITAMENTE
+  //    "referencial" cuando NO hay metadata -- nunca como precio comprable.
+  console.log('--- D. Precio (PB-2B) ---');
+  check('importa PREMIUM_PRICE_DISPLAY de lib/entitlement/pricing (fallback referencial)', /import \{ PREMIUM_PRICE_DISPLAY \} from '\.\.\/\.\.\/lib\/entitlement\/pricing'/.test(paywallCode));
+  check('el precio en vivo sale de billing.premiumProduct.localizedPrice', /billing\.premiumProduct/.test(paywallCode) && /localizedPrice/.test(paywallCode));
+  check('PREMIUM_PRICE_DISPLAY solo se usa como fallback (liveProduct ? ... : PREMIUM_PRICE_DISPLAY) y etiquetado "referencial"', /liveProduct \? [^:]*localizedPrice : PREMIUM_PRICE_DISPLAY/.test(paywallCode) && /[Pp]recio referencial/.test(paywallCode));
+  check('el paywall NO hardcodea el literal de precio (6.990 / CLP)', !/6[.,]990|\bCLP\b/.test(paywallCode));
 
   // --------------------------------------------------------------------
-  console.log('--- E. CTA: no interactivo salvo "Ahora no" ---');
-  check('"Disponible proximamente" se renderiza como <Text> (no Button, no DialogAction)', /<Text[^>]*>\s*Disponible próximamente\s*<\/Text>/.test(paywallCode) && !/label=(['"])Disponible próximamente\1/.test(paywallCode));
-  check('"Ahora no" es secondaryAction y cierra el Dialog (onRequestClose)', /secondaryAction=\{\{ label: 'Ahora no', onPress: onRequestClose[\s\S]{0,40}\}\}/.test(paywallCode));
-  check('NO hay primaryAction (ninguna accion de compra en Capa 2)', !/primaryAction=/.test(paywallCode));
-  check('los primitivos Premium NO mencionan compra / Billing / suscripcion / override interno', !/purchase|comprar|Billing|billing|subscription|suscri(p|b)|set-tier-override|_internal\/entitlement|InAppPurchase|iap\b/i.test(premiumComponents + ctxCode));
+  // E. CTA -- PB-2B: cableado MINIMO de compra (PB-2C es el rediseño final).
+  //    El paywall PUEDE usar `useBilling().purchase()` / `restore()`. Limites:
+  //    "Ahora no" cierra; el boton "Suscribirme" SOLO existe con metadata de
+  //    Google; sin metadata, "Disponible proximamente" sigue siendo texto.
+  console.log('--- E. CTA (PB-2B: compra minima) ---');
+  check('"Disponible proximamente" sigue como <Text> no interactivo (rama sin metadata Google)', /<Text[^>]*>\s*Disponible próximamente\s*<\/Text>/.test(paywallCode) && !/label=(['"])Disponible próximamente\1/.test(paywallCode));
+  check('"Ahora no" es secondaryAction y cierra el Dialog', /secondaryAction=\{\{ label: 'Ahora no', onPress: handleClose[\s\S]{0,40}\}\}/.test(paywallCode));
+  check('el boton "Suscribirme" SOLO se renderiza con liveProduct', /liveProduct \?\s*\(\s*<Button[\s\S]{0,160}label="Suscribirme"/.test(paywallCode));
+  check('"Suscribirme" invoca billing.purchase() y respeta billing.busy (sin doble lanzamiento)', /billing\.purchase\(\)/.test(paywallCode) && /disabled=\{!canPurchase\}/.test(paywallCode) && /const canPurchase = liveProduct !== null && !billing\.busy/.test(paywallCode));
+  check('expone "Restaurar compras" -> billing.restore()', /label="Restaurar compras"/.test(paywallCode) && /billing\.restore\(\)/.test(paywallCode));
+  check('el paywall NUNCA concede Premium local (sin setPremium/setTier/_internal-entitlement) ni renderiza tokens', !/set(Premium|Tier|Entitlement)\s*\(|_internal\/entitlement|offerToken|purchaseToken/i.test(paywallCode));
+  check('badge + locked-screen + paywall-context SIGUEN sin nociones de compra / Billing / override', !/purchase|comprar|Billing|billing|InAppPurchase|set-tier-override|_internal\/entitlement/i.test(badgeCode + '\n' + lockedCode + '\n' + ctxCode));
 
   // --------------------------------------------------------------------
   console.log('--- F. <PremiumBadge> ---');
