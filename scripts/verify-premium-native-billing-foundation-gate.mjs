@@ -3,6 +3,16 @@
  * Gate -- PREMIUM V1, Capa 3 (Google Play Billing), C3.5A:
  * FUNDACION NATIVA DE BILLING.
  *
+ * ACTUALIZADO EN PB-2A (2026-09-10): PB-2A subio el pin a expo-iap 5.5.1,
+ * aplico la EXCEPCION CONTROLADA de app.json (`plugins: ["expo-router",
+ * "expo-iap"]`) e introdujo el provider `apps/mobile/lib/billing/`. Este gate
+ * ahora afirma esa nueva postura autorizada. Lo que NO cambio: pin exacto,
+ * integridad del lockfile, openiap-google 3.5.0, cero segunda pila de billing,
+ * cero orquestacion de COMPRA (requestPurchase/launchBillingFlow/
+ * finishTransaction/acknowledge/restore) en el codigo movil, android/ no
+ * trackeado. El gate PB-2A dedicado es
+ * apps/mobile/scripts/verify-mobile-billing-foundation-gate.ts (A..T).
+ *
  * Verificacion ESTATICA y REPRODUCIBLE (Node puro, scan de fuente +
  * lockfile + paquete instalado). NO ejecuta Gradle, NO compila Android, NO
  * toca dispositivos -- esa evidencia se produjo EXTERNAMENTE en la maquina
@@ -10,26 +20,28 @@
  * docs/adr/PREMIUM-V1-LAYER-3-NATIVE-BILLING-FOUNDATION-CLOSURE-REPORT.md.
  *
  * Este gate SOLO afirma lo que un repo estatico puede probar:
- *   A. `expo-iap` fijado EXACTAMENTE a 5.5.0 en apps/mobile/package.json
+ *   A. `expo-iap` fijado EXACTAMENTE a 5.5.1 en apps/mobile/package.json
  *      (sin `^` ni `~` ni rango).
- *   B. `pnpm-lock.yaml` contiene la resolucion de `expo-iap@5.5.0`
+ *   B. `pnpm-lock.yaml` contiene la resolucion de `expo-iap@5.5.1`
  *      (specifier del importer + entrada del paquete + integrity).
- *   C. El paquete `expo-iap@5.5.0` instalado declara, para Android,
+ *   C. El paquete `expo-iap@5.5.1` instalado declara, para Android,
  *      `openiap-google` 3.5.0 (`openiap-versions.json` + `android/build.gradle`).
  *      -> Segun la evidencia EXTERNA de `gradlew :app:dependencyInsight`,
  *         eso resuelve `com.android.billingclient:billing:9.1.0`. Este gate
  *         NO afirma probar esa resolucion de runtime -- solo que el paquete
  *         fijado la pide.
  *   D. Autolinking: `expo-module.config.json` declara el modulo Android
- *      `expo.modules.iap.ExpoIapModule` -> Expo lo enlaza SIN config plugin.
- *   E. `apps/mobile/app.json` NO se toca en C3.5A: `android.package` sigue
- *      siendo `com.zetrynd.app` y `plugins` NO incluye `"expo-iap"` (el
- *      config plugin se difiere a C3.5B).
- *   F. Alcance C3.5A: NINGUNA orquestacion de compra/restore/ProductDetails
- *      ni segunda pila de billing (RevenueCat / react-native-purchases) en
- *      `apps/mobile/{app,lib,components}`.
- *   G. Higiene: sin `apps/mobile/metro.config.js`, sin `apps/mobile/android/`
- *      trackeado por git (CNG/generado/gitignored).
+ *      `expo.modules.iap.ExpoIapModule`.
+ *   E. `apps/mobile/app.json`: `android.package` sigue `com.zetrynd.app` y
+ *      `plugins` === EXACTAMENTE `["expo-router", "expo-iap"]` -- la excepcion
+ *      controlada de PB-2A agrega solo el string `"expo-iap"`, nada mas.
+ *   F. `expo-iap` se importa SOLO desde `apps/mobile/lib/billing/`; NINGUN
+ *      archivo movil orquesta COMPRA/restore (requestPurchase /
+ *      launchBillingFlow / finishTransaction / getAvailablePurchases /
+ *      restorePurchases) ni introduce una segunda pila de billing.
+ *   G. Higiene: `apps/mobile/metro.config.js` = solo `getDefaultConfig(__dirname)`
+ *      (PB-2A-M1 quito el override stale `unstable_serverRoot`, sin BOM); sin
+ *      `apps/mobile/android/` trackeado por git (CNG/generado/gitignored).
  *
  * Uso: node scripts/verify-premium-native-billing-foundation-gate.mjs
  * (equivalente a `pnpm run verify:premium-native-billing-foundation-gate`)
@@ -43,7 +55,7 @@ const rel = (p) => new URL(p, new URL('../', import.meta.url));
 // Normaliza CRLF -> LF: el repo se edita en Windows y varios archivos quedan con \r\n.
 const read = (p) => readFileSync(rel(p), 'utf8').replace(/\r\n/g, '\n');
 
-const EXPO_IAP_VERSION = '5.5.0';
+const EXPO_IAP_VERSION = '5.5.1';
 const OPENIAP_GOOGLE_VERSION = '3.5.0';
 const ANDROID_APP_ID = 'com.zetrynd.app';
 
@@ -73,14 +85,14 @@ check('A: expo-iap esta en dependencies (no devDependencies)', !(mobilePkg.devDe
 // ---------------------------------------------------------------------------
 const lock = read('pnpm-lock.yaml');
 check(
-  'B: lockfile tiene el specifier del importer apps/mobile -> expo-iap: 5.5.0',
-  /\n {6}expo-iap:\n {8}specifier: 5\.5\.0\n {8}version: 5\.5\.0\(/.test(lock),
+  'B: lockfile tiene el specifier del importer apps/mobile -> expo-iap: 5.5.1',
+  /\n {6}expo-iap:\n {8}specifier: 5\.5\.1\n {8}version: 5\.5\.1\(/.test(lock),
 );
 check(`B: lockfile tiene la entrada del paquete expo-iap@${EXPO_IAP_VERSION}:`, lock.includes(`\n  expo-iap@${EXPO_IAP_VERSION}:\n`));
-check('B: lockfile tiene integrity (sha512) para expo-iap@5.5.0', /expo-iap@5\.5\.0:\n {4}resolution: \{integrity: sha512-/.test(lock));
+check('B: lockfile tiene integrity (sha512) para expo-iap@5.5.1', /expo-iap@5\.5\.1:\n {4}resolution: \{integrity: sha512-/.test(lock));
 check(
   'B: en el lockfile expo-iap SOLO trae expo/react/react-native (sin deps npm nuevas)',
-  /\n {2}expo-iap@5\.5\.0\([^\n]*\):\n {4}dependencies:\n {6}expo:[^\n]*\n {6}react: 19\.1\.0\n {6}react-native: 0\.81\.5[^\n]*\n\n/.test(lock),
+  /\n {2}expo-iap@5\.5\.1\([^\n]*\):\n {4}dependencies:\n {6}expo:[^\n]*\n {6}react: 19\.1\.0\n {6}react-native: 0\.81\.5[^\n]*\n\n/.test(lock),
 );
 // No hay segunda pila de billing en el lockfile.
 check('B: el lockfile NO introduce react-native-purchases / RevenueCat', !/react-native-purchases|@revenuecat|react-native-iap@/.test(lock));
@@ -126,35 +138,57 @@ check('D: expo-module.config.json incluye android en platforms', (moduleConfig.p
 // ---------------------------------------------------------------------------
 const appJson = JSON.parse(read('apps/mobile/app.json'));
 check(`E: app.json android.package sigue siendo ${ANDROID_APP_ID}`, appJson.expo?.android?.package === ANDROID_APP_ID);
-check('E: app.json plugins NO incluye "expo-iap" (config plugin diferido a C3.5B)', !(appJson.expo?.plugins ?? []).includes('expo-iap'));
-check('E: app.json plugins es exactamente ["expo-router"]', JSON.stringify(appJson.expo?.plugins) === JSON.stringify(['expo-router']));
+// PB-2A: EXCEPCION CONTROLADA -- se agrego "expo-iap" (string) al array de
+// plugins. Nada mas. Ningun objeto de config, ningun otro plugin.
+check('E: app.json plugins es exactamente ["expo-router", "expo-iap"] (excepcion controlada PB-2A)', JSON.stringify(appJson.expo?.plugins) === JSON.stringify(['expo-router', 'expo-iap']));
+check('E: "expo-iap" figura SOLO como string, sin objeto de opciones', (appJson.expo?.plugins ?? []).includes('expo-iap') && !(appJson.expo?.plugins ?? []).some((p) => Array.isArray(p) && p[0] === 'expo-iap'));
 
 // ---------------------------------------------------------------------------
 // F. Alcance: sin orquestacion de compra en el codigo movil
 // ---------------------------------------------------------------------------
-const forbidden = /\bexpo-iap\b|\bExpoIap\b|react-native-iap|react-native-purchases|RevenueCat|launchBillingFlow|BillingClient|queryProductDetails|requestPurchase|getAvailablePurchases|initConnection|finishTransaction|acknowledgePurchase/;
+// PB-2A: `apps/mobile/lib/billing/` es el UNICO lugar autorizado para importar
+// expo-iap (el provider de conexion + metadata). En cualquier otro lado sigue
+// prohibido. En TODAS partes -- lib/billing incluido -- sigue prohibida la
+// orquestacion de COMPRA/restore.
+const purchaseOrchestration = /react-native-iap|react-native-purchases|RevenueCat|launchBillingFlow|BillingClient|queryProductDetails|requestPurchase|getAvailablePurchases|finishTransaction|acknowledgePurchase|restorePurchases/;
+const iapImportOutsideProvider = /\bexpo-iap\b|\bExpoIap\b/;
 let orchestrationHits = [];
+let strayIapImportHits = [];
 try {
   const listed = execFileSync('git', ['-C', ROOT, 'ls-files', 'apps/mobile/app', 'apps/mobile/lib', 'apps/mobile/components'], { encoding: 'utf8' })
     .split('\n')
     .filter((f) => /\.(ts|tsx)$/.test(f));
   for (const f of listed) {
     const body = readFileSync(rel(f), 'utf8');
-    if (forbidden.test(body)) orchestrationHits.push(f);
+    if (purchaseOrchestration.test(body)) orchestrationHits.push(f);
+    if (iapImportOutsideProvider.test(body) && !f.startsWith('apps/mobile/lib/billing/')) strayIapImportHits.push(f);
   }
 } catch (error) {
   check(`F: se pudo listar el codigo movil (git ls-files) -- ${error.message}`, false);
 }
 check(
-  'F: NINGUN archivo de apps/mobile/{app,lib,components} importa expo-iap ni orquesta billing (C3.5A = solo fundacion nativa)',
+  'F: NINGUN archivo movil orquesta COMPRA/restore (requestPurchase / launchBillingFlow / finishTransaction / getAvailablePurchases / restorePurchases / segunda pila)',
   orchestrationHits.length === 0,
 );
-if (orchestrationHits.length) console.error('       archivos con orquestacion prohibida: ' + orchestrationHits.join(', '));
+if (orchestrationHits.length) console.error('       archivos con orquestacion de compra prohibida: ' + orchestrationHits.join(', '));
+check(
+  'F: expo-iap se importa SOLO desde apps/mobile/lib/billing/ (excepcion controlada PB-2A)',
+  strayIapImportHits.length === 0,
+);
+if (strayIapImportHits.length) console.error('       imports de expo-iap fuera de lib/billing: ' + strayIapImportHits.join(', '));
 
 // ---------------------------------------------------------------------------
 // G. Higiene: sin metro.config.js temporal, sin android/ trackeado
 // ---------------------------------------------------------------------------
-check('G: NO existe apps/mobile/metro.config.js (probe temporal no retenido)', !existsSync(rel('apps/mobile/metro.config.js')));
+// PB-2A-M1: metro.config.js = solo `getDefaultConfig(__dirname)`. Se quito el
+// override manual y stale `server.unstable_serverRoot = __dirname` (Expo SDK 54
+// ya fija el serverRoot en la raiz del monorepo; el override lo forzaba a
+// apps/mobile y rompia la resolucion del entry virtual de expo-router con
+// node-linker=hoisted en Windows -> Metro 404). Sin override, sin BOM.
+const metroSrc = existsSync(rel('apps/mobile/metro.config.js')) ? read('apps/mobile/metro.config.js') : '';
+check('G: metro.config.js llama getDefaultConfig(__dirname)', /getDefaultConfig\(__dirname\)/.test(metroSrc));
+check('G: metro.config.js NO fija server.unstable_serverRoot manualmente (override stale removido en PB-2A-M1)', !/unstable_serverRoot\s*=/.test(metroSrc));
+check('G: metro.config.js sin BOM UTF-8', metroSrc.charCodeAt(0) !== 0xfeff);
 let androidTracked = '';
 try {
   androidTracked = execFileSync('git', ['-C', ROOT, 'ls-files', 'apps/mobile/android'], { encoding: 'utf8' }).trim();

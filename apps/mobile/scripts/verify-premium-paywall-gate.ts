@@ -121,7 +121,11 @@ function main() {
   // --------------------------------------------------------------------
   console.log('--- I. Host montado en _layout.tsx ---');
   check('importa PaywallProvider de lib/entitlement/paywall-context', /import \{ PaywallProvider \} from '\.\.\/lib\/entitlement\/paywall-context'/.test(layoutSrc));
-  check('PaywallProvider anidado dentro de EntitlementProvider, envolviendo ThemedRootNavigator', /<EntitlementProvider>\s*<PaywallProvider>\s*<ThemedRootNavigator \/>\s*<\/PaywallProvider>\s*<\/EntitlementProvider>/.test(layoutSrc));
+  // PB-2A: BillingProvider (Capa 3) se inserta entre EntitlementProvider y
+  // PaywallProvider -- posee la conexion de Billing y la metadata del producto,
+  // sin tocar el entitlement ni la compra. PaywallProvider sigue envolviendo
+  // ThemedRootNavigator y sigue anidado bajo EntitlementProvider.
+  check('PaywallProvider anidado dentro de EntitlementProvider (via BillingProvider), envolviendo ThemedRootNavigator', /<EntitlementProvider>\s*<BillingProvider>\s*<PaywallProvider>\s*<ThemedRootNavigator \/>\s*<\/PaywallProvider>\s*<\/BillingProvider>\s*<\/EntitlementProvider>/.test(layoutSrc));
 
   // --------------------------------------------------------------------
   // J. Consumidores de las primitivas Premium.

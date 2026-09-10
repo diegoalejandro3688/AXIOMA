@@ -187,8 +187,10 @@ async function main() {
   const layoutSrc = read('app', '_layout.tsx');
   check('importa EntitlementProvider de lib/entitlement/entitlement-provider', /import \{ EntitlementProvider \} from '\.\.\/lib\/entitlement\/entitlement-provider'/.test(layoutSrc));
   check('EntitlementProvider esta ANIDADO dentro de AuthProvider', layoutSrc.indexOf('<AuthProvider>') !== -1 && layoutSrc.indexOf('<EntitlementProvider>') > layoutSrc.indexOf('<AuthProvider>') && layoutSrc.indexOf('</EntitlementProvider>') < layoutSrc.indexOf('</AuthProvider>'));
-  // C2.1 -- EntitlementProvider ahora envuelve PaywallProvider, que envuelve ThemedRootNavigator.
-  check('EntitlementProvider envuelve el arbol de navegacion (via PaywallProvider)', /<EntitlementProvider>\s*<PaywallProvider>\s*<ThemedRootNavigator \/>\s*<\/PaywallProvider>\s*<\/EntitlementProvider>/.test(layoutSrc));
+  // C2.1 -- EntitlementProvider envuelve el arbol de navegacion.
+  // PB-2A -- BillingProvider (Capa 3) se inserta entre EntitlementProvider y
+  // PaywallProvider; no altera la autoridad del entitlement (sigue backend).
+  check('EntitlementProvider envuelve el arbol de navegacion (via BillingProvider -> PaywallProvider)', /<EntitlementProvider>\s*<BillingProvider>\s*<PaywallProvider>\s*<ThemedRootNavigator \/>\s*<\/PaywallProvider>\s*<\/BillingProvider>\s*<\/EntitlementProvider>/.test(layoutSrc));
 
   // ----------------------------------------------------------------------
   // H. INVARIANTE A -- ownership del cleanup de la request obsoleta.

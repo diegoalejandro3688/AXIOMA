@@ -8,6 +8,10 @@ import { OnboardingProvider, useOnboarding } from '../lib/onboarding/onboarding-
 // PREMIUM V1 -- Capa 2 (Mobile gating). C2.0: fuente de verdad de authorization.
 // C2.1: host global del paywall (aun sin superficies que llamen open()).
 import { EntitlementProvider } from '../lib/entitlement/entitlement-provider';
+// PREMIUM V1 -- Capa 3 (Google Play Billing). PB-2A: posee la conexion de
+// facturacion y la metadata localizada del producto. No compra, no restaura,
+// no toca el entitlement (eso sigue siendo backend).
+import { BillingProvider } from '../lib/billing/billing-provider';
 import { PaywallProvider } from '../lib/entitlement/paywall-context';
 import { ThemeProvider, useTheme, useColorSchemeName } from '../theme';
 
@@ -33,9 +37,11 @@ export default function RootLayout() {
       <AuthProvider>
         <OnboardingProvider>
           <EntitlementProvider>
-            <PaywallProvider>
-              <ThemedRootNavigator />
-            </PaywallProvider>
+            <BillingProvider>
+              <PaywallProvider>
+                <ThemedRootNavigator />
+              </PaywallProvider>
+            </BillingProvider>
           </EntitlementProvider>
         </OnboardingProvider>
       </AuthProvider>
