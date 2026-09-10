@@ -1,5 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import type { PremiumTier } from '@axioma/contracts';
+import type { AccountSubscription } from '../generated/prisma/client';
 import { AccountSubscriptionRepository, toDerivableSubscription } from './subscription/account-subscription.repository';
 import { deriveSubscriptionTier } from './subscription/derive-subscription-tier';
 
@@ -66,6 +67,22 @@ export class EntitlementService {
 
     // 3. Default conservador.
     return { tier: 'FREE' };
+  }
+
+  /**
+   * PB-1B-R1 §6 -- deriva el `tier` a partir de una fila `AccountSubscription`
+   * YA LEIDA (o `null`), preservando EXACTAMENTE la misma precedencia que
+   * `getEntitlement` (override de QA -> derivacion -> FREE). Existe para que
+   * `SubscriptionService.getSummary` calcule `tier` y `renewalStatus`/
+   * `accessUntil` del MISMO snapshot de fila -- sin una segunda lectura que
+   * pudiera devolver una version distinta bajo una transicion concurrente.
+   * NO cambia que `GET /me/entitlement` siga siendo la autoridad de
+   * authorization (ese endpoint sigue llamando a `getEntitlement`).
+   */
+  getEntitlementForRow(accountId: string, row: AccountSubscription | null): AccountEntitlement {
+    const override = this.testOnlyTierOverride.get(accountId);
+    if (override !== undefined) return { tier: override };
+    return { tier: deriveSubscriptionTier(toDerivableSubscription(row), new Date()) };
   }
 
   /**

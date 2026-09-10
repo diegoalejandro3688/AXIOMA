@@ -5,6 +5,7 @@ import { OutboxService } from '../platform/outbox/outbox.service';
 import { UserService } from '../user/user.service';
 import { ProgressService } from '../progress/progress.service';
 import { AiRetentionService } from '../ai/ai-retention.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 import { PrivacyRequestRepository } from './privacy-request.repository';
 import type { PrivacyRequest } from '../generated/prisma/client';
 
@@ -27,6 +28,7 @@ export class PrivacyService {
     private readonly userService: UserService,
     private readonly progressService: ProgressService,
     private readonly aiRetentionService: AiRetentionService,
+    private readonly subscriptionService: SubscriptionService,
     private readonly outbox: OutboxService,
   ) {}
 
@@ -143,6 +145,18 @@ export class PrivacyService {
         // Product Owner 2026-08-12) -- Account nunca se borra al cerrar una cuenta, así que accountId permanece
         // válido en esas filas sin ningún FK roto.
         await this.aiRetentionService.deleteAllForAccountClosure(request.accountId);
+        // PB-1B -- minimizacion de datos de FACTURACION en el cierre DEFINITIVO
+        // (nunca al SOLICITAR la eliminacion; `finalizeAccountClosure` ya dejo
+        // la cuenta CLOSED). Pone a NULL los campos diagnosticos de
+        // `AccountSubscription` y NADA MAS: NUNCA borra filas (ni PENDING),
+        // NUNCA muta `state`, NUNCA cancela la suscripcion de Google Play. El
+        // ciclo de vida de Google sigue reconciliando para la cuenta cerrada;
+        // la purga real de filas terminales y la limpieza de
+        // `obfuscatedAccountId` viven en el barrido de retencion. Mismo
+        // criterio "dentro del mismo try, antes de markCompleted" que
+        // USER/PROGRESS/AI: si falla, la solicitud queda PROCESSING para
+        // reintento, nunca se marca completada a medias.
+        await this.subscriptionService.applyAccountClosure(request.accountId);
         await this.privacyRequestRepo.markCompleted(request.id);
         processed++;
         this.logger.log(

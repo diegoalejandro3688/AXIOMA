@@ -11,6 +11,8 @@ import { acceptPublicParticipationTerms, getPublicParticipationTermsStatus } fro
 import { PUBLIC_PARTICIPATION_TERMS_INTRO, PUBLIC_PARTICIPATION_TERMS_TITLE } from '../../../lib/compliance/public-participation-terms-content';
 import { PRIVACY_POLICY_URL, SUPPORT_CONTACT, isConfigured } from '../../../lib/compliance/legal-links';
 import { requestAccountDeletion } from '../../../lib/api/privacy';
+import { getSubscriptionSummary } from '../../../lib/api/subscription';
+import { GOOGLE_PLAY_SUBSCRIPTIONS_MANAGEMENT_URL, type SubscriptionSummaryResponse } from '@axioma/contracts';
 import { useEntitlement } from '../../../lib/entitlement/entitlement-provider';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
@@ -117,6 +119,13 @@ export default function PerfilScreen() {
   const [deletionRequested, setDeletionRequested] = useState(false);
   const [deletionRequesting, setDeletionRequesting] = useState(false);
   const [deletionError, setDeletionError] = useState<string | null>(null);
+  // PB-1B (+ PB-1B-R1 §3) -- resumen de suscripcion (`GET /me/subscription`),
+  // solo lectura, para la advertencia al eliminar la cuenta. NUNCA bloquea la
+  // eliminacion. Ante error / desconocido NO se falla en abierto: se muestra
+  // una advertencia GENERICA ("si tienes una suscripcion...").
+  const [subSummaryState, setSubSummaryState] = useState<
+    { status: 'loading' } | { status: 'ready'; summary: SubscriptionSummaryResponse } | { status: 'error' }
+  >({ status: 'loading' });
   const entitlement = useEntitlement();
 
   const load = useCallback(async () => {
@@ -171,6 +180,15 @@ export default function PerfilScreen() {
     // mutado nada reutiliza el estado ya cargado, sin pedirlo de nuevo.
     if (publicProfileState === null) {
       loadPublicProfile();
+    }
+    // PB-1B (+ R1 §3) -- resumen de suscripción, LAZY e independiente: alimenta
+    // la advertencia del diálogo de eliminación. Ante error -> estado 'error'
+    // -> advertencia GENÉRICA (nunca se falla en abierto, nunca se bloquea).
+    if (subSummaryState.status !== 'ready') {
+      setSubSummaryState({ status: 'loading' });
+      void getSubscriptionSummary().then((result) => {
+        setSubSummaryState(result.ok ? { status: 'ready', summary: result.data } : { status: 'error' });
+      });
     }
   }
 
@@ -763,6 +781,42 @@ export default function PerfilScreen() {
         primaryAction={{ label: 'Solicitar eliminación', onPress: handleConfirmAccountDeletion, variant: 'danger' }}
         secondaryAction={{ label: 'Cancelar', onPress: () => setDeletionConfirmVisible(false), variant: 'tertiary' }}
       >
+        {/*
+          PB-1B (+ R1 §3) -- advertencia INFORMATIVA (nunca bloquea). Eliminar
+          la cuenta de ZETRYND NO cancela la suscripción de Google Play ni
+          detiene el cobro; ZETRYND nunca llama a la API de cancelación.
+          - ready + isSubscribed  -> texto ESPECÍFICO.
+          - ready + !isSubscribed -> sin advertencia.
+          - loading / error       -> texto GENÉRICO condicional (no afirma que
+            el usuario tenga una suscripción). Nunca se falla en abierto.
+        */}
+        {(() => {
+          const specific = subSummaryState.status === 'ready' && subSummaryState.summary.isSubscribed;
+          const generic = subSummaryState.status !== 'ready';
+          if (!specific && !generic) return null;
+          const manageUrl =
+            subSummaryState.status === 'ready' ? subSummaryState.summary.managementUrl : GOOGLE_PLAY_SUBSCRIPTIONS_MANAGEMENT_URL;
+          return (
+            <View style={styles.deletionSubscriptionNotice}>
+              <Text variant="bodySmall" color="secondary">
+                {specific
+                  ? 'Tu suscripción a ZETRYND Premium se gestiona en Google Play y no se cancela al eliminar tu cuenta. Si quieres detener futuras renovaciones, puedes gestionarla desde Google Play.'
+                  : 'Si tienes una suscripción de ZETRYND Premium en Google Play, eliminar tu cuenta de ZETRYND no la cancela. Puedes gestionarla desde Google Play.'}
+              </Text>
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel="Gestionar suscripción en Google Play"
+                onPress={() => {
+                  void Linking.openURL(manageUrl);
+                }}
+              >
+                <Text variant="bodySmall" weight="semibold" style={styles.deletionSubscriptionLink}>
+                  Gestionar suscripción
+                </Text>
+              </Pressable>
+            </View>
+          );
+        })()}
         {deletionRequesting ? <ActivityIndicator color={tokens.color.accent.default} /> : null}
         {deletionError ? (
           <Text variant="bodySmall" color="error">
@@ -844,6 +898,9 @@ function createStyles(t: ThemeTokens) {
     // dejar que el label ocupe el ancho restante para un wrap natural.
     settingsRowTop: { alignItems: 'flex-start' as const },
     settingsRowLabelFill: { flex: 1 },
+    // PB-1B -- aviso de suscripción dentro del diálogo de eliminación de cuenta.
+    deletionSubscriptionNotice: { gap: spacing.space2 },
+    deletionSubscriptionLink: { color: t.color.accent.default },
     editor: { gap: spacing.space2 },
     input: {
       borderWidth: 1,

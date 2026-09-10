@@ -84,3 +84,74 @@ export const googlePlayBillingContextResponseSchema = z
   })
   .strict();
 export type GooglePlayBillingContextResponse = z.infer<typeof googlePlayBillingContextResponseSchema>;
+
+// ===========================================================================
+// PREMIUM V1 -- Capa 3 (Google Play Billing), PB-1B: resumen de gestion de
+// suscripcion (`GET /me/subscription`).
+//
+// Datos de la PANTALLA DE GESTION, derivados del backend (`AccountSubscription`
+// verificada + entitlement), NUNCA inferidos del estado local de Play. Campos
+// CONGELADOS en docs/adr/PREMIUM-V1-LAYER-3-BILLING-ARCHITECTURE.md seccion K.2.
+// NUNCA emite: purchaseToken / linkedPurchaseToken / resubscribedFromPurchaseToken
+// / obfuscatedAccountId / billingAccountRef / rawSnapshot / el `subscriptionState`
+// crudo de Google / order ids / accountId / Firebase UID.
+// ===========================================================================
+
+/**
+ * Estado de renovacion PUBLICO (ADR K.2) -- proyeccion minima del
+ * `SubscriptionState` normalizado, NUNCA el estado crudo del proveedor:
+ *   - `renews`        -> ACTIVE (se renueva al final del periodo)
+ *   - `cancels`       -> CANCELED con periodo pagado aun vigente (el acceso
+ *                        continua hasta `accessUntil`; cancelar la
+ *                        auto-renovacion NO es un downgrade inmediato)
+ *   - `grace_period`  -> IN_GRACE_PERIOD (fallo de cobro, acceso conservado)
+ *   - `on_hold`       -> ON_HOLD (Google ya bloqueo el acceso)
+ *   - `none`          -> sin suscripcion / PENDING / PAUSED / terminal
+ *                        (EXPIRED/REVOKED/SUPERSEDED) / CANCELED ya vencida
+ */
+export const subscriptionRenewalStatusSchema = z.enum(['renews', 'cancels', 'grace_period', 'on_hold', 'none']);
+export type SubscriptionRenewalStatus = z.infer<typeof subscriptionRenewalStatusSchema>;
+
+/**
+ * Respuesta de `GET /me/subscription`. `.strict()`.
+ *
+ *   - `tier`         -- `FREE` | `PREMIUM`, la MISMA verdad de authorization que
+ *                       `GET /me/entitlement` (no se re-deriva aparte).
+ *   - `isSubscribed` -- hay una `AccountSubscription` NO TERMINAL (estado
+ *                       distinto de EXPIRED/REVOKED/SUPERSEDED). Responde "¿esta
+ *                       cuenta tiene un ciclo de vida de Google Play
+ *                       suficientemente relevante como para mostrar gestion de
+ *                       suscripcion / la advertencia al eliminar la cuenta?".
+ *                       NO es sinonimo de `tier === 'PREMIUM'`: una compra
+ *                       PENDING o un ON_HOLD son `isSubscribed: true` con
+ *                       `tier: 'FREE'`.
+ *   - `renewalStatus`-- ver `subscriptionRenewalStatusSchema`.
+ *   - `accessUntil`  -- ISO 8601 de `currentPeriodEnd` (`expiryTime`) cuando es
+ *                       significativo (suscripcion no terminal con periodo
+ *                       conocido); `null` si no aplica. SIEMPRE lo calcula el
+ *                       backend, nunca el cliente.
+ *   - `paymentIssue` -- `state === IN_GRACE_PERIOD || state === ON_HOLD`
+ *                       (ADR K.2). Derivado del estado normalizado del backend,
+ *                       nunca de una suposicion del movil.
+ *   - `managementUrl`-- deep link SEGURO a la pantalla de suscripciones de
+ *                       Google Play (nunca una pagina de pago externa).
+ */
+export const subscriptionSummaryResponseSchema = z
+  .object({
+    tier: z.enum(['FREE', 'PREMIUM']),
+    isSubscribed: z.boolean(),
+    renewalStatus: subscriptionRenewalStatusSchema,
+    accessUntil: z.string().datetime().nullable(),
+    paymentIssue: z.boolean(),
+    managementUrl: z.string().url(),
+  })
+  .strict();
+export type SubscriptionSummaryResponse = z.infer<typeof subscriptionSummaryResponseSchema>;
+
+/**
+ * Deep link CONGELADO a la gestion de suscripciones de Google Play (ADR K.2 /
+ * seccion J). Es la UNICA URL que `GET /me/subscription` emite y la unica a la
+ * que "Gestionar suscripcion" navega -- informativa, NUNCA una pagina de pago.
+ */
+export const GOOGLE_PLAY_SUBSCRIPTIONS_MANAGEMENT_URL =
+  'https://play.google.com/store/account/subscriptions?sku=zetrynd_premium&package=com.zetrynd.app';

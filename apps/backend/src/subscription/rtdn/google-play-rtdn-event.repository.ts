@@ -61,6 +61,25 @@ export class GooglePlayRtdnEventRepository {
     return this.prisma.googlePlayRtdnEvent.findUnique({ where: { id } });
   }
 
+  /**
+   * PB-1B -- ¿hay trabajo RTDN VIVO para alguno de estos `purchaseToken` (la
+   * "linea de tokens" de una fila: purchaseToken + linkedPurchaseToken +
+   * resubscribedFromPurchaseToken)? Vivo = `PENDING` / `PROCESSING` /
+   * `RETRYABLE`. `DONE` / `IGNORED` / `FAILED` (dead-letter acotado, ya agotado)
+   * NO cuentan. El buzon de RTDN es el UNICO disparador asincrono de
+   * reconciliacion, asi que esto cubre tambien "reconciliacion en cola". La
+   * lista de tokens ya viene sin `null`s; nunca se loguea aqui.
+   */
+  async countLiveByPurchaseTokens(purchaseTokens: string[]): Promise<number> {
+    if (purchaseTokens.length === 0) return 0;
+    return this.prisma.googlePlayRtdnEvent.count({
+      where: {
+        purchaseToken: { in: purchaseTokens },
+        status: { in: ['PENDING', 'PROCESSING', 'RETRYABLE'] },
+      },
+    });
+  }
+
   async findByMessageId(messageId: string): Promise<GooglePlayRtdnEvent | null> {
     return this.prisma.googlePlayRtdnEvent.findUnique({ where: { messageId } });
   }

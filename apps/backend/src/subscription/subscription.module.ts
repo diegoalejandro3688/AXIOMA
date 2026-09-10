@@ -12,8 +12,13 @@ import { DisabledSubscriptionProviderAdapter } from './disabled-subscription-pro
 import { SUBSCRIPTION_PROVIDER_ADAPTER } from './subscription-provider.port';
 import { resolveSubscriptionProviderChoice } from './subscription-provider-choice';
 import { BillingIdentityService } from './billing-identity.service';
+import { BillingRetentionService } from './billing-retention.service';
+import { BillingRetentionScheduler } from './billing-retention.scheduler';
+import { BillingRetentionController } from './billing-retention.controller';
 import { SubscriptionReconciliationService } from './subscription-reconciliation.service';
+import { SubscriptionService } from './subscription.service';
 import { SubscriptionController } from './subscription.controller';
+import { SubscriptionSummaryController } from './subscription-summary.controller';
 import { GooglePlayRtdnController } from './rtdn/google-play-rtdn.controller';
 import { GooglePlayRtdnEventRepository } from './rtdn/google-play-rtdn-event.repository';
 import { RtdnIngestionService } from './rtdn/rtdn-ingestion.service';
@@ -60,7 +65,7 @@ const RTDN_AUTH_FALLBACK: RtdnAuthConfig = {
 
 @Module({
   imports: [ConfigModule, AuthModule, EntitlementModule, InternalOpsModule],
-  controllers: [SubscriptionController, GooglePlayRtdnController],
+  controllers: [SubscriptionController, SubscriptionSummaryController, BillingRetentionController, GooglePlayRtdnController],
   providers: [
     FakeSubscriptionProviderAdapter,
     {
@@ -130,11 +135,15 @@ const RTDN_AUTH_FALLBACK: RtdnAuthConfig = {
         ),
     },
     BillingIdentityService,
+    SubscriptionService,
+    BillingRetentionService,
+    BillingRetentionScheduler,
     SubscriptionReconciliationService,
     GooglePlayRtdnEventRepository,
     RtdnIngestionService,
     RtdnProcessingService,
     RtdnProcessingScheduler,
   ],
+  exports: [SubscriptionService],
 })
 export class SubscriptionModule {}

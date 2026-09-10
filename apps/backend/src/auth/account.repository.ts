@@ -93,4 +93,9 @@ export class AccountRepository {
     });
     return count === 1;
   }
+
+  // PB-1B-R1 §1: NO existe un metodo para limpiar `obfuscatedAccountId`. La ref
+  // opaca se CONSERVA en la cuenta soft-CLOSED indefinidamente en V1 -- es la
+  // unica via de atribucion de una RTDN de PRIMER CONTACTO (PB-1A). Su borrado
+  // definitivo queda DIFERIDO a PB-6.
 }

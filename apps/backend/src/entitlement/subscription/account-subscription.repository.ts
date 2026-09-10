@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../platform/prisma/prisma.service';
-import type { AccountSubscription, Prisma } from '../../generated/prisma/client';
+import { Prisma } from '../../generated/prisma/client';
+import type { AccountSubscription } from '../../generated/prisma/client';
 import type { DerivableSubscription } from './derive-subscription-tier';
 
 /**
@@ -91,6 +92,94 @@ export class AccountSubscriptionRepository {
 
   async findByPurchaseToken(purchaseToken: string, db?: Db): Promise<AccountSubscription | null> {
     return (db ?? this.prisma).accountSubscription.findUnique({ where: { purchaseToken } });
+  }
+
+  /**
+   * PB-1B (+ PB-1B-R1 §4) -- minimizacion de datos de facturacion al CIERRE
+   * DEFINITIVO de la cuenta (PB-0A-R2 §11). Pone a NULL SOLO los campos
+   * DIAGNOSTICOS que (a) son nullable en el schema y (b) ningun paso de ciclo
+   * de vida necesita.
+   *
+   * NUNCA toca: `purchaseToken` / `linkedPurchaseToken` /
+   * `resubscribedFromPurchaseToken` / `state` / `expiryTime` / `startTime` /
+   * `productId` / `basePlanId` / `regionCode` / `testPurchase` / `accountId` /
+   * `latestEventTime` / `acknowledgementState`.
+   *
+   * PB-1B-R1 §4: NO se toca `autoRenewing`. Es `BOOLEAN NOT NULL` -> escribir
+   * `false` no seria "borrado de dato", seria CONVERTIR un diagnostico
+   * posiblemente-verdadero en una afirmacion FALSA. Se conserva su valor
+   * verdadero hasta que la fila entera se purgue por retencion.
+   * `deriveSubscriptionTier` sigue sin leerlo.
+   *
+   * NUNCA muta `state` (la verdad de Google se conserva; el barrido de RTDN
+   * puede seguir actualizandola). Devuelve el numero de filas afectadas.
+   */
+  async nullDiagnosticsForAccountClosure(accountId: string, db?: Db): Promise<number> {
+    const { count } = await (db ?? this.prisma).accountSubscription.updateMany({
+      where: { accountId },
+      data: {
+        rawSnapshot: Prisma.DbNull,
+        latestNotificationType: null,
+        cancelReason: null,
+        cancelUserInitiated: null,
+        cancelTime: null,
+      },
+    });
+    return count;
+  }
+
+  /**
+   * PB-1B -- candidatas a PURGA de retencion: fila en estado TERMINAL
+   * (EXPIRED/REVOKED/SUPERSEDED) de una cuenta CLOSED con `closedAt` fijado y
+   * `expiryTime` nulo o ya pasado. El resto de las clausulas (reloj de
+   * retencion legal, ausencia de trabajo RTDN vivo) se re-verifican por fila
+   * en el servicio de barrido -- este query solo acota el conjunto y trae el
+   * ancla `closedAt` + `updatedAt` para el calculo del reloj. Lote acotado.
+   */
+  async findRetentionPurgeCandidates(now: Date, limit: number, db?: Db): Promise<
+    Array<
+      Pick<AccountSubscription, 'id' | 'purchaseToken' | 'linkedPurchaseToken' | 'resubscribedFromPurchaseToken' | 'accountId' | 'updatedAt' | 'state'> & {
+        account: { closedAt: Date | null };
+      }
+    >
+  > {
+    return (db ?? this.prisma).accountSubscription.findMany({
+      where: {
+        state: { in: ['EXPIRED', 'REVOKED', 'SUPERSEDED'] },
+        account: { status: 'CLOSED', closedAt: { not: null } },
+        OR: [{ expiryTime: null }, { expiryTime: { lt: now } }],
+      },
+      select: {
+        id: true,
+        purchaseToken: true,
+        linkedPurchaseToken: true,
+        resubscribedFromPurchaseToken: true,
+        accountId: true,
+        updatedAt: true,
+        state: true,
+        account: { select: { closedAt: true } },
+      },
+      orderBy: { updatedAt: 'asc' },
+      take: limit,
+    });
+  }
+
+  /**
+   * PB-1B -- borrado IDEMPOTENTE de una fila de suscripcion (purga de
+   * retencion). `deleteMany` con el `id` -> `count` 0 si otra corrida ya la
+   * elimino. Re-afirma en el `where` las precondiciones que no pueden haber
+   * cambiado dentro de la misma transaccion (estado terminal + cuenta CLOSED)
+   * como red de seguridad final.
+   */
+  async purgeRetentionRow(id: string, db?: Db): Promise<number> {
+    const { count } = await (db ?? this.prisma).accountSubscription.deleteMany({
+      where: {
+        id,
+        state: { in: ['EXPIRED', 'REVOKED', 'SUPERSEDED'] },
+        account: { status: 'CLOSED' },
+      },
+    });
+    return count;
   }
 
   private commonWriteFields(d: VerifiedSubscriptionWriteData) {
