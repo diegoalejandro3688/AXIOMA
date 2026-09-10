@@ -101,6 +101,17 @@ async function main() {
   check('hub: el upsell va DESPUES del mensaje de bloqueo existente (homeAvailability)', read(HUB).indexOf('homeAvailability.message') < read(HUB).indexOf('<AiLimitUpsell'));
   check('conversation: el upsell va DESPUES del blockedBox existente', read(CONVO).indexOf('styles.blockedBox') < read(CONVO).indexOf('<AiLimitUpsell'));
   check('conversation: el blocked pasado = negacion del estado de disponibilidad canonico (resolveSendAvailability)', read(CONVO).includes('const availability = resolveSendAvailability(') && read(CONVO).includes('blocked={!availability.canSend}'));
+  // TQ-03 -- el aviso de bloqueo y el upsell viven DENTRO del ScrollView de la
+  // conversacion (participan del flujo de scroll), nunca como capa fija entre
+  // el ScrollView y el composer que tape el texto del Tutor a media altura.
+  {
+    const convo = read(CONVO);
+    const scrollClose = convo.indexOf('</ScrollView>');
+    check('conversation TQ-03: <ScrollView> ... </ScrollView> existe', scrollClose > 0);
+    check('conversation TQ-03: el blockedBox se renderiza DENTRO del ScrollView (antes de </ScrollView>)', convo.indexOf('styles.blockedBox') > 0 && convo.indexOf('styles.blockedBox') < scrollClose);
+    check('conversation TQ-03: el <AiLimitUpsell> se monta DENTRO del ScrollView (antes de </ScrollView>)', convo.indexOf('<AiLimitUpsell') > 0 && convo.indexOf('<AiLimitUpsell') < scrollClose);
+    check('conversation TQ-03: el composer sigue FUERA/DESPUES del ScrollView (fijo abajo, sin cambios)', convo.indexOf('styles.composerCard') > scrollClose);
+  }
 
   // --------------------------------------------------------------------
   console.log('--- D. gate legacy verify:ai-mobile-gate.ts sin editar ---');

@@ -240,6 +240,35 @@ export default function AiConversationScreen() {
           </View>
         ) : null}
         {sending ? <AiThinkingIndicator /> : null}
+
+        {/*
+          TQ-03 -- el aviso de bloqueo (cupo diario o límite de turnos) y el
+          upsell OPCIONAL de Premium participan del MISMO flujo de scroll que
+          la conversación: aparecen DESPUÉS del último mensaje / "Reportar
+          respuesta", nunca como una capa fija que tape el texto del Tutor a
+          media altura. Solo se montan cuando el servidor ya bloqueó el envío
+          (`!availability.canSend`) -- en el estado normal no hay ningún nodo
+          extra aquí. El composer sigue fijo abajo (comportamiento de producto
+          sin cambios). El aviso transitorio de fallo de envío
+          (`sendState.failed`) sigue fuera del ScrollView -- es un estado de
+          error distinto y no lo toca este arreglo.
+
+          C2.4 -- el upsell decide por sí mismo (entitlement `ready` + `FREE` +
+          `blocked`, ver `shouldShowAiLimitUpsell`); aquí no hay lógica de
+          plan. Nunca abre el paywall solo -- solo su CTA (`onPress`) lo hace.
+        */}
+        {!availability.canSend ? (
+          <>
+            <View style={styles.blockedBox} accessibilityRole="alert">
+              <Text variant="bodySmall" style={styles.blockedText}>
+                {availability.message}
+              </Text>
+            </View>
+            <View style={styles.upsellInFlow}>
+              <AiLimitUpsell blocked={!availability.canSend} />
+            </View>
+          </>
+        ) : null}
       </ScrollView>
 
       {/*
@@ -274,23 +303,6 @@ export default function AiConversationScreen() {
           ) : null}
         </View>
       ) : null}
-
-      {!availability.canSend ? (
-        <View style={styles.blockedBox} accessibilityRole="alert">
-          <Text variant="bodySmall" style={styles.blockedText}>
-            {availability.message}
-          </Text>
-        </View>
-      ) : null}
-
-      {/*
-        C2.4 -- upsell OPCIONAL: solo se pinta si la cuenta es FREE confirmada
-        y el Tutor ya esta bloqueado por el estado de cuota/turnos derivado del
-        servidor (`!availability.canSend`). El componente decide por si mismo
-        (entitlement + `blocked`); aqui no hay logica de plan. Nunca abre el
-        paywall solo -- solo su CTA lo hace.
-      */}
-      <AiLimitUpsell blocked={!availability.canSend} />
 
       {/*
         AI-2A -- composer integrado (mismo patrón visual ya aprobado en
@@ -366,9 +378,10 @@ function createStyles(t: ThemeTokens) {
     noticeSafety: { backgroundColor: t.color.state.warning.background, borderColor: t.color.state.warning.border },
     noticeSafetyText: { color: t.color.state.warning.text },
     retryButton: { alignSelf: 'flex-start' as const },
+    // TQ-03 -- ahora vive DENTRO del ScrollView (`messagesContent` ya aporta
+    // `paddingHorizontal: 16` y `gap: 12`), así que sin margen propio: se
+    // alinea con las burbujas y el `gap` del contenedor lo separa del resto.
     blockedBox: {
-      marginHorizontal: 16,
-      marginBottom: 8,
       borderWidth: 1,
       borderColor: t.color.state.warning.border,
       backgroundColor: t.color.state.warning.background,
@@ -376,6 +389,12 @@ function createStyles(t: ThemeTokens) {
       padding: 10,
     },
     blockedText: { color: t.color.state.warning.text },
+    // TQ-03 -- `AiLimitUpsell` es un componente COMPARTIDO (también en
+    // `ia/index.tsx`): no se tocan sus estilos. Su card trae
+    // `marginHorizontal: spacing.space4` (16); este envoltorio cancela el
+    // `paddingHorizontal: 16` del `messagesContent` para que el card quede
+    // al mismo inset (16px del borde) que las burbujas, sin doble margen.
+    upsellInFlow: { marginHorizontal: -16 },
     // AI-2A -- una sola superficie (mismo patrón que el composer de Home):
     // borde sutil, radio del design system, sin sombra fuerte.
     composerCard: {
