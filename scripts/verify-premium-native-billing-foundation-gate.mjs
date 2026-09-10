@@ -49,11 +49,32 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const rel = (p) => new URL(p, new URL('../', import.meta.url));
 // Normaliza CRLF -> LF: el repo se edita en Windows y varios archivos quedan con \r\n.
 const read = (p) => readFileSync(rel(p), 'utf8').replace(/\r\n/g, '\n');
+
+/**
+ * PB-2A-R3 -- `expo-iap` se resuelve DESDE `apps/mobile/package.json` (el
+ * workspace que declara la dependencia), NUNCA desde un
+ * `<repo>/node_modules/expo-iap` hard-codeado: ese path plano solo existe con
+ * `node-linker=hoisted` (residuo local Windows, PB-2A-R2), no es un invariante
+ * del repo. Bajo el linker `isolated` por defecto de pnpm el paquete vive en
+ * `apps/mobile/node_modules/expo-iap` (symlink) o en `node_modules/.pnpm/...`;
+ * `createRequire` originado en `apps/mobile` lo encuentra en ambas topologias.
+ */
+const mobileRequire = createRequire(join(ROOT, 'apps', 'mobile', 'package.json'));
+let expoIapRoot = null;
+try {
+  expoIapRoot = dirname(mobileRequire.resolve('expo-iap/package.json'));
+} catch {
+  expoIapRoot = null; // no instalado -> lo reporta el check C
+}
+const readIap = (...seg) => readFileSync(join(expoIapRoot, ...seg), 'utf8').replace(/\r\n/g, '\n');
+const iapExists = (...seg) => expoIapRoot !== null && existsSync(join(expoIapRoot, ...seg));
 
 const EXPO_IAP_VERSION = '5.5.1';
 const OPENIAP_GOOGLE_VERSION = '3.5.0';
@@ -101,15 +122,15 @@ check('B: el lockfile NO introduce react-native-purchases / RevenueCat', !/react
 // C. El paquete instalado declara openiap-google 3.5.0 para Android
 //    (la PBL 9.1.0 real la prueba la evidencia EXTERNA de Gradle)
 // ---------------------------------------------------------------------------
-const pkgRoot = 'node_modules/expo-iap';
-check(`C: ${pkgRoot} instalado en version ${EXPO_IAP_VERSION}`, existsSync(rel(`${pkgRoot}/package.json`)) && JSON.parse(read(`${pkgRoot}/package.json`)).version === EXPO_IAP_VERSION);
-if (existsSync(rel(`${pkgRoot}/openiap-versions.json`))) {
-  const openiap = JSON.parse(read(`${pkgRoot}/openiap-versions.json`));
+check('C: expo-iap resoluble desde apps/mobile (workspace que lo declara)', expoIapRoot !== null);
+check(`C: expo-iap instalado en version ${EXPO_IAP_VERSION}`, iapExists('package.json') && JSON.parse(readIap('package.json')).version === EXPO_IAP_VERSION);
+if (iapExists('openiap-versions.json')) {
+  const openiap = JSON.parse(readIap('openiap-versions.json'));
   check(`C: openiap-versions.json declara google = ${OPENIAP_GOOGLE_VERSION}`, openiap.google === OPENIAP_GOOGLE_VERSION);
 } else {
   check('C: openiap-versions.json presente', false);
 }
-const iapGradle = read(`${pkgRoot}/android/build.gradle`);
+const iapGradle = iapExists('android', 'build.gradle') ? readIap('android', 'build.gradle') : '';
 check(
   'C: android/build.gradle del modulo trae io.github.hyochan.openiap:openiap-google',
   /implementation "io\.github\.hyochan\.openiap:openiap-google:\$\{googleVersionString\}"/.test(iapGradle),
@@ -126,7 +147,7 @@ check(
 // ---------------------------------------------------------------------------
 // D. Autolinking sin config plugin
 // ---------------------------------------------------------------------------
-const moduleConfig = JSON.parse(read(`${pkgRoot}/expo-module.config.json`));
+const moduleConfig = iapExists('expo-module.config.json') ? JSON.parse(readIap('expo-module.config.json')) : {};
 check(
   'D: expo-module.config.json declara el modulo Android expo.modules.iap.ExpoIapModule',
   Array.isArray(moduleConfig.android?.modules) && moduleConfig.android.modules.includes('expo.modules.iap.ExpoIapModule'),
@@ -152,6 +173,13 @@ check('E: "expo-iap" figura SOLO como string, sin objeto de opciones', (appJson.
 // orquestacion de COMPRA/restore.
 const purchaseOrchestration = /react-native-iap|react-native-purchases|RevenueCat|launchBillingFlow|BillingClient|queryProductDetails|requestPurchase|getAvailablePurchases|finishTransaction|acknowledgePurchase|restorePurchases/;
 const iapImportOutsideProvider = /\bexpo-iap\b|\bExpoIap\b/;
+// Se escanea CODIGO, no prosa: `apps/mobile/lib/billing/**` DESCRIBE su propia
+// frontera PB-2A en JSDoc ("NO llama requestPurchase", "NO expone restore()",
+// "PB-2B pasara offerToken a requestPurchase") -- esas menciones en comentarios
+// no son orquestacion. Antes de que lib/billing/ estuviera trackeado el scan no
+// las veia; ahora se quitan comentarios primero (misma intencion, sin falsos
+// positivos). Un `requestPurchase(...)` real en el codigo sigue siendo detectado.
+const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1');
 let orchestrationHits = [];
 let strayIapImportHits = [];
 try {
@@ -160,7 +188,7 @@ try {
     .filter((f) => /\.(ts|tsx)$/.test(f));
   for (const f of listed) {
     const body = readFileSync(rel(f), 'utf8');
-    if (purchaseOrchestration.test(body)) orchestrationHits.push(f);
+    if (purchaseOrchestration.test(stripComments(body))) orchestrationHits.push(f);
     if (iapImportOutsideProvider.test(body) && !f.startsWith('apps/mobile/lib/billing/')) strayIapImportHits.push(f);
   }
 } catch (error) {
@@ -194,6 +222,26 @@ try {
   androidTracked = execFileSync('git', ['-C', ROOT, 'ls-files', 'apps/mobile/android'], { encoding: 'utf8' }).trim();
 } catch { /* git ausente -> se reporta abajo */ }
 check('G: apps/mobile/android/ NO esta trackeado por git (CNG / generado / gitignored)', androidTracked === '');
+
+// ---------------------------------------------------------------------------
+// META (anti-regresion PB-2A-R3): impedir que se reintroduzca la resolucion
+// hard-codeada de expo-iap contra la raiz del repo (solo valida con
+// node-linker=hoisted). La unica forma permitida es createRequire desde
+// apps/mobile/package.json.
+// ---------------------------------------------------------------------------
+const selfSrc = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+// Tokens partidos para que este propio bloque no dispare las prohibiciones.
+const NM = 'node_' + 'modules';
+const PKGROOT = 'pkg' + 'Root';
+const hardCodedRepoRootIap =
+  new RegExp("[`'\"]" + NM + "\\/expo-iap").test(selfSrc) || // path plano de la libreria citado como string
+  new RegExp('\\b' + PKGROOT + '\\b').test(selfSrc); // el identificador viejo, reintroducido
+check(
+  'META: expo-iap se resuelve por createRequire(apps/mobile/package.json), sin path a la raiz del repo',
+  /createRequire\(\s*join\(\s*ROOT\s*,\s*'apps'\s*,\s*'mobile'\s*,\s*'package\.json'\s*\)\s*\)/.test(selfSrc) &&
+    /\.resolve\('expo-iap\/package\.json'\)/.test(selfSrc) &&
+    !hardCodedRepoRootIap,
+);
 
 // ---------------------------------------------------------------------------
 console.log('');

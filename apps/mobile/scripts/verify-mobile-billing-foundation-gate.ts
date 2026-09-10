@@ -41,12 +41,34 @@
 //   T. Display-only: la paywall NO cablea compra -- pricing.ts conserva su
 //      constante estatica y el CTA sigue "Disponible proximamente".
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 
 const MOBILE_ROOT = join(__dirname, '..');
 const REPO_ROOT = join(MOBILE_ROOT, '..', '..');
 const read = (...seg: string[]) => readFileSync(join(...seg), 'utf8').replace(/\r\n/g, '\n');
+
+/**
+ * PB-2A-R3 -- `expo-iap` se resuelve DESDE `apps/mobile/package.json` (el
+ * workspace que declara la dependencia), NUNCA desde un
+ * `<repo>/node_modules/expo-iap` hard-codeado. Ese path plano solo existe con
+ * `node-linker=hoisted` (residuo local Windows, ver PB-2A-R2), no es un
+ * invariante del repo: bajo el linker `isolated` por defecto de pnpm, el
+ * paquete vive en `apps/mobile/node_modules/expo-iap` (symlink) o en
+ * `node_modules/.pnpm/...`. `createRequire` originado en `apps/mobile` lo
+ * encuentra en AMBAS topologias. El workspace raiz NO declara `expo-iap`, asi
+ * que resolver desde ahi seria incorrecto.
+ */
+const mobileRequire = createRequire(join(MOBILE_ROOT, 'package.json'));
+let expoIapRoot: string | null = null;
+try {
+  expoIapRoot = dirname(mobileRequire.resolve('expo-iap/package.json'));
+} catch {
+  expoIapRoot = null; // no instalado -> lo reporta el check C
+}
+const readIap = (...seg: string[]) => readFileSync(join(expoIapRoot as string, ...seg), 'utf8').replace(/\r\n/g, '\n');
+const iapExists = (...seg: string[]) => expoIapRoot !== null && existsSync(join(expoIapRoot, ...seg));
 const readMobile = (...seg: string[]) => read(MOBILE_ROOT, ...seg);
 const stripComments = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1');
@@ -86,13 +108,13 @@ check('B: lockfile tiene integrity (sha512) para expo-iap@5.5.1', /expo-iap@5\.5
 check('B: el lockfile NO introduce react-native-purchases / RevenueCat / react-native-iap', !/react-native-purchases|@revenuecat|react-native-iap@/.test(lock));
 
 // --- C ---------------------------------------------------------------------
-const pkgRoot = join(REPO_ROOT, 'node_modules', 'expo-iap');
+check('C: expo-iap resoluble desde apps/mobile (workspace que lo declara)', expoIapRoot !== null);
 check(
-  `C: node_modules/expo-iap instalado en ${EXPO_IAP_VERSION}`,
-  existsSync(join(pkgRoot, 'package.json')) && JSON.parse(read(pkgRoot, 'package.json')).version === EXPO_IAP_VERSION,
+  `C: expo-iap instalado en ${EXPO_IAP_VERSION}`,
+  iapExists('package.json') && JSON.parse(readIap('package.json')).version === EXPO_IAP_VERSION,
 );
-if (existsSync(join(pkgRoot, 'openiap-versions.json'))) {
-  const openiap = JSON.parse(read(pkgRoot, 'openiap-versions.json'));
+if (iapExists('openiap-versions.json')) {
+  const openiap = JSON.parse(readIap('openiap-versions.json'));
   check(`C: openiap-versions.json declara google = ${OPENIAP_GOOGLE_VERSION}`, openiap.google === OPENIAP_GOOGLE_VERSION);
 } else {
   check('C: openiap-versions.json presente', false);
@@ -107,8 +129,8 @@ check('E: app.json android.package sigue siendo ' + ANDROID_APP_ID, appJson.expo
 check('E: "expo-iap" aparece SOLO como string (sin objeto de config con opciones)', plugins.includes('expo-iap') && !plugins.some((p) => Array.isArray(p) && p[0] === 'expo-iap'));
 
 // --- F ---------------------------------------------------------------------
-const libManifest = existsSync(join(pkgRoot, 'android', 'src', 'main', 'AndroidManifest.xml'))
-  ? read(pkgRoot, 'android', 'src', 'main', 'AndroidManifest.xml')
+const libManifest = iapExists('android', 'src', 'main', 'AndroidManifest.xml')
+  ? readIap('android', 'src', 'main', 'AndroidManifest.xml')
   : '';
 check('F: el manifest de la libreria expo-iap declara com.android.vending.BILLING', /com\.android\.vending\.BILLING/.test(libManifest));
 
@@ -199,6 +221,22 @@ check('T: pricing.ts conserva la constante estatica PREMIUM_PRICE_DISPLAY', /exp
 const paywallSrc = stripComments(readMobile('components', 'premium', 'premium-paywall.tsx'));
 check('T: la paywall NO cablea compra (sin useBilling / requestPurchase / BillingProvider)', !/useBilling|requestPurchase|useIAP/.test(paywallSrc));
 check('T: el CTA de la paywall sigue siendo "Disponible proximamente"', /Disponible pr[oó]ximamente/.test(readMobile('components', 'premium', 'premium-paywall.tsx')));
+
+// --- META (anti-regresion PB-2A-R3) --------------------------------------
+// Impide que se reintroduzca la resolucion hard-codeada de expo-iap contra la
+// raiz del repo (un path que solo existe con node-linker=hoisted). La unica
+// forma permitida es createRequire originado en apps/mobile/package.json.
+const selfCode = stripComments(readFileSync(__filename, 'utf8'));
+const NM = 'node_' + 'modules';
+const hardCodedRepoRootIap =
+  new RegExp('join\\(\\s*REPO_ROOT[^\\n)]*[\'"]' + NM + '[\'"]').test(selfCode) ||
+  new RegExp('[\'"]' + NM + '\\/expo-iap[\'"]').test(selfCode);
+check(
+  'META: expo-iap se resuelve por createRequire(apps/mobile/package.json), sin path a la raiz del repo',
+  /createRequire\(\s*join\(\s*MOBILE_ROOT\s*,\s*'package\.json'\s*\)\s*\)/.test(selfCode) &&
+    /\.resolve\(\s*'expo-iap\/package\.json'\s*\)/.test(selfCode) &&
+    !hardCodedRepoRootIap,
+);
 
 // -------------------------------------------------------------------------
 console.log('');
