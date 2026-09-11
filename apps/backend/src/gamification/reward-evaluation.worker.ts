@@ -43,6 +43,7 @@ import { SubjectCompletionService } from './subject-completion.service';
 import { TitleDefinitionRepository } from './title-definition.repository';
 import { TitleEligibilityService } from './title-eligibility.service';
 import { TITLES_V1 } from './titles-v1-catalog';
+import { AccountRepository } from '../auth/account.repository';
 
 /**
  * STABILIZATION-B -- decisión de producto CONGELADA (§5 del brief): "actividad
@@ -121,7 +122,7 @@ function backoffFor(attemptsSoFar: number): number {
   return FAILURE_BACKOFF_MS[index] ?? FAILURE_BACKOFF_MS[FAILURE_BACKOFF_MS.length - 1]!;
 }
 
-export type ProcessAccountOutcome = 'PROCESSED' | 'SKIPPED_LOCKED' | 'FAILED';
+export type ProcessAccountOutcome = 'PROCESSED' | 'SKIPPED_LOCKED' | 'SKIPPED_CLOSED_ACCOUNT' | 'FAILED';
 
 @Injectable()
 export class RewardEvaluationWorker {
@@ -154,6 +155,11 @@ export class RewardEvaluationWorker {
     private readonly titleDefinitionRepo: TitleDefinitionRepository,
     private readonly titleEligibilityService: TitleEligibilityService,
     private readonly subjectCompletionService: SubjectCompletionService,
+    // WEB-0D.1C-B0R -- añadido al FINAL, mismo criterio que
+    // `XpGrantService.accountRepo`/`LeaguePointGrantService.accountRepo`
+    // (WEB-0D.1C-A/B0R): opcional para no romper la instanciación
+    // posicional de gates preexistentes.
+    private readonly accountRepo?: AccountRepository,
   ) {}
 
   /**
@@ -850,9 +856,38 @@ export class RewardEvaluationWorker {
           return 'PROCESSED';
         }
 
+        const last = pendingEntries[pendingEntries.length - 1]!;
+
+        // WEB-0D.1C-B0R -- releído DENTRO de la MISMA transacción, justo
+        // antes de evaluar (defensa TOCTOU: el cierre pudo confirmarse
+        // después de `discoverPendingAccounts` y antes de este punto).
+        // Si la cuenta está CLOSED: `evaluateAccount` -- el ÚNICO lugar que
+        // crea AchievementProgress/Unlock, RewardGrant/Component,
+        // AccountTitle, InventoryItem o estado de desafío -- NUNCA se
+        // invoca. El cursor SÍ avanza hasta la última entrada pendiente,
+        // exactamente como en un éxito normal: esto es lo que evita que
+        // estas mismas entradas se re-descubran en cada ciclo del cron
+        // para siempre (requisito "no reintentar indefinidamente"). No se
+        // fabrica ninguna entrega: ningún `RewardGrantComponent` se marca
+        // `DELIVERED` ni se crea uno nuevo -- simplemente nunca se evalúa,
+        // que es la representación honesta de "esta cuenta se cerró antes
+        // de que esto se evaluara". Cualquier `RewardGrantComponent`
+        // `PENDING` que ya existiera de ANTES de este cambio (creado por
+        // una corrida anterior de `evaluateAccount`) tampoco se toca aquí
+        // -- queda como estaba, nunca se marca `DELIVERED` falsamente (ver
+        // informe: una marca terminal explícita para ese caso requeriría
+        // una decisión de producto/esquema, fuera de alcance de este
+        // bloque).
+        if (this.accountRepo) {
+          const account = await tx.account.findUnique({ where: { id: accountId } });
+          if (account?.status === 'CLOSED') {
+            await this.cursorRepo.upsertSuccess(accountId, last.recordedAt, last.id, tx);
+            return 'SKIPPED_CLOSED_ACCOUNT';
+          }
+        }
+
         await this.evaluateAccount(tx, accountId, pendingEntries);
 
-        const last = pendingEntries[pendingEntries.length - 1]!;
         await this.cursorRepo.upsertSuccess(accountId, last.recordedAt, last.id, tx);
         return 'PROCESSED';
       });
@@ -867,19 +902,21 @@ export class RewardEvaluationWorker {
   }
 
   /** Aislamiento de fallo por cuenta: un error en una no detiene el resto (mismo patrón que XpGrantService.grantPending/GamificationService.ingestPending). */
-  async run(now: Date = new Date()): Promise<{ processed: number; skippedLocked: number; failed: number }> {
+  async run(now: Date = new Date()): Promise<{ processed: number; skippedLocked: number; failed: number; accountClosed: number }> {
     const accountIds = await this.discoverPendingAccounts(now);
     let processed = 0;
     let skippedLocked = 0;
     let failed = 0;
+    let accountClosed = 0;
 
     for (const accountId of accountIds) {
       const outcome = await this.processAccount(accountId);
       if (outcome === 'PROCESSED') processed++;
       else if (outcome === 'SKIPPED_LOCKED') skippedLocked++;
+      else if (outcome === 'SKIPPED_CLOSED_ACCOUNT') accountClosed++;
       else failed++;
     }
 
-    return { processed, skippedLocked, failed };
+    return { processed, skippedLocked, failed, accountClosed };
   }
 }

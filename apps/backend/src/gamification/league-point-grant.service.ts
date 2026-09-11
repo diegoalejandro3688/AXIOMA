@@ -9,6 +9,7 @@ import { LeagueGroupRepository } from './league-group.repository';
 import { LeaguePointRuleRepository } from './league-point-rule.repository';
 import { LeaguePointLedgerEntryRepository } from './league-point-ledger-entry.repository';
 import { QuickQuestionAttemptRepository } from './quick-question-attempt.repository';
+import { AccountRepository } from '../auth/account.repository';
 
 const GRANT_BATCH_SIZE = 100;
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
@@ -111,20 +112,40 @@ export class LeaguePointGrantService {
     private readonly ruleRepo: LeaguePointRuleRepository,
     private readonly ledgerRepo: LeaguePointLedgerEntryRepository,
     private readonly quickQuestionAttemptRepo: QuickQuestionAttemptRepository,
+    // WEB-0D.1C-B0R -- añadido al FINAL, mismo criterio que
+    // `XpGrantService.accountRepo`/`CompetitiveLeaderboardService.accountRepo`
+    // (WEB-0D.1C-A): opcional para no romper la instanciación posicional de
+    // gates preexistentes.
+    private readonly accountRepo?: AccountRepository,
   ) {}
 
-  async grantPending(): Promise<{ granted: number; skipped: number; failed: number }> {
+  /**
+   * WEB-0D.1C-B0R -- `findAllActiveAccountIds` filtra por
+   * `SeasonLeagueParticipation.participationStatus` (estado COMPETITIVO),
+   * NUNCA `Account.status` -- una cuenta CLOSED conserva su participación
+   * en estado 'ACTIVE' indefinidamente (WEB-0D.1C-A no la toca). Sin este
+   * filtro adicional, una cuenta cerrada seguiría siendo redescubierta en
+   * CADA ciclo del cron para siempre. `accountRepo` opcional: sin él, no
+   * se aplica ningún filtro (comportamiento previo, solo alcanzable en
+   * gates que construyen este servicio a mano).
+   */
+  async grantPending(): Promise<{ granted: number; skipped: number; failed: number; accountClosed: number }> {
     const activeAccountIds = await this.participationRepo.findAllActiveAccountIds();
-    const pending = await this.activityRepo.findPendingLeagueGrant(activeAccountIds, GRANT_BATCH_SIZE);
+    const eligibleAccountIds = this.accountRepo
+      ? await this.excludeClosedAccounts(activeAccountIds)
+      : activeAccountIds;
+    const pending = await this.activityRepo.findPendingLeagueGrant(eligibleAccountIds, GRANT_BATCH_SIZE);
 
     let granted = 0;
     let skipped = 0;
     let failed = 0;
+    let accountClosed = 0;
 
     for (const activity of pending) {
       try {
         const result = await this.grantForActivity(activity);
         if (result.outcome === 'LP_GRANTED') granted++;
+        else if (result.outcome === 'CLOSED_CONCURRENTLY') accountClosed++;
         else skipped++;
       } catch (error) {
         failed++;
@@ -133,7 +154,14 @@ export class LeaguePointGrantService {
       }
     }
 
-    return { granted, skipped, failed };
+    return { granted, skipped, failed, accountClosed };
+  }
+
+  /** WEB-0D.1C-B0R -- filtra `accountIds` a solo las que NO están CLOSED (una consulta en lote, nunca N+1). */
+  private async excludeClosedAccounts(accountIds: string[]): Promise<string[]> {
+    if (accountIds.length === 0 || !this.accountRepo) return accountIds;
+    const statuses = await this.accountRepo.findStatusesByIds(accountIds);
+    return accountIds.filter((id) => statuses.get(id) !== 'CLOSED');
   }
 
   async grantForActivity(activity: ValidatedGamificationActivity): Promise<LeagueGrantOutcome> {
@@ -186,6 +214,18 @@ export class LeaguePointGrantService {
         const freshParticipation = await tx.seasonLeagueParticipation.findUnique({ where: { id: participation.id } });
         if (!freshParticipation || freshParticipation.participationStatus !== 'ACTIVE') {
           throw new ClosedConcurrentlyError();
+        }
+        // WEB-0D.1C-B0R -- defensa TOCTOU: releer Account.status DENTRO de
+        // la MISMA transacción, justo antes de escribir. El pre-filtro de
+        // `grantPending` (excludeClosedAccounts) ya cubre el caso normal;
+        // esto cubre el cierre confirmado ENTRE esa lectura y este COMMIT.
+        // Reutiliza `ClosedConcurrentlyError` -- misma semántica exacta
+        // ("ya no aplica, nunca un error"), sin tipo nuevo.
+        if (this.accountRepo) {
+          const account = await tx.account.findUnique({ where: { id: activity.accountId } });
+          if (account?.status === 'CLOSED') {
+            throw new ClosedConcurrentlyError();
+          }
         }
         const season = await tx.gameSeason.findUnique({ where: { id: freshParticipation.gameSeasonId } });
         if (!season || season.status !== 'ACTIVE' || at < season.startsAt || at >= season.endsAt) {

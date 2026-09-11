@@ -18,10 +18,10 @@ export class XpGrantScheduler {
   @Cron(CronExpression.EVERY_MINUTE)
   async handleGrant() {
     await runWithCorrelationId(generateCorrelationId(), async () => {
-      const { granted, capped, noRule, failed } = await this.xpGrantService.grantPending();
-      if (granted > 0 || capped > 0 || noRule > 0 || failed > 0) {
+      const { granted, capped, noRule, failed, accountClosed } = await this.xpGrantService.grantPending();
+      if (granted > 0 || capped > 0 || noRule > 0 || failed > 0 || accountClosed > 0) {
         this.logger.log(
-          `Otorgamiento de XP: ${granted} otorgado(s), ${capped} con tope diario alcanzado, ${noRule} sin regla activa, ${failed} fallido(s)`,
+          `Otorgamiento de XP: ${granted} otorgado(s), ${capped} con tope diario alcanzado, ${noRule} sin regla activa, ${accountClosed} ignorado(s) por cuenta CLOSED, ${failed} fallido(s)`,
         );
       }
     });

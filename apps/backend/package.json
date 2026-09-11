@@ -95,6 +95,7 @@
     "verify:competitive-profile-endpoint-gate": "tsx scripts/run-gate.ts verify-competitive-profile-endpoint-gate.ts",
     "verify:competitive-leaderboard-gate": "tsx scripts/run-gate.ts verify-competitive-leaderboard-gate.ts",
     "verify:closed-account-gamification-guard-gate": "tsx scripts/run-gate.ts verify-closed-account-gamification-guard-gate.ts",
+    "verify:deferred-gamification-worker-closed-account-guard-gate": "tsx scripts/run-gate.ts verify-deferred-gamification-worker-closed-account-guard-gate.ts",
     "verify:exam-foundation-gate": "tsx scripts/run-gate.ts verify-exam-foundation-gate.ts",
     "verify:premium-exams-gate": "tsx scripts/run-gate.ts verify-premium-exams-gate.ts",
     "verify:premium-content-access-gate": "tsx scripts/run-gate.ts verify-premium-content-access-gate.ts",

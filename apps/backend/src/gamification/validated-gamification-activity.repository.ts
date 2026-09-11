@@ -98,6 +98,16 @@ export class ValidatedGamificationActivityRepository {
    * Postgres para ASC es NULLS LAST (justo lo contrario de lo que se
    * necesita: una actividad sin intento todavía debe ir PRIMERO).
    */
+  /**
+   * WEB-0D.1C-B0R -- exclusión central de cuentas CLOSED en el propio
+   * descubrimiento: `LEFT JOIN account` + `a.status IS DISTINCT FROM
+   * 'CLOSED'` (`account` puede no tener fila para un accountId sintético de
+   * gate/legado -- `IS DISTINCT FROM` trata `NULL` como "no es CLOSED",
+   * dirección segura: nunca bloquea una cuenta real por un JOIN vacío).
+   * Esto es lo que evita que una actividad de una cuenta ya cerrada se
+   * siga redescubriendo en cada ciclo del cron -- nunca depende de que el
+   * cierre haya limpiado `xp_grant_attempt` primero.
+   */
   async findPendingGrant(limit: number, now: Date = new Date()): Promise<ValidatedGamificationActivity[]> {
     const rows = await this.prisma.$queryRaw<PendingGrantRow[]>`
       SELECT
@@ -106,11 +116,13 @@ export class ValidatedGamificationActivityRepository {
         vga.validated_at, vga.deduplication_key, vga.integrity_status
       FROM validated_gamification_activity vga
       LEFT JOIN xp_grant_attempt xga ON xga.validated_activity_id = vga.id
+      LEFT JOIN account a ON a.id = vga.account_id
       WHERE NOT EXISTS (
         SELECT 1 FROM xp_ledger_entry xle
         WHERE xle.validated_activity_id = vga.id AND xle.entry_type = 'OTORGAMIENTO'
       )
       AND (xga.validated_activity_id IS NULL OR xga.next_eligible_at <= ${now})
+      AND a.status IS DISTINCT FROM 'CLOSED'
       ORDER BY xga.attempts ASC NULLS FIRST, vga.occurred_at ASC
       LIMIT ${limit}
     `;

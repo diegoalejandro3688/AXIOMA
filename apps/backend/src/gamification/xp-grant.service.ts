@@ -8,6 +8,7 @@ import { ValidatedGamificationActivityRepository } from './validated-gamificatio
 import { XpLedgerEntryRepository } from './xp-ledger-entry.repository';
 import { XpBalanceRepository } from './xp-balance.repository';
 import { XpGrantAttemptRepository } from './xp-grant-attempt.repository';
+import { AccountRepository } from '../auth/account.repository';
 
 /** Único programa de XP conocido en este incremento -- ver brief del incremento de otorgamiento. */
 const PROGRAM_KEY = 'xp-core';
@@ -87,10 +88,19 @@ const NO_RULE_BACKOFF_MS = [
 export type GrantOutcome =
   | { outcome: 'XP_GRANTED'; entry: XpLedgerEntry }
   | { outcome: 'NO_ACTIVE_RULE' }
-  | { outcome: 'DAILY_CAP_REACHED' };
+  | { outcome: 'DAILY_CAP_REACHED' }
+  | { outcome: 'ACCOUNT_CLOSED' };
 
 /** Señal interna para abortar la transacción sin gastar reintentos de conflicto serializable. */
 class DailyCapExceededError extends Error {}
+/**
+ * WEB-0D.1C-B0R -- señal interna: la cuenta se confirmó CLOSED al releer
+ * DENTRO de la misma transacción justo antes de escribir (defensa TOCTOU),
+ * mismo criterio EXACTO que `ClosedConcurrentlyError` en
+ * `league-point-grant.service.ts`. Nunca escribe `xp_ledger_entry` ni
+ * `xp_balance` -- la transacción aborta sin dejar rastro.
+ */
+class AccountClosedError extends Error {}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -129,21 +139,37 @@ export class XpGrantService {
     private readonly ledgerRepo: XpLedgerEntryRepository,
     private readonly balanceRepo: XpBalanceRepository,
     private readonly attemptRepo: XpGrantAttemptRepository,
+    // WEB-0D.1C-B0R -- añadido al FINAL, mismo criterio que
+    // `CompetitiveLeaderboardService.accountRepo` (WEB-0D.1C-A): opcional
+    // para no romper la instanciación posicional de gates preexistentes.
+    // Sin él, ningún guardia de cuenta CERRADA se aplica -- nunca un 500,
+    // pero tampoco protección (solo alcanzable en gates que construyen
+    // este servicio a mano sin pasarlo).
+    private readonly accountRepo?: AccountRepository,
   ) {}
 
-  async grantPending(): Promise<{ granted: number; capped: number; noRule: number; failed: number }> {
+  async grantPending(): Promise<{ granted: number; capped: number; noRule: number; failed: number; accountClosed: number }> {
+    // WEB-0D.1C-B0R -- `findPendingGrant` ya excluye centralmente las
+    // actividades de cuentas CLOSED (JOIN + filtro en la propia consulta,
+    // ver ValidatedGamificationActivityRepository) -- esto es lo que evita
+    // que este lote las redescubra en cada ciclo del cron. El re-chequeo
+    // DENTRO de la transacción serializable (abajo) es la defensa TOCTOU
+    // para el caso raro en que el cierre se confirme entre esta consulta y
+    // el COMMIT del otorgamiento.
     const pending = await this.activityRepo.findPendingGrant(GRANT_BATCH_SIZE);
 
     let granted = 0;
     let capped = 0;
     let noRule = 0;
     let failed = 0;
+    let accountClosed = 0;
 
     for (const activity of pending) {
       try {
         const result = await this.grantForActivity(activity);
         if (result.outcome === 'XP_GRANTED') granted++;
         else if (result.outcome === 'DAILY_CAP_REACHED') capped++;
+        else if (result.outcome === 'ACCOUNT_CLOSED') accountClosed++;
         else noRule++;
       } catch (error) {
         failed++;
@@ -152,7 +178,7 @@ export class XpGrantService {
       }
     }
 
-    return { granted, capped, noRule, failed };
+    return { granted, capped, noRule, failed, accountClosed };
   }
 
   async grantForActivity(activity: ValidatedGamificationActivity): Promise<GrantOutcome> {
@@ -170,6 +196,21 @@ export class XpGrantService {
 
     try {
       const entry = await this.runSerializable(async (tx) => {
+        // WEB-0D.1C-B0R -- defensa TOCTOU: releer Account.status DENTRO de
+        // la MISMA transacción serializable, justo antes de escribir.
+        // `findPendingGrant` ya filtró por esto en la consulta, pero el
+        // cierre pudo confirmarse DESPUÉS de esa lectura y ANTES de este
+        // COMMIT -- mismo criterio EXACTO que la relectura de
+        // participación/temporada/grupo en `LeaguePointGrantService`.
+        // `!account` (fila ausente) NUNCA se trata como CLOSED -- solo el
+        // valor explícito 'CLOSED' aborta.
+        if (this.accountRepo) {
+          const account = await tx.account.findUnique({ where: { id: activity.accountId } });
+          if (account?.status === 'CLOSED') {
+            throw new AccountClosedError();
+          }
+        }
+
         const { start, end } = utcDayRange(at);
         const grantedToday = rule.dailyCap
           ? await this.ledgerRepo.sumGrantedTodayForRule(tx, activity.accountId, rule.id, start, end)
@@ -212,6 +253,13 @@ export class XpGrantService {
 
       return { outcome: 'XP_GRANTED', entry };
     } catch (error) {
+      if (error instanceof AccountClosedError) {
+        // WEB-0D.1C-B0R -- nunca escribe xp_grant_attempt: `findPendingGrant`
+        // ya excluye esta cuenta de futuras consultas (JOIN por status),
+        // así que no hay starvation que prevenir con un registro de intento
+        // -- registrar uno aquí sería puro ruido, nunca vuelto a leer.
+        return { outcome: 'ACCOUNT_CLOSED' };
+      }
       if (error instanceof DailyCapExceededError) {
         await this.recordDailyCapReached(activity.id, at);
         return { outcome: 'DAILY_CAP_REACHED' };

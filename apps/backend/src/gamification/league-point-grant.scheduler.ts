@@ -17,9 +17,11 @@ export class LeaguePointGrantScheduler {
   @Cron(CronExpression.EVERY_MINUTE)
   async handleGrant() {
     await runWithCorrelationId(generateCorrelationId(), async () => {
-      const { granted, skipped, failed } = await this.leaguePointGrantService.grantPending();
-      if (granted > 0 || skipped > 0 || failed > 0) {
-        this.logger.log(`Otorgamiento de League Points: ${granted} otorgado(s), ${skipped} omitido(s) (no aplica), ${failed} fallido(s)`);
+      const { granted, skipped, failed, accountClosed } = await this.leaguePointGrantService.grantPending();
+      if (granted > 0 || skipped > 0 || failed > 0 || accountClosed > 0) {
+        this.logger.log(
+          `Otorgamiento de League Points: ${granted} otorgado(s), ${skipped} omitido(s) (no aplica), ${accountClosed} ignorado(s) por cuenta CLOSED, ${failed} fallido(s)`,
+        );
       }
     });
   }

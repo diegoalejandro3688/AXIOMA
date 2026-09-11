@@ -17,9 +17,11 @@ export class RewardEvaluationScheduler {
   @Cron(CronExpression.EVERY_MINUTE)
   async handleEvaluate() {
     await runWithCorrelationId(generateCorrelationId(), async () => {
-      const { processed, skippedLocked, failed } = await this.worker.run();
-      if (processed > 0 || skippedLocked > 0 || failed > 0) {
-        this.logger.log(`Evaluación de recompensas: ${processed} procesada(s), ${skippedLocked} omitida(s) por bloqueo, ${failed} fallida(s)`);
+      const { processed, skippedLocked, failed, accountClosed } = await this.worker.run();
+      if (processed > 0 || skippedLocked > 0 || failed > 0 || accountClosed > 0) {
+        this.logger.log(
+          `Evaluación de recompensas: ${processed} procesada(s), ${skippedLocked} omitida(s) por bloqueo, ${accountClosed} omitida(s) por cuenta CLOSED, ${failed} fallida(s)`,
+        );
       }
     });
   }
