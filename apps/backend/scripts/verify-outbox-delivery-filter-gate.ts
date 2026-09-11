@@ -77,7 +77,7 @@ async function main() {
   );
 
   console.log('--- 4. Deliveries independientes: marcar PROCESSED para ANALYTICS no afecta a GAMIFICATION, ni viceversa ---');
-  await deliveryRepo.recordOutcome(accountRegistered.id, 'ANALYTICS', { status: 'PROCESSED' });
+  await deliveryRepo.recordOutcome(accountRegistered.id, 'ANALYTICS', { status: 'PROCESSED' }, MAX_ATTEMPTS);
   const analyticsPendingAfterProcess = await deliveryRepo.findPendingFor('ANALYTICS', ANALYTICS_EVENT_KEYS, 500, MAX_ATTEMPTS);
   check('4a. tras procesar, account_registered YA NO está pendiente para ANALYTICS', !analyticsPendingAfterProcess.some((e) => e.id === accountRegistered.id));
   check(
@@ -85,7 +85,7 @@ async function main() {
     (await deliveryRepo.findFor(accountRegistered.id, 'GAMIFICATION')) === null,
   );
 
-  await deliveryRepo.recordOutcome(validGamificationEvent.id, 'GAMIFICATION', { status: 'PROCESSED' });
+  await deliveryRepo.recordOutcome(validGamificationEvent.id, 'GAMIFICATION', { status: 'PROCESSED' }, MAX_ATTEMPTS);
   const gamificationPendingAfterProcess = await deliveryRepo.findPendingFor('GAMIFICATION', GAMIFICATION_EVENT_KEYS, 500, MAX_ATTEMPTS);
   check(
     '4c. tras procesar en GAMIFICATION, ese evento ya no está pendiente ahí -- y nunca tuvo entrega en ANALYTICS (dominios distintos, deliveries propias)',
@@ -104,7 +104,7 @@ async function main() {
   });
 
   for (let attempt = 1; attempt <= 3; attempt++) {
-    await deliveryRepo.recordOutcome(retryableEvent.id, 'GAMIFICATION', { status: 'FAILED', lastError: `fallo simulado ${attempt}` });
+    await deliveryRepo.recordOutcome(retryableEvent.id, 'GAMIFICATION', { status: 'FAILED', lastError: `fallo simulado ${attempt}` }, MAX_ATTEMPTS);
   }
   const delivery = await deliveryRepo.findFor(retryableEvent.id, 'GAMIFICATION');
   check('5a. attempts == 3 tras 3 fallos (semántica de conteo sin cambios)', delivery?.attempts === 3);
@@ -114,7 +114,7 @@ async function main() {
   check('5c. con attempts (3) < maxAttempts (10), el evento SIGUE pendiente (retry intacto)', pendingWithRoomToRetry.some((e) => e.id === retryableEvent.id));
 
   for (let attempt = 4; attempt <= MAX_ATTEMPTS; attempt++) {
-    await deliveryRepo.recordOutcome(retryableEvent.id, 'GAMIFICATION', { status: 'FAILED', lastError: `fallo simulado ${attempt}` });
+    await deliveryRepo.recordOutcome(retryableEvent.id, 'GAMIFICATION', { status: 'FAILED', lastError: `fallo simulado ${attempt}` }, MAX_ATTEMPTS);
   }
   const deliveryExhausted = await deliveryRepo.findFor(retryableEvent.id, 'GAMIFICATION');
   check(`5d. attempts == ${MAX_ATTEMPTS} tras agotar los reintentos`, deliveryExhausted?.attempts === MAX_ATTEMPTS);

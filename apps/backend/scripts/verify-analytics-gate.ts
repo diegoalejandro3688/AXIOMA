@@ -95,6 +95,14 @@ async function main() {
     [accountB],
   );
   check('account_verified: exactamente 1 fila en outbox_event', verifiedRow.rowCount === 1);
+  // Capturado ANTES del relay -- WEB-0D.1B-P0B2(-R1) minimiza `aggregate_id`
+  // a NULL en cuanto el evento se vuelve terminal (ANALYTICS ya lo procesó),
+  // así que cualquier lookup POSTERIOR al relay no puede seguir filtrando
+  // por `aggregate_id`; debe reutilizar el `outbox_event.id` ya capturado.
+  const registeredRowB = await pg.query(
+    "SELECT id FROM outbox_event WHERE aggregate_id = $1 AND event_key = 'account_registered'",
+    [accountB],
+  );
 
   const rSessionAForDeletion = await post('/auth/session', { idToken: tokenA });
   const sessionAForDeletion = rSessionAForDeletion.body?.sessionId;
@@ -145,8 +153,11 @@ async function main() {
   check('relay procesó al menos los 5 eventos reales', rRelay1.body?.processed >= 5);
 
   const registeredAnalytics = await pg.query(
-    "SELECT ae.id, ae.analytics_actor_ref, ae.payload FROM analytics_event ae JOIN outbox_event oe ON ae.idempotency_key = oe.id::text WHERE oe.aggregate_id = $1 AND oe.event_key = 'account_registered'",
-    [accountA],
+    // WEB-0D.1B-P0B2(-R1) minimiza `aggregate_id` a NULL en cuanto el
+    // evento se vuelve terminal -- filtra por el `outbox_event.id` ya
+    // capturado ANTES del relay (`registeredRow`), nunca por `aggregate_id`.
+    'SELECT ae.id, ae.analytics_actor_ref, ae.payload FROM analytics_event ae JOIN outbox_event oe ON ae.idempotency_key = oe.id::text WHERE oe.id = $1',
+    [registeredRow.rows[0]?.id],
   );
   check('analytics_event creado para account_registered', registeredAnalytics.rowCount === 1);
   // WEB-0D.1B-P0B1 -- minimización central: el payload PERSISTIDO nunca lleva
@@ -161,17 +172,16 @@ async function main() {
   check('analyticsActorRef sigue presente tras la minimización', typeof registeredAnalytics.rows[0]?.analytics_actor_ref === 'string');
 
   const registeredDeliveryAfter = await pg.query(
-    "SELECT oed.status FROM outbox_event_delivery oed JOIN outbox_event oe ON oe.id = oed.outbox_event_id WHERE oe.aggregate_id = $1 AND oe.event_key = 'account_registered' AND oed.consumer_name = 'ANALYTICS'",
-    [accountA],
+    "SELECT status FROM outbox_event_delivery WHERE outbox_event_id = $1 AND consumer_name = 'ANALYTICS'",
+    [registeredRow.rows[0]?.id],
   );
   check(
     'outbox_event_delivery(ANALYTICS) marcado PROCESSED -- ADR-0017',
     registeredDeliveryAfter.rowCount === 1 && registeredDeliveryAfter.rows[0].status === 'PROCESSED',
   );
-  const registeredOutboxStatusUnchanged = await pg.query(
-    "SELECT status FROM outbox_event WHERE aggregate_id = $1 AND event_key = 'account_registered'",
-    [accountA],
-  );
+  const registeredOutboxStatusUnchanged = await pg.query('SELECT status FROM outbox_event WHERE id = $1', [
+    registeredRow.rows[0]?.id,
+  ]);
   check(
     'OutboxEvent.status deprecado: sigue en PENDING de inserción, nadie lo mutó -- ADR-0017',
     registeredOutboxStatusUnchanged.rows[0]?.status === 'PENDING',
@@ -181,8 +191,8 @@ async function main() {
   check('segundo relay inmediato: 0 procesados (nada pendiente)', rRelay2.body?.processed === 0);
 
   const registeredAnalyticsAfter2 = await pg.query(
-    "SELECT count(*)::int AS n FROM analytics_event ae JOIN outbox_event oe ON ae.idempotency_key = oe.id::text WHERE oe.aggregate_id = $1 AND oe.event_key = 'account_registered'",
-    [accountA],
+    'SELECT count(*)::int AS n FROM analytics_event ae JOIN outbox_event oe ON ae.idempotency_key = oe.id::text WHERE oe.id = $1',
+    [registeredRow.rows[0]?.id],
   );
   check('correr el relay dos veces no duplica la fila', registeredAnalyticsAfter2.rows[0].n === 1);
 
@@ -295,8 +305,8 @@ async function main() {
 
   console.log('--- 5. analyticsActorRef: pseudónimo determinístico, nunca el accountId crudo ---');
   const verifiedAnalytics = await pg.query(
-    "SELECT ae.analytics_actor_ref, ae.payload FROM analytics_event ae JOIN outbox_event oe ON ae.idempotency_key = oe.id::text WHERE oe.aggregate_id = $1 AND oe.event_key = 'account_verified'",
-    [accountB],
+    'SELECT ae.analytics_actor_ref, ae.payload FROM analytics_event ae JOIN outbox_event oe ON ae.idempotency_key = oe.id::text WHERE oe.id = $1',
+    [verifiedRow.rows[0]?.id],
   );
   // WEB-0D.1B-P0B1 -- segundo productor/camino real (account_verified, vía
   // AuthService.verifyAccount, cuenta B) que históricamente también enviaba
@@ -307,8 +317,8 @@ async function main() {
     verifiedAnalytics.rows[0]?.payload && !('accountId' in verifiedAnalytics.rows[0].payload),
   );
   const registeredAnalyticsRefB = await pg.query(
-    "SELECT ae.analytics_actor_ref FROM analytics_event ae JOIN outbox_event oe ON ae.idempotency_key = oe.id::text WHERE oe.aggregate_id = $1 AND oe.event_key = 'account_registered'",
-    [accountB],
+    'SELECT ae.analytics_actor_ref FROM analytics_event ae JOIN outbox_event oe ON ae.idempotency_key = oe.id::text WHERE oe.id = $1',
+    [registeredRowB.rows[0]?.id],
   );
   // Ambos eventos son de la misma cuenta B -- deben compartir el mismo ref.
   const refB1 = registeredAnalyticsRefB.rows[0]?.analytics_actor_ref;

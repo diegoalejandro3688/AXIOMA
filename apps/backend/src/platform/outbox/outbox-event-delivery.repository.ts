@@ -57,35 +57,76 @@ export class OutboxEventDeliveryRepository {
    * ProgressService, ADR-0014) -- nunca un error sin manejar, nunca una
    * fila duplicada (@@unique(outboxEventId, consumerName) es la garantía
    * real, a nivel de base de datos).
+   *
+   * WEB-0D.1B-P0B2-R1 -- `maxAttempts` (el mismo `MAX_DELIVERY_ATTEMPTS`
+   * privado que YA usa cada consumidor para `findPendingFor`) se pasa
+   * explícitamente para poder marcar `terminalAt` en el INSTANTE EXACTO en
+   * que esta entrega se vuelve terminal:
+   *   - PROCESSED -- siempre terminal, `terminalAt` = el mismo `now()` de
+   *     `processedAt` (nunca una aproximación separada).
+   *   - FAILED con los intentos NUEVOS (post-incremento) alcanzando o
+   *     superando `maxAttempts` -- terminal, `terminalAt` = este instante
+   *     exacto (nunca `createdAt` -- ver Issue 1 de la auditoría P0B2-R1).
+   *   - FAILED por debajo de `maxAttempts` -- retryable, `terminalAt`
+   *     permanece `null`.
+   * PEGAJOSO (sticky) por diseño: si la fila YA tenía `terminalAt` (de un
+   * intento anterior), NUNCA se sobreescribe -- evita que una llamada
+   * fuera de secuencia (que en la práctica `findPendingFor` ya excluye)
+   * extienda artificialmente el reloj de retención.
    */
   async recordOutcome(
     outboxEventId: string,
     consumerName: string,
     outcome: { status: 'PROCESSED' } | { status: 'FAILED'; lastError: string },
+    maxAttempts: number,
   ): Promise<OutboxEventDelivery> {
+    const existing = await this.prisma.outboxEventDelivery.findUnique({
+      where: { outboxEventId_consumerName: { outboxEventId, consumerName } },
+    });
+
+    const nextAttempts = (existing?.attempts ?? 0) + 1;
+    const becomesTerminalNow = outcome.status === 'PROCESSED' || nextAttempts >= maxAttempts;
+    const terminalAt = existing?.terminalAt ?? (becomesTerminalNow ? new Date() : null);
+
     const data =
       outcome.status === 'PROCESSED'
-        ? { status: 'PROCESSED' as const, lastError: null, processedAt: new Date() }
-        : { status: 'FAILED' as const, lastError: outcome.lastError, processedAt: null };
+        ? { status: 'PROCESSED' as const, lastError: null, processedAt: new Date(), attempts: nextAttempts, terminalAt }
+        : { status: 'FAILED' as const, lastError: outcome.lastError, processedAt: null, attempts: nextAttempts, terminalAt };
 
-    try {
-      return await this.prisma.outboxEventDelivery.create({
-        data: { outboxEventId, consumerName, attempts: 1, ...data },
-      });
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION) {
-        return this.prisma.outboxEventDelivery.update({
-          where: { outboxEventId_consumerName: { outboxEventId, consumerName } },
-          data: { attempts: { increment: 1 }, ...data },
-        });
+    if (!existing) {
+      try {
+        return await this.prisma.outboxEventDelivery.create({ data: { outboxEventId, consumerName, ...data } });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION) {
+          // Carrera: otra ejecución concurrente ya creó la fila entre el
+          // findUnique de arriba y este create -- recompute contra el
+          // estado real (ahora existente) en vez de asumir el propio.
+          return this.recordOutcome(outboxEventId, consumerName, outcome, maxAttempts);
+        }
+        throw error;
       }
-      throw error;
     }
+
+    return this.prisma.outboxEventDelivery.update({
+      where: { outboxEventId_consumerName: { outboxEventId, consumerName } },
+      data,
+    });
   }
 
   findFor(outboxEventId: string, consumerName: string): Promise<OutboxEventDelivery | null> {
     return this.prisma.outboxEventDelivery.findUnique({
       where: { outboxEventId_consumerName: { outboxEventId, consumerName } },
     });
+  }
+
+  /**
+   * WEB-0D.1B-P0B2 -- TODAS las filas de entrega de UN `OutboxEvent`,
+   * cualquier consumidor. Usado exclusivamente por `evaluateOutboxTerminalState`
+   * (`outbox-terminal-state.ts`) para decidir si TODOS los consumidores
+   * aplicables (registro) ya llegaron a un estado final -- nunca para
+   * mutar nada.
+   */
+  findAllFor(outboxEventId: string): Promise<OutboxEventDelivery[]> {
+    return this.prisma.outboxEventDelivery.findMany({ where: { outboxEventId } });
   }
 }

@@ -528,6 +528,18 @@ model OutboxEventDelivery {
   attempts      Int                  @default(0)
   lastError     String?              @map("last_error")
   processedAt   DateTime?            @map("processed_at")
+  /// WEB-0D.1B-P0B2-R1 -- instante EXACTO en que esta entrega se volvió
+  /// terminal para este consumidor: igual a `processedAt` si `status ==
+  /// PROCESSED`, o el instante en que `attempts` alcanzó
+  /// `OUTBOX_MAX_DELIVERY_ATTEMPTS` si `status == FAILED` (nunca
+  /// `createdAt` -- ver auditoría P0B2-R1, Issue 1: `createdAt` puede
+  /// preceder por mucho al agotamiento real de reintentos si el proceso
+  /// estuvo detenido o el scheduler se retrasó, lo que causaría un purgado
+  /// PREMATURO si se usara como proxy). `NULL` mientras la entrega sigue
+  /// siendo reintentable (retryable) -- nunca se asigna un valor
+  /// "aproximado" solo por comodidad. Backfill de filas históricas: ver
+  /// migración `terminal_at`.
+  terminalAt    DateTime?            @map("terminal_at")
   createdAt     DateTime             @default(now()) @map("created_at")
 
   outboxEvent OutboxEvent @relation(fields: [outboxEventId], references: [id], onDelete: Cascade)

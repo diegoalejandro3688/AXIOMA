@@ -6,6 +6,7 @@ import {
   type GamificationEventKey,
 } from '@axioma/contracts';
 import { OutboxEventDeliveryRepository } from '../platform/outbox/outbox-event-delivery.repository';
+import { OutboxLifecycleService } from '../platform/outbox/outbox-lifecycle.service';
 import { ValidatedGamificationActivityRepository } from './validated-gamification-activity.repository';
 import type { OutboxEvent } from '../generated/prisma/client';
 
@@ -94,8 +95,18 @@ export class GamificationService {
   constructor(
     private readonly deliveryRepo: OutboxEventDeliveryRepository,
     private readonly activityRepo: ValidatedGamificationActivityRepository,
+    private readonly outboxLifecycle: OutboxLifecycleService,
   ) {}
 
+  /**
+   * WEB-0D.1B-P0B2-R1 -- justo después de que `recordOutcome` deja
+   * DURABLE el resultado de la entrega, se dispara la minimización
+   * INMEDIATA (`OutboxLifecycleService.minimizeIfTerminal`) para ESE
+   * evento -- mismo criterio y misma justificación exacta que
+   * `AnalyticsService.ingestPending`: envuelta en su propio `try/catch`,
+   * un fallo de minimización nunca corrompe el resultado de entrega ya
+   * registrado, y el barrido diario lo repara si es necesario.
+   */
   async ingestPending(): Promise<{ processed: number; failed: number }> {
     const pending = await this.deliveryRepo.findPendingFor(CONSUMER_NAME, GAMIFICATION_EVENT_KEYS, RELAY_BATCH_SIZE, MAX_DELIVERY_ATTEMPTS);
 
@@ -105,13 +116,19 @@ export class GamificationService {
     for (const outboxEvent of pending) {
       try {
         await this.ingestOne(outboxEvent);
-        await this.deliveryRepo.recordOutcome(outboxEvent.id, CONSUMER_NAME, { status: 'PROCESSED' });
+        await this.deliveryRepo.recordOutcome(outboxEvent.id, CONSUMER_NAME, { status: 'PROCESSED' }, MAX_DELIVERY_ATTEMPTS);
         processed++;
       } catch (error) {
         failed++;
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error(`OutboxEvent ${outboxEvent.id} ("${outboxEvent.eventKey}") no se pudo ingerir: ${message}`);
-        await this.deliveryRepo.recordOutcome(outboxEvent.id, CONSUMER_NAME, { status: 'FAILED', lastError: message });
+        await this.deliveryRepo.recordOutcome(outboxEvent.id, CONSUMER_NAME, { status: 'FAILED', lastError: message }, MAX_DELIVERY_ATTEMPTS);
+      }
+
+      try {
+        await this.outboxLifecycle.minimizeIfTerminal(outboxEvent.id, outboxEvent.eventKey);
+      } catch (error) {
+        this.logger.warn(`Minimización inmediata falló para OutboxEvent ${outboxEvent.id} -- queda pendiente para el barrido diario: ${error}`);
       }
     }
 

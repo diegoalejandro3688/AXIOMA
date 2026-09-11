@@ -10,6 +10,7 @@ import { analyticsActorRef } from './analytics-actor-ref';
 import { omitAccountId } from './analytics-payload-sanitizer';
 import { AnalyticsEventRepository } from './analytics-event.repository';
 import { OutboxEventDeliveryRepository } from '../platform/outbox/outbox-event-delivery.repository';
+import { OutboxLifecycleService } from '../platform/outbox/outbox-lifecycle.service';
 import type { OutboxEvent } from '../generated/prisma/client';
 
 const RELAY_BATCH_SIZE = 100;
@@ -47,6 +48,7 @@ export class AnalyticsService {
     private readonly deliveryRepo: OutboxEventDeliveryRepository,
     private readonly analyticsEventRepo: AnalyticsEventRepository,
     private readonly config: ConfigService,
+    private readonly outboxLifecycle: OutboxLifecycleService,
   ) {}
 
   /**
@@ -54,6 +56,18 @@ export class AnalyticsService {
    * entrega propia todavía, o con una fila FAILED que no agotó reintentos).
    * Cada fila se procesa de forma independiente -- un fallo en una NO
    * detiene el resto del lote (ver gate de aceptación, punto 3).
+   *
+   * WEB-0D.1B-P0B2-R1 -- justo después de que `recordOutcome` deja
+   * DURABLE el resultado de la entrega, se dispara la minimización
+   * INMEDIATA (`OutboxLifecycleService.minimizeIfTerminal`) para ESE
+   * evento -- nunca hay que esperar hasta el barrido diario. Envuelta en
+   * su propio `try/catch`, fuera del `try` de arriba: un fallo de
+   * minimización NUNCA debe convertir una entrega ya exitosa en un fallo
+   * de conteo, ni dejar la fila de `outbox_event_delivery` en un estado
+   * distinto al que ya se registró. Si falla, el evento simplemente sigue
+   * calzando en `findMinimizationCandidates` -- el barrido diario
+   * (`minimizeTerminalEvents`, ahora reconciliación/recuperación) lo
+   * repara en su próxima corrida.
    */
   async ingestPending(): Promise<{ processed: number; failed: number }> {
     const pending = await this.deliveryRepo.findPendingFor(CONSUMER_NAME, ANALYTICS_EVENT_KEYS, RELAY_BATCH_SIZE, MAX_DELIVERY_ATTEMPTS);
@@ -64,13 +78,19 @@ export class AnalyticsService {
     for (const outboxEvent of pending) {
       try {
         await this.ingestOne(outboxEvent);
-        await this.deliveryRepo.recordOutcome(outboxEvent.id, CONSUMER_NAME, { status: 'PROCESSED' });
+        await this.deliveryRepo.recordOutcome(outboxEvent.id, CONSUMER_NAME, { status: 'PROCESSED' }, MAX_DELIVERY_ATTEMPTS);
         processed++;
       } catch (error) {
         failed++;
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error(`OutboxEvent ${outboxEvent.id} ("${outboxEvent.eventKey}") no se pudo ingerir: ${message}`);
-        await this.deliveryRepo.recordOutcome(outboxEvent.id, CONSUMER_NAME, { status: 'FAILED', lastError: message });
+        await this.deliveryRepo.recordOutcome(outboxEvent.id, CONSUMER_NAME, { status: 'FAILED', lastError: message }, MAX_DELIVERY_ATTEMPTS);
+      }
+
+      try {
+        await this.outboxLifecycle.minimizeIfTerminal(outboxEvent.id, outboxEvent.eventKey);
+      } catch (error) {
+        this.logger.warn(`Minimización inmediata falló para OutboxEvent ${outboxEvent.id} -- queda pendiente para el barrido diario: ${error}`);
       }
     }
 
