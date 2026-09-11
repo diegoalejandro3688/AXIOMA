@@ -190,6 +190,23 @@ export class GamificationService {
       );
       return;
     }
+    // WEB-0D.1C-B3-R1-ADDENDUM -- además del CLOSED explícito, ignora el
+    // evento si esta cuenta tiene un `PrivacyRequest` en PROCESSING
+    // (barrido de cierre definitivo EN CURSO, todavía ANTES de
+    // `markAccountClosed` -- ver B3-R1 §3). Sin esto, un evento de ingesta
+    // tardío podría crear una `ValidatedGamificationActivity` NUEVA (con
+    // `accountId` crudo) justo cuando B3 ya está pseudonimizando/ya
+    // pseudonimizó el resto del historial de esta cuenta en el MISMO
+    // barrido. Mismo tratamiento que CLOSED: éxito de transporte inmediato
+    // (nunca throw/retry), NO activa esta guardia el DELETION_PENDING
+    // ordinario (ventana de 30 días, sin barrido en curso -- nunca tiene
+    // una fila PROCESSING).
+    if (await this.accountRepo.hasProcessingDeletionRequest(accountId)) {
+      this.logger.log(
+        `OutboxEvent ${outboxEvent.id} ("${outboxEvent.eventKey}") ignorado -- cuenta ${accountId} tiene un cierre definitivo EN CURSO (PrivacyRequest PROCESSING), sin crear estado de gamificación nuevo.`,
+      );
+      return;
+    }
 
     // WEB-0D.1C-B2 -- doble lectura de compatibilidad. La clave v2
     // (pseudonimizada) es la ÚNICA que se persiste de aquí en adelante;

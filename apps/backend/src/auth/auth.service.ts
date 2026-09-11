@@ -187,7 +187,19 @@ export class AuthService {
   /**
    * Cierre definitivo (llamado por PrivacyService desde el barrido, cuando
    * el plazo de 30 días ya venció). Irreversible: a diferencia de
-   * disableUser, deleteUser no tiene vuelta atrás.
+   * disableUser, deleteUser no tiene vuelta atrás. Idempotente ante
+   * reintento (el guard `!identity.unlinkedAt` salta identidades ya
+   * desvinculadas).
+   *
+   * WEB-0D.1C-B3-R1 §3 -- este método YA NO marca `Account.status = CLOSED`
+   * (ver `markAccountClosed`, más abajo). `PrivacyService.runAccountDeletionSweep`
+   * invoca `markAccountClosed` SOLO al final del barrido, después de que
+   * TODOS los pasos de limpieza/desidentificación (incluido B3) completaron
+   * sin excepción -- así, un fallo en cualquier paso posterior a este
+   * (incluida la pseudonimización de B3) nunca deja la cuenta en un CLOSED
+   * falsamente completo: la sesión/identidad ya quedó inutilizable desde
+   * `requestAccountDeletion` (ver ese método), así que diferir el estado
+   * `CLOSED` en sí no reabre ninguna superficie de acceso.
    */
   async finalizeAccountClosure(accountId: string): Promise<void> {
     const identities = await this.authIdentityRepo.findAllByAccountId(accountId);
@@ -198,6 +210,20 @@ export class AuthService {
         await this.authIdentityRepo.anonymizeEmail(identity.id);
       }
     }
+  }
+
+  /**
+   * WEB-0D.1C-B3-R1 §3 -- marca `Account.status = CLOSED`. Debe invocarse
+   * SOLO como el ÚLTIMO paso del barrido de cierre definitivo, después de
+   * que TODA la limpieza/desidentificación (USER/GAMIFICATION/B3/PROGRESS/
+   * EXAMS/QUICK_QUESTION/AI/SUBSCRIPTION) completó sin excepción -- ver
+   * `PrivacyService.runAccountDeletionSweep`. Requerido: B0/B0R (que solo
+   * verifican `status === 'CLOSED'`, nunca `DELETION_PENDING`) siguen
+   * exactamente igual de estrictos que durante toda la ventana de 30 días
+   * de recuperación -- este método NO los debilita, solo posterga el mismo
+   * estado terminal hasta que sea genuinamente cierto.
+   */
+  async markAccountClosed(accountId: string): Promise<void> {
     await this.accountRepo.markClosed(accountId);
   }
 

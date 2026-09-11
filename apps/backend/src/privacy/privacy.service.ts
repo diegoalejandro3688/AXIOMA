@@ -11,6 +11,7 @@ import { SubscriptionService } from '../subscription/subscription.service';
 import { ExamService } from '../exams/exam.service';
 import { QuickQuestionService } from '../gamification/quick-question.service';
 import { GamificationService } from '../gamification/gamification.service';
+import { GamificationPrivacyService } from '../gamification/gamification-privacy.service';
 import { PrivacyRequestRepository } from './privacy-request.repository';
 import type { PrivacyRequest } from '../generated/prisma/client';
 
@@ -37,6 +38,7 @@ export class PrivacyService {
     private readonly examService: ExamService,
     private readonly quickQuestionService: QuickQuestionService,
     private readonly gamificationService: GamificationService,
+    private readonly gamificationPrivacyService: GamificationPrivacyService,
     private readonly outbox: OutboxService,
   ) {}
 
@@ -125,6 +127,14 @@ export class PrivacyService {
       await this.privacyRequestRepo.markProcessing(request.id, request.processingStartedAt);
 
       try {
+        // WEB-0D.1C-B3-R1 §3 -- `finalizeAccountClosure` YA NO marca
+        // `Account.status = CLOSED` (ver ese método en AuthService). Solo
+        // desvincula/anonimiza identidades -- terminal e idempotente ante
+        // reintento. El estado CLOSED en sí se marca al FINAL de este
+        // bloque (`markAccountClosed`, justo antes de `markCompleted`), una
+        // vez que TODOS los pasos -- incluida la pseudonimización de B3 --
+        // completaron sin excepción. Así, un fallo en cualquier paso
+        // posterior nunca deja la cuenta en un CLOSED falsamente completo.
         await this.authService.finalizeAccountClosure(request.accountId);
         // Dato personal de USER -- se elimina por completo (no se
         // anonimiza, no hay necesidad de conservar la fila). Dentro del
@@ -156,6 +166,24 @@ export class PrivacyService {
         // markCompleted" que el resto: si falla, la solicitud queda
         // PROCESSING para reintento, nunca se marca completada a medias.
         await this.gamificationService.deleteCurrentStateForAccountClosure(request.accountId);
+        // WEB-0D.1C-B3 (+ B3-R1) -- pseudonimización histórica
+        // INMEDIATA-SEGURA (XpLedgerEntry/RewardGrant/AchievementProgress/
+        // AchievementUnlock/LeaguePointLedgerEntry) en UNA sola transacción
+        // por cuenta -- DEBE ejecutarse DESPUÉS de
+        // deleteCurrentStateForAccountClosure (misma razón exacta que esa
+        // llamada respecto de anonymizePublicProfile: opera sobre estado
+        // YA sin equipped_*/ownership vivo). `Account.status` sigue
+        // DELETION_PENDING en este punto (el CLOSED se marca al final, ver
+        // `markAccountClosed` más abajo) -- si esto falla (p.ej.
+        // GAMIFICATION_ACTOR_SECRET ausente, o una colisión de RewardGrant
+        // que exige reconciliación en B5, ver `RewardGrantReconciliationRequiredError`),
+        // la transacción completa de las 5 familias se revierte, la
+        // solicitud queda PROCESSING para reintento, y la cuenta NUNCA
+        // llega a marcarse CLOSED con un historial parcialmente
+        // pseudonimizado -- ver el reporte de B3-R1 §D/§E/§G/§H.
+        // ValidatedGamificationActivity/SeasonLeagueParticipation quedan
+        // DELIBERADAMENTE fuera (DEFER_TO_B4, ver el reporte de B3 §B/§C).
+        await this.gamificationPrivacyService.pseudonymizeImmediateSafeHistory(request.accountId);
         // Dato personal de PROGRESS (respuestas y avance) -- mismo criterio
         // que USER arriba: dentro del mismo try, antes de markCompleted. Si
         // falla, la solicitud queda PROCESSING para reintento -- nunca se
@@ -192,6 +220,16 @@ export class PrivacyService {
         // USER/PROGRESS/AI: si falla, la solicitud queda PROCESSING para
         // reintento, nunca se marca completada a medias.
         await this.subscriptionService.applyAccountClosure(request.accountId);
+        // WEB-0D.1C-B3-R1 §3 -- marca el estado terminal SOLO ahora, una vez
+        // que TODOS los pasos anteriores (incluida la pseudonimización de
+        // B3) completaron sin excepción. Antes de este cambio,
+        // `finalizeAccountClosure` marcaba CLOSED como su PRIMER paso --
+        // un fallo posterior (p.ej. en B3) dejaba la cuenta CLOSED de forma
+        // falsamente completa mientras la solicitud seguía PROCESSING. Ver
+        // `AuthService.markAccountClosed` para el detalle de por qué esto
+        // no debilita B0/B0R ni la revocación de sesión (ya ocurrida en
+        // `requestAccountDeletion`).
+        await this.authService.markAccountClosed(request.accountId);
         await this.privacyRequestRepo.markCompleted(request.id);
         processed++;
         this.logger.log(

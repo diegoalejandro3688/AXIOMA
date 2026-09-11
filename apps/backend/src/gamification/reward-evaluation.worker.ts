@@ -864,9 +864,17 @@ export class RewardEvaluationWorker {
       distinct: ['accountId'],
       select: { accountId: true },
     });
+    // WEB-0D.1C-B3-R1-ADDENDUM -- excluye a nivel de descubrimiento las
+    // cuentas con un `PrivacyRequest` en PROCESSING (barrido de cierre
+    // definitivo EN CURSO, ver B3-R1 §3) -- puramente una optimización
+    // (evita trabajo/cursor churn para una cuenta que `processAccount` de
+    // todos modos rechazará vía su propia relectura TOCTOU más abajo, que
+    // sigue siendo la defensa autoritativa contra la carrera real).
+    const candidateAccountIds = candidates.map((c) => c.accountId).filter((id): id is string => id !== null);
+    const processingClosure = this.accountRepo ? await this.accountRepo.findAccountIdsWithProcessingDeletion(candidateAccountIds) : new Set<string>();
     const pending: string[] = [];
     for (const { accountId } of candidates) {
-      if (!accountId) continue;
+      if (!accountId || processingClosure.has(accountId)) continue;
       const cursor = await this.cursorRepo.findByAccountId(accountId);
       if (cursor && cursor.nextEligibleAt > now) continue; // en backoff, todavía no reintentar
 
@@ -934,9 +942,19 @@ export class RewardEvaluationWorker {
         // informe: una marca terminal explícita para ese caso requeriría
         // una decisión de producto/esquema, fuera de alcance de este
         // bloque).
+        // WEB-0D.1C-B3-R1-ADDENDUM -- además del CLOSED explícito, trata
+        // como cuenta cerrada un `PrivacyRequest` en PROCESSING (barrido de
+        // cierre definitivo EN CURSO, todavía ANTES de `markAccountClosed`
+        // -- ver B3-R1 §3). Sin esto, este worker podría entregar un
+        // RewardGrant/AchievementProgress/AchievementUnlock NUEVO justo
+        // cuando (o después de) que B3 ya pseudonimizó el resto del
+        // historial de la cuenta. DELETION_PENDING ordinario (ventana de 30
+        // días, sin barrido en curso) nunca tiene una fila PROCESSING --
+        // este guardia nunca bloquea ese caso.
         if (this.accountRepo) {
           const account = await tx.account.findUnique({ where: { id: accountId } });
-          if (account?.status === 'CLOSED') {
+          const isProcessingClosure = await this.accountRepo.hasProcessingDeletionRequest(accountId, tx);
+          if (account?.status === 'CLOSED' || isProcessingClosure) {
             await this.cursorRepo.upsertSuccess(accountId, last.recordedAt, last.id, tx);
             return 'SKIPPED_CLOSED_ACCOUNT';
           }

@@ -178,9 +178,16 @@ async function main() {
   const activityAfter = await pg.query('SELECT account_id, deduplication_key FROM validated_gamification_activity WHERE id = $1', [historicalActivityId]);
   check('D1. validated_gamification_activity histórica de X sigue existiendo', activityAfter.rows.length === 1);
   check('D2. accountId histórico SIGUE presente (no remediado en este bloque)', activityAfter.rows[0]?.account_id === x.accountId);
-  const xpEntryAfter = await pg.query('SELECT account_id, xp_amount FROM xp_ledger_entry WHERE id = $1', [historicalXpEntryId]);
-  check('D3. xp_ledger_entry histórico de X sigue existiendo, sin cambios', xpEntryAfter.rows.length === 1 && Number(xpEntryAfter.rows[0]?.xp_amount) === 20);
-  check('D4. accountId del ledger histórico SIGUE presente', xpEntryAfter.rows[0]?.account_id === x.accountId);
+  // WEB-0D.1C-B3 -- XpLedgerEntry es IMMEDIATE_SAFE (a diferencia de
+  // ValidatedGamificationActivity arriba, DEFER_TO_B4): el cierre
+  // definitivo real de X ya pseudonimizó este ledger histórico
+  // (accountId->NULL + gamificationActorRef fijado) como parte del mismo
+  // barrido -- ver `verify-gamification-historical-pseudonymization-gate.ts`
+  // para la prueba dedicada. La fila SIGUE existiendo, con el MISMO
+  // xp_amount -- solo la identidad cambió, nunca el hecho de negocio.
+  const xpEntryAfter = await pg.query('SELECT account_id, gamification_actor_ref, xp_amount FROM xp_ledger_entry WHERE id = $1', [historicalXpEntryId]);
+  check('D3. xp_ledger_entry histórico de X sigue existiendo, sin cambios de negocio', xpEntryAfter.rows.length === 1 && Number(xpEntryAfter.rows[0]?.xp_amount) === 20);
+  check('D4. accountId del ledger histórico pseudonimizado por el cierre (B3) -- gamificationActorRef fijado en su lugar', xpEntryAfter.rows[0]?.account_id === null && xpEntryAfter.rows[0]?.gamification_actor_ref !== null);
 
   console.log('--- A. Late Outbox event para X (CLOSED): el relay real NO crea estado nuevo ---');
   const relayAfterClosure = await req('POST', '/gamification/_internal/relay', { 'x-internal-ops-key': opsKey }, {});

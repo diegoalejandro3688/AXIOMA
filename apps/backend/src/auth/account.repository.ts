@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../platform/prisma/prisma.service';
-import type { Account, AccountStatus } from '../generated/prisma/client';
+import type { Account, AccountStatus, Prisma } from '../generated/prisma/client';
 
 /** Único punto de acceso a la tabla `account`. */
 @Injectable()
@@ -113,5 +113,47 @@ export class AccountRepository {
       select: { id: true, status: true },
     });
     return new Map(rows.map((row) => [row.id, row.status]));
+  }
+
+  /**
+   * WEB-0D.1C-B3-R1-ADDENDUM -- ¿esta cuenta tiene actualmente un
+   * `PrivacyRequest` en PROCESSING? Señal de "barrido de cierre definitivo
+   * EN CURSO, todavía ANTES de que `AuthService.markAccountClosed` marque
+   * `Account.status = CLOSED`" (ver WEB-0D.1C-B3-R1 §3: ese marcado ahora
+   * ocurre al FINAL del barrido, no al principio). Lectura de
+   * `privacy_request` (tabla propia del dominio PRIVACY) vía el cliente
+   * Prisma COMPARTIDO -- NUNCA vía `PrivacyRequestRepository`: `PrivacyModule`
+   * ya importa `AuthModule`/`GamificationModule`, así que inyectar ese
+   * repositorio aquí (o en GAMIFICATION) crearía un ciclo de módulos.
+   * `AccountRepository` es el punto de lectura que XpGrantService/
+   * LeaguePointGrantService/RewardEvaluationWorker/GamificationService ya
+   * usan para el guardia CLOSED existente -- esto extiende la MISMA
+   * pregunta ("¿puede esta cuenta recibir gamificación nueva ahora
+   * mismo?") sin inventar un nuevo `Account.status` ni invertir la
+   * dirección de dependencias.
+   *
+   * DELETION_PENDING ordinario (dentro de la ventana de 30 días, SIN
+   * barrido en curso) nunca tiene una fila PROCESSING -- distingue
+   * exactamente los casos (A) "recuperable, ventana ordinaria" (permitido,
+   * sin cambios) de (B) "cierre definitivo activamente en curso" (bloqueado)
+   * del addendum.
+   */
+  async hasProcessingDeletionRequest(accountId: string, tx?: Prisma.TransactionClient): Promise<boolean> {
+    const client = tx ?? this.prisma;
+    const row = await client.privacyRequest.findFirst({
+      where: { accountId, status: 'PROCESSING' },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
+  /** Versión en LOTE de `hasProcessingDeletionRequest`, para filtrar candidatos en descubrimiento (nunca N+1 en el camino de lote). */
+  async findAccountIdsWithProcessingDeletion(accountIds: string[]): Promise<Set<string>> {
+    if (accountIds.length === 0) return new Set();
+    const rows = await this.prisma.privacyRequest.findMany({
+      where: { accountId: { in: accountIds }, status: 'PROCESSING' },
+      select: { accountId: true },
+    });
+    return new Set(rows.map((row) => row.accountId));
   }
 }

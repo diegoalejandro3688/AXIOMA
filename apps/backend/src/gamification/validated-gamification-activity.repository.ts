@@ -113,6 +113,14 @@ export class ValidatedGamificationActivityRepository {
    * Esto es lo que evita que una actividad de una cuenta ya cerrada se
    * siga redescubriendo en cada ciclo del cron -- nunca depende de que el
    * cierre haya limpiado `xp_grant_attempt` primero.
+   *
+   * WEB-0D.1C-B3-R1-ADDENDUM -- además de `a.status IS DISTINCT FROM
+   * 'CLOSED'`, excluye cuentas con un `PrivacyRequest` en PROCESSING
+   * (barrido de cierre definitivo EN CURSO, todavía ANTES de que
+   * `Account.status` llegue a CLOSED -- ver B3-R1 §3). DELETION_PENDING
+   * ORDINARIO (ventana de 30 días, sin barrido en curso) nunca tiene una
+   * fila PROCESSING, así que esta cláusula NUNCA bloquea ese caso (A del
+   * addendum) -- solo el caso (B), cierre definitivo activo.
    */
   async findPendingGrant(limit: number, now: Date = new Date()): Promise<ValidatedGamificationActivity[]> {
     const rows = await this.prisma.$queryRaw<PendingGrantRow[]>`
@@ -129,6 +137,9 @@ export class ValidatedGamificationActivityRepository {
       )
       AND (xga.validated_activity_id IS NULL OR xga.next_eligible_at <= ${now})
       AND a.status IS DISTINCT FROM 'CLOSED'
+      AND NOT EXISTS (
+        SELECT 1 FROM privacy_request pr WHERE pr.account_id = vga.account_id AND pr.status = 'PROCESSING'
+      )
       ORDER BY xga.attempts ASC NULLS FIRST, vga.occurred_at ASC
       LIMIT ${limit}
     `;

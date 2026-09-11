@@ -13,6 +13,7 @@ import { XpLedgerEntryRepository } from './xp-ledger-entry.repository';
 import { XpBalanceRepository } from './xp-balance.repository';
 import { XpGrantAttemptRepository } from './xp-grant-attempt.repository';
 import { GamificationService } from './gamification.service';
+import { GamificationPrivacyService } from './gamification-privacy.service';
 import { GamificationScheduler } from './gamification.scheduler';
 import { XpGrantService } from './xp-grant.service';
 import { XpGrantScheduler } from './xp-grant.scheduler';
@@ -289,6 +290,7 @@ import { QuickLpEligibilityService } from './quick-lp-eligibility.service';
     XpBalanceRepository,
     XpGrantAttemptRepository,
     GamificationService,
+    GamificationPrivacyService,
     GamificationScheduler,
     XpGrantService,
     XpGrantScheduler,
@@ -360,6 +362,7 @@ import { QuickLpEligibilityService } from './quick-lp-eligibility.service';
     XpBalanceRepository,
     XpGrantAttemptRepository,
     GamificationService,
+    GamificationPrivacyService,
     XpGrantService,
     LevelDefinitionRepository,
     ProgressionService,

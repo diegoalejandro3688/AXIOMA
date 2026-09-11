@@ -157,11 +157,20 @@ export class LeaguePointGrantService {
     return { granted, skipped, failed, accountClosed };
   }
 
-  /** WEB-0D.1C-B0R -- filtra `accountIds` a solo las que NO están CLOSED (una consulta en lote, nunca N+1). */
+  /**
+   * WEB-0D.1C-B0R -- filtra `accountIds` a solo las que NO están CLOSED (una
+   * consulta en lote, nunca N+1).
+   *
+   * WEB-0D.1C-B3-R1-ADDENDUM -- además excluye cuentas con un
+   * `PrivacyRequest` en PROCESSING (barrido de cierre definitivo EN CURSO,
+   * ver B3-R1 §3) -- misma consulta en lote, sin N+1. DELETION_PENDING
+   * ordinario nunca tiene una fila PROCESSING.
+   */
   private async excludeClosedAccounts(accountIds: string[]): Promise<string[]> {
     if (accountIds.length === 0 || !this.accountRepo) return accountIds;
     const statuses = await this.accountRepo.findStatusesByIds(accountIds);
-    return accountIds.filter((id) => statuses.get(id) !== 'CLOSED');
+    const processing = await this.accountRepo.findAccountIdsWithProcessingDeletion(accountIds);
+    return accountIds.filter((id) => statuses.get(id) !== 'CLOSED' && !processing.has(id));
   }
 
   async grantForActivity(activity: ValidatedGamificationActivity): Promise<LeagueGrantOutcome> {
@@ -230,9 +239,20 @@ export class LeaguePointGrantService {
         // esto cubre el cierre confirmado ENTRE esa lectura y este COMMIT.
         // Reutiliza `ClosedConcurrentlyError` -- misma semántica exacta
         // ("ya no aplica, nunca un error"), sin tipo nuevo.
+        //
+        // WEB-0D.1C-B3-R1-ADDENDUM -- además del CLOSED explícito, aborta
+        // si esta cuenta tiene un `PrivacyRequest` en PROCESSING (barrido
+        // de cierre definitivo EN CURSO, todavía ANTES de `markAccountClosed`
+        // -- ver B3-R1 §3). Sin esto, un otorgamiento de LP podría colarse
+        // justo cuando B3 ya pseudonimizó el resto del historial de la
+        // cuenta. DELETION_PENDING ordinario nunca tiene una fila
+        // PROCESSING -- nunca bloquea ese caso.
         if (this.accountRepo) {
           const account = await tx.account.findUnique({ where: { id: accountId } });
           if (account?.status === 'CLOSED') {
+            throw new ClosedConcurrentlyError();
+          }
+          if (await this.accountRepo.hasProcessingDeletionRequest(accountId, tx)) {
             throw new ClosedConcurrentlyError();
           }
         }

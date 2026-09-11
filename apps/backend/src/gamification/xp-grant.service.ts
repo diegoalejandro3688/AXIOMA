@@ -215,9 +215,25 @@ export class XpGrantService {
         // participación/temporada/grupo en `LeaguePointGrantService`.
         // `!account` (fila ausente) NUNCA se trata como CLOSED -- solo el
         // valor explícito 'CLOSED' aborta.
+        //
+        // WEB-0D.1C-B3-R1-ADDENDUM -- además del CLOSED explícito, aborta
+        // si esta cuenta tiene un `PrivacyRequest` en PROCESSING: el
+        // barrido de cierre definitivo ya empezó (finalizeAccountClosure
+        // pudo haber corrido) pero `Account.status` todavía puede leer
+        // DELETION_PENDING hasta que `markAccountClosed` corra al FINAL de
+        // ese barrido (B3-R1 §3) -- sin esta comprobación, un otorgamiento
+        // de XP podría colarse en esa ventana y crear una fila NUEVA con
+        // `accountId` crudo justo cuando (o después de) que B3 ya
+        // pseudonimizó el resto del historial de esta cuenta.
+        // DELETION_PENDING ordinario (ventana de 30 días, sin barrido en
+        // curso) nunca tiene una fila PROCESSING -- este guardia NUNCA
+        // bloquea ese caso.
         if (this.accountRepo) {
           const account = await tx.account.findUnique({ where: { id: accountId } });
           if (account?.status === 'CLOSED') {
+            throw new AccountClosedError();
+          }
+          if (await this.accountRepo.hasProcessingDeletionRequest(accountId, tx)) {
             throw new AccountClosedError();
           }
         }

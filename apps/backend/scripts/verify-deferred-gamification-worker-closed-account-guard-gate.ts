@@ -367,10 +367,23 @@ async function main() {
 
   const evaluateRunAfterClose = await req('POST', '/gamification/_internal/evaluate-rewards', { 'x-internal-ops-key': opsKey }, {});
   check('C1/D1. evaluate-rewards status 200', evaluateRunAfterClose.status === 200);
-  check('C2. accountClosed >= 1 en la respuesta (la cuenta X3 fue omitida terminalmente, no como fallo)', (evaluateRunAfterClose.body?.accountClosed ?? 0) >= 1);
+  // WEB-0D.1C-B3 -- `closeDefinitively` ahora también pseudonimiza
+  // (accountId->NULL) el xp_ledger_entry histórico de X3 DENTRO del mismo
+  // barrido de cierre, ANTES de que esta llamada explícita a
+  // evaluate-rewards corra. `discoverPendingAccounts` (filtrado por
+  // accountId IS NOT NULL desde B1) YA NO puede encontrar a X3 en absoluto
+  // -- no es que el worker la descubra y la salte (SKIPPED_CLOSED_ACCOUNT,
+  // accountClosed++, cursor avanza): simplemente nunca vuelve a aparecer
+  // como candidata. Invariante MÁS FUERTE, no más débil -- reprobado
+  // explícitamente por `verify-gamification-historical-pseudonymization-gate.ts`
+  // §E. `accountClosed` para X3 específicamente se queda en 0 (nada que
+  // saltar); no se afirma sobre el total global (otras cuentas cerradas de
+  // este mismo gate SÍ pueden incrementarlo).
+  const xpEntryX3After = await pg.query('SELECT account_id, gamification_actor_ref FROM xp_ledger_entry WHERE id = $1', [xpEntryX3Id]);
+  check('C2. el xp_ledger_entry histórico de X3 quedó pseudonimizado por el cierre (accountId->NULL, B3)', xpEntryX3After.rows[0]?.account_id === null && xpEntryX3After.rows[0]?.gamification_actor_ref !== null);
 
   const cursorX3 = await pg.query('SELECT last_processed_entry_id FROM reward_evaluation_cursor WHERE account_id = $1', [x3.accountId]);
-  check('C3. el cursor SÍ avanzó hasta la última entrada pendiente (no reintenta indefinidamente)', cursorX3.rows[0]?.last_processed_entry_id === xpEntryX3Id);
+  check('C3. NINGÚN reward_evaluation_cursor para X3 -- nunca fue descubierta (ya pseudonimizada antes de esta llamada)', cursorX3.rows.length === 0);
 
   const achievementProgressX3 = await pg.query('SELECT id FROM achievement_progress WHERE account_id = $1', [x3.accountId]);
   check('C4. NINGÚN achievement_progress nuevo para X3', achievementProgressX3.rows.length === 0);
