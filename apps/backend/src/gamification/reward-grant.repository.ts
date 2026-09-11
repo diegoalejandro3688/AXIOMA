@@ -37,8 +37,23 @@ export class RewardGrantRepository {
     sourceEntityType: RewardSourceEntityType;
     sourceEntityId: string;
     idempotencyKey: string;
+    // WEB-0D.1C-B2 -- lectura de compatibilidad legacy, SOLO para
+    // reconocer una fila ya escrita ANTES de B2 bajo la clave vieja
+    // (accountId crudo). Nunca se persiste: si se encuentra, se devuelve
+    // tal cual (`created: false`), nunca se inserta una segunda fila v2
+    // para el mismo hecho de negocio. `undefined` para llamadores cuyo
+    // sourceEntityId nunca embebió accountId (ACHIEVEMENT_UNLOCK/
+    // CHALLENGE_CLAIM/LEAGUE) -- sin lectura doble que hacer ahí.
+    legacyIdempotencyKey?: string;
     components: Array<{ componentType: RewardComponentType; xpAmount?: number | null; referenceId?: string | null }>;
   }): Promise<{ grant: RewardGrantWithComponents; created: boolean }> {
+    if (input.legacyIdempotencyKey) {
+      const legacy = await this.prisma.rewardGrant.findUnique({
+        where: { idempotencyKey: input.legacyIdempotencyKey },
+        include: { components: true },
+      });
+      if (legacy) return { grant: legacy, created: false };
+    }
     try {
       const grant = await this.prisma.rewardGrant.create({
         data: {

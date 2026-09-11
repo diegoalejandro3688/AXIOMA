@@ -97,6 +97,7 @@
     "verify:closed-account-gamification-guard-gate": "tsx scripts/run-gate.ts verify-closed-account-gamification-guard-gate.ts",
     "verify:deferred-gamification-worker-closed-account-guard-gate": "tsx scripts/run-gate.ts verify-deferred-gamification-worker-closed-account-guard-gate.ts",
     "verify:gamification-pseudonym-primitive-schema-gate": "tsx scripts/run-gate.ts verify-gamification-pseudonym-primitive-schema-gate.ts",
+    "verify:gamification-pseudonymous-key-gate": "tsx scripts/run-gate.ts verify-gamification-pseudonymous-key-gate.ts",
     "verify:exam-foundation-gate": "tsx scripts/run-gate.ts verify-exam-foundation-gate.ts",
     "verify:premium-exams-gate": "tsx scripts/run-gate.ts verify-premium-exams-gate.ts",
     "verify:premium-content-access-gate": "tsx scripts/run-gate.ts verify-premium-content-access-gate.ts",

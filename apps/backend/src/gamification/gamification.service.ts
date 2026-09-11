@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   GAMIFICATION_EVENT_KEYS,
   GAMIFICATION_SCHEMA_VERSION,
@@ -12,6 +13,7 @@ import { ValidatedGamificationActivityRepository } from './validated-gamificatio
 import { XpBalanceRepository } from './xp-balance.repository';
 import { AccountTitleRepository } from './account-title.repository';
 import { InventoryItemRepository } from './inventory-item.repository';
+import { buildActivityDedupKeyV2, buildLegacyActivityDedupKey } from './gamification-key';
 import type { OutboxEvent } from '../generated/prisma/client';
 
 const RELAY_BATCH_SIZE = 100;
@@ -29,30 +31,14 @@ function isKnownEventKey(eventKey: string): eventKey is GamificationEventKey {
  * ADR-0017). Protege contra dos mensajes distintos publicados por error
  * para el mismo hecho -- algo que la idempotencia de transporte, por sí
  * sola, no puede detectar.
+ *
+ * WEB-0D.1C-B2 -- `topic-completed`/`ensayo-completado`/`resource-completed`
+ * migraron a la forma v2 pseudonimizada (`buildActivityDedupKeyV2`, ver
+ * `gamification-key.ts`); la identidad de negocio subyacente
+ * (accountId/curriculumTopicId, accountId/examId, accountId/learningResourceId)
+ * NO cambia, solo cómo se serializa. `response`/`quick-question` nunca
+ * embebieron accountId y no cambian en absoluto.
  */
-function deduplicationKeyFor(eventKey: GamificationEventKey, payload: Record<string, unknown>): string {
-  switch (eventKey) {
-    case 'student_response_recorded':
-      return `response:${payload.studentResponseId as string}`;
-    case 'quick_question_answered':
-      return `quick-question:${payload.quickQuestionAttemptId as string}`;
-    case 'curriculum_topic_completed':
-      // Sin identificador propio de "transición" en el modelo actual -- se
-      // usa (accountId, curriculumTopicId), tal como fue decidido explícitamente.
-      return `topic-completed:${payload.accountId as string}:${payload.curriculumTopicId as string}`;
-    case 'exam_completed':
-      // XP-V1B -- identidad (accountId, examId), NUNCA examAttemptId: la
-      // recompensa de XP es única por cuenta+Ensayo canónico, no por
-      // intento. Reintentar/repetir el mismo Ensayo colapsa siempre a esta
-      // misma clave, sin importar cuántos ExamAttempt distintos se completen.
-      return `ensayo-completado:${payload.accountId as string}:${payload.examId as string}`;
-    case 'resource_completed':
-      // XP-V1B-2 -- identidad (accountId, learningResourceId), la identidad
-      // CANÓNICA del recurso, nunca su versión editorial -- un nuevo
-      // LearningResourceVersion del mismo recurso nunca reabre elegibilidad.
-      return `resource-completed:${payload.accountId as string}:${payload.learningResourceId as string}`;
-  }
-}
 
 function sourceEntityFor(eventKey: GamificationEventKey, payload: Record<string, unknown>): { type: string; id: string } {
   switch (eventKey) {
@@ -104,7 +90,33 @@ export class GamificationService {
     private readonly xpBalanceRepo: XpBalanceRepository,
     private readonly accountTitleRepo: AccountTitleRepository,
     private readonly inventoryItemRepo: InventoryItemRepository,
+    // WEB-0D.1C-B2 -- añadido al FINAL, mismo criterio que
+    // `XpGrantService.accountRepo` (WEB-0D.1C-B0R): opcional para no
+    // romper la instanciación posicional de gates preexistentes
+    // (`verify-resource-completion-gate.ts` construye este servicio con
+    // solo 2 args). `getGamificationSecret` cae a `process.env`
+    // directamente cuando `config` es `undefined` -- MISMO valor exacto
+    // que `ConfigService.get` habría devuelto (sin schema de validación
+    // registrado, `ConfigService` ya resuelve sobre `process.env`), nunca
+    // un secreto de repuesto distinto.
+    private readonly config?: ConfigService,
   ) {}
+
+  /**
+   * WEB-0D.1C-B2 -- a diferencia de `ANALYTICS_ACTOR_SECRET` (opcional,
+   * "sin pseudónimo" si falta), este secreto es REQUERIDO para las tres
+   * escrituras afectadas (`topic-completed`/`ensayo-completado`/
+   * `resource-completed`): si faltara, la ÚNICA alternativa sería
+   * persistir accountId crudo, exactamente lo que este bloque existe para
+   * evitar -- falla explícito en vez de degradar en silencio.
+   */
+  private getGamificationSecret(): string {
+    const secret = this.config?.get<string>('GAMIFICATION_ACTOR_SECRET') ?? process.env.GAMIFICATION_ACTOR_SECRET;
+    if (!secret) {
+      throw new Error('GAMIFICATION_ACTOR_SECRET no está configurado -- no se puede pseudonimizar accountId para esta escritura de gamificación.');
+    }
+    return secret;
+  }
 
   /**
    * WEB-0D.1B-P0B2-R1 -- justo después de que `recordOutcome` deja
@@ -179,13 +191,27 @@ export class GamificationService {
       return;
     }
 
-    const deduplicationKey = deduplicationKeyFor(outboxEvent.eventKey, payload);
+    // WEB-0D.1C-B2 -- doble lectura de compatibilidad. La clave v2
+    // (pseudonimizada) es la ÚNICA que se persiste de aquí en adelante;
+    // la clave legacy (accountId crudo) se calcula solo TRANSITORIAMENTE,
+    // en memoria, para reconocer filas ya existentes escritas antes de
+    // B2 -- nunca se vuelve a persistir. `buildLegacyActivityDedupKey`
+    // devuelve `null` para los dos tipos que nunca embebieron accountId
+    // (`response`/`quick-question`): para esos, la clave v2 ES la única
+    // forma que siempre existió, y el secreto de GAMIFICATION nunca se
+    // exige (ni se lee) para ellos -- ninguna razón para requerirlo donde
+    // nunca hubo accountId crudo que pseudonimizar.
+    const legacyDeduplicationKey = buildLegacyActivityDedupKey(outboxEvent.eventKey, payload);
+    const deduplicationKey = buildActivityDedupKeyV2(outboxEvent.eventKey, accountId, () => this.getGamificationSecret(), payload);
 
     // Idempotencia de NEGOCIO: si el hecho académico ya generó una
     // actividad validada (p. ej. dos mensajes distintos publicados por
-    // error para el mismo StudentResponse), no se crea una segunda fila --
+    // error para el mismo StudentResponse, O una fila legacy escrita
+    // antes de B2 para el mismo hecho), no se crea una segunda fila --
     // se considera éxito, no fallo, igual que ANALYTICS con analytics_event.
-    const alreadyValidated = await this.activityRepo.findByDeduplicationKey(deduplicationKey);
+    const alreadyValidated =
+      (await this.activityRepo.findByDeduplicationKey(deduplicationKey)) ??
+      (legacyDeduplicationKey ? await this.activityRepo.findByDeduplicationKey(legacyDeduplicationKey) : null);
     if (alreadyValidated) return;
 
     const sourceEntity = sourceEntityFor(outboxEvent.eventKey, payload);

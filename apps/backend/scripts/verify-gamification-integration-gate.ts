@@ -218,9 +218,15 @@ async function main() {
   check('sourceEntityType == StudentResponse', activityResponse1.rows[0]?.source_entity_type === 'StudentResponse');
   check('sourceEntityId == studentResponseId', activityResponse1.rows[0]?.source_entity_id === studentResponse1.id);
 
+  // WEB-0D.1C-B2 -- `deduplicationKey` para `curriculum_topic_completed`
+  // ahora es v2 pseudonimizada (`topic-completed:v2:{gamificationActorRef}:{curriculumTopicId}`,
+  // ver gamification-key.ts), nunca más `topic-completed:{accountId}:{curriculumTopicId}`
+  // literal -- localizar por (account_id, activity_type, source_entity_id)
+  // en vez de reconstruir la clave a mano, agnóstico al formato exacto.
   const activityCompleted = await pg.query(
-    'SELECT id, source_entity_type, source_entity_id FROM validated_gamification_activity WHERE deduplication_key = $1',
-    [`topic-completed:${a.accountId}:${topicId}`],
+    `SELECT id, source_entity_type, source_entity_id FROM validated_gamification_activity
+     WHERE account_id = $1 AND activity_type = 'TEMA_COMPLETADO' AND source_entity_id = $2`,
+    [a.accountId, topicId],
   );
   check('validated_gamification_activity creada para el tema completado', activityCompleted.rowCount === 1);
   check('sourceEntityType == CurriculumTopicProgress', activityCompleted.rows[0]?.source_entity_type === 'CurriculumTopicProgress');

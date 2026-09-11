@@ -89,6 +89,21 @@ async function main() {
   const balanceRepo = new XpBalanceRepository(prisma);
   const levelDefRepo = new LevelDefinitionRepository(prisma);
   const progressionService = new ProgressionService(balanceRepo, ledgerRepo, levelDefRepo);
+
+  // WEB-0D.1C-B2 -- `RewardGrant.sourceEntityId`/`idempotencyKey` para
+  // LEVEL ahora son v2 pseudonimizados (`v2:{gamificationActorRef}:{levelNumber}`,
+  // ver gamification-key.ts), nunca más `reward:LEVEL:{accountId}:{levelNumber}`
+  // literal -- localizar por (account_id, source_entity_type, sufijo
+  // `:{levelNumber}`) en vez de reconstruir la clave a mano, agnóstico al
+  // formato exacto.
+  async function findLevelGrant(accountId: string, levelNumber: number) {
+    const row = await pg.query(
+      `SELECT id FROM reward_grant WHERE account_id = $1 AND source_entity_type = 'LEVEL' AND source_entity_id LIKE '%:' || $2::text`,
+      [accountId, levelNumber],
+    );
+    if (row.rows.length === 0) return null;
+    return grantRepo.findById(row.rows[0].id as string);
+  }
   const bundleRepo = new RewardBundleRepository(prisma);
   const grantRepo = new RewardGrantRepository(prisma);
   const componentRepo = new RewardGrantComponentRepository(prisma);
@@ -227,7 +242,7 @@ async function main() {
   const outcomeA1 = await worker.processAccount(accountA);
   check('processAccount -> PROCESSED', outcomeA1 === 'PROCESSED');
 
-  const grantA = await grantRepo.findByIdempotencyKey(`reward:LEVEL:${accountA}:${levelBase + 2}`);
+  const grantA = await findLevelGrant(accountA, levelBase + 2);
   check('reward_grant creado para el nivel cruzado', grantA !== null);
   check('exactamente 1 componente (XP_BONUS, el único item del bundle)', grantA?.components.length === 1);
   check('el componente quedó DELIVERED', grantA?.components[0]?.deliveryStatus === 'DELIVERED');
@@ -267,8 +282,8 @@ async function main() {
   const outcomeB1 = await worker.processAccount(accountB);
   check('processAccount -> PROCESSED', outcomeB1 === 'PROCESSED');
 
-  const grantB2 = await grantRepo.findByIdempotencyKey(`reward:LEVEL:${accountB}:${levelBase + 2}`);
-  const grantB3 = await grantRepo.findByIdempotencyKey(`reward:LEVEL:${accountB}:${levelBase + 3}`);
+  const grantB2 = await findLevelGrant(accountB, levelBase + 2);
+  const grantB3 = await findLevelGrant(accountB, levelBase + 3);
   check('reward_grant del nivel 2 creado', grantB2 !== null);
   check('reward_grant del nivel 3 creado (ambos niveles cruzados en la misma pasada, ninguno se saltó)', grantB3 !== null);
   check('nivel 2: componente XP_BONUS DELIVERED', grantB2?.components[0]?.deliveryStatus === 'DELIVERED');
@@ -335,7 +350,7 @@ async function main() {
   const outcomeC1 = await workerPoisoned.processAccount(accountC);
   check('primera pasada (con fallo inyectado en la entrega) -> FAILED', outcomeC1 === 'FAILED');
 
-  const grantCAfterFailure = await grantRepo.findByIdempotencyKey(`reward:LEVEL:${accountC}:${levelBase + 2}`);
+  const grantCAfterFailure = await findLevelGrant(accountC, levelBase + 2);
   check('reward_grant SÍ se creó (la cabecera/snapshot no depende de la entrega)', grantCAfterFailure !== null);
   check('el componente XP_BONUS quedó FAILED, no DELIVERED', grantCAfterFailure?.components[0]?.deliveryStatus === 'FAILED');
 
@@ -367,7 +382,7 @@ async function main() {
   const outcomeC2 = await workerPoisoned.processAccount(accountC);
   check('reintento (sin el fallo -- ya se desarmó tras el primer uso) -> PROCESSED', outcomeC2 === 'PROCESSED');
 
-  const grantCAfterRetry = await grantRepo.findByIdempotencyKey(`reward:LEVEL:${accountC}:${levelBase + 2}`);
+  const grantCAfterRetry = await findLevelGrant(accountC, levelBase + 2);
   check('MISMO reward_grant (no se duplicó la cabecera)', grantCAfterRetry?.id === grantCAfterFailure?.id);
   check('el componente ahora sí quedó DELIVERED', grantCAfterRetry?.components[0]?.deliveryStatus === 'DELIVERED');
 

@@ -227,8 +227,15 @@ async function main() {
   const relayForY = await req('POST', '/gamification/_internal/relay', { 'x-internal-ops-key': opsKey }, {});
   check('B1. relay status 200', relayForY.status === 200);
 
-  const dedupKeyY = `ensayo-completado:${y.accountId}:${examIdY}`;
-  const activityY = await pg.query('SELECT account_id, activity_type FROM validated_gamification_activity WHERE deduplication_key = $1', [dedupKeyY]);
+  // WEB-0D.1C-B2 -- `deduplicationKey` para `exam_completed` ahora es v2
+  // pseudonimizada (`ensayo-completado:v2:{gamificationActorRef}:{examId}`,
+  // ver gamification-key.ts), nunca más `ensayo-completado:{accountId}:{examId}`
+  // literal -- localizar por (account_id, activity_type) en vez de
+  // reconstruir la clave a mano, agnóstico al formato exacto.
+  const activityY = await pg.query(
+    `SELECT account_id, activity_type FROM validated_gamification_activity WHERE account_id = $1 AND activity_type = 'ENSAYO_COMPLETADO'`,
+    [y.accountId],
+  );
   check('B2. validated_gamification_activity SÍ se creó para la cuenta ACTIVA Y', activityY.rows.length === 1);
   check('B3. accountId correcto', activityY.rows[0]?.account_id === y.accountId);
   check('B4. activityType == ENSAYO_COMPLETADO', activityY.rows[0]?.activity_type === 'ENSAYO_COMPLETADO');

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../platform/prisma/prisma.service';
 import { TransactionRunnerService } from '../platform/prisma/transaction-runner.service';
 import { Prisma } from '../generated/prisma/client';
@@ -44,6 +45,7 @@ import { TitleDefinitionRepository } from './title-definition.repository';
 import { TitleEligibilityService } from './title-eligibility.service';
 import { TITLES_V1 } from './titles-v1-catalog';
 import { AccountRepository } from '../auth/account.repository';
+import { buildLegacyRewardSourceId, buildRewardSourceIdV2 } from './gamification-key';
 
 /**
  * STABILIZATION-B -- decisión de producto CONGELADA (§5 del brief): "actividad
@@ -160,7 +162,27 @@ export class RewardEvaluationWorker {
     // (WEB-0D.1C-A/B0R): opcional para no romper la instanciación
     // posicional de gates preexistentes.
     private readonly accountRepo?: AccountRepository,
+    // WEB-0D.1C-B2 -- mismo criterio que `accountRepo` arriba: opcional
+    // para no romper la instanciación posicional de gates preexistentes.
+    // `getGamificationSecret` cae a `process.env` directamente cuando
+    // `config` es `undefined` -- mismo valor exacto que `ConfigService.get`
+    // habría devuelto, nunca un secreto de repuesto distinto.
+    private readonly config?: ConfigService,
   ) {}
+
+  /**
+   * WEB-0D.1C-B2 -- ver `GamificationService.getGamificationSecret`
+   * (mismo criterio EXACTO, misma justificación). Requerido para
+   * LEVEL/STUDY_SUBJECT/TITLE_UNLOCK; nunca falla en silencio hacia
+   * accountId crudo.
+   */
+  private getGamificationSecret(): string {
+    const secret = this.config?.get<string>('GAMIFICATION_ACTOR_SECRET') ?? process.env.GAMIFICATION_ACTOR_SECRET;
+    if (!secret) {
+      throw new Error('GAMIFICATION_ACTOR_SECRET no está configurado -- no se puede pseudonimizar accountId para esta recompensa.');
+    }
+    return secret;
+  }
 
   /**
    * Sub-incremento 1.c (ADR-0019, BLOCK-III-DEFINITION.md §4.1) -- primer
@@ -220,8 +242,10 @@ export class RewardEvaluationWorker {
 
   /**
    * Entrega (o recupera, si ya existía) la recompensa de UN nivel para la
-   * cuenta -- idempotente por `reward:LEVEL:{accountId}:{levelNumber}`
-   * (§4.4). Devuelve `false` si algún componente `XP_BONUS` quedó sin
+   * cuenta -- idempotente por `reward:LEVEL:v2:{actorRef}:{levelNumber}`
+   * desde WEB-0D.1C-B2 (antes `reward:LEVEL:{accountId}:{levelNumber}`,
+   * reconocido transitoriamente por compatibilidad, ver
+   * `RewardGrantRepository.createIdempotent`). Devuelve `false` si algún componente `XP_BONUS` quedó sin
    * `DELIVERED` -- ver `deliverBundleComponents`.
    */
   private async grantLevelReward(accountId: string, level: LevelDefinition & { rewardBundleId: string }): Promise<boolean> {
@@ -230,8 +254,13 @@ export class RewardEvaluationWorker {
       this.logger.error(`LevelDefinition (nivel ${level.levelNumber}) referencia un reward_bundle_id inexistente (${level.rewardBundleId}).`);
       return false;
     }
-    const sourceEntityId = `${accountId}:${level.levelNumber}`;
-    const { allResolved } = await this.deliverBundleComponents(accountId, bundle, 'LEVEL', sourceEntityId);
+    // WEB-0D.1C-B2 -- `sourceEntityId` v2 pseudonimizado (nunca accountId
+    // crudo); `legacySourceEntityId` se calcula SOLO para reconocer un
+    // `reward_grant` ya escrito antes de B2 bajo la clave vieja, nunca se
+    // vuelve a persistir (ver `RewardGrantRepository.createIdempotent`).
+    const sourceEntityId = buildRewardSourceIdV2(accountId, this.getGamificationSecret(), level.levelNumber);
+    const legacySourceEntityId = buildLegacyRewardSourceId(accountId, level.levelNumber);
+    const { allResolved } = await this.deliverBundleComponents(accountId, bundle, 'LEVEL', sourceEntityId, legacySourceEntityId);
     return allResolved;
   }
 
@@ -256,6 +285,12 @@ export class RewardEvaluationWorker {
     bundle: RewardBundle & { items: RewardBundleItem[] },
     sourceEntityType: RewardSourceEntityType,
     sourceEntityId: string,
+    // WEB-0D.1C-B2 -- SOLO para LEVEL/STUDY_SUBJECT (los únicos llamadores
+    // cuyo `sourceEntityId` alguna vez embebió accountId crudo); `undefined`
+    // para ACHIEVEMENT_UNLOCK/CHALLENGE_CLAIM/LEAGUE, que ya usan un id de
+    // fila opaco y no necesitan lectura doble. Nunca se persiste -- ver
+    // `RewardGrantRepository.createIdempotent`.
+    legacySourceEntityId?: string,
   ) {
     // Guarda de última línea (defensa en profundidad): un accountId ausente
     // aquí nunca debería originarse en el propio worker (siempre recibe el
@@ -273,6 +308,7 @@ export class RewardEvaluationWorker {
       sourceEntityType,
       sourceEntityId,
       idempotencyKey: `reward:${sourceEntityType}:${sourceEntityId}`,
+      legacyIdempotencyKey: legacySourceEntityId ? `reward:${sourceEntityType}:${legacySourceEntityId}` : undefined,
       components: bundle.items.map((item) => ({
         componentType: item.componentType,
         xpAmount: item.xpAmount,
@@ -657,11 +693,15 @@ export class RewardEvaluationWorker {
       const bundle = await this.bundleRepo.findByBundleKey(`cosmetics-v1-historic-${itemKey}`);
       if (!bundle) continue;
 
-      // `sourceEntityId = {accountId}:{subjectKey}` -- identidad estable e
-      // independiente de temporada/reintento; incluye `accountId` porque el
-      // `idempotencyKey` global de RewardGrant no lo lleva (mismo criterio
-      // que LEVEL/LEAGUE/STUDY_UNIT).
-      const { allResolved: delivered } = await this.deliverBundleComponents(accountId, bundle, 'STUDY_SUBJECT', `${accountId}:${subjectKey}`);
+      // WEB-0D.1C-B2 -- `sourceEntityId` v2 pseudonimizado: identidad
+      // estable e independiente de temporada/reintento; incluye el actor
+      // ref (nunca accountId crudo) porque el `idempotencyKey` global de
+      // RewardGrant no lo lleva (mismo criterio que LEVEL/LEAGUE/STUDY_UNIT).
+      // `legacySourceEntityId` solo para reconocer un grant ya escrito
+      // antes de B2, nunca se vuelve a persistir.
+      const sourceEntityId = buildRewardSourceIdV2(accountId, this.getGamificationSecret(), subjectKey);
+      const legacySourceEntityId = buildLegacyRewardSourceId(accountId, subjectKey);
+      const { allResolved: delivered } = await this.deliverBundleComponents(accountId, bundle, 'STUDY_SUBJECT', sourceEntityId, legacySourceEntityId);
       if (!delivered) allResolved = false;
     }
     return allResolved;
@@ -701,11 +741,17 @@ export class RewardEvaluationWorker {
         const eligible = await this.titleEligibilityService.evaluateMetric(accountId, entry.metric, entry.threshold);
         if (!eligible) continue;
 
+        // WEB-0D.1C-B2 -- `acquisitionSourceId` v2 pseudonimizado. La
+        // idempotencia REAL de esta escritura es `UNIQUE(accountId,
+        // titleDefinitionId)` (ver `AccountTitleRepository.createIdempotent`),
+        // NUNCA este string -- es puramente descriptivo/de auditoría, así
+        // que no hay riesgo de duplicado ni necesidad de lectura legacy
+        // aquí: solo se corrige la privacidad del valor persistido.
         await this.accountTitleRepo.createIdempotent({
           accountId,
           titleDefinitionId: definition.id,
           acquisitionSourceType: 'TITLE_UNLOCK',
-          acquisitionSourceId: `${accountId}:${entry.titleKey}`,
+          acquisitionSourceId: buildRewardSourceIdV2(accountId, this.getGamificationSecret(), entry.titleKey),
           acquiredAt: new Date(),
         });
       } catch (error) {
