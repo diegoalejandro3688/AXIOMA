@@ -1,4 +1,5 @@
 import { Injectable, Optional } from '@nestjs/common';
+import { AccountRepository } from '../auth/account.repository';
 import { AccountBlockRepository } from './account-block.repository';
 import { SeasonLeagueParticipationRepository } from '../gamification/season-league-participation.repository';
 import { LeaderboardEntryRepository } from '../gamification/leaderboard-entry.repository';
@@ -56,6 +57,12 @@ export class CompetitiveLeaderboardService {
     // PS-0C.2 -- opcional (`@Optional`), mismo criterio. Sin él, no hay
     // redacción por bloqueo (sólo alcanzable en gates preexistentes).
     @Optional() private readonly accountBlockRepo?: AccountBlockRepository,
+    // WEB-0D.1C-A -- añadido al FINAL, mismo criterio que `accountBlockRepo`
+    // arriba: `@Optional()` para no romper la instanciación posicional de
+    // gates preexistentes. Sin él, la exclusión de cuentas CLOSED
+    // simplemente no se aplica (nunca un 500) -- solo alcanzable en gates
+    // que construyen este servicio a mano sin pasarlo.
+    @Optional() private readonly accountRepo?: AccountRepository,
   ) {}
 
   /**
@@ -112,6 +119,16 @@ export class CompetitiveLeaderboardService {
 
     const rowAccountIds = page.map((e) => accountIdByParticipationId.get(e.seasonLeagueParticipationId)).filter((id): id is string => Boolean(id));
     const identities = await this.identityService.resolveManyByAccountIds(rowAccountIds);
+    // WEB-0D.1C-A -- una cuenta definitivamente CLOSED no debe aparecer EN
+    // ABSOLUTO en el ranking activo/público (decisión de producto congelada,
+    // distinta de "no presentable": ahí la fila se conserva sin identidad,
+    // aquí la fila se elimina por completo). Nunca aplica a
+    // `LeaderboardSnapshot`/`LeaderboardSnapshotEntry` (temporadas
+    // finalizadas, fuera de alcance de este bloque) -- solo a esta lectura
+    // del ranking EN VIVO. `accountRepo` es `@Optional()` (gates
+    // preexistentes que construyen este servicio a mano) -- sin él, ningún
+    // filtro se aplica, nunca un 500.
+    const accountStatusById = this.accountRepo ? await this.accountRepo.findStatusesByIds(rowAccountIds) : new Map();
 
     // Excepción de autoconsulta (precisión obligatoria del Product Owner):
     // si la fila propia cae en esta página y el lote la marcó no
@@ -124,8 +141,14 @@ export class CompetitiveLeaderboardService {
       ownIdentity = await this.identityService.assembleIdentityForOwnAccount(accountId);
     }
 
-    const entries: LeaderboardRowView[] = page.map((entry) => {
+    const entries: LeaderboardRowView[] = page.flatMap((entry): LeaderboardRowView[] => {
       const rowAccountId = accountIdByParticipationId.get(entry.seasonLeagueParticipationId);
+      // WEB-0D.1C-A -- excluida por completo, no solo redactada. Una cuenta
+      // CLOSED no puede autenticarse (sesión ya invalidada al cierre), así
+      // que esto nunca descarta la fila propia del solicitante.
+      if (rowAccountId && accountStatusById.get(rowAccountId) === 'CLOSED') {
+        return [];
+      }
       const isCurrentUser = rowAccountId === accountId;
       const competitiveZone = zoneFor(entry.rankPosition);
       // PS-0C.2 -- fila de una cuenta bloqueada por el solicitante: identidad
@@ -142,25 +165,27 @@ export class CompetitiveLeaderboardService {
       const metricValue = isCurrentUser ? participation.leaguePoints : entry.metricValue;
 
       if (isBlocked) {
-        return { presentable: false, isCurrentUser, rankPosition: entry.rankPosition, metricValue, competitiveZone, redactionReason: 'BLOCKED' };
+        return [{ presentable: false, isCurrentUser, rankPosition: entry.rankPosition, metricValue, competitiveZone, redactionReason: 'BLOCKED' }];
       }
 
       if (isCurrentUser && ownIdentity) {
-        return { presentable: true, isCurrentUser: true, rankPosition: entry.rankPosition, metricValue, competitiveZone, ...omitAccountId(ownIdentity) };
+        return [{ presentable: true, isCurrentUser: true, rankPosition: entry.rankPosition, metricValue, competitiveZone, ...omitAccountId(ownIdentity) }];
       }
 
       const resolved = rowAccountId ? identities.get(rowAccountId) : undefined;
       if (resolved?.presentable) {
-        return {
-          presentable: true,
-          isCurrentUser,
-          rankPosition: entry.rankPosition,
-          metricValue,
-          competitiveZone,
-          ...omitAccountId(resolved.identity),
-        };
+        return [
+          {
+            presentable: true,
+            isCurrentUser,
+            rankPosition: entry.rankPosition,
+            metricValue,
+            competitiveZone,
+            ...omitAccountId(resolved.identity),
+          },
+        ];
       }
-      return { presentable: false, isCurrentUser, rankPosition: entry.rankPosition, metricValue, competitiveZone };
+      return [{ presentable: false, isCurrentUser, rankPosition: entry.rankPosition, metricValue, competitiveZone }];
     });
 
     const nextCursor = page.length === limit ? encodeLeaderboardCursor(page[page.length - 1]!.rankPosition) : null;

@@ -71,4 +71,21 @@ export class XpBalanceRepository {
       update: { lifetimeXp, balanceVersion: { increment: 1 }, lastLedgerEntryId, calculatedAt: new Date() },
     });
   }
+
+  /**
+   * WEB-0D.1C-A -- borra la proyección de saldo ACTUAL al cierre definitivo
+   * de cuenta. Seguro: `xp_balance` es una proyección materializada
+   * ("§16.8: deberá poder reconstruirse completamente desde
+   * xp_ledger_entry"), nunca la fuente de verdad -- borrarla NUNCA borra
+   * ni altera `xp_ledger_entry` (esta tabla es la única con una FK hacia
+   * el ledger, en esta dirección: `xp_balance.last_ledger_entry_id ->
+   * xp_ledger_entry.id`, `ON DELETE RESTRICT`, que solo protegería al
+   * ledger de un borrado en sentido contrario, nunca a esta fila). Sin
+   * trigger de no-DELETE. Idempotente: si la cuenta nunca tuvo saldo
+   * calculado, no afecta ninguna fila.
+   */
+  async deleteByAccountId(accountId: string): Promise<number> {
+    const result = await this.prisma.xpBalance.deleteMany({ where: { accountId } });
+    return result.count;
+  }
 }

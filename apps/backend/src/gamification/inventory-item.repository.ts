@@ -83,4 +83,18 @@ export class InventoryItemRepository {
       orderBy: { acquiredAt: 'desc' },
     });
   }
+
+  /**
+   * WEB-0D.1C-A -- borra la PROPIEDAD (ownership) de cosméticos al cierre
+   * definitivo de cuenta. Seguro SOLO si ya no queda ningún
+   * `equipped_cosmetic` apuntando a estas filas (`ON DELETE RESTRICT`) --
+   * mismo requisito de orden que `AccountTitleRepository.deleteByAccountId`:
+   * el llamador DEBE ejecutarse después de
+   * `anonymizePublicProfileForAccountClosure`. Nunca toca
+   * `reward_grant`/`reward_grant_component` (histórico, fuera de alcance).
+   */
+  async deleteByAccountId(accountId: string): Promise<number> {
+    const result = await this.prisma.inventoryItem.deleteMany({ where: { accountId } });
+    return result.count;
+  }
 }

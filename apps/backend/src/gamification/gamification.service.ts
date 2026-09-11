@@ -7,7 +7,11 @@ import {
 } from '@axioma/contracts';
 import { OutboxEventDeliveryRepository } from '../platform/outbox/outbox-event-delivery.repository';
 import { OutboxLifecycleService } from '../platform/outbox/outbox-lifecycle.service';
+import { AccountRepository } from '../auth/account.repository';
 import { ValidatedGamificationActivityRepository } from './validated-gamification-activity.repository';
+import { XpBalanceRepository } from './xp-balance.repository';
+import { AccountTitleRepository } from './account-title.repository';
+import { InventoryItemRepository } from './inventory-item.repository';
 import type { OutboxEvent } from '../generated/prisma/client';
 
 const RELAY_BATCH_SIZE = 100;
@@ -96,6 +100,10 @@ export class GamificationService {
     private readonly deliveryRepo: OutboxEventDeliveryRepository,
     private readonly activityRepo: ValidatedGamificationActivityRepository,
     private readonly outboxLifecycle: OutboxLifecycleService,
+    private readonly accountRepo: AccountRepository,
+    private readonly xpBalanceRepo: XpBalanceRepository,
+    private readonly accountTitleRepo: AccountTitleRepository,
+    private readonly inventoryItemRepo: InventoryItemRepository,
   ) {}
 
   /**
@@ -149,6 +157,27 @@ export class GamificationService {
       throw new Error(`payload inválido para "${outboxEvent.eventKey}": ${result.error.message}`);
     }
     const payload = result.data as Record<string, unknown>;
+    const accountId = payload.accountId as string;
+
+    // WEB-0D.1C-A -- guardia de cuenta CERRADA en el ÚNICO punto de entrada
+    // de estado de gamificación: ValidatedGamificationActivity es la fuente
+    // exclusiva que leen XpGrantService/LeaguePointGrantService/
+    // RewardEvaluationWorker (XP, LP, logros, títulos, cosméticos, desafíos)
+    // -- bloquear la creación de esta fila aquí basta para impedir TODO
+    // estado nuevo de gamificación para una cuenta CLOSED, sin tocar ningún
+    // dominio downstream por separado. Un evento tardío/reintentado para
+    // una cuenta ya CLOSED se trata como ÉXITO (nunca throw/retry) -- el
+    // evento se vuelve terminal de transporte de inmediato (mismo ciclo,
+    // sin agotar los 10 reintentos), y la minimización inmediata de Outbox
+    // sigue corriendo normalmente después. DELETION_PENDING (recuperable)
+    // NO activa esta guardia -- solo CLOSED (definitivo).
+    const account = await this.accountRepo.findById(accountId);
+    if (account?.status === 'CLOSED') {
+      this.logger.log(
+        `OutboxEvent ${outboxEvent.id} ("${outboxEvent.eventKey}") ignorado -- cuenta ${accountId} está CLOSED, sin crear estado de gamificación nuevo.`,
+      );
+      return;
+    }
 
     const deduplicationKey = deduplicationKeyFor(outboxEvent.eventKey, payload);
 
@@ -177,5 +206,33 @@ export class GamificationService {
       // no una afirmación de que ya se verificó nada.
       integrityStatus: 'NOT_EVALUATED',
     });
+  }
+
+  /**
+   * WEB-0D.1C-A -- cierre definitivo de cuenta: borra ÚNICAMENTE las filas
+   * de GAMIFICATION comprobadas seguras (propiedad/estado ACTUAL sin
+   * propósito tras el cierre, sin depender de reconstrucción histórica, sin
+   * afectar a otra cuenta, sin FK/trigger que lo bloquee):
+   *   - `xp_balance` -- proyección materializada del ledger, nunca la
+   *     fuente de verdad;
+   *   - `account_title` / `inventory_item` -- propiedad (ownership), YA sin
+   *     ninguna fila `equipped_*` que las referencie (requiere haber
+   *     corrido DESPUÉS de `anonymizePublicProfileForAccountClosure`).
+   *
+   * DELIBERADAMENTE NO toca (fuera de alcance de este bloque, ver
+   * WEB-0D.1C-B): `xp_ledger_entry`, `league_point_ledger_entry`,
+   * `validated_gamification_activity`, `reward_grant`/`reward_grant_component`,
+   * `achievement_unlock` (histórico/ledger inmutable), NI
+   * `achievement_progress` (bloqueada por un trigger de base de datos
+   * `enforce_achievement_progress_no_delete` SIN excepción -- borrarla
+   * requeriría una migración, fuera de alcance aquí), NI
+   * `season_league_participation`/`leaderboard_entry` (estado competitivo,
+   * ver exclusión en lectura), NI `account_challenge*` (ambiguo -- sus
+   * hijos referencian `xp_ledger_entry`, ver auditoría).
+   */
+  async deleteCurrentStateForAccountClosure(accountId: string): Promise<void> {
+    await this.xpBalanceRepo.deleteByAccountId(accountId);
+    await this.accountTitleRepo.deleteByAccountId(accountId);
+    await this.inventoryItemRepo.deleteByAccountId(accountId);
   }
 }

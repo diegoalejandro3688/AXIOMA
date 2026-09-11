@@ -10,6 +10,7 @@ import { SubscriptionService } from '../subscription/subscription.service';
 // de Ensayos (PAES) y de Pregunta rápida, mismo criterio que USER/PROGRESS/AI.
 import { ExamService } from '../exams/exam.service';
 import { QuickQuestionService } from '../gamification/quick-question.service';
+import { GamificationService } from '../gamification/gamification.service';
 import { PrivacyRequestRepository } from './privacy-request.repository';
 import type { PrivacyRequest } from '../generated/prisma/client';
 
@@ -35,6 +36,7 @@ export class PrivacyService {
     private readonly subscriptionService: SubscriptionService,
     private readonly examService: ExamService,
     private readonly quickQuestionService: QuickQuestionService,
+    private readonly gamificationService: GamificationService,
     private readonly outbox: OutboxService,
   ) {}
 
@@ -139,6 +141,21 @@ export class PrivacyService {
         // Mismo criterio de "dentro del mismo try, antes de markCompleted"
         // que el resto de este bloque.
         await this.userService.anonymizePublicProfileForAccountClosure(request.accountId);
+        // WEB-0D.1C-A -- borrado de propiedad/estado ACTUAL de GAMIFICATION
+        // sin propósito tras el cierre (xp_balance, account_title,
+        // inventory_item) -- DEBE ejecutarse DESPUÉS de
+        // anonymizePublicProfileForAccountClosure: esa llamada ya vació
+        // equipped_title/equipped_cosmetic para este perfil, condición
+        // necesaria para que account_title/inventory_item.deleteByAccountId
+        // no choque con su FK `ON DELETE RESTRICT`. NO toca ningún ledger
+        // histórico (xp_ledger_entry, league_point_ledger_entry,
+        // validated_gamification_activity, reward_grant, achievement_unlock)
+        // ni season_league_participation/leaderboard_entry ni
+        // account_challenge* -- fuera de alcance de este bloque (ver
+        // WEB-0D.1C-B). Mismo criterio "dentro del mismo try, antes de
+        // markCompleted" que el resto: si falla, la solicitud queda
+        // PROCESSING para reintento, nunca se marca completada a medias.
+        await this.gamificationService.deleteCurrentStateForAccountClosure(request.accountId);
         // Dato personal de PROGRESS (respuestas y avance) -- mismo criterio
         // que USER arriba: dentro del mismo try, antes de markCompleted. Si
         // falla, la solicitud queda PROCESSING para reintento -- nunca se

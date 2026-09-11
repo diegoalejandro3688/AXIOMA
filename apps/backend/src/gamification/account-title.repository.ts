@@ -64,4 +64,19 @@ export class AccountTitleRepository {
   findByAccountIdWithDefinition(accountId: string) {
     return this.prisma.accountTitle.findMany({ where: { accountId }, include: { titleDefinition: true } });
   }
+
+  /**
+   * WEB-0D.1C-A -- borra la PROPIEDAD (ownership) de títulos al cierre
+   * definitivo de cuenta. Seguro SOLO si ya no queda ningún
+   * `equipped_title` apuntando a estas filas (`ON DELETE RESTRICT`) --
+   * el llamador (`GamificationService.deleteCurrentStateForAccountClosure`)
+   * DEBE ejecutarse después de `anonymizePublicProfileForAccountClosure`,
+   * que ya vació esa tabla para el perfil de esta cuenta. Nunca toca
+   * `reward_grant`/`reward_grant_component` (histórico, fuera de alcance
+   * de este bloque -- ver WEB-0D.1C-B).
+   */
+  async deleteByAccountId(accountId: string): Promise<number> {
+    const result = await this.prisma.accountTitle.deleteMany({ where: { accountId } });
+    return result.count;
+  }
 }

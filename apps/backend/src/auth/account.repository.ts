@@ -98,4 +98,20 @@ export class AccountRepository {
   // opaca se CONSERVA en la cuenta soft-CLOSED indefinidamente en V1 -- es la
   // unica via de atribucion de una RTDN de PRIMER CONTACTO (PB-1A). Su borrado
   // definitivo queda DIFERIDO a PB-6.
+
+  /**
+   * WEB-0D.1C-A -- lookup EN LOTE, proyección mínima (`id` + `status`).
+   * Único uso previsto: excluir cuentas CLOSED de superficies competitivas
+   * públicas (ranking en vivo) y decidir si un OutboxEvent de GAMIFICATION
+   * tardío debe ignorarse -- nunca reactiva ni cambia el estado de ninguna
+   * cuenta. `Map` vacío si `ids` está vacío (sin ida y vuelta a la base).
+   */
+  async findStatusesByIds(ids: string[]): Promise<Map<string, AccountStatus>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.prisma.account.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, status: true },
+    });
+    return new Map(rows.map((row) => [row.id, row.status]));
+  }
 }
