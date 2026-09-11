@@ -871,7 +871,18 @@ model XpRule {
 /// la tiene hacia Account.
 model ValidatedGamificationActivity {
   id                    String   @id @default(uuid()) @db.Uuid
-  accountId             String   @map("account_id") @db.Uuid
+  /// Nullable desde WEB-0D.1C-B1 -- soporte de esquema para la eventual
+  /// transición de privacidad de una sola vía (accountId -> NULL,
+  /// gamificationActorRef -> HMAC). NINGUNA fila existente se pseudonimiza
+  /// en B1; toda escritura NUEVA de una cuenta ACTIVA sigue exigiendo
+  /// accountId real a nivel de aplicación (capa de servicio/repositorio,
+  /// no solo la columna).
+  accountId             String?  @map("account_id") @db.Uuid
+  /// Ver ValidatedGamificationActivity arriba -- mismo propósito, mismo
+  /// criterio en los 7 modelos de WEB-0D.1C-B1. NUNCA reutiliza el secreto
+  /// ni la salida de `analyticsActorRef` (dominio de pseudonimización
+  /// separado, ADR-0006 vs. este incremento).
+  gamificationActorRef  String?  @map("gamification_actor_ref")
   sourceDomain          String   @map("source_domain")
   /// "Intento, recurso, objetivo u otro" (§16.5) -- abierto, String.
   sourceEntityType      String   @map("source_entity_type")
@@ -969,7 +980,10 @@ enum XpLedgerActorType {
 /// `accountId` sin FK a Account, mismo criterio que ValidatedGamificationActivity.
 model XpLedgerEntry {
   id                  String            @id @default(uuid()) @db.Uuid
-  accountId           String            @map("account_id") @db.Uuid
+  /// Nullable desde WEB-0D.1C-B1 -- ver ValidatedGamificationActivity.accountId.
+  accountId           String?           @map("account_id") @db.Uuid
+  /// Ver ValidatedGamificationActivity.gamificationActorRef.
+  gamificationActorRef String?          @map("gamification_actor_ref")
   /// Nullable: obligatorio a nivel de aplicación para OTORGAMIENTO (cuando
   /// exista el servicio que lo escriba); REVERSO no lo usa, referencia la
   /// entrada original vía reversesEntryId.
@@ -1149,7 +1163,10 @@ enum RewardComponentType {
 /// la fuente LEVEL usa la clave compuesta "{accountId}:{levelNumber}".
 model RewardGrant {
   id               String                 @id @default(uuid()) @db.Uuid
-  accountId        String                 @map("account_id") @db.Uuid
+  /// Nullable desde WEB-0D.1C-B1 -- ver ValidatedGamificationActivity.accountId.
+  accountId        String?                @map("account_id") @db.Uuid
+  /// Ver ValidatedGamificationActivity.gamificationActorRef.
+  gamificationActorRef String?           @map("gamification_actor_ref")
   rewardBundleId   String                 @map("reward_bundle_id") @db.Uuid
   sourceEntityType RewardSourceEntityType @map("source_entity_type")
   sourceEntityId   String                 @map("source_entity_id")
@@ -1370,7 +1387,17 @@ enum AchievementVersionApprovalStatus {
 /// DELETE bajo ninguna circunstancia (mismo trigger).
 model AchievementProgress {
   id                      String                    @id @default(uuid()) @db.Uuid
-  accountId               String                    @map("account_id") @db.Uuid
+  /// Nullable desde WEB-0D.1C-B1 -- ver ValidatedGamificationActivity.accountId.
+  /// NOTA de nulabilidad: forma parte de `@@unique([accountId,
+  /// achievementDefinitionId])` -- Postgres NUNCA considera dos NULL
+  /// iguales en un índice único, así que una fila pseudonimizada
+  /// (accountId=NULL) no colisiona con ninguna otra ni bloquea la
+  /// unicidad real de cuentas ACTIVAS. La garantía per-cuenta simplemente
+  /// deja de aplicar a esa fila específica una vez desidentificada, que es
+  /// el comportamiento esperado.
+  accountId               String?                   @map("account_id") @db.Uuid
+  /// Ver ValidatedGamificationActivity.gamificationActorRef.
+  gamificationActorRef    String?                   @map("gamification_actor_ref")
   achievementDefinitionId String                    @map("achievement_definition_id") @db.Uuid
   achievementVersionId    String                    @map("achievement_version_id") @db.Uuid
   currentValue            Int                       @map("current_value")
@@ -1411,7 +1438,12 @@ enum AchievementProgressStatus {
 /// (mismo criterio que `RewardGrant.grantStatus = REVERSED`, ADR-0019).
 model AchievementUnlock {
   id                      String                  @id @default(uuid()) @db.Uuid
-  accountId               String                  @map("account_id") @db.Uuid
+  /// Nullable desde WEB-0D.1C-B1 -- ver AchievementProgress.accountId
+  /// (misma nota de nulabilidad: forma parte de `@@unique([accountId,
+  /// achievementDefinitionId, unlockInstance])`, NULL nunca colisiona).
+  accountId               String?                 @map("account_id") @db.Uuid
+  /// Ver ValidatedGamificationActivity.gamificationActorRef.
+  gamificationActorRef    String?                 @map("gamification_actor_ref")
   achievementDefinitionId String                  @map("achievement_definition_id") @db.Uuid
   achievementVersionId    String                  @map("achievement_version_id") @db.Uuid
   unlockInstance          Int                     @map("unlock_instance")
@@ -2099,7 +2131,15 @@ enum SeasonLeagueParticipationStatus {
 model SeasonLeagueParticipation {
   id                  String                          @id @default(uuid()) @db.Uuid
   gameSeasonId        String                          @map("game_season_id") @db.Uuid
-  accountId           String                          @map("account_id") @db.Uuid
+  /// Nullable desde WEB-0D.1C-B1 -- ver ValidatedGamificationActivity.accountId.
+  /// Misma nota de nulabilidad que AchievementProgress: forma parte de
+  /// `@@unique([accountId, gameSeasonId])`, NULL nunca colisiona en
+  /// Postgres. Fila VIVA/mutable (leaguePoints, currentRank), no un
+  /// ledger -- sin trigger de inmutabilidad propio (confirmado en el
+  /// audit de este bloque); ningún cambio de trigger fue necesario aquí.
+  accountId           String?                         @map("account_id") @db.Uuid
+  /// Ver ValidatedGamificationActivity.gamificationActorRef.
+  gamificationActorRef String?                        @map("gamification_actor_ref")
   leagueDefinitionId  String                          @map("league_definition_id") @db.Uuid
   leagueGroupId       String                          @map("league_group_id") @db.Uuid
   leaguePoints        Int                             @default(0) @map("league_points")
@@ -2171,7 +2211,10 @@ enum LeaguePointLedgerEntryType {
 /// nueva, mismos dos triggers que xp_ledger_entry (migración SQL).
 model LeaguePointLedgerEntry {
   id                          String                     @id @default(uuid()) @db.Uuid
-  accountId                   String                     @map("account_id") @db.Uuid
+  /// Nullable desde WEB-0D.1C-B1 -- ver ValidatedGamificationActivity.accountId.
+  accountId                   String?                    @map("account_id") @db.Uuid
+  /// Ver ValidatedGamificationActivity.gamificationActorRef.
+  gamificationActorRef        String?                    @map("gamification_actor_ref")
   seasonLeagueParticipationId String                     @map("season_league_participation_id") @db.Uuid
   validatedActivityId         String?                    @map("validated_activity_id") @db.Uuid
   leaguePointRuleId           String?                    @map("league_point_rule_id") @db.Uuid

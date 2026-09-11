@@ -165,6 +165,15 @@ export class LeaguePointGrantService {
   }
 
   async grantForActivity(activity: ValidatedGamificationActivity): Promise<LeagueGrantOutcome> {
+    // WEB-0D.1C-B1 -- `accountId` es nullable a nivel de esquema (soporte
+    // de pseudonimización histórica futura), pero NINGUNA fila se
+    // pseudonimiza todavía y este otorgamiento SOLO procesa actividad
+    // recién descubierta/vigente, nunca una fila ya desidentificada.
+    // Invariante de aplicación explícito (nunca debilita el guardia de
+    // cuenta CLOSED de WEB-0D.1C-B0R): una actividad sin accountId real
+    // nunca puede recibir LP nuevo.
+    if (!activity.accountId) return { outcome: 'NOT_PARTICIPATING' };
+    const accountId = activity.accountId;
     const at = activity.occurredAt;
 
     // Lectura previa (fuera de la transacción) -- solo para decidir si vale
@@ -175,7 +184,7 @@ export class LeaguePointGrantService {
     // autoritativa dentro de la transacción SERIALIZABLE de abajo, y que
     // `QuickLpEligibilityService`). Una participación cuya temporada ya no
     // está vigente nunca debe recibir LP nuevo.
-    const participation = await this.participationRepo.findCurrentByAccountId(activity.accountId, at);
+    const participation = await this.participationRepo.findCurrentByAccountId(accountId, at);
     if (!participation) return { outcome: 'NOT_PARTICIPATING' };
     if (at < participation.joinedAt) return { outcome: 'OUT_OF_WINDOW' };
 
@@ -222,7 +231,7 @@ export class LeaguePointGrantService {
         // Reutiliza `ClosedConcurrentlyError` -- misma semántica exacta
         // ("ya no aplica, nunca un error"), sin tipo nuevo.
         if (this.accountRepo) {
-          const account = await tx.account.findUnique({ where: { id: activity.accountId } });
+          const account = await tx.account.findUnique({ where: { id: accountId } });
           if (account?.status === 'CLOSED') {
             throw new ClosedConcurrentlyError();
           }
@@ -247,7 +256,7 @@ export class LeaguePointGrantService {
 
         const { entry: created } = await this.ledgerRepo.createIdempotent(
           {
-            accountId: activity.accountId,
+            accountId: accountId,
             seasonLeagueParticipationId: participation.id,
             validatedActivityId: activity.id,
             leaguePointRuleId: rule.id,

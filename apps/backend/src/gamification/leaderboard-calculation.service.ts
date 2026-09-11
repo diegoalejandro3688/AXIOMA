@@ -100,7 +100,13 @@ export class LeaderboardCalculationService {
       const last = list.length > 0 ? list[list.length - 1] : undefined;
       const tieBreakValue = last ? last.occurredAt : p.joinedAt;
       const activityCount = list.filter((e) => e.entryType === 'OTORGAMIENTO').length;
-      return { seasonLeagueParticipationId: p.id, accountId: p.accountId, metricValue, tieBreakValue, activityCount };
+      // `accountId` es nullable a nivel de esquema desde WEB-0D.1C-B1
+      // (soporte de pseudonimización futura), pero el cálculo de ranking
+      // SIEMPRE opera sobre participaciones ACTIVE de una temporada en
+      // curso -- B1 no pseudonimiza ninguna fila todavía, y aun cuando
+      // eso ocurra, la pseudonimización solo se aplicará a participación
+      // histórica ya finalizada, nunca a una fila viva siendo rankeada.
+      return { seasonLeagueParticipationId: p.id, accountId: p.accountId!, metricValue, tieBreakValue, activityCount };
     });
 
     unranked.sort((a, b) => {

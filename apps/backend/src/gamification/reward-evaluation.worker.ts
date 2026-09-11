@@ -808,9 +808,19 @@ export class RewardEvaluationWorker {
    * mismo criterio que ADR-0005 documentó su limitación de réplica única.
    */
   async discoverPendingAccounts(now: Date = new Date()): Promise<string[]> {
-    const candidates = await this.prisma.xpLedgerEntry.findMany({ distinct: ['accountId'], select: { accountId: true } });
+    // WEB-0D.1C-B1 -- `accountId` es nullable a nivel de esquema (soporte
+    // de pseudonimización histórica futura). `not: null` es correcto tanto
+    // hoy (B1 no pseudonimiza ninguna fila -- filtro sin efecto observable)
+    // como después: una fila ya desidentificada nunca tiene cuenta que
+    // evaluar y jamás debe resurgir como candidata.
+    const candidates = await this.prisma.xpLedgerEntry.findMany({
+      where: { accountId: { not: null } },
+      distinct: ['accountId'],
+      select: { accountId: true },
+    });
     const pending: string[] = [];
     for (const { accountId } of candidates) {
+      if (!accountId) continue;
       const cursor = await this.cursorRepo.findByAccountId(accountId);
       if (cursor && cursor.nextEligibleAt > now) continue; // en backoff, todavía no reintentar
 

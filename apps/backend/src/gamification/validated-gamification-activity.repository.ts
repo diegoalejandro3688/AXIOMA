@@ -21,6 +21,12 @@ function toActivity(row: PendingGrantRow): ValidatedGamificationActivity {
   return {
     id: row.id,
     accountId: row.account_id,
+    // WEB-0D.1C-B1 -- `findPendingGrant` (única consulta que produce
+    // `PendingGrantRow`) nunca selecciona filas pseudonimizadas: su propio
+    // JOIN exige `account_id` real (excluye CLOSED, ver WEB-0D.1C-B0R), y
+    // B1 no pseudonimiza ninguna fila todavía. `null` es exacto, no un
+    // relleno de tipos.
+    gamificationActorRef: null,
     sourceDomain: row.source_domain,
     sourceEntityType: row.source_entity_type,
     sourceEntityId: row.source_entity_id,

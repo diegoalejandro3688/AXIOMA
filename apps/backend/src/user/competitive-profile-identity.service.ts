@@ -214,9 +214,14 @@ export class CompetitiveProfileIdentityService {
     const balanceByAccountId = new Map(balances.map((b) => [b.accountId, b]));
     const achievementsByAccountId = new Map<string, typeof publicUnlocks>();
     for (const unlock of publicUnlocks) {
-      const list = achievementsByAccountId.get(unlock.accountId) ?? [];
+      // WEB-0D.1C-B1 -- `accountId` es nullable a nivel de esquema (soporte
+      // de pseudonimización histórica futura), pero `findManyPublicByAccountIds`
+      // solo consulta los `accountIds` reales ya conocidos que se le pasan
+      // -- nunca produce una fila desidentificada.
+      const unlockAccountId = unlock.accountId!;
+      const list = achievementsByAccountId.get(unlockAccountId) ?? [];
       list.push(unlock);
-      achievementsByAccountId.set(unlock.accountId, list);
+      achievementsByAccountId.set(unlockAccountId, list);
     }
     const featuredByProfileId = new Map<string, typeof featured>();
     for (const row of featured) {

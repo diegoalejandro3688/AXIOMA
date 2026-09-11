@@ -154,7 +154,11 @@ export class CompetitiveLeaderboardService {
       // PS-0C.2 -- fila de una cuenta bloqueada por el solicitante: identidad
       // redactada, pero `rankPosition` / `metricValue` / `competitiveZone`
       // INTACTOS (bloquear no altera el ranking). Nunca redacta la fila propia.
-      const isBlocked = !isCurrentUser && rowAccountId !== undefined && blockedAccountIds.has(rowAccountId);
+      // WEB-0D.1C-B1 -- `rowAccountId` es nullable a nivel de esquema
+      // (soporte de pseudonimización histórica futura); `!= null` cubre
+      // NULL además de `undefined` (una participación desidentificada
+      // nunca puede estar en la lista de bloqueados de nadie).
+      const isBlocked = !isCurrentUser && rowAccountId != null && blockedAccountIds.has(rowAccountId);
       // STABILIZATION-B8 (Polish G) -- la FILA PROPIA muestra el saldo VIVO
       // de la participación (`participation.leaguePoints`), no el
       // `leaderboard_entry` materializado -- así coincide de inmediato con el

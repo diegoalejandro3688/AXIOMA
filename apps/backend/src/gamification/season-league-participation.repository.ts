@@ -84,11 +84,16 @@ export class SeasonLeagueParticipationRepository {
 
   /** Usado por `LeaguePointGrantService` para acotar qué actividades pueden llegar a otorgar LP (§9.4). */
   async findAllActiveAccountIds(): Promise<string[]> {
+    // WEB-0D.1C-B1 -- `accountId` es nullable a nivel de esquema (soporte
+    // de pseudonimización histórica futura); `not: null` es correcto hoy
+    // (sin efecto observable, B1 no pseudonimiza nada) y después (una
+    // participación ACTIVE nunca debería estar desidentificada, pero el
+    // filtro es una defensa explícita, no solo un ajuste de tipos).
     const rows = await this.prisma.seasonLeagueParticipation.findMany({
-      where: { participationStatus: 'ACTIVE' },
+      where: { participationStatus: 'ACTIVE', accountId: { not: null } },
       select: { accountId: true },
     });
-    return rows.map((r) => r.accountId);
+    return rows.map((r) => r.accountId as string);
   }
 
   /**
@@ -290,16 +295,21 @@ export class SeasonLeagueParticipationRepository {
     gameSeasonId: string,
     opts: { take: number; afterAccountId?: string },
   ): Promise<string[]> {
+    // WEB-0D.1C-B1 -- ver findAllActiveAccountIds arriba: `accountId: { not:
+    // null }` es una defensa explícita, sin efecto observable en B1. Va en
+    // `AND` (no en el mismo objeto que el filtro `gt` del cursor) -- un
+    // segundo spread sobre la misma clave `accountId` la reemplazaría en
+    // vez de combinarla.
     const rows = await this.prisma.seasonLeagueParticipation.findMany({
       where: {
         gameSeasonId,
         participationStatus: { in: ['PROMOTED', 'DEMOTED', 'RETAINED'] },
-        ...(opts.afterAccountId ? { accountId: { gt: opts.afterAccountId } } : {}),
+        AND: [{ accountId: { not: null } }, ...(opts.afterAccountId ? [{ accountId: { gt: opts.afterAccountId } }] : [])],
       },
       select: { accountId: true },
       orderBy: { accountId: 'asc' },
       take: opts.take,
     });
-    return rows.map((r) => r.accountId);
+    return rows.map((r) => r.accountId as string);
   }
 }

@@ -96,7 +96,12 @@ export class AchievementUnlockRepository {
    */
   async attachRewardGrant(
     unlock: AchievementUnlock,
-    grant: { id: string; accountId: string; sourceEntityType: RewardSourceEntityType; sourceEntityId: string },
+    // WEB-0D.1C-B1 -- `accountId` es nullable a nivel de esquema (soporte
+    // de pseudonimización histórica futura); la comparación de abajo sigue
+    // siendo correcta con `null` en ambos lados (dos filas desidentificadas
+    // nunca deberían coincidir de todos modos, ya que ninguna referencia
+    // cruzada real las produce).
+    grant: { id: string; accountId: string | null; sourceEntityType: RewardSourceEntityType; sourceEntityId: string },
   ): Promise<AchievementUnlock> {
     if (grant.accountId !== unlock.accountId) {
       throw new Error(`Coherencia violada: reward_grant ${grant.id} pertenece a otra cuenta que achievement_unlock ${unlock.id}.`);

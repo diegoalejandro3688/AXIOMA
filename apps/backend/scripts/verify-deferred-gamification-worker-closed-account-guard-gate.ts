@@ -154,9 +154,26 @@ async function main() {
       // pre-cutover de OTROS gates de XP vía `ORDER BY effective_from DESC`
       // (Postgres ordena NULL primero en DESC), exactamente la fuga que
       // rompió `verify-xp-v1-implementation-gate.ts` la primera vez.
+      //
+      // WEB-0D.1C-B1 -- CORRECCIÓN: `now.toISOString()`, NUNCA el objeto
+      // `Date` crudo. `effective_from`/`effective_until` son `timestamp
+      // without time zone`; el driver `pg` crudo serializa un `Date` de JS
+      // usando la ZONA HORARIA LOCAL DEL PROCESO NODE (aquí Europe/Paris,
+      // UTC+2) al escribir una columna sin tz -- el valor queda 2h
+      // ADELANTADO respecto de UTC real. Prisma, en cambio, SIEMPRE trata
+      // el valor naive almacenado como UTC puro al comparar (p.ej. en
+      // `XpRuleRepository.findApplicableRule`, usado por el código real de
+      // producción) -- así que una regla "recién creada, vigente ahora"
+      // aparecía con `effectiveFrom` 2h en el FUTURO desde la perspectiva
+      // de Prisma, y `findApplicableRule` nunca la encontraba
+      // (NO_ACTIVE_RULE falso en los escenarios E/F, confirmado con una
+      // repro aislada que llama `findApplicableRule` directamente).
+      // `.toISOString()` fuerza al driver a enviar un string UTC explícito
+      // sin ambigüedad, que Postgres almacena tal cual y Prisma lee de
+      // forma consistente con lo que esta misma corrida escribió.
       const programVersionRow = await pg.query(
         `INSERT INTO gamification_program_version (id, gamification_program_id, version_label, approval_status, effective_from) VALUES ($1, $2, $3, 'APPROVED', $4) RETURNING id`,
-        [randomUUID(), programId, `dwcag-gate-${suffix}`, now],
+        [randomUUID(), programId, `dwcag-gate-${suffix}`, now.toISOString()],
       );
       programVersionId = programVersionRow.rows[0].id as string;
     }
@@ -164,7 +181,7 @@ async function main() {
     const newXpRuleId = randomUUID();
     const xpRuleRow = await pg.query(
       `INSERT INTO xp_rule (id, program_version_id, activity_type, base_xp, effective_from) VALUES ($1, $2, 'RESPUESTA_VALIDADA', 10, $3) RETURNING id`,
-      [newXpRuleId, programVersionId, now],
+      [newXpRuleId, programVersionId, now.toISOString()],
     );
     createdXpRuleId = xpRuleRow.rows[0].id as string;
     return xpRuleRow.rows[0].id as string;
@@ -236,6 +253,14 @@ async function main() {
   );
   const participationId = participationRow.rows[0].id as string;
 
+  // WEB-0D.1C-B1 -- descubierto durante regresiones: esta fila quedaba
+  // ACTIVE para siempre (ninguna corrida anterior la retiraba), rompiendo
+  // el invariante congelado de `verify-competitive-v1-gate.ts` ("Estudio
+  // /RESPUESTA_VALIDADA nunca otorga LP") para cualquier gate posterior
+  // mientras el servidor de gates viva. Se retira toda fila propia
+  // (identificada por el `rule_version` literal fijo de este gate) tanto
+  // ANTES (barre residuo de corridas anteriores) como DESPUÉS.
+  await pg.query(`UPDATE league_point_rule SET status = 'RETIRED' WHERE rule_version = 'dwcag-gate-rule-v1' AND status = 'ACTIVE'`);
   const lpRuleRow = await pg.query(
     `INSERT INTO league_point_rule (id, activity_type, base_points, effective_from, rule_version)
      VALUES ($1, 'RESPUESTA_VALIDADA', 1, $2, 'dwcag-gate-rule-v1') RETURNING id`,
@@ -424,6 +449,7 @@ async function main() {
   // al terminar, nunca una regla de otro dueño (p.ej. `v1` real).
   void createdXpRuleId;
   await retireOwnStaleFixtures();
+  await pg.query(`UPDATE league_point_rule SET status = 'RETIRED' WHERE rule_version = 'dwcag-gate-rule-v1' AND status = 'ACTIVE'`);
 
   await pg.end();
   await prisma.$disconnect();

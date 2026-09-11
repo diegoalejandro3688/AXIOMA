@@ -182,6 +182,17 @@ export class XpGrantService {
   }
 
   async grantForActivity(activity: ValidatedGamificationActivity): Promise<GrantOutcome> {
+    // WEB-0D.1C-B1 -- `accountId` es nullable a nivel de esquema (soporte
+    // de pseudonimización histórica futura), pero NINGUNA fila se
+    // pseudonimiza todavía y este otorgamiento SOLO procesa actividad
+    // recién descubierta, nunca una fila ya desidentificada. Invariante de
+    // aplicación explícito, nunca esperado en la práctica -- si algún día
+    // se violara, falla RUIDOSAMENTE (failed++ en grantPending) en vez de
+    // otorgar XP silenciosamente sin cuenta real.
+    if (!activity.accountId) {
+      throw new Error(`grantForActivity: accountId ausente para la actividad ${activity.id} -- invariante violado`);
+    }
+    const accountId = activity.accountId;
     const at = activity.occurredAt;
 
     const program = await this.programRepo.findActiveByProgramKey(PROGRAM_KEY);
@@ -205,7 +216,7 @@ export class XpGrantService {
         // `!account` (fila ausente) NUNCA se trata como CLOSED -- solo el
         // valor explícito 'CLOSED' aborta.
         if (this.accountRepo) {
-          const account = await tx.account.findUnique({ where: { id: activity.accountId } });
+          const account = await tx.account.findUnique({ where: { id: accountId } });
           if (account?.status === 'CLOSED') {
             throw new AccountClosedError();
           }
@@ -213,7 +224,7 @@ export class XpGrantService {
 
         const { start, end } = utcDayRange(at);
         const grantedToday = rule.dailyCap
-          ? await this.ledgerRepo.sumGrantedTodayForRule(tx, activity.accountId, rule.id, start, end)
+          ? await this.ledgerRepo.sumGrantedTodayForRule(tx, accountId, rule.id, start, end)
           : 0;
 
         if (rule.dailyCap != null && grantedToday + rule.baseXp > rule.dailyCap) {
@@ -229,7 +240,7 @@ export class XpGrantService {
         // transacción, en el catch de abajo.
         const { entry: created } = await this.ledgerRepo.createIdempotent(
           {
-            accountId: activity.accountId,
+            accountId: accountId,
             validatedActivityId: activity.id,
             xpRuleId: rule.id,
             entryType: 'OTORGAMIENTO',
@@ -243,7 +254,7 @@ export class XpGrantService {
         );
 
         await this.balanceRepo.upsertIncrement(tx, {
-          accountId: activity.accountId,
+          accountId: accountId,
           deltaXp: created.xpAmount,
           lastLedgerEntryId: created.id,
         });
@@ -294,6 +305,16 @@ export class XpGrantService {
     if (original.entryType === 'REVERSO') {
       throw new BadRequestException('No se puede reversar una entrada que ya es un reverso.');
     }
+    // WEB-0D.1C-B1 -- `accountId` es nullable a nivel de esquema (soporte
+    // de pseudonimización histórica futura). B1 no pseudonimiza ninguna
+    // fila todavía, así que esto nunca debería ocurrir en la práctica; si
+    // alguna vez una entrada ya desidentificada llegara aquí, reversarla
+    // no tiene sentido de producto (no hay cuenta a la que acreditar el
+    // reverso) -- falla explícitamente en vez de escribir con accountId=NULL.
+    if (!original.accountId) {
+      throw new BadRequestException('No se puede reversar una entrada sin accountId (ya desidentificada).');
+    }
+    const originalAccountId = original.accountId;
 
     const idempotencyKey = `reverse:${originalEntryId}`;
 
@@ -301,7 +322,7 @@ export class XpGrantService {
       return await this.txRunner.run(async (tx) => {
         const { entry, created } = await this.ledgerRepo.createIdempotent(
           {
-            accountId: original.accountId,
+            accountId: originalAccountId,
             entryType: 'REVERSO',
             xpAmount: -original.xpAmount,
             reasonCode,
@@ -313,7 +334,7 @@ export class XpGrantService {
         );
         if (created) {
           await this.balanceRepo.upsertIncrement(tx, {
-            accountId: original.accountId,
+            accountId: originalAccountId,
             deltaXp: entry.xpAmount,
             lastLedgerEntryId: entry.id,
           });
