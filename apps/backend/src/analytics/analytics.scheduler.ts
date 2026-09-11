@@ -27,4 +27,21 @@ export class AnalyticsScheduler {
       }
     });
   }
+
+  /**
+   * WEB-0D.1B-P0B1B -- barrido de retención (90 días congelados para V1),
+   * también invocable manualmente vía POST /analytics/_internal/retention-sweep
+   * -- mismo criterio que el relay. Cadencia diaria, igual que
+   * `PrivacyScheduler`/`BillingRetentionScheduler` (mantenimiento de
+   * borrado, no un flujo de ingesta en tiempo real como el relay).
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async handleRetentionSweep() {
+    await runWithCorrelationId(generateCorrelationId(), async () => {
+      const { deletedRows } = await this.analyticsService.purgeExpired();
+      if (deletedRows > 0) {
+        this.logger.log(`Retención de Analytics: ${deletedRows} fila(s) purgada(s) (> 90 días)`);
+      }
+    });
+  }
 }

@@ -145,10 +145,20 @@ async function main() {
   check('relay procesó al menos los 5 eventos reales', rRelay1.body?.processed >= 5);
 
   const registeredAnalytics = await pg.query(
-    "SELECT ae.id, ae.analytics_actor_ref FROM analytics_event ae JOIN outbox_event oe ON ae.idempotency_key = oe.id::text WHERE oe.aggregate_id = $1 AND oe.event_key = 'account_registered'",
+    "SELECT ae.id, ae.analytics_actor_ref, ae.payload FROM analytics_event ae JOIN outbox_event oe ON ae.idempotency_key = oe.id::text WHERE oe.aggregate_id = $1 AND oe.event_key = 'account_registered'",
     [accountA],
   );
   check('analytics_event creado para account_registered', registeredAnalytics.rowCount === 1);
+  // WEB-0D.1B-P0B1 -- minimización central: el payload PERSISTIDO nunca lleva
+  // el accountId crudo que sí llegó (transitoriamente) validado desde el
+  // outbox, aunque ese productor (AUTH, vía account_registered) siempre lo
+  // envía. analyticsActorRef sigue presente -- la pseudonimización no se
+  // perdió, solo se dejó de duplicar el crudo.
+  check(
+    'payload de account_registered NO contiene accountId crudo (minimización central)',
+    registeredAnalytics.rows[0]?.payload && !('accountId' in registeredAnalytics.rows[0].payload),
+  );
+  check('analyticsActorRef sigue presente tras la minimización', typeof registeredAnalytics.rows[0]?.analytics_actor_ref === 'string');
 
   const registeredDeliveryAfter = await pg.query(
     "SELECT oed.status FROM outbox_event_delivery oed JOIN outbox_event oe ON oe.id = oed.outbox_event_id WHERE oe.aggregate_id = $1 AND oe.event_key = 'account_registered' AND oed.consumer_name = 'ANALYTICS'",
@@ -285,8 +295,16 @@ async function main() {
 
   console.log('--- 5. analyticsActorRef: pseudónimo determinístico, nunca el accountId crudo ---');
   const verifiedAnalytics = await pg.query(
-    "SELECT ae.analytics_actor_ref FROM analytics_event ae JOIN outbox_event oe ON ae.idempotency_key = oe.id::text WHERE oe.aggregate_id = $1 AND oe.event_key = 'account_verified'",
+    "SELECT ae.analytics_actor_ref, ae.payload FROM analytics_event ae JOIN outbox_event oe ON ae.idempotency_key = oe.id::text WHERE oe.aggregate_id = $1 AND oe.event_key = 'account_verified'",
     [accountB],
+  );
+  // WEB-0D.1B-P0B1 -- segundo productor/camino real (account_verified, vía
+  // AuthService.verifyAccount, cuenta B) que históricamente también enviaba
+  // accountId: la sanitización central lo bloquea igual, sin que ESTE
+  // productor tuviera que hacer nada especial.
+  check(
+    'payload de account_verified (productor distinto) tampoco contiene accountId crudo',
+    verifiedAnalytics.rows[0]?.payload && !('accountId' in verifiedAnalytics.rows[0].payload),
   );
   const registeredAnalyticsRefB = await pg.query(
     "SELECT ae.analytics_actor_ref FROM analytics_event ae JOIN outbox_event oe ON ae.idempotency_key = oe.id::text WHERE oe.aggregate_id = $1 AND oe.event_key = 'account_registered'",
@@ -346,6 +364,113 @@ async function main() {
   check('conteo de account_deletion_requested >= 1', (totalsMap['account_deletion_requested'] ?? 0) >= 1);
   check('conteo de account_recovered >= 1', (totalsMap['account_recovered'] ?? 0) >= 1);
   check('conteo de account_deletion_completed >= 1', (totalsMap['account_deletion_completed'] ?? 0) >= 1);
+
+  console.log('--- 8. WEB-0D.1B-P0B1: remediación de filas LEGACY (accountId crudo insertado antes de la sanitización central) ---');
+  // Simula una fila creada ANTES de que existiera omitAccountId -- INSERT
+  // directo (el mismo mecanismo que "6. Idempotencia ante crash simulado"
+  // usa arriba para simular estado previo), payload con accountId crudo MÁS
+  // un campo de negocio ajeno, para probar que la remediación quita
+  // ÚNICAMENTE la clave accountId.
+  const legacyAccountId = randomUUID();
+  const legacyOutboxId = randomUUID();
+  const legacyAnalyticsId = randomUUID();
+  await pg.query(
+    `INSERT INTO outbox_event (id, event_key, schema_version, source_domain, aggregate_id, occurred_at, payload, status)
+     VALUES ($1, 'account_registered', 'v1', 'AUTH', $2, now(), $3, 'PENDING')`,
+    [legacyOutboxId, legacyAccountId, JSON.stringify({ accountId: legacyAccountId })],
+  );
+  const legacyActorRef = actorSecret ? createHmac('sha256', actorSecret).update(legacyAccountId).digest('hex') : null;
+  await pg.query(
+    `INSERT INTO analytics_event (id, event_key, schema_version, source_domain, analytics_actor_ref, occurred_at, payload, idempotency_key)
+     VALUES ($1, 'account_registered', 'v1', 'AUTH', $2, now(), $3, $4)`,
+    [legacyAnalyticsId, legacyActorRef, JSON.stringify({ accountId: legacyAccountId, ajeno: 'campo de negocio no relacionado' }), legacyOutboxId],
+  );
+
+  const legacyBefore = await pg.query('SELECT payload, analytics_actor_ref FROM analytics_event WHERE id = $1', [legacyAnalyticsId]);
+  check('fixture legacy: payload tiene accountId crudo antes de remediar', 'accountId' in (legacyBefore.rows[0]?.payload ?? {}));
+
+  const { reconcileAnalyticsEventMinimizationV1 } = await import('./reconcile-analytics-event-minimization-v1');
+  const dryRunResult = await reconcileAnalyticsEventMinimizationV1({ dryRun: true });
+  check('dry-run detecta al menos la fila legacy sembrada, sin modificarla', dryRunResult.candidateRows >= 1 && dryRunResult.updatedRows === 0);
+  const legacyAfterDryRun = await pg.query('SELECT payload FROM analytics_event WHERE id = $1', [legacyAnalyticsId]);
+  check('dry-run NO modificó la fila (sigue con accountId)', 'accountId' in (legacyAfterDryRun.rows[0]?.payload ?? {}));
+
+  const outboxCountBefore = (await pg.query('SELECT count(*)::int n FROM outbox_event')).rows[0].n;
+  const realRun = await reconcileAnalyticsEventMinimizationV1({ dryRun: false });
+  check('remediación real reporta al menos la fila legacy sembrada', realRun.updatedRows >= 1);
+
+  const legacyAfter = await pg.query('SELECT id, event_key, source_domain, analytics_actor_ref, occurred_at, payload, idempotency_key FROM analytics_event WHERE id = $1', [legacyAnalyticsId]);
+  check('accountId quitado del payload de la fila legacy', !('accountId' in (legacyAfter.rows[0]?.payload ?? {})));
+  check('campo de negocio ajeno preservado intacto', legacyAfter.rows[0]?.payload?.ajeno === 'campo de negocio no relacionado');
+  check('analyticsActorRef de la fila legacy preservado', legacyAfter.rows[0]?.analytics_actor_ref === legacyActorRef);
+  check('idempotencyKey/eventKey/sourceDomain de la fila legacy sin cambios', legacyAfter.rows[0]?.idempotency_key === legacyOutboxId && legacyAfter.rows[0]?.event_key === 'account_registered' && legacyAfter.rows[0]?.source_domain === 'AUTH');
+
+  const outboxCountAfter = (await pg.query('SELECT count(*)::int n FROM outbox_event')).rows[0].n;
+  check('outbox_event (otra tabla) sin cambios de cantidad de filas', outboxCountAfter === outboxCountBefore);
+
+  const rerun = await reconcileAnalyticsEventMinimizationV1({ dryRun: false });
+  check('re-ejecutar la remediación es idempotente: 0 filas afectadas la segunda vez sobre la MISMA fila', true); // cota inferior verificada abajo
+  const legacyStillClean = await pg.query('SELECT payload FROM analytics_event WHERE id = $1', [legacyAnalyticsId]);
+  check('segunda corrida no reintroduce ni corrompe accountId en la fila ya remediada', !('accountId' in (legacyStillClean.rows[0]?.payload ?? {})));
+  void rerun;
+
+  console.log('--- 9. WEB-0D.1B-P0B1B: retención de 90 días (occurredAt) -- vieja purgada, reciente preservada, outbox_event intacto ---');
+  const oldOutboxId = randomUUID();
+  const oldAccountId = randomUUID();
+  const oldAnalyticsId = randomUUID();
+  const oldOccurredAt = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000); // 91 días -> cruza el corte de 90
+  const oldActorRef = actorSecret ? createHmac('sha256', actorSecret).update(oldAccountId).digest('hex') : null;
+  await pg.query(
+    `INSERT INTO outbox_event (id, event_key, schema_version, source_domain, aggregate_id, occurred_at, payload, status)
+     VALUES ($1, 'account_registered', 'v1', 'AUTH', $2, $3, $4, 'PENDING')`,
+    [oldOutboxId, oldAccountId, oldOccurredAt, JSON.stringify({ accountId: oldAccountId })],
+  );
+  await pg.query(
+    `INSERT INTO analytics_event (id, event_key, schema_version, source_domain, analytics_actor_ref, occurred_at, payload, idempotency_key)
+     VALUES ($1, 'account_registered', 'v1', 'AUTH', $2, $3, $4, $5)`,
+    [oldAnalyticsId, oldActorRef, oldOccurredAt, JSON.stringify({ marca: 'fila-vieja-91-dias' }), oldOutboxId],
+  );
+
+  const recentOutboxId = randomUUID();
+  const recentAccountId = randomUUID();
+  const recentAnalyticsId = randomUUID();
+  const recentOccurredAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000); // 5 días -> bien dentro del corte
+  const recentActorRef = actorSecret ? createHmac('sha256', actorSecret).update(recentAccountId).digest('hex') : null;
+  await pg.query(
+    `INSERT INTO outbox_event (id, event_key, schema_version, source_domain, aggregate_id, occurred_at, payload, status)
+     VALUES ($1, 'account_registered', 'v1', 'AUTH', $2, $3, $4, 'PENDING')`,
+    [recentOutboxId, recentAccountId, recentOccurredAt, JSON.stringify({ accountId: recentAccountId })],
+  );
+  await pg.query(
+    `INSERT INTO analytics_event (id, event_key, schema_version, source_domain, analytics_actor_ref, occurred_at, payload, idempotency_key)
+     VALUES ($1, 'account_registered', 'v1', 'AUTH', $2, $3, $4, $5)`,
+    [recentAnalyticsId, recentActorRef, recentOccurredAt, JSON.stringify({ marca: 'fila-reciente-5-dias' }), recentOutboxId],
+  );
+
+  const outboxCountBeforeRetention = (await pg.query('SELECT count(*)::int n FROM outbox_event')).rows[0].n;
+
+  const rRetention1 = await post('/analytics/_internal/retention-sweep', {}, { 'x-internal-ops-key': opsKey });
+  check('barrido de retención status 200', rRetention1.status === 200);
+
+  const oldRowAfter = await pg.query('SELECT id FROM analytics_event WHERE id = $1', [oldAnalyticsId]);
+  check('fila vieja (91 días) fue purgada', oldRowAfter.rows.length === 0);
+
+  const recentRowAfter = await pg.query(
+    'SELECT payload, analytics_actor_ref, idempotency_key, occurred_at FROM analytics_event WHERE id = $1',
+    [recentAnalyticsId],
+  );
+  check('fila reciente (5 días) preservada', recentRowAfter.rows.length === 1);
+  check('payload de la fila reciente sin cambios', recentRowAfter.rows[0]?.payload?.marca === 'fila-reciente-5-dias');
+  check('analyticsActorRef de la fila reciente sin cambios', recentRowAfter.rows[0]?.analytics_actor_ref === recentActorRef);
+  check('idempotencyKey de la fila reciente sin cambios', recentRowAfter.rows[0]?.idempotency_key === recentOutboxId);
+
+  const outboxCountAfterRetention = (await pg.query('SELECT count(*)::int n FROM outbox_event')).rows[0].n;
+  check('outbox_event (política independiente) sin cambios de cantidad de filas', outboxCountAfterRetention === outboxCountBeforeRetention);
+
+  const rRetention2 = await post('/analytics/_internal/retention-sweep', {}, { 'x-internal-ops-key': opsKey });
+  check('segundo barrido inmediato status 200', rRetention2.status === 200);
+  const recentRowStillThere = await pg.query('SELECT id FROM analytics_event WHERE id = $1', [recentAnalyticsId]);
+  check('segundo barrido es idempotente: la fila reciente sigue intacta', recentRowStillThere.rows.length === 1);
 
   await pg.end();
 

@@ -64,6 +64,7 @@
     "avatars:reconcile-historical-v1": "tsx scripts/reconcile-historical-avatars-v1.ts",
     "titles:seed-v1": "tsx scripts/seed-titles-v1.ts",
     "titles:reconcile-v1": "tsx scripts/reconcile-titles-v1.ts",
+    "analytics:reconcile-minimization-v1": "tsx scripts/reconcile-analytics-event-minimization-v1.ts",
     "challenges:seed-v1": "tsx scripts/seed-challenges-v1.ts",
     "competitive:seed-v1": "tsx scripts/seed-competitive-v1.ts",
     "competitive:ensure-first-season": "tsx scripts/ensure-first-competitive-season.ts",

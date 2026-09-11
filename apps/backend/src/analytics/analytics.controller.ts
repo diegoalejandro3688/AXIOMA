@@ -44,4 +44,19 @@ export class AnalyticsController {
     const totalsByEventKey = await this.analyticsService.summarySince(since);
     return { since: since.toISOString(), totalsByEventKey };
   }
+
+  /**
+   * Disparo manual del barrido de retención (90 días congelados para V1) --
+   * mismo criterio de riesgo/patrón que `runRelay`: permite operar y probar
+   * sin esperar al `@Cron` diario.
+   */
+  @Post('_internal/retention-sweep')
+  @UseGuards(InternalOpsGuard)
+  @HttpCode(200)
+  async runRetentionSweep() {
+    return runWithCorrelationId(generateCorrelationId(), async () => {
+      this.logger.log('Iniciando barrido de retención de ANALYTICS');
+      return this.analyticsService.purgeExpired();
+    });
+  }
 }

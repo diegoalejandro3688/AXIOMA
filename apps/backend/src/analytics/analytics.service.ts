@@ -7,6 +7,7 @@ import {
   type AnalyticsEventKey,
 } from '@axioma/contracts';
 import { analyticsActorRef } from './analytics-actor-ref';
+import { omitAccountId } from './analytics-payload-sanitizer';
 import { AnalyticsEventRepository } from './analytics-event.repository';
 import { OutboxEventDeliveryRepository } from '../platform/outbox/outbox-event-delivery.repository';
 import type { OutboxEvent } from '../generated/prisma/client';
@@ -14,6 +15,12 @@ import type { OutboxEvent } from '../generated/prisma/client';
 const RELAY_BATCH_SIZE = 100;
 const CONSUMER_NAME = 'ANALYTICS';
 const MAX_DELIVERY_ATTEMPTS = 10;
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+/** WEB-0D.1B-P0B1B -- decisión de producto congelada para V1 (2026-09-11). Constante de código, NUNCA un env var opcional: ausencia de configuración jamás debe significar "retener indefinidamente". */
+const ANALYTICS_EVENT_RETENTION_DAYS = 90;
+/** Tamaño de lote por corrida del barrido -- decisión de ingeniería, mismo criterio que `DEFAULT_BATCH_SIZE` en `AiRetentionService`. */
+const RETENTION_BATCH_SIZE = 200;
 
 function isKnownEventKey(eventKey: string): eventKey is AnalyticsEventKey {
   return (ANALYTICS_EVENT_KEYS as readonly string[]).includes(eventKey);
@@ -98,6 +105,10 @@ export class AnalyticsService {
         ? analyticsActorRef(result.data.accountId, secret)
         : null;
 
+    // WEB-0D.1B-P0B1 -- `accountId` ya cumplió su único propósito (derivar
+    // `actorRef` arriba); el `payload` PERSISTIDO nunca lo lleva. Central e
+    // incondicional -- ningún productor de eventos analíticos puede
+    // reintroducirlo por accidente.
     await this.analyticsEventRepo.create({
       eventKey: outboxEvent.eventKey,
       schemaVersion: outboxEvent.schemaVersion,
@@ -105,12 +116,36 @@ export class AnalyticsService {
       analyticsActorRef: actorRef,
       producerVersion: outboxEvent.producerVersion,
       occurredAt: outboxEvent.occurredAt,
-      payload: result.data,
+      payload: omitAccountId(result.data),
       idempotencyKey: outboxEvent.id,
     });
   }
 
   async summarySince(since: Date) {
     return this.analyticsEventRepo.countByEventKeySince(since);
+  }
+
+  /**
+   * WEB-0D.1B-P0B1B -- barrido de retención: borra `analytics_event` cuyo
+   * `occurredAt` ya cruzó los 90 días congelados para V1. Ámbito
+   * estrictamente `analytics_event` -- nunca `outbox_event` (política
+   * independiente, fuera de este bloque) ni ninguna otra tabla. Sin
+   * comportamiento por cuenta -- el corte es puramente temporal, no filtra
+   * por `analyticsActorRef`. Idempotente: una fila ya purgada simplemente no
+   * vuelve a aparecer en `findExpiredIds`. Purga en lotes acotados
+   * (`RETENTION_BATCH_SIZE`) hasta agotar los candidatos de esta corrida --
+   * mismo criterio que `AiRetentionService.purgeExpiredLedgerEntries`.
+   */
+  async purgeExpired(now: Date = new Date()): Promise<{ deletedRows: number }> {
+    const cutoff = new Date(now.getTime() - ANALYTICS_EVENT_RETENTION_DAYS * MS_PER_DAY);
+
+    let deletedRows = 0;
+    while (true) {
+      const ids = await this.analyticsEventRepo.findExpiredIds(cutoff, RETENTION_BATCH_SIZE);
+      if (ids.length === 0) break;
+      deletedRows += await this.analyticsEventRepo.deleteByIds(ids);
+      if (ids.length < RETENTION_BATCH_SIZE) break;
+    }
+    return { deletedRows };
   }
 }
