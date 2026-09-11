@@ -41,4 +41,18 @@ export class ExamAttemptRepository {
   markCompleted(id: string, completedAt: Date, tx: Prisma.TransactionClient): Promise<ExamAttempt> {
     return tx.examAttempt.update({ where: { id }, data: { status: 'COMPLETED', completedAt } });
   }
+
+  /**
+   * WEB-0D.1B-P0A -- llamado por `ExamService.deleteAttemptsForAccountClosure`
+   * durante el cierre DEFINITIVO de cuenta (`PrivacyService.runAccountDeletionSweep`).
+   * El llamador debe borrar `ExamAttemptAnswer` de la cuenta ANTES (FK `Restrict`
+   * hacia `exam_attempt`). El trigger `enforce_exam_attempt_status_transition`
+   * es `BEFORE UPDATE` únicamente -- no bloquea este DELETE. `deleteMany` nunca
+   * lanza si no hay filas (seguro ante reintentos, mismo criterio que
+   * `StudentResponseRepository.deleteByAccountId`).
+   */
+  async deleteByAccountId(accountId: string, tx?: Prisma.TransactionClient): Promise<number> {
+    const result = await (tx ?? this.prisma).examAttempt.deleteMany({ where: { accountId } });
+    return result.count;
+  }
 }

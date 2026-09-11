@@ -541,4 +541,21 @@ export class ExamService {
       passageId: link.passageId ?? null,
     };
   }
+
+  /**
+   * WEB-0D.1B-P0A -- llamado por `PrivacyService.runAccountDeletionSweep`
+   * durante el cierre DEFINITIVO de cuenta (dentro del mismo `try` que
+   * USER/PROGRESS/AI, ANTES de `markCompleted`): elimina por completo el
+   * historial de PAES (Ensayos) de la cuenta -- `ExamAttemptAnswer` primero
+   * (FK `Restrict` hacia `exam_attempt`), luego `ExamAttempt`. Mismo criterio
+   * que `ProgressService.deleteProgressForAccountClosure`: `deleteMany`
+   * nunca lanza si no hay filas, seguro ante reintentos. Sin transacción
+   * propia -- si el barrido falla en un paso posterior, la solicitud queda
+   * `PROCESSING` para reintento y este método simplemente no vuelve a
+   * encontrar filas que borrar.
+   */
+  async deleteAttemptsForAccountClosure(accountId: string): Promise<void> {
+    await this.answerRepo.deleteByAccountId(accountId);
+    await this.attemptRepo.deleteByAccountId(accountId);
+  }
 }

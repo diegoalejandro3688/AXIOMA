@@ -411,4 +411,22 @@ export class QuickQuestionService {
     }
     return session;
   }
+
+  /**
+   * WEB-0D.1B-P0A -- llamado por `PrivacyService.runAccountDeletionSweep`
+   * durante el cierre DEFINITIVO de cuenta (dentro del mismo `try` que
+   * USER/PROGRESS/EXAMS/AI, ANTES de `markCompleted`): elimina por completo
+   * el historial de Pregunta rápida de la cuenta -- `QuickQuestionAttempt`
+   * primero (FK `Restrict` hacia `quick_question_session`), luego
+   * `QuickQuestionSession`. Mismo criterio que el metodo equivalente del
+   * dominio PROGRESS (borrado de avance academico en el cierre): `deleteMany`
+   * nunca lanza si no hay filas, seguro ante reintentos. Sin transacción propia --
+   * si el barrido falla en un paso posterior, la solicitud queda
+   * `PROCESSING` para reintento y este método simplemente no vuelve a
+   * encontrar filas que borrar.
+   */
+  async deleteSessionsForAccountClosure(accountId: string): Promise<void> {
+    await this.attemptRepo.deleteByAccountId(accountId);
+    await this.sessionRepo.deleteByAccountId(accountId);
+  }
 }

@@ -30,6 +30,7 @@
     "verify:auth-gate": "tsx scripts/run-gate.ts verify-auth-gate.ts",
     "verify:outbox-delivery-filter-gate": "tsx scripts/run-gate.ts verify-outbox-delivery-filter-gate.ts",
     "verify:privacy-gate": "tsx scripts/run-gate.ts verify-privacy-gate.ts",
+    "verify:account-deletion-academic-history-gate": "tsx scripts/run-gate.ts verify-account-deletion-academic-history-gate.ts",
     "verify:analytics-gate": "tsx scripts/run-gate.ts verify-analytics-gate.ts",
     "verify:observability-gate": "tsx scripts/run-gate.ts verify-observability-gate.ts",
     "verify:user-gate": "tsx scripts/run-gate.ts verify-user-gate.ts",

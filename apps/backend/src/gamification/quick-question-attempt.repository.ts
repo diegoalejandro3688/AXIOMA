@@ -71,4 +71,18 @@ export class QuickQuestionAttemptRepository {
   findBySessionId(sessionId: string): Promise<QuickQuestionAttempt[]> {
     return this.prisma.quickQuestionAttempt.findMany({ where: { sessionId }, orderBy: { respondedAt: 'asc' } });
   }
+
+  /**
+   * WEB-0D.1B-P0A -- llamado por
+   * `QuickQuestionService.deleteSessionsForAccountClosure` durante el cierre
+   * DEFINITIVO de cuenta. Debe correr ANTES de borrar `QuickQuestionSession`
+   * (FK `Restrict` de `quick_question_attempt.session_id`). El trigger
+   * `trg_quick_question_attempt_session_active` es `BEFORE INSERT`
+   * únicamente -- no bloquea este DELETE. `deleteMany` nunca lanza si no hay
+   * filas.
+   */
+  async deleteByAccountId(accountId: string, tx?: Prisma.TransactionClient): Promise<number> {
+    const result = await (tx ?? this.prisma).quickQuestionAttempt.deleteMany({ where: { accountId } });
+    return result.count;
+  }
 }

@@ -62,4 +62,18 @@ export class ExamAttemptAnswerRepository {
       },
     });
   }
+
+  /**
+   * WEB-0D.1B-P0A -- llamado por `ExamService.deleteAttemptsForAccountClosure`
+   * durante el cierre DEFINITIVO de cuenta, ANTES de borrar `ExamAttempt`
+   * (FK `Restrict` de `exam_attempt_answer.attempt_id`). El trigger
+   * `enforce_exam_attempt_answer_frozen_after_close` es `BEFORE INSERT OR
+   * UPDATE` únicamente desde la migración `..._trigger_hardening` -- el
+   * DELETE está deliberadamente permitido para esta clase de barrido.
+   * `deleteMany` nunca lanza si no hay filas.
+   */
+  async deleteByAccountId(accountId: string, tx?: Prisma.TransactionClient): Promise<number> {
+    const result = await (tx ?? this.prisma).examAttemptAnswer.deleteMany({ where: { accountId } });
+    return result.count;
+  }
 }

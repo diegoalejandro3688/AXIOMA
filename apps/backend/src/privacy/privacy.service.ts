@@ -6,6 +6,10 @@ import { UserService } from '../user/user.service';
 import { ProgressService } from '../progress/progress.service';
 import { AiRetentionService } from '../ai/ai-retention.service';
 import { SubscriptionService } from '../subscription/subscription.service';
+// WEB-0D.1B-P0A -- el cierre definitivo también elimina el historial personal
+// de Ensayos (PAES) y de Pregunta rápida, mismo criterio que USER/PROGRESS/AI.
+import { ExamService } from '../exams/exam.service';
+import { QuickQuestionService } from '../gamification/quick-question.service';
 import { PrivacyRequestRepository } from './privacy-request.repository';
 import type { PrivacyRequest } from '../generated/prisma/client';
 
@@ -29,6 +33,8 @@ export class PrivacyService {
     private readonly progressService: ProgressService,
     private readonly aiRetentionService: AiRetentionService,
     private readonly subscriptionService: SubscriptionService,
+    private readonly examService: ExamService,
+    private readonly quickQuestionService: QuickQuestionService,
     private readonly outbox: OutboxService,
   ) {}
 
@@ -138,6 +144,18 @@ export class PrivacyService {
         // falla, la solicitud queda PROCESSING para reintento -- nunca se
         // marca completada con una eliminación parcial (ver ADR-0014, punto 2).
         await this.progressService.deleteProgressForAccountClosure(request.accountId);
+        // WEB-0D.1B-P0A -- dato personal ACADÉMICO adicional detectado por la
+        // auditoría de privacidad WEB-0D.1: el historial de Ensayos PAES
+        // (ExamAttempt/ExamAttemptAnswer) y de Pregunta rápida
+        // (QuickQuestionSession/QuickQuestionAttempt) quedaba indefinidamente
+        // ligado al UUID de una cuenta ya cerrada -- mismo criterio "dentro
+        // del mismo try, antes de markCompleted" que USER/PROGRESS arriba: si
+        // falla, la solicitud queda PROCESSING para reintento, nunca se marca
+        // completada con una eliminación parcial. NO toca XP/LP/liga/
+        // temporada/logros/títulos/cosméticos ni ningún otro dominio --
+        // exclusivamente estas cuatro tablas académicas.
+        await this.examService.deleteAttemptsForAccountClosure(request.accountId);
+        await this.quickQuestionService.deleteSessionsForAccountClosure(request.accountId);
         // LEF Bloque VI, Incremento 7 -- dato personal del Tutor IA (conversaciones/mensajes/reportes/reservas
         // efímeras): se elimina por completo, mismo criterio que USER/PROGRESS arriba. El usage ledger de la
         // cuenta NO se borra aquí -- se DESVINCULA (conversationId/assistantMessageId/operationId -> NULL) y sigue

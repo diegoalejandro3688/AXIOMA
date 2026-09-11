@@ -400,6 +400,10 @@ import { QuickLpEligibilityService } from './quick-lp-eligibility.service';
     LeaderboardCalculationService,
     QuickQuestionSessionRepository,
     QuickQuestionAttemptRepository,
+    // WEB-0D.1B-P0A -- `PrivacyModule` necesita `deleteSessionsForAccountClosure`
+    // durante el cierre definitivo de cuenta, mismo criterio que
+    // `ProgressModule` exportando `ProgressService`.
+    QuickQuestionService,
     // LEF Bloque V, Incremento 5 -- el agregador de UserModule necesita
     // componer el historial competitivo (Incremento 4) sin reinterpretar su
     // lógica, mismo criterio que el resto de servicios de lectura ya
