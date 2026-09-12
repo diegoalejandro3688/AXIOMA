@@ -102,6 +102,7 @@
     "verify:closure-processing-worker-guard-gate": "tsx scripts/run-gate.ts verify-closure-processing-worker-guard-gate.ts",
     "verify:deferred-history-pseudonymization-gate": "tsx scripts/run-gate.ts verify-deferred-history-pseudonymization-gate.ts",
     "verify:terminal-participation-privacy-retry-gate": "tsx scripts/run-gate.ts verify-terminal-participation-privacy-retry-gate.ts",
+    "verify:gamification-legacy-reconciliation-gate": "tsx scripts/run-gate.ts verify-gamification-legacy-reconciliation-gate.ts",
     "verify:exam-foundation-gate": "tsx scripts/run-gate.ts verify-exam-foundation-gate.ts",
     "verify:premium-exams-gate": "tsx scripts/run-gate.ts verify-premium-exams-gate.ts",
     "verify:premium-content-access-gate": "tsx scripts/run-gate.ts verify-premium-content-access-gate.ts",
@@ -148,6 +149,7 @@
     "cli:create-admin-actor": "node dist/cli/create-admin-actor.js",
     "cli:activate-cms018-exception": "node dist/cli/activate-cms018-exception.js",
     "cli:editorial": "node dist/cli/editorial.js",
+    "cli:reconcile-gamification-legacy": "node dist/cli/reconcile-gamification-legacy.js",
     "db:up": "docker compose -f ../../docker-compose.yml up -d",
     "db:down": "docker compose -f ../../docker-compose.yml down"
   },
