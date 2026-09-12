@@ -24,6 +24,9 @@ import { GooglePlayRtdnEventRepository } from './rtdn/google-play-rtdn-event.rep
 import { RtdnIngestionService } from './rtdn/rtdn-ingestion.service';
 import { RtdnProcessingService } from './rtdn/rtdn-processing.service';
 import { RtdnProcessingScheduler, RTDN_PROCESSING_ENABLED } from './rtdn/rtdn-processing.scheduler';
+import { RtdnRetentionService } from './rtdn/rtdn-retention.service';
+import { RtdnRetentionScheduler } from './rtdn/rtdn-retention.scheduler';
+import { RtdnRetentionController } from './rtdn/rtdn-retention.controller';
 import { FakeRtdnPushAuthenticator } from './rtdn/fake-rtdn-push-authenticator';
 import { GoogleRtdnPushAuthenticator } from './rtdn/google-rtdn-push-authenticator';
 import { DisabledRtdnPushAuthenticator } from './rtdn/disabled-rtdn-push-authenticator';
@@ -65,7 +68,7 @@ const RTDN_AUTH_FALLBACK: RtdnAuthConfig = {
 
 @Module({
   imports: [ConfigModule, AuthModule, EntitlementModule, InternalOpsModule],
-  controllers: [SubscriptionController, SubscriptionSummaryController, BillingRetentionController, GooglePlayRtdnController],
+  controllers: [SubscriptionController, SubscriptionSummaryController, BillingRetentionController, GooglePlayRtdnController, RtdnRetentionController],
   providers: [
     FakeSubscriptionProviderAdapter,
     {
@@ -143,6 +146,8 @@ const RTDN_AUTH_FALLBACK: RtdnAuthConfig = {
     RtdnIngestionService,
     RtdnProcessingService,
     RtdnProcessingScheduler,
+    RtdnRetentionService,
+    RtdnRetentionScheduler,
   ],
   exports: [SubscriptionService],
 })

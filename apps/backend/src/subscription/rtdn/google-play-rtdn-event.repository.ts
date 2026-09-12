@@ -143,4 +143,61 @@ export class GooglePlayRtdnEventRepository {
       data: { status: 'FAILED', processedAt: new Date(), lastErrorCode: code, lastError: message.slice(0, 300) },
     });
   }
+
+  /**
+   * RTDN-RET -- retencion. Estados TERMINALES (nunca reclamados de nuevo por
+   * `claimNext`, ausentes de `countLiveByPurchaseTokens`): `DONE` / `FAILED`
+   * (dead-letter acotado, agoto MAX_ATTEMPTS o error permanente) / `IGNORED`
+   * (fuera de alcance de suscripcion). `PENDING` / `PROCESSING` / `RETRYABLE`
+   * son "vivos" y JAMAS elegibles -- ver `countLiveByPurchaseTokens` arriba,
+   * mismo conjunto invertido.
+   *
+   * `processedAt` cubre TODOS los desenlaces terminales, no solo el exito:
+   * `markDone` y `markFailed` lo fijan explicitamente, y la ingesta
+   * (`rtdn-ingestion.service.ts`) tambien lo fija al insertar ya-resuelto
+   * (`test`->DONE, `one_time_product`/`voided_purchase`/`unknown`->IGNORED,
+   * `subscription` sin `purchaseToken`->IGNORED). No existe fila terminal sin
+   * `processedAt` en el camino real de escritura -- de ahi que NO haga falta
+   * una columna `terminalAt` dedicada ni una migracion.
+   */
+  private static readonly TERMINAL_STATUSES = ['DONE', 'FAILED', 'IGNORED'] as const;
+
+  /**
+   * Candidatos a purga: TERMINAL + `processedAt` mas viejo que `cutoff`. Lote
+   * acotado, orden estable (mas viejo primero) para que corridas sucesivas
+   * converjan. Devuelve solo `id` -- el borrado re-verifica el predicado por
+   * fila (ver `deleteExpiredTerminalByIds`) para evitar TOCTOU.
+   */
+  async findExpiredTerminalCandidateIds(cutoff: Date, limit: number): Promise<string[]> {
+    const rows = await this.prisma.googlePlayRtdnEvent.findMany({
+      where: {
+        status: { in: [...GooglePlayRtdnEventRepository.TERMINAL_STATUSES] },
+        processedAt: { not: null, lt: cutoff },
+      },
+      orderBy: { processedAt: 'asc' },
+      take: limit,
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Borra SOLO las filas de `ids` que en ESTE instante siguen cumpliendo el
+   * predicado terminal+expirado (re-chequeo anti-TOCTOU: una fila podria,
+   * en teoria, haber sido re-reclamada entre el `find` y el `delete` -- nunca
+   * ocurre en la practica porque `claimNext` jamas toma una fila terminal,
+   * pero el `deleteMany` condicionado lo hace imposible en cualquier caso).
+   * Idempotente: filas ya borradas por otra corrida simplemente no matchean.
+   */
+  async deleteExpiredTerminalByIds(ids: string[], cutoff: Date): Promise<number> {
+    if (ids.length === 0) return 0;
+    const result = await this.prisma.googlePlayRtdnEvent.deleteMany({
+      where: {
+        id: { in: ids },
+        status: { in: [...GooglePlayRtdnEventRepository.TERMINAL_STATUSES] },
+        processedAt: { not: null, lt: cutoff },
+      },
+    });
+    return result.count;
+  }
 }
