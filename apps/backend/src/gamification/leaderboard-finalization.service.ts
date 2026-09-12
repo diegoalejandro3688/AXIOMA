@@ -9,6 +9,7 @@ import { LeaderboardSnapshotRepository } from './leaderboard-snapshot.repository
 import { LeaderboardSnapshotEntryRepository } from './leaderboard-snapshot-entry.repository';
 import { SeasonLeagueParticipationRepository } from './season-league-participation.repository';
 import { computeZoneCounts, resolveCompetitiveZone, MINIMUM_PARTICIPANTS_FOR_PROMOTION, type CompetitiveZone } from './promotion-grammar';
+import { GamificationPrivacyService } from './gamification-privacy.service';
 
 /**
  * Namespace de advisory lock DISTINTO a los ya en uso (19 ADR-0019, 20
@@ -56,6 +57,12 @@ export class LeaderboardFinalizationService {
     private readonly calculationService: LeaderboardCalculationService,
     private readonly snapshotRepo: LeaderboardSnapshotRepository,
     private readonly snapshotEntryRepo: LeaderboardSnapshotEntryRepository,
+    // WEB-0D.1C-B4 -- opcional, mismo criterio EXACTO que `accountRepo?` en
+    // XpGrantService/LeaguePointGrantService/RewardEvaluationWorker (B0R):
+    // varios gates ya existentes construyen este servicio POSICIONALMENTE
+    // sin DI completa; hacerlo requerido rompería esos gates con un
+    // `undefined` en runtime en vez de un guardia explícito.
+    private readonly gamificationPrivacyService?: GamificationPrivacyService,
   ) {}
 
   async finalizePendingGroups(): Promise<{ finalized: number; skipped: number; failed: number }> {
@@ -146,6 +153,34 @@ export class LeaderboardFinalizationService {
         }
 
         await this.groupRepo.updateStatus(tx, groupId, 'FINALIZED', snapshotAt);
+
+        // WEB-0D.1C-B4 §J -- lado de FINALIZACIÓN: para participaciones de
+        // este grupo cuya cuenta YA está CLOSED (cerrada mientras la
+        // temporada seguía en curso), pseudonimiza AHORA, en el mismo
+        // instante en que `participationStatus` se vuelve terminal, dentro
+        // de esta MISMA transacción (nunca abre una propia). Envuelto en
+        // try/catch NO-BLOQUEANTE a propósito -- ver el reporte de B4 §J:
+        // un fallo aquí (p.ej. GAMIFICATION_ACTOR_SECRET ausente) NUNCA
+        // debe revertir la finalización real de la temporada para TODOS
+        // los participantes del grupo solo por un problema de privacidad
+        // de un subconjunto de cuentas ya cerradas -- esas filas quedan
+        // como un backlog acotado e identificable para B5, nunca bloquean
+        // producto.
+        if (this.gamificationPrivacyService) {
+          try {
+            const result = await this.gamificationPrivacyService.pseudonymizeParticipationsForClosedAccountsWithinTx(
+              tx,
+              ranked.map((r) => ({ seasonLeagueParticipationId: r.seasonLeagueParticipationId, accountId: r.accountId })),
+            );
+            if (result.skippedSecretMissing) {
+              this.logger.error(
+                `Finalización del grupo ${groupId}: GAMIFICATION_ACTOR_SECRET ausente -- participaciones de cuentas ya CLOSED en este grupo NO se pseudonimizaron; quedan pendientes de reconciliación (B5).`,
+              );
+            }
+          } catch (error) {
+            this.logger.error(`Finalización del grupo ${groupId}: fallo NO bloqueante al pseudonimizar participaciones de cuentas cerradas (B4): ${error}`);
+          }
+        }
 
         return true;
       },

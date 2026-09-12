@@ -221,9 +221,21 @@ export class SeasonLeagueParticipationRepository {
    * `season_league_participation`, nunca `public_profile` -- ningún filtro
    * de visibilidad se aplica aquí ni en ningún punto de este repositorio).
    */
+  /**
+   * WEB-0D.1C-B4 §19 -- `accountId: { not: null }` explícito: consulta
+   * OPERACIONAL/VIVA (alimenta el ranking/cálculo de cierre), nunca debe
+   * incluir una fila ya pseudonimizada por B4. Defensa en profundidad --
+   * por invariante actual, `finalizeGroup` solo llama a esto sobre grupos
+   * todavía `LOCKED` (nunca `FINALIZED`), y B4 solo pseudonimiza
+   * participaciones YA terminales (`PROMOTED`/`DEMOTED`/`RETAINED`, que
+   * solo existen en grupos YA `FINALIZED`) -- las dos condiciones nunca se
+   * solapan hoy, pero este filtro cierra la clase exacta de punto ciego que
+   * motivó el hardening de `findPendingGrant` (ver ese comentario), sin
+   * excluir ninguna fila real bajo el invariante actual.
+   */
   findAllByGroupId(groupId: string, tx?: Prisma.TransactionClient): Promise<SeasonLeagueParticipation[]> {
     const client: Client = tx ?? this.prisma;
-    return client.seasonLeagueParticipation.findMany({ where: { leagueGroupId: groupId } });
+    return client.seasonLeagueParticipation.findMany({ where: { leagueGroupId: groupId, accountId: { not: null } } });
   }
 
   /** Bloque IV, Incremento 2 -- `currentRank` es una proyección actualizada en cada pasada periódica (Data Model §16.20). */
@@ -311,5 +323,39 @@ export class SeasonLeagueParticipationRepository {
       take: opts.take,
     });
     return rows.map((r) => r.accountId as string);
+  }
+
+  /**
+   * WEB-0D.1C-B4-R1 -- candidatos DURABLES para el reconciliador de
+   * privacidad de participaciones terminales: cuenta CLOSED, participación
+   * terminal (PROMOTED/DEMOTED/RETAINED), `accountId` todavía crudo,
+   * `gamificationActorRef` todavía NULL. Filtrado ÍNTEGRAMENTE en la base
+   * de datos (nunca `SELECT *` + filtro en memoria) -- `SeasonLeagueParticipation`
+   * no tiene FK a `account` (mismo criterio que el resto de este dominio),
+   * así que el JOIN se hace en SQL crudo, igual que
+   * `ValidatedGamificationActivityRepository.findPendingGrant`.
+   *
+   * Devuelve `accountId`s DISTINCT (nunca filas individuales) -- el
+   * llamador reutiliza `pseudonymizeTerminalSeasonParticipations`
+   * (ya existente desde B4) por cuenta, que ya pseudonimiza TODAS las
+   * participaciones terminales de esa cuenta en una sola transacción.
+   * Orden determinista por `accountId` -- una vez pseudonimizada una
+   * cuenta, `gamificationActorRef` deja de ser NULL y esa cuenta
+   * desaparece por completo de esta consulta en la siguiente corrida
+   * (progreso determinista sin cursor/offset, ver B4-R1 §18).
+   */
+  async findAccountIdsWithTerminalPendingPrivacy(limit: number): Promise<string[]> {
+    const rows = await this.prisma.$queryRaw<{ account_id: string }[]>`
+      SELECT DISTINCT slp.account_id
+      FROM season_league_participation slp
+      JOIN account a ON a.id = slp.account_id
+      WHERE a.status = 'CLOSED'
+        AND slp.participation_status IN ('PROMOTED', 'DEMOTED', 'RETAINED')
+        AND slp.account_id IS NOT NULL
+        AND slp.gamification_actor_ref IS NULL
+      ORDER BY slp.account_id ASC
+      LIMIT ${limit}
+    `;
+    return rows.map((r) => r.account_id);
   }
 }

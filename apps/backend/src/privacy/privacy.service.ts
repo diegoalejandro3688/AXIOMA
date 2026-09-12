@@ -182,8 +182,32 @@ export class PrivacyService {
         // llega a marcarse CLOSED con un historial parcialmente
         // pseudonimizado -- ver el reporte de B3-R1 §D/§E/§G/§H.
         // ValidatedGamificationActivity/SeasonLeagueParticipation quedan
-        // DELIBERADAMENTE fuera (DEFER_TO_B4, ver el reporte de B3 §B/§C).
+        // fuera de ESTA llamada específica (semántica de las 5 familias de
+        // B3 sin modificar, por instrucción explícita de B4) -- se
+        // pseudonimizan en los DOS pasos siguientes, cada uno en su propia
+        // transacción independiente.
         await this.gamificationPrivacyService.pseudonymizeImmediateSafeHistory(request.accountId);
+        // WEB-0D.1C-B4 -- MODELO A: ValidatedGamificationActivity. Seguro
+        // para CUALQUIER fila de esta cuenta ya CLOSED (ver el reporte de
+        // B4 §C: el hardening de `findPendingGrant` con `account_id IS NOT
+        // NULL` cierra el único punto ciego real). Si falla (secreto
+        // ausente o colisión legacy->v2 que exige reconciliación en B5),
+        // misma consistencia eventual que cada paso anterior: la solicitud
+        // queda PROCESSING para reintento, la cuenta nunca llega a marcarse
+        // CLOSED con esto a medias.
+        await this.gamificationPrivacyService.pseudonymizeDrainedValidatedActivity(request.accountId);
+        // WEB-0D.1C-B4 -- MODELO B (lado de cierre): SeasonLeagueParticipation
+        // que YA era terminal (temporada/grupo ya finalizado) en el momento
+        // de este cierre. El caso inverso (participación que se vuelve
+        // terminal DESPUÉS de que esta cuenta ya cerró) lo cubre
+        // `LeaderboardFinalizationService.finalizeGroup` por su cuenta, en
+        // el momento exacto en que la finalización ocurre -- ver el reporte
+        // de B4 §J. Participaciones todavía ACTIVE en una temporada en
+        // curso permanecen intencionalmente identificables (ver B4 §H): el
+        // ranking en vivo las necesita, y la cuenta CLOSED ya está excluida
+        // de toda salida pública/en vivo por las protecciones existentes
+        // (WEB-0D.1C-A/B0).
+        await this.gamificationPrivacyService.pseudonymizeTerminalSeasonParticipations(request.accountId);
         // Dato personal de PROGRESS (respuestas y avance) -- mismo criterio
         // que USER arriba: dentro del mismo try, antes de markCompleted. Si
         // falla, la solicitud queda PROCESSING para reintento -- nunca se

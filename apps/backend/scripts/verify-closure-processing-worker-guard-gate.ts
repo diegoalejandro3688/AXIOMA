@@ -16,7 +16,7 @@ import { Client } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identity.provider';
-import { assertGateDb } from './gate-db-safety';
+import { assertGateDb, retireStaleGateLeagues } from './gate-db-safety';
 import { AccountRepository } from '../src/auth/account.repository';
 import { TransactionRunnerService } from '../src/platform/prisma/transaction-runner.service';
 import { ValidatedGamificationActivityRepository } from '../src/gamification/validated-gamification-activity.repository';
@@ -70,6 +70,7 @@ async function main() {
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
   await assertGateDb(pg);
+  await retireStaleGateLeagues(pg);
 
   const now = new Date();
   const suffix = `${Date.now()}`;
@@ -294,8 +295,18 @@ async function main() {
   // CLOSED existente (nunca una brecha entre "PROCESSING" y "CLOSED").
   const relayAfterClosed = await req('POST', '/gamification/_internal/relay', { 'x-internal-ops-key': opsKey }, {});
   check('8.5 post-CLOSED: relay responde 200', relayAfterClosed.status === 200);
-  const vgaCountFinal = await pg.query('SELECT count(*)::int AS n FROM validated_gamification_activity WHERE account_id = $1', [closing.accountId]);
-  check('8.6 post-CLOSED: sigue sin ValidatedGamificationActivity nueva (CLOSED, guardia preexistente)', vgaCountFinal.rows[0].n === vgaCountAfter.rows[0].n);
+  // WEB-0D.1C-B4 -- STALE GATE fix: entre el checkpoint anterior (6.1) y
+  // este punto, el barrido COMPLETÓ exitosamente (paso 7), y B4 ahora
+  // pseudonimiza `ValidatedGamificationActivity` como parte de ese mismo
+  // cierre exitoso -- las filas de "closing" YA NO tienen `account_id`
+  // crudo (esperado, correcto, ver el reporte de B4 §C), así que contar
+  // por `account_id = closing.accountId` subestima el total real. La
+  // invariante que este check debe probar sigue intacta: NINGUNA fila
+  // NUEVA -- se prueba comparando accountId crudo + actorRef de esta
+  // cuenta contra el total esperado (el mismo de antes, ahora repartido
+  // entre ambas formas de identidad en vez de perderse).
+  const vgaCountFinal = await pg.query('SELECT count(*)::int AS n FROM validated_gamification_activity WHERE account_id = $1 OR gamification_actor_ref = $2', [closing.accountId, closingActorRef]);
+  check('8.6 post-CLOSED: sigue sin ValidatedGamificationActivity nueva (CLOSED, guardia preexistente + B4 ya pseudonimizó las existentes)', vgaCountFinal.rows[0].n === vgaCountAfter.rows[0].n);
   const xpGrantAfterClosed = await req('POST', '/gamification/_internal/grant-xp', { 'x-internal-ops-key': opsKey }, {});
   check('8.7 post-CLOSED: grant-xp responde 200', xpGrantAfterClosed.status === 200);
   const closingXpCountFinal = await pg.query('SELECT count(*)::int AS n FROM xp_ledger_entry WHERE validated_activity_id = $1', [closingXpPendingVgaId]);
@@ -305,7 +316,13 @@ async function main() {
   await pg.query(
     "UPDATE xp_rule xr SET status = 'RETIRED' FROM gamification_program_version gpv, gamification_program gp WHERE xr.program_version_id = gpv.id AND gpv.gamification_program_id = gp.id AND gp.program_key = 'xp-core' AND gpv.version_label LIKE 'cpwg-gate-%' AND xr.status = 'ACTIVE'",
   );
-  await pg.query("UPDATE league_point_rule SET status = 'RETIRED' WHERE rule_version LIKE 'cpwg-gate-lp-%' AND status = 'ACTIVE'");
+  // `effective_until` explícito además de `status`: algunos consumidores
+  // (p.ej. verify-competitive-v1-gate.ts) verifican vigencia temporal
+  // directamente por `effective_from/effective_until`, sin filtrar por
+  // `status` -- dejar solo `status='RETIRED'` con `effective_until` NULL
+  // deja la fila temporalmente "vigente para siempre" en esos consumidores.
+  await pg.query("UPDATE league_point_rule SET status = 'RETIRED', effective_until = now() WHERE rule_version LIKE 'cpwg-gate-lp-%' AND status = 'ACTIVE'");
+  await retireStaleGateLeagues(pg);
 
   await prisma.$disconnect();
   await pg.end();

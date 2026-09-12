@@ -175,9 +175,17 @@ async function main() {
   check('C4. catálogo (title_definition + cosmetic_item) intacto', catalogIntact.rows.length === 2);
 
   console.log('--- D. Preservación histórica: los ledgers de X NO se tocan en este bloque ---');
-  const activityAfter = await pg.query('SELECT account_id, deduplication_key FROM validated_gamification_activity WHERE id = $1', [historicalActivityId]);
+  // WEB-0D.1C-B4 -- STALE GATE fix: al momento en que este gate se
+  // escribió, ValidatedGamificationActivity era DEFER_TO_B4 (B3 nunca la
+  // tocaba, accountId crudo permanecía indefinidamente). B4 (ya committed)
+  // ahora SÍ la pseudonimiza como parte del mismo cierre definitivo real
+  // de X -- ver `verify-deferred-history-pseudonymization-gate.ts` para la
+  // prueba dedicada. Invariante MÁS FUERTE, no más débil: la fila sigue
+  // existiendo (D1) y su hecho de negocio (deduplicationKey/activityType)
+  // no cambia, pero la identidad SÍ transicionó, igual que XpLedgerEntry (D3/D4).
+  const activityAfter = await pg.query('SELECT account_id, gamification_actor_ref, deduplication_key FROM validated_gamification_activity WHERE id = $1', [historicalActivityId]);
   check('D1. validated_gamification_activity histórica de X sigue existiendo', activityAfter.rows.length === 1);
-  check('D2. accountId histórico SIGUE presente (no remediado en este bloque)', activityAfter.rows[0]?.account_id === x.accountId);
+  check('D2. accountId histórico pseudonimizado por el cierre (B4) -- gamificationActorRef fijado en su lugar', activityAfter.rows[0]?.account_id === null && activityAfter.rows[0]?.gamification_actor_ref !== null);
   // WEB-0D.1C-B3 -- XpLedgerEntry es IMMEDIATE_SAFE (a diferencia de
   // ValidatedGamificationActivity arriba, DEFER_TO_B4): el cierre
   // definitivo real de X ya pseudonimizó este ledger histórico

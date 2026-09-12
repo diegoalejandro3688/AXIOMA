@@ -121,6 +121,21 @@ export class ValidatedGamificationActivityRepository {
    * ORDINARIO (ventana de 30 días, sin barrido en curso) nunca tiene una
    * fila PROCESSING, así que esta cláusula NUNCA bloquea ese caso (A del
    * addendum) -- solo el caso (B), cierre definitivo activo.
+   *
+   * WEB-0D.1C-B4 §19/§20 -- `AND vga.account_id IS NOT NULL` explícito:
+   * ESTE es el fix real que habilita B4. El `LEFT JOIN account` de arriba
+   * tiene un punto ciego exacto cuando `vga.account_id` es `NULL` (fila ya
+   * pseudonimizada): el JOIN no encuentra fila en `account`, `a.status` es
+   * `NULL`, y `NULL IS DISTINCT FROM 'CLOSED'` evalúa `TRUE` -- la fila
+   * parecería "no cerrada" y resucitaría en cada ciclo del cron, chocando
+   * para siempre contra el guardia `!activity.accountId` de
+   * `XpGrantService.grantForActivity` (B0R). Este filtro adicional cierra
+   * ese punto ciego de forma independiente del JOIN -- una fila
+   * pseudonimizada NUNCA vuelve a esta consulta, sin importar el estado de
+   * `account`. Este era el motivo REAL por el que B3 difirió este modelo
+   * (nunca una razón de negocio genuina) -- con este filtro, pseudonimizar
+   * `ValidatedGamificationActivity` de una cuenta CLOSED es tan seguro como
+   * los 5 modelos que B3 ya trata como INMEDIATE_SAFE (ver reporte B4 §C).
    */
   async findPendingGrant(limit: number, now: Date = new Date()): Promise<ValidatedGamificationActivity[]> {
     const rows = await this.prisma.$queryRaw<PendingGrantRow[]>`
@@ -136,6 +151,7 @@ export class ValidatedGamificationActivityRepository {
         WHERE xle.validated_activity_id = vga.id AND xle.entry_type = 'OTORGAMIENTO'
       )
       AND (xga.validated_activity_id IS NULL OR xga.next_eligible_at <= ${now})
+      AND vga.account_id IS NOT NULL
       AND a.status IS DISTINCT FROM 'CLOSED'
       AND NOT EXISTS (
         SELECT 1 FROM privacy_request pr WHERE pr.account_id = vga.account_id AND pr.status = 'PROCESSING'

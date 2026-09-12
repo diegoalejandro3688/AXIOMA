@@ -14,6 +14,7 @@ import { XpBalanceRepository } from './xp-balance.repository';
 import { XpGrantAttemptRepository } from './xp-grant-attempt.repository';
 import { GamificationService } from './gamification.service';
 import { GamificationPrivacyService } from './gamification-privacy.service';
+import { GamificationPrivacyReconciliationScheduler } from './gamification-privacy-reconciliation.scheduler';
 import { GamificationScheduler } from './gamification.scheduler';
 import { XpGrantService } from './xp-grant.service';
 import { XpGrantScheduler } from './xp-grant.scheduler';
@@ -291,6 +292,7 @@ import { QuickLpEligibilityService } from './quick-lp-eligibility.service';
     XpGrantAttemptRepository,
     GamificationService,
     GamificationPrivacyService,
+    GamificationPrivacyReconciliationScheduler,
     GamificationScheduler,
     XpGrantService,
     XpGrantScheduler,

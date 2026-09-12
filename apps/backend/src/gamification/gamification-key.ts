@@ -69,6 +69,39 @@ export function buildActivityDedupKeyV2(
   }
 }
 
+/**
+ * WEB-0D.1C-B4 -- las mismas dos formas de arriba (`buildLegacyActivityDedupKey`/
+ * `buildActivityDedupKeyV2`), pero reconstruidas desde una fila YA
+ * PERSISTIDA (`activityType` + `deduplicationKey` existente) en vez de
+ * desde el payload original del evento -- necesario porque B4 pseudonimiza
+ * filas históricas, mucho después de que el evento original desapareció.
+ * Solo los 3 `activityType` de abajo alguna vez embebieron `accountId`
+ * crudo (mismo conjunto exacto que `buildLegacyActivityDedupKey`, ver
+ * arriba) -- `RESPUESTA_VALIDADA`/`QUICK_QUESTION_ANSWERED` NUNCA lo
+ * embebieron y quedan fuera de este mapa a propósito.
+ */
+export type LegacyEmbeddingActivityType = 'TEMA_COMPLETADO' | 'ENSAYO_COMPLETADO' | 'RECURSO_COMPLETADO';
+
+const ACTIVITY_LEGACY_PREFIX: Record<LegacyEmbeddingActivityType, string> = {
+  TEMA_COMPLETADO: 'topic-completed',
+  ENSAYO_COMPLETADO: 'ensayo-completado',
+  RECURSO_COMPLETADO: 'resource-completed',
+};
+
+export function isLegacyEmbeddingActivityType(activityType: string): activityType is LegacyEmbeddingActivityType {
+  return Object.prototype.hasOwnProperty.call(ACTIVITY_LEGACY_PREFIX, activityType);
+}
+
+/** Prefijo `{tipo-legacy}:{accountId}:` -- todo lo que sigue es el businessKey (curriculumTopicId/examId/learningResourceId), aislado de forma segura porque accountId (UUID) nunca contiene ':'. */
+export function activityLegacyKeyPrefix(activityType: LegacyEmbeddingActivityType, accountId: string): string {
+  return `${ACTIVITY_LEGACY_PREFIX[activityType]}:${accountId}:`;
+}
+
+/** Forma V2 reconstruida desde una fila persistida -- idéntica en forma a `buildActivityDedupKeyV2`. */
+export function buildActivityDedupKeyV2FromRow(activityType: LegacyEmbeddingActivityType, accountId: string, secret: string, businessKey: string): string {
+  return `${ACTIVITY_LEGACY_PREFIX[activityType]}:v2:${gamificationActorRef(accountId, secret)}:${businessKey}`;
+}
+
 // ============================================================================
 // RewardGrant.sourceEntityId / AccountTitle.acquisitionSourceId
 // (LEVEL, STUDY_SUBJECT, TITLE_UNLOCK -- los únicos tres que embebían

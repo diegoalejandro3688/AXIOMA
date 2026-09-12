@@ -317,11 +317,25 @@ async function main() {
   // B6/B7 -- defensa TOCTOU real: llama `grantForActivity` DIRECTAMENTE
   // (sin pasar por `excludeClosedAccounts`), simulando que la actividad ya
   // se había leído como "pendiente" ANTES de que el cierre se confirmara.
-  // Debe abortar limpiamente por la relectura DENTRO de la transacción,
-  // reutilizando `ClosedConcurrentlyError` -- nunca escribe nada.
+  // Debe abortar limpiamente, nunca escribir nada.
+  //
+  // WEB-0D.1C-B4 -- STALE GATE fix: antes de B4, `ValidatedGamificationActivity`
+  // de una cuenta CLOSED conservaba `accountId` crudo indefinidamente
+  // (DEFER_TO_B4), así que esta llamada directa alcanzaba la relectura
+  // TOCTOU DENTRO de la transacción y abortaba vía `CLOSED_CONCURRENTLY`.
+  // Ahora B4 ya pseudonimizó esta MISMA actividad como parte del cierre
+  // exitoso de X2 (ver el reporte de B4 §C) -- `activity.accountId` llega
+  // NULL, y el guardia `!activity.accountId` (línea anterior a la
+  // relectura TOCTOU) devuelve `NOT_PARTICIPATING` de inmediato. Invariante
+  // MÁS FUERTE, no más débil: la actividad ya es inutilizable para LP por
+  // dos razones independientes (identidad removida Y guardia TOCTOU),
+  // nunca solo una.
   const activityX2 = await activityRepoForLp.findById(activityX2Id);
   const toctouResult = await lpGrantService.grantForActivity(activityX2!);
-  check('B6. la relectura DENTRO de la transacción aborta el otorgamiento (CLOSED_CONCURRENTLY)', toctouResult.outcome === 'CLOSED_CONCURRENTLY');
+  check(
+    'B6. la actividad ya pseudonimizada por B4 es inutilizable para LP (NOT_PARTICIPATING, accountId ya NULL) -- invariante más fuerte que el CLOSED_CONCURRENTLY original',
+    toctouResult.outcome === 'NOT_PARTICIPATING' && activityX2?.accountId === null,
+  );
   const lpEntryX2After = await pg.query('SELECT id FROM league_point_ledger_entry WHERE account_id = $1', [x2.accountId]);
   check('B7. sigue sin ningún league_point_ledger_entry tras el intento directo (defensa TOCTOU real)', lpEntryX2After.rows.length === 0);
 

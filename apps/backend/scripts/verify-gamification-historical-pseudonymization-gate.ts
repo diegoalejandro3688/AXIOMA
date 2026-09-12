@@ -13,7 +13,7 @@ import { Client } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { StubIdentityProvider } from '../src/auth/identity-provider/stub-identity.provider';
-import { assertGateDb } from './gate-db-safety';
+import { assertGateDb, finalizeStaleGateSeasons } from './gate-db-safety';
 import { gamificationActorRef } from '../src/gamification/gamification-actor-ref';
 import { buildLegacyRewardSourceId } from '../src/gamification/gamification-key';
 import { GamificationPrivacyService, RewardGrantReconciliationRequiredError } from '../src/gamification/gamification-privacy.service';
@@ -83,6 +83,14 @@ async function main() {
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
   await assertGateDb(pg);
+  // Higiene entre corridas -- mismo criterio que otros gates de este bloque
+  // que reutilizan la temporada ACTIVE compartida: sin esto, una temporada
+  // ACTIVE huérfana de una corrida interrumpida de OTRO gate (detectada en
+  // producción de este reporte: `dwcag-gate-*`, con `starts_at` corrompido
+  // en el futuro) queda ACTIVE indefinidamente y este gate reutiliza su
+  // ventana rota al reusar `existingActiveSeason` -- FIXTURE DRIFT de otro
+  // gate, no un defecto de B3/B4.
+  await finalizeStaleGateSeasons(pg);
 
   const now = new Date();
   const gamificationSecret = process.env.GAMIFICATION_ACTOR_SECRET ?? '';
