@@ -54,7 +54,7 @@ check('D5. versión NO hardcodeada -- viene del contrato', content.includes('CUR
 
 // --- E. Enlaces legales / soporte (fail-safe, sin URLs falsas) ---
 const links = read('lib', 'compliance', 'legal-links.ts');
-check('E1. PRIVACY_POLICY_URL y SUPPORT_CONTACT son null (no configurados)', /PRIVACY_POLICY_URL:\s*string\s*\|\s*null\s*=\s*null/.test(links) && /SUPPORT_CONTACT:\s*string\s*\|\s*null\s*=\s*null/.test(links));
+check('E1. PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL, SUPPORT_CONTACT y ACCOUNT_DELETION_URL apuntan al dominio público real', ["PRIVACY_POLICY_URL", "TERMS_OF_SERVICE_URL", "SUPPORT_CONTACT", "ACCOUNT_DELETION_URL"].every((name) => new RegExp(`${name}:\\s*string\\s*\\|\\s*null\\s*=\\s*'https://zetrynd\\.cl/`).test(links)));
 check('E2. sin placeholders falsos (example.com / zetrynd.app / mailto ficticio)', !/example\.com|@zetrynd\.app|support@|noreply@/i.test(links));
 check('E3. perfil: fila Privacidad/Soporte deshabilitada si no configurada ("Disponible próximamente")', perfil.includes('Disponible próximamente') && perfil.includes('isConfigured(PRIVACY_POLICY_URL)') && perfil.includes('isConfigured(SUPPORT_CONTACT)'));
 check('E4. perfil: fila "Términos de uso" navega a la pantalla interna', perfil.includes("router.push('/(tabs)/perfil/terminos')"));

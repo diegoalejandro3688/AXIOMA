@@ -9,7 +9,7 @@ import { initializeProfile, updateProfile } from '../../../lib/api/user';
 import { changePublicUsername, claimPublicProfile, getMyPublicProfile, setPublicProfileVisibility } from '../../../lib/api/public-profile';
 import { acceptPublicParticipationTerms, getPublicParticipationTermsStatus } from '../../../lib/api/compliance';
 import { PUBLIC_PARTICIPATION_TERMS_INTRO, PUBLIC_PARTICIPATION_TERMS_TITLE } from '../../../lib/compliance/public-participation-terms-content';
-import { PRIVACY_POLICY_URL, SUPPORT_CONTACT, isConfigured } from '../../../lib/compliance/legal-links';
+import { PRIVACY_POLICY_URL, SUPPORT_CONTACT, ACCOUNT_DELETION_URL, isConfigured } from '../../../lib/compliance/legal-links';
 import { requestAccountDeletion } from '../../../lib/api/privacy';
 import { getSubscriptionSummary } from '../../../lib/api/subscription';
 import { GOOGLE_PLAY_SUBSCRIPTIONS_MANAGEMENT_URL, type SubscriptionSummaryResponse } from '@axioma/contracts';
@@ -697,11 +697,11 @@ export default function PerfilScreen() {
         </View>
 
         {/*
-          PS-0C.2 -- LEGAL Y SOPORTE. Los "Términos de uso y convivencia
+          F1-E -- LEGAL Y SOPORTE. Los "Términos de uso y convivencia
           pública" existen ya como pantalla interna versionada. Privacidad y
-          Soporte son WIRING preparado para PS-0D: si su URL/contacto no está
-          configurado (`legal-links.ts`), la fila se muestra deshabilitada
-          como "Disponible próximamente" y NUNCA abre un enlace falso.
+          Soporte apuntan a las URLs públicas reales (`legal-links.ts`); el
+          fail-safe "Disponible próximamente" se conserva por diseño para
+          cualquier valor que vuelva a quedar sin configurar.
         */}
         <Text variant="caption" color="muted" weight="semibold" style={styles.settingsGroupLabel}>
           LEGAL Y SOPORTE
@@ -817,6 +817,24 @@ export default function PerfilScreen() {
             </View>
           );
         })()}
+        {/*
+          F1-E -- enlace informativo público (requisito de Google Play), NUNCA
+          reemplaza la acción nativa de eliminación de arriba -- mismo patrón
+          que el enlace "Gestionar suscripción" de este mismo Dialog.
+        */}
+        {isConfigured(ACCOUNT_DELETION_URL) ? (
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel="Más información sobre la eliminación de cuenta"
+            onPress={() => {
+              if (isConfigured(ACCOUNT_DELETION_URL)) void Linking.openURL(ACCOUNT_DELETION_URL);
+            }}
+          >
+            <Text variant="bodySmall" weight="semibold" style={styles.deletionSubscriptionLink}>
+              Más información sobre la eliminación de cuenta
+            </Text>
+          </Pressable>
+        ) : null}
         {deletionRequesting ? <ActivityIndicator color={tokens.color.accent.default} /> : null}
         {deletionError ? (
           <Text variant="bodySmall" color="error">
