@@ -31,6 +31,7 @@
     "verify:outbox-delivery-filter-gate": "tsx scripts/run-gate.ts verify-outbox-delivery-filter-gate.ts",
     "verify:outbox-lifecycle-gate": "tsx scripts/run-gate.ts verify-outbox-lifecycle-gate.ts",
     "verify:privacy-gate": "tsx scripts/run-gate.ts verify-privacy-gate.ts",
+    "verify:request-account-deletion-cli-gate": "tsx scripts/run-gate.ts verify-request-account-deletion-cli-gate.ts",
     "verify:account-deletion-academic-history-gate": "tsx scripts/run-gate.ts verify-account-deletion-academic-history-gate.ts",
     "verify:analytics-gate": "tsx scripts/run-gate.ts verify-analytics-gate.ts",
     "verify:observability-gate": "tsx scripts/run-gate.ts verify-observability-gate.ts",
