@@ -80,4 +80,37 @@ export class PublicProfileReportRepository {
     });
     return result.count;
   }
+
+  /**
+   * F1-A.4 -- cierre definitivo de cuenta. Reemplaza `reporterAccountId` por
+   * `ref` en toda fila donde el reportante sea la cuenta que se cierra.
+   * Idempotente: una fila ya pseudonimizada no vuelve a matchear el `where`
+   * (compara contra el `accountId` ORIGINAL), así que una corrida repetida
+   * afecta 0 filas sin lanzar -- mismo criterio que el resto del barrido.
+   */
+  async pseudonymizeReporter(accountId: string, ref: string): Promise<number> {
+    const result = await this.prisma.publicProfileReport.updateMany({
+      where: { reporterAccountId: accountId },
+      data: { reporterAccountId: ref },
+    });
+    return result.count;
+  }
+
+  /**
+   * F1-A.4 -- cierre definitivo de cuenta. Reemplaza `targetAccountId` Y
+   * `targetPublicProfileId` por el MISMO `ref` en toda fila donde el objetivo
+   * reportado sea la cuenta que se cierra -- `targetPublicProfileId` no se
+   * resuelve contra `PublicProfile.id` real (evita depender del orden con la
+   * anonimización de `PublicProfile`, que corre en otro paso del barrido):
+   * basta con que deje de ser un identificador directo, y usar el mismo
+   * `ref` que `targetAccountId` mantiene ambos campos consistentes entre sí
+   * sin introducir un segundo espacio de pseudónimos.
+   */
+  async pseudonymizeTarget(accountId: string, ref: string): Promise<number> {
+    const result = await this.prisma.publicProfileReport.updateMany({
+      where: { targetAccountId: accountId },
+      data: { targetAccountId: ref, targetPublicProfileId: ref },
+    });
+    return result.count;
+  }
 }

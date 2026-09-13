@@ -12,6 +12,7 @@ import { ExamService } from '../exams/exam.service';
 import { QuickQuestionService } from '../gamification/quick-question.service';
 import { GamificationService } from '../gamification/gamification.service';
 import { GamificationPrivacyService } from '../gamification/gamification-privacy.service';
+import { ModerationPrivacyService } from '../user/moderation-privacy.service';
 import { PrivacyRequestRepository } from './privacy-request.repository';
 import type { PrivacyRequest } from '../generated/prisma/client';
 
@@ -39,6 +40,7 @@ export class PrivacyService {
     private readonly quickQuestionService: QuickQuestionService,
     private readonly gamificationService: GamificationService,
     private readonly gamificationPrivacyService: GamificationPrivacyService,
+    private readonly moderationPrivacyService: ModerationPrivacyService,
     private readonly outbox: OutboxService,
   ) {}
 
@@ -208,6 +210,17 @@ export class PrivacyService {
         // de toda salida pública/en vivo por las protecciones existentes
         // (WEB-0D.1C-A/B0).
         await this.gamificationPrivacyService.pseudonymizeTerminalSeasonParticipations(request.accountId);
+        // F1-A.4 -- moderación/trust-and-safety (PublicProfileReport/
+        // AccountBlock). Opción B de F1-A.3: se retiene el historial (valor
+        // de seguridad estructural -- patrones de reporte/bloqueo) pero el
+        // identificador directo de la cuenta que cierra se reemplaza por un
+        // pseudónimo estable (dominio de secreto propio, ver
+        // `moderation-actor-ref.ts`). Mismo criterio de fallo que los tres
+        // pasos de gamificación anteriores: si `MODERATION_ACTOR_SECRET`
+        // falta o hay una colisión inesperada, esto lanza, la solicitud
+        // queda PROCESSING para reintento, y la cuenta nunca llega a
+        // marcarse CLOSED con moderación a medio pseudonimizar.
+        await this.moderationPrivacyService.pseudonymizeForAccountClosure(request.accountId);
         // Dato personal de PROGRESS (respuestas y avance) -- mismo criterio
         // que USER arriba: dentro del mismo try, antes de markCompleted. Si
         // falla, la solicitud queda PROCESSING para reintento -- nunca se

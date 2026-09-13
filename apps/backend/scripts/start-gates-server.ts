@@ -44,11 +44,27 @@ if (dbName === 'axioma_dev') {
 
 console.log(`[start-gates-server] DATABASE_URL -> base "${dbName}" | PORT -> ${parsed.PORT ?? '(no definido en .env.gates)'}`);
 
+// F1-A.4R -- MODERATION_ACTOR_SECRET es REQUERIDO por ModerationPrivacyService
+// para que el barrido de cierre de cuenta complete (ver privacy.service.ts).
+// `.env.gates` está en .gitignore -- un checkout limpio / CI no lo tiene, y no
+// debe depender de que cada quien lo agregue a mano ahí. Mismo criterio de
+// aislamiento que el resto de este archivo: este valor NUNCA se usa si
+// `parsed.MODERATION_ACTOR_SECRET` ya trae uno (p.ej. un .env.gates local que
+// sí lo define, como hasta ahora), y esta rama de código solo se alcanza
+// dentro de start-gates-server.ts, que ya verificó arriba que la base NO es
+// axioma_dev -- no existe ninguna ruta por la que este fallback llegue a un
+// proceso apuntando a producción. Claramente NO-SECRETO: valor fijo, público
+// en el repo, inservible fuera de axioma_gates_dev.
+const gatesEnv = {
+  MODERATION_ACTOR_SECRET: 'test-only-moderation-secret-gates-fallback-never-production',
+  ...parsed,
+};
+
 const child = spawn('npx', ['nest', 'start', '--watch'], {
   cwd: BACKEND_ROOT,
   stdio: 'inherit',
   shell: process.platform === 'win32',
-  env: { ...process.env, ...parsed },
+  env: { ...process.env, ...gatesEnv },
 });
 
 child.on('exit', (code) => process.exit(code ?? 1));

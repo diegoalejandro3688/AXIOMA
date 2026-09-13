@@ -15,6 +15,7 @@ import { PublicProfileReportRepository } from './public-profile-report.repositor
 import { SafetyService } from './safety.service';
 import { SafetyController } from './safety.controller';
 import { PublicIdentityModerationService } from './public-identity-moderation.service';
+import { ModerationPrivacyService } from './moderation-privacy.service';
 import { CosmeticEquipmentController } from './cosmetic-equipment.controller';
 import { TitleCatalogController } from './title-catalog.controller';
 import { UserService } from './user.service';
@@ -69,6 +70,7 @@ import { AdvancedProfileController } from './advanced-profile.controller';
     PublicProfileReportRepository,
     SafetyService,
     PublicIdentityModerationService,
+    ModerationPrivacyService,
     UserService,
     CompetitiveProfileIdentityService,
     CompetitiveContextService,
@@ -81,6 +83,7 @@ import { AdvancedProfileController } from './advanced-profile.controller';
     CompetitiveContextService,
     CompetitiveLeaderboardService,
     PublicIdentityModerationService,
+    ModerationPrivacyService,
   ],
 })
 export class UserModule {}

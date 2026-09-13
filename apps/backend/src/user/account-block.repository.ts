@@ -53,4 +53,30 @@ export class AccountBlockRepository {
       where: { blockerAccountId_blockedAccountId: { blockerAccountId, blockedAccountId } },
     });
   }
+
+  /**
+   * F1-A.4 -- cierre definitivo de cuenta. Reemplaza `blockerAccountId` por
+   * `ref` en toda fila donde el bloqueador sea la cuenta que se cierra.
+   * Idempotente igual que `PublicProfileReportRepository.pseudonymizeReporter`.
+   */
+  async pseudonymizeBlocker(accountId: string, ref: string): Promise<number> {
+    const result = await this.prisma.accountBlock.updateMany({
+      where: { blockerAccountId: accountId },
+      data: { blockerAccountId: ref },
+    });
+    return result.count;
+  }
+
+  /**
+   * F1-A.4 -- cierre definitivo de cuenta. Reemplaza `blockedAccountId` por
+   * `ref` en toda fila donde el objetivo bloqueado sea la cuenta que se
+   * cierra.
+   */
+  async pseudonymizeBlocked(accountId: string, ref: string): Promise<number> {
+    const result = await this.prisma.accountBlock.updateMany({
+      where: { blockedAccountId: accountId },
+      data: { blockedAccountId: ref },
+    });
+    return result.count;
+  }
 }
