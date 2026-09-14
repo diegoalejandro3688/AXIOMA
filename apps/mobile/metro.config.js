@@ -1,13 +1,26 @@
+const path = require('path');
 const { getDefaultConfig } = require('expo/metro-config');
 
-// Expo SDK 54's `getDefaultConfig` ya detecta la raiz del monorepo y fija
-// `server.unstable_serverRoot` a la raiz del workspace
-// (C:\...\AXIOMA\app) -- de ahi resuelve el node_modules hoisted
-// (`expo-router/entry`) y `@axioma/contracts` (packages/contracts). Un
-// override manual a `__dirname` (apps/mobile) rompia esa resolucion en
-// Windows: el entry virtual de expo-router buscaba
-// `apps/mobile/node_modules/expo-router/entry` (inexistente con
-// node-linker=hoisted) -> Metro 404. Sin customizacion: el default es correcto.
-const config = getDefaultConfig(__dirname);
+const projectRoot = __dirname;
+const workspaceRoot = path.resolve(projectRoot, '../..');
+
+const config = getDefaultConfig(projectRoot);
+
+config.watchFolders = [
+  ...new Set([
+    ...(config.watchFolders || []),
+    path.join(workspaceRoot, 'packages', 'contracts'),
+  ]),
+];
+
+config.resolver.nodeModulesPaths = [
+  path.join(projectRoot, 'node_modules'),
+  path.join(workspaceRoot, 'node_modules'),
+];
+
+config.resolver.extraNodeModules = {
+  ...(config.resolver.extraNodeModules || {}),
+  '@axioma/contracts': path.join(workspaceRoot, 'packages', 'contracts'),
+};
 
 module.exports = config;

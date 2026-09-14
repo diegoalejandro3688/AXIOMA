@@ -1,7 +1,7 @@
 {
   "name": "@axioma/mobile",
   "version": "0.0.0",
-  "main": "expo-router/entry",
+  "main": "index.js",
   "private": true,
   "scripts": {
     "eas-build-post-install": "pnpm --filter @axioma/contracts build",
