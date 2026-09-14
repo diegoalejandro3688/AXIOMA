@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import type { ChallengeSummary } from '@axioma/contracts';
 import { listChallenges } from '../../../lib/api/challenges';
 import { challengeSections } from '../../../lib/challenges/select-hub-challenges';
@@ -9,6 +10,7 @@ import { ErrorState } from '../../../components/error-state';
 import { Text } from '../../../components/ui';
 import { ChallengeRow } from '../../../components/challenges/challenge-row';
 import { useChallengeClaim } from '../../../components/challenges/use-challenge-claim';
+import { useBoundedReconciliation } from '../../../lib/progress/use-bounded-reconciliation';
 import { useThemedStyles, spacing } from '../../../theme';
 import type { ThemeTokens } from '../../../theme';
 
@@ -38,11 +40,12 @@ export default function DesafiosScreen() {
   const insets = useSafeAreaInsets();
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
 
-  const load = useCallback(async () => {
-    setState({ status: 'loading' });
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    if (!silent) setState({ status: 'loading' });
     const result = await listChallenges();
     if (!result.ok) {
-      setState({ status: 'error', message: result.message });
+      if (!silent) setState({ status: 'error', message: result.message });
       return;
     }
     setState({ status: 'ready', challenges: result.data.challenges });
@@ -58,6 +61,23 @@ export default function DesafiosScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // F1 RELEASE REMEDIATION -- mismo patrón que competir/index.tsx (Polish F,
+  // §21/§22): la pantalla vive en el stack de Competir y puede quedar
+  // montada mientras el usuario completa una actividad de estudio en otra
+  // pestaña -- sin esto, el progreso ya persistido en backend no aparecía
+  // hasta reiniciar la app. Recarga silenciosa al recuperar el foco (idempotente,
+  // igual criterio que el hub para Liga) + reconciliación acotada compartida.
+  useFocusEffect(
+    useCallback(() => {
+      void load({ silent: true });
+    }, [load]),
+  );
+
+  const challengeSignature =
+    state.status === 'ready' ? state.challenges.map((c) => `${c.id}:${c.progressValue}:${c.challengeStatus}`).join('|') : null;
+  const reconcileChallenges = useCallback(() => void load({ silent: true }), [load]);
+  useBoundedReconciliation(reconcileChallenges, challengeSignature);
 
   if (state.status === 'loading') return <LoadingState message="Cargando desafíos…" />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
