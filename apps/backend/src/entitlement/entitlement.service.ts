@@ -1,4 +1,5 @@
 import { Injectable, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { PremiumTier } from '@axioma/contracts';
 import type { AccountSubscription } from '../generated/prisma/client';
 import { AccountSubscriptionRepository, toDerivableSubscription } from './subscription/account-subscription.repository';
@@ -37,6 +38,19 @@ export interface AccountEntitlement {
  *      en C3.2/C3.3.
  *   3. FREE -- por defecto (sin override y sin suscripcion vigente).
  *
+ * GOOGLE PLAY REVIEWER GRANT (microbloque "PERSISTENT PRODUCTION REVIEWER
+ * GRANT"): se intercala INMEDIATAMENTE despues del override de QA (#1) y
+ * ANTES de la suscripcion verificada (#2) -- por eso NUNCA compite con ni
+ * modifica Billing/`AccountSubscription`. Coincidencia EXACTA de `accountId`
+ * contra la variable de entorno OPCIONAL `GOOGLE_PLAY_REVIEWER_ACCOUNT_ID`
+ * (fail-closed: ausente/vacia -> nunca concede nada, sin comodines ni
+ * substrings). Backend-only, nunca expuesto por ningun endpoint, nunca
+ * registrado en logs. Independiente del override de QA en memoria (#1): no
+ * reutiliza su `Map`, no requiere `InternalOpsGuard`, no se ve afectado por
+ * `rejectInProduction()` -- existe explicitamente PARA producción y
+ * sobrevive redeploys porque se resuelve desde configuracion, no desde
+ * estado en memoria del proceso.
+ *
  * FRONTERA CONGELADA authorization <-> billing: `AccountSubscription` es la
  * verdad comercial (`state`, `expiryTime`, `autoRenewing`, token de store);
  * `AccountEntitlement` es `{ tier }` y NADA MAS. Cancelar la renovacion
@@ -52,12 +66,30 @@ export interface AccountEntitlement {
 export class EntitlementService {
   private readonly testOnlyTierOverride = new Map<string, EntitlementTier>();
 
-  constructor(@Optional() private readonly subscriptionRepo?: AccountSubscriptionRepository) {}
+  constructor(
+    @Optional() private readonly subscriptionRepo?: AccountSubscriptionRepository,
+    @Optional() private readonly config?: ConfigService,
+  ) {}
+
+  /**
+   * Google Play reviewer grant -- coincidencia EXACTA contra
+   * `GOOGLE_PLAY_REVIEWER_ACCOUNT_ID` (opcional). Fail-closed: sin `config`
+   * inyectado, o variable ausente/vacia, siempre `false` -- nunca un
+   * comodin ni una coincidencia parcial. Nunca registra `accountId` en logs.
+   */
+  private isReviewerGrantAccount(accountId: string): boolean {
+    const reviewerAccountId = this.config?.get<string>('GOOGLE_PLAY_REVIEWER_ACCOUNT_ID');
+    if (!reviewerAccountId) return false;
+    return accountId === reviewerAccountId;
+  }
 
   async getEntitlement(accountId: string): Promise<AccountEntitlement> {
     // 1. Override explicito de QA (nunca produccion, nunca UI de producto).
     const override = this.testOnlyTierOverride.get(accountId);
     if (override !== undefined) return { tier: override };
+
+    // 1.5. Google Play reviewer grant (backend-only, fail-closed, ver docstring de clase).
+    if (this.isReviewerGrantAccount(accountId)) return { tier: 'PREMIUM' };
 
     // 2. Suscripcion verificada -> derivacion pura.
     if (this.subscriptionRepo) {
@@ -82,6 +114,7 @@ export class EntitlementService {
   getEntitlementForRow(accountId: string, row: AccountSubscription | null): AccountEntitlement {
     const override = this.testOnlyTierOverride.get(accountId);
     if (override !== undefined) return { tier: override };
+    if (this.isReviewerGrantAccount(accountId)) return { tier: 'PREMIUM' };
     return { tier: deriveSubscriptionTier(toDerivableSubscription(row), new Date()) };
   }
 

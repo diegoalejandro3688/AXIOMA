@@ -169,6 +169,53 @@ console.log('--- F. Sin regresion en IA ---');
 }
 
 // --------------------------------------------------------------------------
+console.log('--- G. Google Play reviewer grant (microbloque PERSISTENT PRODUCTION REVIEWER GRANT) ---');
+{
+  const REVIEWER = 'acc-reviewer-99999999';
+  const OTHER = 'acc-other-88888888';
+  const fakeConfig = (value: string | undefined) => ({ get: (_key: string) => value }) as unknown as import('@nestjs/config').ConfigService;
+
+  const noConfig = new EntitlementService(undefined, undefined);
+  check('1. sin config inyectado -> comportamiento normal (FREE)', (await noConfig.getEntitlement(REVIEWER)).tier === 'FREE');
+
+  const emptyVar = new EntitlementService(undefined, fakeConfig(undefined));
+  check('1b. config presente pero GOOGLE_PLAY_REVIEWER_ACCOUNT_ID ausente -> comportamiento normal (FREE)', (await emptyVar.getEntitlement(REVIEWER)).tier === 'FREE');
+
+  const withReviewer = new EntitlementService(undefined, fakeConfig(REVIEWER));
+  check('2. accountId distinto al reviewer -> comportamiento normal (FREE)', (await withReviewer.getEntitlement(OTHER)).tier === 'FREE');
+  check('3. accountId EXACTO del reviewer -> PREMIUM', (await withReviewer.getEntitlement(REVIEWER)).tier === 'PREMIUM');
+  check(
+    '4. el reviewer grant no requiere ninguna AccountSubscription (subscriptionRepo=undefined y aun asi PREMIUM)',
+    (await withReviewer.getEntitlement(REVIEWER)).tier === 'PREMIUM',
+  );
+  check('9. sin wildcard/global: una cuenta vacia no matchea nunca', (await withReviewer.getEntitlement('')).tier === 'FREE');
+
+  const overrideWins = new EntitlementService(undefined, fakeConfig(REVIEWER));
+  overrideWins.setTestOnlyTierOverride(REVIEWER, 'FREE');
+  check('el override de QA explicito sigue teniendo precedencia sobre el reviewer grant', (await overrideWins.getEntitlement(REVIEWER)).tier === 'FREE');
+
+  check('getEntitlementForRow aplica el mismo reviewer grant (consistencia /me/subscription)', withReviewer.getEntitlementForRow(REVIEWER, null).tier === 'PREMIUM');
+  check('getEntitlementForRow: cuenta distinta sigue derivando de la fila (null -> FREE)', withReviewer.getEntitlementForRow(OTHER, null).tier === 'FREE');
+
+  const svcSrc = stripComments(read('src/entitlement/entitlement.service.ts'));
+  check(
+    '5/6. el reviewer grant vive en EntitlementService, no crea ruta HTTP nueva ni toca Billing/RTDN',
+    /isReviewerGrantAccount/.test(svcSrc) && !/@Controller|@Post|@Get/.test(svcSrc) && !/purchaseToken|reconcilePurchase|GooglePlaySubscriptionAdapter/.test(svcSrc),
+  );
+  check('comparacion EXACTA (===), nunca substring/prefix/wildcard', /accountId === reviewerAccountId/.test(svcSrc) && !/\.includes\(reviewerAccountId\)|\.startsWith\(reviewerAccountId\)/.test(svcSrc));
+  check('fail-closed: variable ausente/vacia -> false, sin fallback a "*"/"all"/"true"', /if \(!reviewerAccountId\) return false;/.test(svcSrc));
+  check('10. isReviewerGrantAccount nunca hace console.log/logger del accountId', !/console\.|Logger\(/.test(svcSrc.slice(svcSrc.indexOf('isReviewerGrantAccount'), svcSrc.indexOf('async getEntitlement'))));
+
+  check('7. no existe endpoint nuevo para el reviewer grant (solo 2 controllers, ambos preexistentes)', (svcSrc.match(/@Controller/g) ?? []).length === 0);
+  const adminSrc2 = stripComments(read('src/entitlement/entitlement-internal-admin.controller.ts'));
+  check('8. el override QA interno sigue bloqueado en produccion (rejectInProduction intacto)', /NODE_ENV'\)\s*===\s*'production'/.test(adminSrc2) && /throw new NotFoundException\(\)/.test(adminSrc2));
+  check('8b. el reviewer grant NO reutiliza el Map de override QA ni InternalOpsGuard', !/InternalOpsGuard/.test(svcSrc));
+
+  const envExample = read('.env.example');
+  check('config documentada en .env.example SIN valor real', /GOOGLE_PLAY_REVIEWER_ACCOUNT_ID=\s*$/m.test(envExample));
+}
+
+// --------------------------------------------------------------------------
 console.log('');
 if (failures > 0) {
   console.error(`${failures} verificacion(es) fallaron.`);
