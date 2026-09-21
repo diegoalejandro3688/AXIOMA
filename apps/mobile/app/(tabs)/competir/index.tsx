@@ -12,14 +12,19 @@ import { seasonCountdown } from '../../../lib/league/season-countdown';
 import { leagueVisual } from '../../../lib/league/league-visual';
 import { getPendingLp, reconcilePendingLp, subscribePendingLp } from '../../../lib/league/pending-lp-store';
 import { describeMyPosition } from '../../../lib/leaderboard/paginate-leaderboard';
+import type { QuickQuestionSubjectKey } from '@axioma/contracts';
 import { Text, Card, Button, Icon, Divider } from '../../../components/ui';
 import { QuickQuestionIllustration } from '../../../components/competitive/quick-question-illustration';
 import { LeagueEmblem } from '../../../components/competitive/league-emblem';
 import { LeagueLadderDialog } from '../../../components/competitive/league-ladder-dialog';
 import { LeagueTrophy } from '../../../components/competitive/league-trophy';
+import { QuickSubjectsDialog } from '../../../components/competitive/quick-subjects-dialog';
 import { ChallengeRow } from '../../../components/challenges/challenge-row';
 import { useChallengeClaim } from '../../../components/challenges/use-challenge-claim';
 import { useBoundedReconciliation } from '../../../lib/progress/use-bounded-reconciliation';
+import { useAuth } from '../../../lib/auth/auth-provider';
+import { getQuickQuestionSubjects, setQuickQuestionSubjects } from '../../../lib/storage/quick-question-subjects-store';
+import { DEFAULT_QUICK_QUESTION_SUBJECT_KEYS, quickQuestionSubjectsSummary } from '../../../lib/quick-question/subjects';
 import { useTheme, useThemedStyles, useColorSchemeName, spacing, radii } from '../../../theme';
 import type { ThemeTokens, IconName } from '../../../theme';
 
@@ -125,6 +130,29 @@ export default function CompetirScreen() {
   const lastKnownLpRef = useRef<number | null>(null);
   // STABILIZATION-B (Finding 8) -- Dialog informativo estático de la escalera de ligas.
   const [leagueInfoVisible, setLeagueInfoVisible] = useState(false);
+  // vc3 (F03, Quick Subject Selector) -- selección de materias de Pregunta
+  // rápida, persistida localmente y namespaced por cuenta (ver
+  // `lib/storage/quick-question-subjects-store.ts`). Default honesto de 5
+  // mientras carga/sin cuenta todavía -- nunca un array vacío que rompiera
+  // el mínimo de 2.
+  const auth = useAuth();
+  const [quickSubjects, setQuickSubjectsState] = useState<QuickQuestionSubjectKey[]>([...DEFAULT_QUICK_QUESTION_SUBJECT_KEYS]);
+  const [quickSubjectsEditorVisible, setQuickSubjectsEditorVisible] = useState(false);
+  useEffect(() => {
+    if (!auth.accountId) return;
+    let cancelled = false;
+    getQuickQuestionSubjects(auth.accountId).then((keys) => {
+      if (!cancelled) setQuickSubjectsState(keys);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.accountId]);
+  async function handleSaveQuickSubjects(keys: QuickQuestionSubjectKey[]) {
+    setQuickSubjectsEditorVisible(false);
+    setQuickSubjectsState(keys);
+    if (auth.accountId) await setQuickQuestionSubjects(auth.accountId, keys);
+  }
 
   /**
    * COMPETITIVE V1 (Incremento 11) -- `silent` refresca en segundo plano al
@@ -603,6 +631,20 @@ export default function CompetirScreen() {
         <Text variant="bodySmall" color="onInverse" style={styles.quickQuestionDescription}>
           Responde correctamente y gana LP
         </Text>
+        <Pressable
+          onPress={() => setQuickSubjectsEditorVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Editar materias de Pregunta rápida"
+          hitSlop={8}
+          style={styles.quickQuestionSubjectsRow}
+        >
+          <Text variant="bodySmall" color="onInverse">
+            {quickQuestionSubjectsSummary(quickSubjects)}
+          </Text>
+          <Text variant="bodySmall" weight="semibold" color="onInverse" style={styles.quickQuestionSubjectsEdit}>
+            Editar
+          </Text>
+        </Pressable>
         <View style={styles.quickQuestionButton}>
           <Text variant="titleMedium" weight="semibold" color="onAccent">
             Comenzar
@@ -620,6 +662,12 @@ export default function CompetirScreen() {
       // participación de la temporada actual (`view.leagueTier`); sólo
       // cuando hay una participación cargada. Nunca un valor fijo.
       currentTier={leagueState.status === 'ready' && leagueState.view.kind === 'enrolled' ? leagueState.view.leagueTier : null}
+    />
+    <QuickSubjectsDialog
+      visible={quickSubjectsEditorVisible}
+      selectedKeys={quickSubjects}
+      onRequestClose={() => setQuickSubjectsEditorVisible(false)}
+      onSave={handleSaveQuickSubjects}
     />
     </>
   );
@@ -692,6 +740,15 @@ function createStyles(t: ThemeTokens) {
     },
     quickQuestionCard: { gap: spacing.space1, overflow: 'hidden' as const },
     quickQuestionDescription: { opacity: 0.85, marginBottom: spacing.space2 },
+    quickQuestionSubjectsRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'space-between' as const,
+      opacity: 0.85,
+      marginBottom: spacing.space2,
+      paddingVertical: spacing.space1,
+    },
+    quickQuestionSubjectsEdit: { textDecorationLine: 'underline' as const },
     quickQuestionButton: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,

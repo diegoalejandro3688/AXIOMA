@@ -9,6 +9,7 @@ import {
   type AnswerQuickQuestionResponse,
   type TimeoutQuickQuestionResponse,
   type CloseQuickQuestionResponse,
+  type QuickQuestionSubjectKey,
 } from '@axioma/contracts';
 import { apiRequest, type ApiResult } from './client';
 
@@ -32,8 +33,19 @@ export function openQuickQuestionSession(): Promise<ApiResult<QuickQuestionSessi
   return apiRequest('POST', BASE, { body: {}, schema: quickQuestionSessionResponseSchema });
 }
 
-export function nextQuickQuestion(sessionId: string): Promise<ApiResult<QuickQuestionNextResponse>> {
-  return apiRequest('POST', `${BASE}/${sessionId}/next`, { body: {}, schema: quickQuestionNextResponseSchema });
+/**
+ * vc3 (F03, Quick Subject Selector) -- `subjectKeys` es OPCIONAL. Sin
+ * argumento (o `undefined`), el body es `{}` -- EXACTAMENTE el mismo
+ * request que antes de F03, backward compatible. Con selección, el
+ * backend filtra + balancea por esas materias (ver `quick-question.service.ts`);
+ * la pregunta pendiente ya presentada NUNCA se ve afectada por este
+ * parámetro (el servidor sólo lo usa al elegir una pregunta NUEVA).
+ */
+export function nextQuickQuestion(sessionId: string, subjectKeys?: QuickQuestionSubjectKey[]): Promise<ApiResult<QuickQuestionNextResponse>> {
+  return apiRequest('POST', `${BASE}/${sessionId}/next`, {
+    body: subjectKeys ? { subjectKeys } : {},
+    schema: quickQuestionNextResponseSchema,
+  });
 }
 
 /** `operationId` es responsabilidad del llamador -- ver `lib/quick-question/outcomes.ts` (`resolveAnswerOperationId`) para el criterio de reutilización ante reintento de red. */

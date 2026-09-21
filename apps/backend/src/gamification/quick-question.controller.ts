@@ -72,8 +72,8 @@ export class QuickQuestionController {
     @Param('sessionId') sessionId: string,
     @Body() body: unknown,
   ): Promise<QuickQuestionNextResponse> {
-    parseRequestBody(nextQuickQuestionBodySchema, body);
-    const outcome = await this.quickQuestionService.next(request.accountId, sessionId);
+    const input = parseRequestBody(nextQuickQuestionBodySchema, body);
+    const outcome = await this.quickQuestionService.next(request.accountId, sessionId, input.subjectKeys);
 
     if (outcome.outcome === 'NO_QUESTIONS_AVAILABLE') {
       return quickQuestionNextResponseSchema.parse({ outcome: 'NO_QUESTIONS_AVAILABLE' });

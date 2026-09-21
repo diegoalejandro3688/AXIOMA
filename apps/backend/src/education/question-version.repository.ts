@@ -116,8 +116,13 @@ export class QuestionVersionRepository {
    *     las preguntas atadas a un `exam_question` con `passage_id` (las que el
    *     usuario ve "según la fuente" sin fuente).
    * NO se añade filtro por materia/dificultad NI por forma del `curriculum_topic`
-   * (el contrato congelado dice explícitamente "cualquier pregunta `PUBLISHED`
-   * de cualquier tema es elegible" y rechaza filtros de selección más ricos).
+   * (el contrato congelado decía "cualquier pregunta `PUBLISHED` de cualquier
+   * tema es elegible" y rechazaba filtros de selección más ricos). Ese
+   * congelamiento fue SUPERADO explícitamente por vc3 (F03, Quick Subject
+   * Selector) SOLO para el camino CON selección de materias -- ver
+   * `findRandomEligibleForSubject` (aditiva). Este método (`findRandomEligible`,
+   * sin filtro) permanece INTACTO y sigue siendo el camino usado cuando el
+   * cliente no envía `subjectKeys` (vc2 / sin selección, backward compatible).
    * No se edita ni un solo enunciado; no hay migración ni flag nuevo.
    */
   async findRandomEligible(excludeQuestionVersionIds: string[], tx?: Prisma.TransactionClient): Promise<QuestionVersionWithAnswerOptions | null> {
@@ -135,6 +140,48 @@ export class QuestionVersionRepository {
       JOIN "question" q ON q."id" = qv."question_id"
       WHERE qv."editorial_status" = 'PUBLISHED'
         AND q."status" = 'ACTIVE'
+        AND NOT EXISTS (
+          SELECT 1 FROM "exam_question" eq
+          WHERE eq."question_version_id" = qv."id"
+            AND eq."passage_id" IS NOT NULL
+        )
+        AND qv."id" != ALL(${excludeQuestionVersionIds}::uuid[])
+      ORDER BY random()
+      LIMIT 1
+    `;
+    const chosenId = rows[0]?.id;
+    if (!chosenId) return null;
+    return client.questionVersion.findUnique({
+      where: { id: chosenId },
+      include: { answerOptions: { orderBy: { displayOrder: 'asc' } } },
+    });
+  }
+
+  /**
+   * vc3 (F03, Quick Subject Selector) -- MISMO predicado de elegibilidad
+   * EXACTO que `findRandomEligible` (PUBLISHED + ACTIVE + sin exam_question
+   * de Comprensión Lectora sin estímulo), con UN filtro adicional:
+   * `Question.primarySubjectId`. ADITIVA -- `findRandomEligible` queda
+   * intacta para el camino sin filtro (vc2 / sin selección). Duplicación
+   * deliberada y mínima (mismo criterio que `findRandomPracticeQuestionForSubject`
+   * frente a `findRandomEligible`): unir por `primarySubjectId` directo
+   * -- SIN el requisito de "recurso canónico" (`parent_id`/`learning_resource_version`
+   * PUBLISHED) que sí exige Práctica libre, porque el pool de Pregunta
+   * rápida nunca tuvo esa restricción y F03 no la introduce.
+   */
+  async findRandomEligibleForSubject(
+    subjectId: string,
+    excludeQuestionVersionIds: string[],
+    tx?: Prisma.TransactionClient,
+  ): Promise<QuestionVersionWithAnswerOptions | null> {
+    const client = tx ?? this.prisma;
+    const rows = await client.$queryRaw<{ id: string }[]>`
+      SELECT qv."id"
+      FROM "question_version" qv
+      JOIN "question" q ON q."id" = qv."question_id"
+      WHERE qv."editorial_status" = 'PUBLISHED'
+        AND q."status" = 'ACTIVE'
+        AND q."primary_subject_id" = ${subjectId}::uuid
         AND NOT EXISTS (
           SELECT 1 FROM "exam_question" eq
           WHERE eq."question_version_id" = qv."id"

@@ -30,7 +30,36 @@ export type QuickQuestionSessionResponse = z.infer<typeof quickQuestionSessionRe
 
 // --- POST /gamification/me/quick-question/sessions/:sessionId/next ---
 
-export const nextQuickQuestionBodySchema = z.object({}).strict();
+/**
+ * vc3 (F03, Quick Subject Selector) -- claves canónicas de materia YA
+ * existentes en el catálogo (`Subject.subjectKey`, ver `apps/backend/prisma/seed.ts`),
+ * reutilizadas tal cual -- NUNCA un vocabulario nuevo. Congeladas a las 5
+ * materias reales del catálogo V1; cualquier otra clave es rechazada por el
+ * enum antes de llegar a lógica de negocio.
+ */
+export const QUICK_QUESTION_SUBJECT_KEYS = ['matematica', 'matematica-m2', 'lenguaje', 'ciencias', 'historia'] as const;
+export const quickQuestionSubjectKeySchema = z.enum(QUICK_QUESTION_SUBJECT_KEYS);
+export type QuickQuestionSubjectKey = z.infer<typeof quickQuestionSubjectKeySchema>;
+
+/**
+ * vc3 (F03) -- `subjectKeys` es OPCIONAL y ADITIVO: un body `{}` (cliente
+ * vc2, o vc3 sin selección guardada) sigue siendo válido y produce
+ * EXACTAMENTE el comportamiento anterior (pool sin filtro de materia,
+ * `QuestionVersionRepository.findRandomEligible`) -- backward compatibility
+ * obligatoria mientras vc2 siga en Closed Testing. Cuando SÍ viene,
+ * mínimo 2 / máximo 5 (las 5 = el universo completo) y SIN duplicados --
+ * validado aquí, server-side, nunca solo en el cliente.
+ */
+export const nextQuickQuestionBodySchema = z
+  .object({
+    subjectKeys: z
+      .array(quickQuestionSubjectKeySchema)
+      .min(2, 'Selecciona al menos 2 materias.')
+      .max(5)
+      .refine((keys) => new Set(keys).size === keys.length, { message: 'subjectKeys no debe contener materias duplicadas.' })
+      .optional(),
+  })
+  .strict();
 export type NextQuickQuestionBody = z.infer<typeof nextQuickQuestionBodySchema>;
 
 /**

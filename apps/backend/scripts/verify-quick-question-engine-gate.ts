@@ -18,6 +18,7 @@ import { OutboxService } from '../src/platform/outbox/outbox.service';
 import { OutboxEventRepository } from '../src/platform/outbox/outbox-event.repository';
 import { QuestionVersionRepository } from '../src/education/question-version.repository';
 import { AnswerOptionRepository } from '../src/education/answer-option.repository';
+import { SubjectRepository } from '../src/education/subject.repository';
 import { QuickQuestionSessionRepository } from '../src/gamification/quick-question-session.repository';
 import { QuickQuestionAttemptRepository } from '../src/gamification/quick-question-attempt.repository';
 import { QuickQuestionService, QUICK_QUESTION_TIME_LIMIT_MS } from '../src/gamification/quick-question.service';
@@ -49,9 +50,10 @@ async function main() {
 
   const questionVersionRepo = new QuestionVersionRepository(prisma);
   const answerOptionRepo = new AnswerOptionRepository(prisma);
+  const subjectRepo = new SubjectRepository(prisma);
   const sessionRepo = new QuickQuestionSessionRepository(prisma);
   const attemptRepo = new QuickQuestionAttemptRepository(prisma);
-  const service = new QuickQuestionService(prisma, outbox, sessionRepo, attemptRepo, questionVersionRepo, answerOptionRepo);
+  const service = new QuickQuestionService(prisma, outbox, sessionRepo, attemptRepo, questionVersionRepo, answerOptionRepo, subjectRepo);
 
   const suffix = Date.now();
 
@@ -71,21 +73,34 @@ async function main() {
     [topicId, `GATE.QQE.TOPIC.${suffix}-${Math.random().toString(36).slice(2, 8)}`, subjectId],
   );
 
-  async function makePublishedQuestion(): Promise<{ questionVersionId: string; answerOptionId: string }> {
+  // vc3 (F03) -- una SEGUNDA materia real del catálogo (`ciencias`), con su
+  // propio tema aislado, para probar el filtrado/balance por materia sin
+  // tocar ninguna otra fixture de este archivo.
+  const ciSubjectRow = await pg.query(`SELECT id FROM subject WHERE subject_key = 'ciencias'`);
+  if (ciSubjectRow.rowCount === 0) throw new Error('Materia "ciencias" no encontrada -- ¿seed ejecutado?');
+  const ciSubjectId = ciSubjectRow.rows[0].id as string;
+  const ciTopicId = randomUUID();
+  await pg.query(
+    `INSERT INTO curriculum_topic (id, code, name, "order", subject_id, created_at, updated_at)
+     VALUES ($1, $2, 'Tema aislado (ciencias) del gate de Pregunta rápida F03', 905, $3, now(), now())`,
+    [ciTopicId, `GATE.QQE.TOPIC.CI.${suffix}-${Math.random().toString(36).slice(2, 8)}`, ciSubjectId],
+  );
+
+  async function makePublishedQuestionFor(qSubjectId: string, qTopicId: string): Promise<{ questionVersionId: string; answerOptionId: string }> {
     const questionId = randomUUID();
     const questionVersionId = randomUUID();
     const answerOptionId = randomUUID();
     await pg.query(
       `INSERT INTO question (id, question_key, primary_subject_id, question_type, status, created_at, updated_at)
        VALUES ($1, $2, $3, 'SINGLE_CHOICE', 'ACTIVE', now(), now())`,
-      [questionId, `GATE.QQE.${randomUUID()}`, subjectId],
+      [questionId, `GATE.QQE.${randomUUID()}`, qSubjectId],
     );
     // Orden válido y único desde LEF Bloque VII, Incremento 1: DRAFT ->
     // alternativas -> publicar.
     await pg.query(
       `INSERT INTO question_version (id, question_id, curriculum_topic_id, stem_content, explanation_content, editorial_status, created_at, updated_at)
        VALUES ($1, $2, $3, '[{"type":"paragraph","order":0,"text":"x"}]', '[{"type":"paragraph","order":0,"text":"x"}]', 'DRAFT', now(), now())`,
-      [questionVersionId, questionId, topicId],
+      [questionVersionId, questionId, qTopicId],
     );
     await pg.query(
       `INSERT INTO answer_option (id, question_version_id, content, display_order, is_correct, created_at)
@@ -94,6 +109,10 @@ async function main() {
     );
     await pg.query(`UPDATE question_version SET editorial_status = 'PUBLISHED', published_at = now() WHERE id = $1`, [questionVersionId]);
     return { questionVersionId, answerOptionId };
+  }
+
+  async function makePublishedQuestion(): Promise<{ questionVersionId: string; answerOptionId: string }> {
+    return makePublishedQuestionFor(subjectId, topicId);
   }
 
   /**
@@ -384,7 +403,7 @@ async function main() {
     }
   }
   const brokenOutbox = new OutboxService(new BrokenOutboxEventRepository() as unknown as OutboxEventRepository, config);
-  const serviceWithBrokenOutbox = new QuickQuestionService(prisma, brokenOutbox, sessionRepo, attemptRepo, questionVersionRepo, answerOptionRepo);
+  const serviceWithBrokenOutbox = new QuickQuestionService(prisma, brokenOutbox, sessionRepo, attemptRepo, questionVersionRepo, answerOptionRepo, subjectRepo);
 
   const sessionForBrokenOutbox = await serviceWithBrokenOutbox.openSession(randomUUID());
   trackedSessionIds.push(sessionForBrokenOutbox.session.id);
@@ -630,6 +649,103 @@ async function main() {
     await pg.query('DELETE FROM exam_question WHERE id = $1', [examQuestionId]);
     await pg.query('DELETE FROM exam_passage WHERE id = $1', [passageId]);
     await pg.query('DELETE FROM exam WHERE id = $1', [examId]);
+  }
+
+  console.log('--- 12d. vc3 (F03): selección por materia, balance, fallback, pending, backward-compat ---');
+  {
+    const mathSubjectKeyRow = await pg.query('SELECT subject_key FROM subject WHERE id = $1', [subjectId]);
+    const mathKey = mathSubjectKeyRow.rows[0].subject_key as string;
+    const ciKey = 'ciencias';
+
+    // A. BACKWARD COMPAT -- SIN subjectKeys, comportamiento idéntico a antes de F03.
+    const bcSession = await service.openSession(randomUUID());
+    trackedSessionIds.push(bcSession.session.id);
+    const bcQ = await makePublishedQuestion();
+    trackedQuestionIds.push(bcQ.questionVersionId);
+    await isolateEligibleUniverse(bcSession.session.id, bcSession.session.accountId, [bcQ.questionVersionId]);
+    const bcNext = await service.next(bcSession.session.accountId, bcSession.session.id);
+    check(
+      'A1. /next SIN subjectKeys sigue funcionando -- comportamiento vc2 intacto',
+      bcNext.outcome === 'QUESTION_PRESENTED' && bcNext.questionVersion.id === bcQ.questionVersionId,
+    );
+
+    // C/E. FILTER + FALLBACK -- universo aislado con SOLO una fixture de
+    // ciencias elegible (ninguna de matemática ni historia). Seleccionar
+    // [matemática, ciencias] debe devolver SIEMPRE la de ciencias --
+    // determinista (no depende del orden de la baraja): matemática nunca
+    // tiene contenido elegible en este universo, así que el PASO 2 (probar
+    // la siguiente materia de la baraja) es la ÚNICA vía posible al éxito.
+    const filterSession = await service.openSession(randomUUID());
+    trackedSessionIds.push(filterSession.session.id);
+    const filterAcc = filterSession.session.accountId;
+    const ciOnlyQ = await makePublishedQuestionFor(ciSubjectId, ciTopicId);
+    trackedQuestionIds.push(ciOnlyQ.questionVersionId);
+    await isolateEligibleUniverse(filterSession.session.id, filterAcc, [ciOnlyQ.questionVersionId]);
+    const filterNext = await service.next(filterAcc, filterSession.session.id, [mathKey, ciKey]);
+    check(
+      'C1/E1. con [matemática, ciencias] y SOLO ciencias elegible -> siempre devuelve la de ciencias (nunca matemática, nunca NO_QUESTIONS_AVAILABLE)',
+      filterNext.outcome === 'QUESTION_PRESENTED' && filterNext.questionVersion.id === ciOnlyQ.questionVersionId,
+    );
+
+    // D. PENDING -- una vez presentada, un cambio de `subjectKeys` en un
+    // /next posterior (todavía vigente, sin responder) NO debe sustituirla.
+    const pendingAgainDifferentFilter = await service.next(filterAcc, filterSession.session.id, ['historia', 'lenguaje']);
+    check(
+      'D1. pending question YA presentada se CONSERVA aunque el siguiente /next traiga subjectKeys distintos',
+      pendingAgainDifferentFilter.outcome === 'QUESTION_PRESENTED' && pendingAgainDifferentFilter.questionVersion.id === ciOnlyQ.questionVersionId,
+    );
+    // Consumir la pendiente (responde) -- confirma que /answer sigue
+    // funcionando con normalidad tras el flujo de F03 (G17/G18/G19/G20).
+    const filterAnswer = await service.answer(filterAcc, filterSession.session.id, ciOnlyQ.answerOptionId, randomUUID());
+    check('G. answer sigue funcionando con normalidad después de un flujo con subjectKeys', filterAnswer.outcome === 'ANSWERED');
+
+    // D2 -- AHORA sí, con la pendiente ya consumida, un /next con la NUEVA
+    // selección [historia, lenguaje] (ninguna con contenido elegible en este
+    // universo aislado) -> NO_QUESTIONS_AVAILABLE, NUNCA la de ciencias
+    // (que quedó fuera de la nueva selección) ni un error.
+    const noneEligible = await service.next(filterAcc, filterSession.session.id, ['historia', 'lenguaje']);
+    check(
+      'E2. NO_QUESTIONS_AVAILABLE sólo cuando NINGUNA materia seleccionada tiene contenido elegible (nunca cuando alguna sí lo tiene)',
+      noneEligible.outcome === 'NO_QUESTIONS_AVAILABLE' && noneEligible.session.status === 'ACTIVE',
+    );
+
+    // B. VALIDATION (defensa en profundidad de integridad) -- una subjectKey
+    // que no resuelve a un Subject real se rechaza explícitamente, nunca en
+    // silencio ni con un 200 fabricado.
+    const bogusSession = await service.openSession(randomUUID());
+    trackedSessionIds.push(bogusSession.session.id);
+    const bogusOutcome = await settled([service.next(bogusSession.session.accountId, bogusSession.session.id, ['matematica', 'no-existe'])]);
+    check(
+      'B1. subjectKey que no resuelve a un Subject real -> rechazada explícitamente (ConflictException), nunca silenciosa',
+      bogusOutcome[0]?.status === 'rejected',
+    );
+
+    // F. BALANCE ESTRUCTURAL -- con DOS materias igualmente elegibles
+    // (una fixture cada una), repetir selección+respuesta varias veces:
+    // ambas deben aparecer AL MENOS UNA VEZ en un número acotado de
+    // intentos -- invariante estructural (el algoritmo elige la MATERIA
+    // antes que la pregunta), NUNCA un test estadístico frágil de 50/50.
+    const balanceSession = await service.openSession(randomUUID());
+    trackedSessionIds.push(balanceSession.session.id);
+    const balanceAcc = balanceSession.session.accountId;
+    const balanceMathQ = await makePublishedQuestion();
+    const balanceCiQ = await makePublishedQuestionFor(ciSubjectId, ciTopicId);
+    trackedQuestionIds.push(balanceMathQ.questionVersionId, balanceCiQ.questionVersionId);
+    await isolateEligibleUniverse(balanceSession.session.id, balanceAcc, [balanceMathQ.questionVersionId, balanceCiQ.questionVersionId]);
+    const seenSubjects = new Set<'math' | 'ciencias'>();
+    const BALANCE_ATTEMPTS = 12; // acotado -- con sólo 2 fixtures elegibles (una por materia), ambas quedan cubiertas en <= 2 respuestas reales; el resto es margen de seguridad, nunca un loop sin cota
+    for (let i = 0; i < BALANCE_ATTEMPTS && seenSubjects.size < 2; i++) {
+      const draw = await service.next(balanceAcc, balanceSession.session.id, [mathKey, ciKey]);
+      if (draw.outcome !== 'QUESTION_PRESENTED') break;
+      const isMath = draw.questionVersion.id === balanceMathQ.questionVersionId;
+      seenSubjects.add(isMath ? 'math' : 'ciencias');
+      const opt = isMath ? balanceMathQ.answerOptionId : balanceCiQ.answerOptionId;
+      await service.answer(balanceAcc, balanceSession.session.id, opt, randomUUID());
+    }
+    check(
+      `F1. balance estructural -- ambas materias seleccionadas aparecieron al menos una vez en ${BALANCE_ATTEMPTS} intentos acotados (nunca dominado por el tamaño del pool, aquí 1=1)`,
+      seenSubjects.has('math') && seenSubjects.has('ciencias'),
+    );
   }
 
   console.log('--- 13. Frontera de dominio: QuickQuestionService no escribe en PROGRESS ---');

@@ -218,6 +218,42 @@ function main() {
   check('el intervalo NO decide el timeout: sólo llama a `resolveTimeout` (autoridad servidor)', /Date\.now\(\) >= deadlineTs[\s\S]{0,120}resolveTimeout\(/.test(screenSource));
   check('la limitación del Incremento 8 desapareció -- ya NO se dice "la pregunta sigue disponible desde Siguiente pregunta"', !/sigue disponible desde "Siguiente pregunta"/.test(screenSource));
 
+  console.log('--- 14. vc3 (F03): Quick Subject Selector -- helpers puros ---');
+  const {
+    QUICK_QUESTION_SUBJECT_OPTIONS,
+    QUICK_QUESTION_SUBJECT_MIN_SELECTED,
+    DEFAULT_QUICK_QUESTION_SUBJECT_KEYS,
+    isValidQuickQuestionSubjectSelection,
+    quickQuestionSubjectsSummary,
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+  } = require('../lib/quick-question/subjects') as typeof import('../lib/quick-question/subjects');
+  check('default = las 5 materias del catálogo', DEFAULT_QUICK_QUESTION_SUBJECT_KEYS.length === 5);
+  check('el selector renderiza exactamente 5 opciones (Matemática M1/M2, Lenguaje, Ciencias, Historia)', QUICK_QUESTION_SUBJECT_OPTIONS.length === 5);
+  check('mínimo obligatorio es 2', QUICK_QUESTION_SUBJECT_MIN_SELECTED === 2);
+  check('2 materias -> selección válida', isValidQuickQuestionSubjectSelection(['matematica', 'ciencias']));
+  check('5 materias -> selección válida', isValidQuickQuestionSubjectSelection([...DEFAULT_QUICK_QUESTION_SUBJECT_KEYS]));
+  check('1 materia -> INVÁLIDA (mínimo 2)', !isValidQuickQuestionSubjectSelection(['matematica']));
+  check('0 materias -> INVÁLIDA', !isValidQuickQuestionSubjectSelection([]));
+  check('materia desconocida -> INVÁLIDA (whitelist cerrada)', !isValidQuickQuestionSubjectSelection(['matematica', 'no-existe']));
+  check('duplicados -> INVÁLIDA', !isValidQuickQuestionSubjectSelection(['matematica', 'matematica']));
+  check('el resumen dice "Todas las materias" con las 5, y "N materias seleccionadas" en otro caso', quickQuestionSubjectsSummary([...DEFAULT_QUICK_QUESTION_SUBJECT_KEYS]) === 'Todas las materias' && quickQuestionSubjectsSummary(['matematica', 'ciencias']) === '2 materias seleccionadas');
+  check('las etiquetas reproducen Subject.name real -- "Lenguaje", NUNCA "Competencia Lectora" (nombre de un tema, no de la materia)', QUICK_QUESTION_SUBJECT_OPTIONS.some((o) => o.label === 'Lenguaje') && !QUICK_QUESTION_SUBJECT_OPTIONS.some((o) => o.label.includes('Competencia Lectora')));
+
+  console.log('--- 15. vc3 (F03): persistencia LOCAL namespaced por cuenta (verificación ESTÁTICA -- AsyncStorage no se ejecuta en este runner) ---');
+  const storeSource = readSource('lib', 'storage', 'quick-question-subjects-store.ts');
+  check('la clave de AsyncStorage está NAMESPACED por accountId (nunca una clave global compartida)', /axioma\.v1\.quickSubjects\.\$\{accountId\}/.test(storeSource));
+  check('escribir valida la selección (isValidQuickQuestionSubjectSelection) ANTES de tocar AsyncStorage', /if \(!isValidQuickQuestionSubjectSelection\(keys\)\) return false;[\s\S]{0,80}try/.test(storeSource));
+  check('leer con dato ausente o corrupto cae al DEFAULT de 5 materias (nunca una selección inválida silenciosa)', (storeSource.match(/DEFAULT_QUICK_QUESTION_SUBJECT_KEYS/g) ?? []).length >= 3);
+  check('mismo patrón defensivo try/catch que local-flags.ts (ADR-0009) -- ninguna escritura/lectura puede tirar la pantalla abajo', /catch \{/.test(storeSource));
+
+  console.log('--- 16. vc3 (F03): wiring de la pantalla y del hub -- /next usa la selección persistida, sin tocar timer/timeout ---');
+  check('la pantalla lee la selección UNA vez por sesión de pantalla (accountId de useAuth) y la pasa a nextQuickQuestion en CADA /next (init, loadNext, handleNextQuestion)', (screenSource.match(/nextQuickQuestion\(sessionId, subjectKeysRef\.current\)/g) ?? []).length + (screenSource.match(/loadNext\(sessionResult\.data\.sessionId\)/g) ?? []).length >= 2);
+  check('la pantalla usa getQuickQuestionSubjects (store namespaced), NUNCA lee AsyncStorage directo', screenSource.includes('getQuickQuestionSubjects(') && !/AsyncStorage/.test(screenSource));
+  check('F01 (timer/deadline) y F03 (subjectKeysRef) son responsabilidades separadas -- subjectKeysRef nunca aparece en el cálculo de deadlineTs/timer', !/deadlineTs[\s\S]{0,200}subjectKeysRef/.test(screenSource) && !/subjectKeysRef[\s\S]{0,200}deadlineTs =/.test(screenSource));
+  const competirIndexSource = readSource('app', '(tabs)', 'competir', 'index.tsx');
+  check('el hub de Competir ofrece "Editar" materias sobre la tarjeta de Pregunta rápida, SIN rediseñar Competir (mismo Card/onPress existentes)', competirIndexSource.includes('QuickSubjectsDialog') && competirIndexSource.includes('quickQuestionSubjectsSummary('));
+  check('el editor reutiliza el <Dialog> compartido (PROFILE-5B) -- NO crea un primitivo de modal nuevo', readSource('components', 'competitive', 'quick-subjects-dialog.tsx').includes("from '../ui'"));
+
   console.log('');
   if (failures > 0) {
     console.error(`${failures} verificación(es) fallaron.`);

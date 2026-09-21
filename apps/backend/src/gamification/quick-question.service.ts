@@ -6,6 +6,7 @@ import { QuickQuestionSessionRepository } from './quick-question-session.reposit
 import { QuickQuestionAttemptRepository } from './quick-question-attempt.repository';
 import { QuestionVersionRepository, type QuestionVersionWithAnswerOptions } from '../education/question-version.repository';
 import { AnswerOptionRepository } from '../education/answer-option.repository';
+import { SubjectRepository } from '../education/subject.repository';
 import { Prisma } from '../generated/prisma/client';
 import type { QuickQuestionSession, QuickQuestionAttempt } from '../generated/prisma/client';
 
@@ -102,6 +103,7 @@ export class QuickQuestionService {
     private readonly attemptRepo: QuickQuestionAttemptRepository,
     private readonly questionVersionRepo: QuestionVersionRepository,
     private readonly answerOptionRepo: AnswerOptionRepository,
+    private readonly subjectRepo: SubjectRepository,
   ) {}
 
   /**
@@ -140,7 +142,19 @@ export class QuickQuestionService {
    * nunca un error, el cliente puede reintentar más tarde si se publica
    * contenido nuevo.
    */
-  async next(accountId: string, sessionId: string): Promise<NextOutcome> {
+  /**
+   * vc3 (F03, Quick Subject Selector) -- `subjectKeys` es OPCIONAL y
+   * ADITIVO (contrato `nextQuickQuestionBodySchema`): `undefined` (vc2, o
+   * vc3 sin selección) preserva EXACTAMENTE el comportamiento anterior --
+   * `findRandomEligible` sin filtro. Se resuelve a `subjectId`s ANTES de
+   * abrir la transacción (lectura de referencia casi estática, sin
+   * necesidad de compartir el lock de sesión). Si una `subjectKey` ya
+   * validada por el enum no resolviera a un `Subject` real, es un problema
+   * de integridad de catálogo -- se rechaza explícitamente, nunca en
+   * silencio.
+   */
+  async next(accountId: string, sessionId: string, subjectKeys?: string[]): Promise<NextOutcome> {
+    const subjectIds = subjectKeys ? await this.resolveSubjectIds(subjectKeys) : null;
     return this.prisma.$transaction(
       async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(${QUICK_QUESTION_LOCK_NAMESPACE}, hashtext(${'qq-session:' + sessionId}))`;
@@ -181,7 +195,7 @@ export class QuickQuestionService {
           await this.sessionRepo.clearCurrentQuestion(tx, sessionId);
         }
 
-        const candidate = await this.questionVersionRepo.findRandomEligible(excludeIds, tx);
+        const candidate = await this.selectEligibleQuestion(subjectIds, excludeIds, tx);
         if (!candidate) {
           const cleared = await this.sessionRepo.findById(sessionId, tx);
           return { outcome: 'NO_QUESTIONS_AVAILABLE' as const, session: cleared ?? session };
@@ -401,6 +415,62 @@ export class QuickQuestionService {
       },
       { timeout: 30_000, maxWait: 30_000 },
     );
+  }
+
+  /**
+   * vc3 (F03) -- `subjectKeys` YA validadas por el enum del contrato
+   * (whitelist cerrada de las 5 materias reales) -- esta resolución es
+   * defensa en profundidad de integridad de catálogo, no de formato.
+   * `ConflictException` (mismo criterio que el resto de este servicio para
+   * "el dato referenciado ya no existe/no es válido") si alguna clave no
+   * resuelve a un `Subject` real.
+   */
+  private async resolveSubjectIds(subjectKeys: string[]): Promise<string[]> {
+    const subjects = await Promise.all(subjectKeys.map((key) => this.subjectRepo.findByKey(key)));
+    const missing = subjectKeys.filter((_, index) => !subjects[index]);
+    if (missing.length > 0) {
+      throw new ConflictException(`Materia(s) desconocida(s): ${missing.join(', ')}.`);
+    }
+    return subjects.map((subject) => subject!.id);
+  }
+
+  /**
+   * vc3 (F03) -- selección BALANCEADA por materia, nunca por el pool
+   * combinado directo (eso sesgaría hacia la materia con más contenido).
+   *
+   * `subjectIds === null` (sin selección, vc2/back-compat): camino
+   * INTACTO, `findRandomEligible` sin filtro -- idéntico al comportamiento
+   * anterior a F03.
+   *
+   * `subjectIds` presente: PASO 1 -- baraja (Fisher-Yates, `Math.random`)
+   * las materias seleccionadas, así cada una tiene la MISMA probabilidad de
+   * intentarse primero (el tamaño bruto del pool no entra en esta
+   * decisión). PASO 2 -- prueba cada materia de la baraja en orden hasta
+   * encontrar una con contenido elegible; NUNCA reintenta sin avanzar
+   * (acotado por `subjectIds.length`, sin loop infinito posible).
+   * `NO_QUESTIONS_AVAILABLE` (aguas arriba, en `next`) sólo si NINGUNA de
+   * las materias seleccionadas tiene contenido elegible ahora mismo.
+   */
+  private async selectEligibleQuestion(
+    subjectIds: string[] | null,
+    excludeIds: string[],
+    tx: Prisma.TransactionClient,
+  ): Promise<QuestionVersionWithAnswerOptions | null> {
+    if (!subjectIds) return this.questionVersionRepo.findRandomEligible(excludeIds, tx);
+
+    const shuffled = [...subjectIds];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = shuffled[i]!;
+      shuffled[i] = shuffled[j]!;
+      shuffled[j] = tmp;
+    }
+
+    for (const subjectId of shuffled) {
+      const candidate = await this.questionVersionRepo.findRandomEligibleForSubject(subjectId, excludeIds, tx);
+      if (candidate) return candidate;
+    }
+    return null;
   }
 
   /** `accountId` únicamente para verificar pertenencia -- una sesión ajena o inexistente produce el MISMO 404, nunca filtra existencia (mismo criterio que `ChallengeService.claim`). */

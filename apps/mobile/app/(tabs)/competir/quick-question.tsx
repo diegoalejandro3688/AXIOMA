@@ -2,7 +2,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
-import type { AnswerOptionPublicResponse, ResourceContentBlockResponse } from '@axioma/contracts';
+import type { AnswerOptionPublicResponse, ResourceContentBlockResponse, QuickQuestionSubjectKey } from '@axioma/contracts';
 import {
   openQuickQuestionSession,
   nextQuickQuestion,
@@ -29,6 +29,9 @@ import {
 import { ContentBlockRenderer } from '../../../components/content-block-renderer';
 import { LeagueTrophy } from '../../../components/competitive/league-trophy';
 import { addPendingLp } from '../../../lib/league/pending-lp-store';
+import { useAuth } from '../../../lib/auth/auth-provider';
+import { getQuickQuestionSubjects } from '../../../lib/storage/quick-question-subjects-store';
+import { DEFAULT_QUICK_QUESTION_SUBJECT_KEYS } from '../../../lib/quick-question/subjects';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
 import { Text, Button, AnswerOption, Icon } from '../../../components/ui';
@@ -112,10 +115,18 @@ export default function QuickQuestionScreen() {
   const router = useRouter();
   const tokens = useTheme();
   const styles = useThemedStyles(createStyles);
+  const auth = useAuth();
   const [screen, setScreen] = useState<Screen>({ status: 'initializing' });
   const [nowTs, setNowTs] = useState(() => Date.now());
   const mountedRef = useRef(true);
   const timeoutInFlightRef = useRef(false);
+  // vc3 (F03, Quick Subject Selector) -- selección leída UNA vez al entrar a
+  // la pantalla (ref, no state -- no necesita re-render). Cambiar la
+  // selección en Competir mientras esta pantalla está abierta NO la afecta
+  // (Competir queda debajo en el stack, no interactivo); la pregunta
+  // pendiente NUNCA se ve afectada por esto de todos modos (el servidor
+  // sólo usa `subjectKeys` al elegir una pregunta NUEVA).
+  const subjectKeysRef = useRef<QuickQuestionSubjectKey[]>([...DEFAULT_QUICK_QUESTION_SUBJECT_KEYS]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -126,6 +137,10 @@ export default function QuickQuestionScreen() {
 
   const init = useCallback(async () => {
     setScreen({ status: 'initializing' });
+    if (auth.accountId) {
+      subjectKeysRef.current = await getQuickQuestionSubjects(auth.accountId);
+    }
+    if (!mountedRef.current) return;
     const sessionResult = await openQuickQuestionSession();
     if (!mountedRef.current) return;
     if (!sessionResult.ok) {
@@ -133,10 +148,10 @@ export default function QuickQuestionScreen() {
       return;
     }
     await loadNext(sessionResult.data.sessionId);
-  }, []);
+  }, [auth.accountId]);
 
   const loadNext = useCallback(async (sessionId: string) => {
-    const result = await nextQuickQuestion(sessionId);
+    const result = await nextQuickQuestion(sessionId, subjectKeysRef.current);
     if (!mountedRef.current) return;
     const outcome = mapNextResult(result);
     applyNextOutcome(sessionId, outcome);
@@ -336,7 +351,7 @@ export default function QuickQuestionScreen() {
     if (screen.status !== 'result' || screen.loadingNext) return;
     const { sessionId } = screen;
     setScreen((prev) => (prev.status === 'result' ? { ...prev, loadingNext: true, nextError: null } : prev));
-    const result = await nextQuickQuestion(sessionId);
+    const result = await nextQuickQuestion(sessionId, subjectKeysRef.current);
     if (!mountedRef.current) return;
     const outcome = mapNextResult(result);
     if (outcome.kind === 'network' || outcome.kind === 'error') {
