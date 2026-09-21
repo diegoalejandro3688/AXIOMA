@@ -32,7 +32,8 @@
     },
     "plugins": [
       "expo-router",
-      "expo-iap"
+      "expo-iap",
+      "./plugins/with-android-nav-bar-contrast.js"
     ],
     "experiments": {
       "typedRoutes": true
