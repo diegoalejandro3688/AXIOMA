@@ -5,14 +5,14 @@
  * `lib/challenges/*` y `lib/leaderboard/paginate-leaderboard.ts`.
  *
  * IMPORTANTE (aislamiento para el Incremento 9): TODO aquí es
- * EXCLUSIVAMENTE de presentación local. El límite de 45 s NO tiene
- * autoridad de servidor todavía; el timeout local NO consume la pregunta
- * ni afirma consecuencia de LP alguna. El Incremento 9 reemplaza el
- * countdown local por un `deadline` autoritativo del backend.
+ * EXCLUSIVAMENTE de presentación local. Este límite NO tiene autoridad de
+ * servidor -- el valor real y autoritativo es `QUICK_QUESTION_TIME_LIMIT_MS`
+ * en `quick-question.service.ts` (backend); el timeout local NO consume la
+ * pregunta ni afirma consecuencia de LP alguna.
  */
 
-/** Límite VISUAL de la pregunta rápida, en segundos. Solo UI en el Incremento 8. */
-export const QUICK_QUESTION_TIME_LIMIT_SECONDS = 45;
+/** Límite VISUAL de la pregunta rápida, en segundos -- debe reflejar el valor autoritativo del backend (vc3: 60 s universal). Solo UI. */
+export const QUICK_QUESTION_TIME_LIMIT_SECONDS = 60;
 
 /**
  * COMPETITIVE V1, Incremento 10 -- LP que otorga una Pregunta rápida
@@ -32,7 +32,7 @@ export type TimerLevel = 'normal' | 'attention' | 'urgent' | 'expired';
 
 /**
  * Nivel visual del temporizador según los segundos restantes:
- *  > 10 -> normal (45..11) · 10..6 -> attention · 5..1 -> urgent · <= 0 -> expired.
+ *  > 10 -> normal (60..11) · 10..6 -> attention · 5..1 -> urgent · <= 0 -> expired.
  */
 export function timerLevel(secondsRemaining: number): TimerLevel {
   if (secondsRemaining <= 0) return 'expired';

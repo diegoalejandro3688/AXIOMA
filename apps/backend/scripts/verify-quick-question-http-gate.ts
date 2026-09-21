@@ -185,12 +185,12 @@ async function main() {
     check('NINGUNA alternativa expone isCorrect', noIsCorrectLeaked);
     check('la respuesta cruda tampoco contiene la cadena "isCorrect"', !next1.raw.includes('isCorrect'));
     check('/next NUNCA expone correctAnswerOptionId (la clave solo aparece tras responder)', !next1.raw.includes('correctAnswerOptionId'));
-    // Incremento 9 -- deadline autoritativa (aditiva) = currentPresentedAt + 45 s.
+    // vc3 (F01) -- deadline autoritativa (aditiva) = currentPresentedAt + 60 s.
     check('A. /next incluye deadlineAt (ISO)', typeof next1.body?.deadlineAt === 'string' && !Number.isNaN(Date.parse(next1.body.deadlineAt)));
     const sessRow1 = await pg.query('SELECT EXTRACT(EPOCH FROM current_presented_at) * 1000 AS presented_ms FROM quick_question_session WHERE id = $1', [sessionId]);
     check(
-      'A. deadlineAt = currentPresentedAt + 45 s (reloj del servidor)',
-      Date.parse(next1.body.deadlineAt) === Math.round(Number(sessRow1.rows[0].presented_ms)) + 45_000,
+      'A. deadlineAt = currentPresentedAt + 60 s (reloj del servidor)',
+      Date.parse(next1.body.deadlineAt) === Math.round(Number(sessRow1.rows[0].presented_ms)) + 60_000,
     );
     const presentedOptionIds = new Set((next1.body?.answerOptions ?? []).map((o: { id: string }) => o.id));
     check(
@@ -284,7 +284,7 @@ async function main() {
     const lpBefore = await pg.query(`SELECT COALESCE(SUM(point_amount),0)::int AS lp FROM league_point_ledger_entry WHERE account_id = $1`, [timeoutU.accountId]);
 
     // Simula ventana expirada -- reloj del SERVIDOR (pg now()), nunca del cliente.
-    await pg.query(`UPDATE quick_question_session SET current_presented_at = now() - interval '46 seconds' WHERE id = $1`, [tSessionId]);
+    await pg.query(`UPDATE quick_question_session SET current_presented_at = now() - interval '61 seconds' WHERE id = $1`, [tSessionId]);
     const attemptsBeforeTimeout = await pg.query('SELECT count(*)::int AS n FROM quick_question_attempt WHERE session_id = $1', [tSessionId]);
 
     // E. /timeout tras expirar -> TIMED_OUT + correctAnswerOptionId real.
@@ -331,7 +331,7 @@ async function main() {
     const dNext = await req('POST', `${QQ}/${dSessionId}/next`, lateU.authHeaders, {});
     const dPresentedIds = new Set((dNext.body?.answerOptions ?? []).map((o: { id: string }) => o.id));
     const dPresented = dPresentedIds.has(qMain.correctOptionId) ? qMain : qForeign;
-    await pg.query(`UPDATE quick_question_session SET current_presented_at = now() - interval '46 seconds' WHERE id = $1`, [dSessionId]);
+    await pg.query(`UPDATE quick_question_session SET current_presented_at = now() - interval '61 seconds' WHERE id = $1`, [dSessionId]);
     const dAttemptsBefore = await pg.query('SELECT count(*)::int AS n FROM quick_question_attempt WHERE session_id = $1', [dSessionId]);
     const lateAnswer = await req('POST', `${QQ}/${dSessionId}/answers`, lateU.authHeaders, {
       answerOptionId: dPresented.correctOptionId,

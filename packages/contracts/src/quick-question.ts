@@ -48,7 +48,7 @@ export const quickQuestionNextResponseSchema = z.discriminatedUnion('outcome', [
     answerOptions: z.array(answerOptionPublicResponseSchema).min(1),
     /**
      * COMPETITIVE V1 (Incremento 9) -- instante AUTORITATIVO en que expira la
-     * ventana de 45 s de esta pregunta (`currentPresentedAt + 45 s`,
+     * ventana de 60 s de esta pregunta (`currentPresentedAt + 60 s`,
      * calculado con el reloj del SERVIDOR). Aditivo. El móvil deriva de
      * aquí el tiempo restante real -- incluso al volver de segundo plano el
      * temporizador NO se reinicia. Una pregunta pendiente representada por
@@ -82,7 +82,7 @@ export type AnswerQuickQuestionBody = z.infer<typeof answerQuickQuestionBodySche
 /**
  * Unión discriminada por `outcome` (COMPETITIVE V1, Incremento 9):
  *
- *  - `ANSWERED` -- la respuesta llegó DENTRO de la ventana de 45 s y se
+ *  - `ANSWERED` -- la respuesta llegó DENTRO de la ventana de 60 s y se
  *    procesó normalmente. `isCorrect` + `correctAnswerOptionId` +
  *    `explanationContent` (nullable -- EDUCATION exige un bloque hoy pero
  *    esta respuesta no lo asume). La clave (`correctAnswerOptionId`) SOLO

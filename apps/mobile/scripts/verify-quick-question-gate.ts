@@ -146,10 +146,10 @@ function main() {
   check('handleSubmit verifica screen.submitting antes de proceder', /if \(screen\.status !== 'question' \|\| screen\.selectedOptionId === null \|\| screen\.submitting\) return;/.test(screenSource));
   check('handleNextQuestion verifica screen.loadingNext antes de proceder', /if \(screen\.status !== 'result' \|\| screen\.loadingNext\) return;/.test(screenSource));
 
-  console.log('--- 9. Incremento 8: temporizador VISUAL de 45 s (helpers puros) ---');
-  check('el límite visual es 45 segundos', QUICK_QUESTION_TIME_LIMIT_SECONDS === 45);
+  console.log('--- 9. vc3 (F01): temporizador VISUAL de 60 s (helpers puros) ---');
+  check('el límite visual es 60 segundos', QUICK_QUESTION_TIME_LIMIT_SECONDS === 60);
   check('umbrales de urgencia: atención a 10 s, urgencia a 5 s', QUICK_QUESTION_ATTENTION_THRESHOLD_SECONDS === 10 && QUICK_QUESTION_URGENCY_THRESHOLD_SECONDS === 5);
-  check('45..11 s -> normal', timerLevel(45) === 'normal' && timerLevel(11) === 'normal');
+  check('60..11 s -> normal', timerLevel(60) === 'normal' && timerLevel(11) === 'normal');
   check('10..6 s -> attention', timerLevel(10) === 'attention' && timerLevel(6) === 'attention');
   check('5..1 s -> urgent', timerLevel(5) === 'urgent' && timerLevel(1) === 'urgent');
   check('0 s -> expired', timerLevel(0) === 'expired' && timerLevel(-3) === 'expired');

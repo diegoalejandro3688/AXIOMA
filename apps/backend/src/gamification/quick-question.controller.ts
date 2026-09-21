@@ -93,7 +93,7 @@ export class QuickQuestionController {
         content: answerOptionContentSchema.parse(option.content),
         displayOrder: option.displayOrder,
       })),
-      // Incremento 9 -- deadline autoritativa (`presentedAt + 45 s`). NUNCA
+      // Incremento 9 -- deadline autoritativa (`presentedAt + 60 s`). NUNCA
       // la clave de respuesta.
       deadlineAt: outcome.deadlineAt.toISOString(),
     });

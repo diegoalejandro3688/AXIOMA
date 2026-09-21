@@ -443,7 +443,7 @@ async function main() {
   );
 
   console.log('--- 12b. Incremento 9: deadline AUTORITATIVA + timeout server-side ---');
-  check('la constante autoritativa es 45 000 ms', QUICK_QUESTION_TIME_LIMIT_MS === 45_000);
+  check('la constante autoritativa es 60 000 ms (vc3, F01)', QUICK_QUESTION_TIME_LIMIT_MS === 60_000);
 
   const tSession = await service.openSession(randomUUID());
   trackedSessionIds.push(tSession.session.id);
@@ -457,12 +457,12 @@ async function main() {
   // answer_option, y la exclusión post-timeout es determinista.
   await isolateEligibleUniverse(tSession.session.id, acc, [qT1.questionVersionId, qT2.questionVersionId, qT3.questionVersionId]);
 
-  // A. /next presenta con deadline autoritativa = presentedAt + 45 s.
+  // A. /next presenta con deadline autoritativa = presentedAt + 60 s.
   const tNext1 = await service.next(acc, tSession.session.id);
   if (tNext1.outcome !== 'QUESTION_PRESENTED') throw new Error('Se esperaba QUESTION_PRESENTED.');
   const s1 = await sessionRepo.findById(tSession.session.id);
-  const expectedDeadline1 = new Date((s1!.currentPresentedAt as Date).getTime() + 45_000).getTime();
-  check('A. /next devuelve deadlineAt = currentPresentedAt + 45 s (reloj del servidor)', tNext1.deadlineAt.getTime() === expectedDeadline1);
+  const expectedDeadline1 = new Date((s1!.currentPresentedAt as Date).getTime() + 60_000).getTime();
+  check('A. /next devuelve deadlineAt = currentPresentedAt + 60 s (reloj del servidor)', tNext1.deadlineAt.getTime() === expectedDeadline1);
 
   // B. /next de nuevo dentro de la ventana -> MISMA pregunta, MISMA deadline (no se reinicia).
   const tNext2 = await service.next(acc, tSession.session.id);
@@ -485,8 +485,8 @@ async function main() {
   const sAfterEarly = await sessionRepo.findById(tSession.session.id);
   check('H. la pregunta pendiente sigue intacta tras un timeout prematuro', sAfterEarly?.currentQuestionVersionId === tNext1.questionVersion.id);
 
-  // Simula que la ventana expiró: currentPresentedAt 46 s en el pasado (reloj del servidor, nunca del cliente).
-  await pg.query(`UPDATE quick_question_session SET current_presented_at = now() - interval '46 seconds' WHERE id = $1`, [tSession.session.id]);
+  // Simula que la ventana expiró: currentPresentedAt 61 s en el pasado (reloj del servidor, nunca del cliente).
+  await pg.query(`UPDATE quick_question_session SET current_presented_at = now() - interval '61 seconds' WHERE id = $1`, [tSession.session.id]);
 
   const qT1CorrectRow = await pg.query('SELECT id FROM answer_option WHERE question_version_id = $1 AND is_correct = true', [tNext1.questionVersion.id]);
   const attemptsBeforeTimeout = await pg.query('SELECT count(*)::int AS n FROM quick_question_attempt WHERE session_id = $1', [tSession.session.id]);
@@ -534,7 +534,7 @@ async function main() {
   check('G. currentPresentedAt es fresco (posterior a la presentación original)', (s3!.currentPresentedAt as Date).getTime() > (s1!.currentPresentedAt as Date).getTime());
 
   // D. answer() DESPUÉS de la deadline -> TIMED_OUT, sin intento, sin evento.
-  await pg.query(`UPDATE quick_question_session SET current_presented_at = now() - interval '46 seconds' WHERE id = $1`, [tSession.session.id]);
+  await pg.query(`UPDATE quick_question_session SET current_presented_at = now() - interval '61 seconds' WHERE id = $1`, [tSession.session.id]);
   const qT3CorrectRow = await pg.query('SELECT id FROM answer_option WHERE question_version_id = $1 AND is_correct = true', [tNext3.questionVersion.id]);
   const lateAnswerOptionId = qT3CorrectRow.rows[0].id;
   const attemptsBeforeLate = await pg.query('SELECT count(*)::int AS n FROM quick_question_attempt WHERE session_id = $1', [tSession.session.id]);

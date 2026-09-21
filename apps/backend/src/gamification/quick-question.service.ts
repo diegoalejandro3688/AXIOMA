@@ -30,7 +30,7 @@ const QUICK_QUESTION_LOCK_NAMESPACE = 23;
  * de `currentPresentedAt + este valor`, calculada con el reloj del servidor
  * -- nunca con un timestamp/`secondsRemaining` enviado por el cliente.
  */
-export const QUICK_QUESTION_TIME_LIMIT_MS = 45_000;
+export const QUICK_QUESTION_TIME_LIMIT_MS = 60_000;
 
 /** Instante autoritativo de expiración de una pregunta presentada en `presentedAt`. */
 export function quickQuestionDeadline(presentedAt: Date): Date {
@@ -50,7 +50,7 @@ export type NextOutcome =
       outcome: 'QUESTION_PRESENTED';
       session: QuickQuestionSession;
       questionVersion: QuestionVersionWithAnswerOptions;
-      /** `currentPresentedAt + 45 s` -- ventana autoritativa de ESTA presentación. */
+      /** `currentPresentedAt + 60 s` -- ventana autoritativa de ESTA presentación. */
       deadlineAt: Date;
     }
   | { outcome: 'NO_QUESTIONS_AVAILABLE'; session: QuickQuestionSession };
@@ -292,7 +292,7 @@ export class QuickQuestionService {
 
         // COMPETITIVE V1, Incremento 9 -- la deadline se verifica TAMBIÉN
         // aquí, con el reloj del servidor. Una respuesta que llega después
-        // de `currentPresentedAt + 45 s` NO se acepta como respuesta: no
+        // de `currentPresentedAt + 60 s` NO se acepta como respuesta: no
         // crea intento, no emite evento (**0 LP**), se resuelve como
         // timeout. Un cliente viejo/modificado no puede responder tarde y
         // obtener recompensa. La pregunta queda consumida.

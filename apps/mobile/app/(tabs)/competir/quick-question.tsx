@@ -95,8 +95,8 @@ type Screen =
  * Pregunta rápida -- Bloque IV, Incremento 5, sub-incremento 5.d + rediseño
  * visual Competir V1, Incrementos 8-9.
  *
- * TEMPORIZADOR -- 45 s con AUTORIDAD DE SERVIDOR (Incremento 9). La deadline
- * llega en `deadlineAt` de `/next` (`currentPresentedAt + 45 s`, reloj del
+ * TEMPORIZADOR -- 60 s con AUTORIDAD DE SERVIDOR (Incremento 9). La deadline
+ * llega en `deadlineAt` de `/next` (`currentPresentedAt + 60 s`, reloj del
  * servidor); el temporizador visual se DERIVA de ahí, así volver de segundo
  * plano NO lo reinicia. Al llegar a 0 el móvil pide a `/timeout` la
  * resolución autoritativa -- nunca decide el timeout por su cuenta. El
