@@ -33,7 +33,8 @@
     "plugins": [
       "expo-router",
       "expo-iap",
-      "./plugins/with-android-nav-bar-contrast.js"
+      "./plugins/with-android-nav-bar-contrast.js",
+      "./plugins/with-android-release-signing.js"
     ],
     "experiments": {
       "typedRoutes": true
