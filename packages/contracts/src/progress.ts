@@ -92,6 +92,27 @@ export const submitResponseResponseSchema = z.object({
   isCorrect: z.boolean(),
   respondedAt: isoDateTime,
   topicStatus: z.enum(['IN_PROGRESS', 'COMPLETED']),
+  /**
+   * VC4 (Instant Progress) -- `true` ÚNICAMENTE cuando ESTA llamada es la
+   * que transicionó el tema a COMPLETED por primera vez (nunca en un replay
+   * por `operationId`, nunca cuando el tema ya estaba COMPLETED de antes,
+   * nunca en la resolución contra una respuesta ya existente) -- mismo
+   * booleano `justCompleted` que `ProgressService.recordActivityAndMaybeComplete`
+   * ya computaba internamente, solo que ahora se expone. El cliente lo usa
+   * para saber, sin adivinar, cuándo mostrar el progreso instantáneo de
+   * TEMA_COMPLETADO -- nunca inventa esta señal a partir de `topicStatus`
+   * (que sí puede ser COMPLETED en un replay sin que ESTA llamada haya
+   * completado nada).
+   */
+  topicJustCompleted: z.boolean(),
+  /**
+   * VC4 (Instant Progress) -- `true` ÚNICAMENTE cuando ESTA llamada disparó
+   * la completitud automática del recurso del tema (ver STABILIZATION-B6,
+   * `ProgressService.recordResourceCompletion`, `created === true`). Mismo
+   * criterio que `topicJustCompleted`: nunca true en un replay ni cuando el
+   * recurso ya estaba completado.
+   */
+  resourceJustCompleted: z.boolean(),
 });
 export type SubmitResponseResponse = z.infer<typeof submitResponseResponseSchema>;
 

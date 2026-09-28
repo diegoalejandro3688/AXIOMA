@@ -6,14 +6,18 @@
 // única por cuenta bajo concurrencia real, ownership cross-account,
 // exclusión mutua compartida next/answer/close dentro del mismo tx,
 // idempotencia de replay vs. conflicto controlado entre operationId
-// distintos, NO_QUESTIONS_AVAILABLE, publicación best-effort post-commit
-// con evidencia de que un fallo no revierte ni duplica nada.
+// distintos, NO_QUESTIONS_AVAILABLE. VC4 (League Reward Reliability) --
+// la publicación de `quick_question_answered` es AHORA atómica con el
+// intento (misma transacción, ver `OutboxService.publish(input, tx)`):
+// un fallo de publicación revierte TODO (intento + avance de sesión),
+// nunca deja una fila a medias ni un evento sin publicar.
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
+import { GAMIFICATION_SCHEMA_VERSION } from '@axioma/contracts';
 import { OutboxService } from '../src/platform/outbox/outbox.service';
 import { OutboxEventRepository } from '../src/platform/outbox/outbox-event.repository';
 import { QuestionVersionRepository } from '../src/education/question-version.repository';
@@ -396,10 +400,10 @@ async function main() {
     check('sin pregunta pendiente tras el agotamiento', exhausted.session.currentQuestionVersionId === null);
   }
 
-  console.log('--- 12. Precisión #6: fallo de publicación NO revierte ni duplica el intento, ni deja la sesión inconsistente ---');
+  console.log('--- 12. VC4 (League Reward Reliability): intento + outbox_event son AHORA atómicos -- un fallo de publicación revierte TODO ---');
   class BrokenOutboxEventRepository {
     create(): Promise<never> {
-      return Promise.reject(new Error('fallo simulado del gate 4.b para probar la garantía best-effort'));
+      return Promise.reject(new Error('fallo simulado del gate 4.b para probar la garantía ATÓMICA (VC4)'));
     }
   }
   const brokenOutbox = new OutboxService(new BrokenOutboxEventRepository() as unknown as OutboxEventRepository, config);
@@ -418,48 +422,66 @@ async function main() {
   const nextWithBrokenOutbox = await serviceWithBrokenOutbox.next(sessionForBrokenOutbox.session.accountId, sessionForBrokenOutbox.session.id);
   if (nextWithBrokenOutbox.outcome !== 'QUESTION_PRESENTED') throw new Error('Se esperaba QUESTION_PRESENTED para la prueba de outbox roto.');
 
+  const brokenOperationId = randomUUID();
   let answerWithBrokenOutboxThrew = false;
-  let answerWithBrokenOutboxResult: Awaited<ReturnType<typeof service.answer>> | undefined;
   try {
-    answerWithBrokenOutboxResult = await serviceWithBrokenOutbox.answer(
+    await serviceWithBrokenOutbox.answer(
       sessionForBrokenOutbox.session.accountId,
       sessionForBrokenOutbox.session.id,
       qF.answerOptionId,
-      randomUUID(),
+      brokenOperationId,
     );
   } catch {
     answerWithBrokenOutboxThrew = true;
   }
-  check('answer() NUNCA propaga un fallo de publicación -- OutboxService lo atrapa internamente (ADR-0006)', !answerWithBrokenOutboxThrew);
-  if (answerWithBrokenOutboxResult && answerWithBrokenOutboxResult.outcome !== 'ANSWERED') throw new Error('Se esperaba ANSWERED (dentro de ventana).');
-  check('el intento se creó normalmente pese al fallo de publicación', answerWithBrokenOutboxResult?.outcome === 'ANSWERED' && answerWithBrokenOutboxResult.created === true);
+  check('answer() AHORA SÍ propaga un fallo de publicación (VC4 -- ya no es best-effort para este flujo)', answerWithBrokenOutboxThrew);
 
   const brokenSessionAfter = await sessionRepo.findById(sessionForBrokenOutbox.session.id);
-  check('currentQuestionVersionId sigue en null -- la sesión NO queda inconsistente por el fallo de publicación', brokenSessionAfter?.currentQuestionVersionId === null);
+  check(
+    'currentQuestionVersionId NO se limpió -- el ROLLBACK deshizo TAMBIÉN el avance de sesión, no solo el intento',
+    brokenSessionAfter?.currentQuestionVersionId === qF.questionVersionId,
+  );
 
   const attemptRowsAfterBrokenOutbox = await pg.query('SELECT count(*)::int AS n FROM quick_question_attempt WHERE session_id = $1', [sessionForBrokenOutbox.session.id]);
   // Conteo EXACTO igual que siempre: los intentos de exclusión insertados para
   // aislar el universo elegible de esta sesión son conocidos y se descuentan.
-  check('exactamente UN intento -- el fallo de publicación no duplicó nada', attemptRowsAfterBrokenOutbox.rows[0].n - brokenOutboxExclusions === 1);
+  check('CERO intentos -- el ROLLBACK deshizo también la fila de intento, nunca queda a medias', attemptRowsAfterBrokenOutbox.rows[0].n - brokenOutboxExclusions === 0);
 
-  const outboxRowsAfterBrokenOutbox = await pg.query(
-    `SELECT count(*)::int AS n FROM outbox_event WHERE payload->>'quickQuestionAttemptId' = $1`,
-    [answerWithBrokenOutboxResult?.attempt.id ?? ''],
-  );
-  check('ausencia del evento es el ÚNICO efecto observable del fallo -- ningún outbox_event se publicó', outboxRowsAfterBrokenOutbox.rows[0].n === 0);
+  const outboxRowsAfterBrokenOutbox = await pg.query('SELECT count(*)::int AS n FROM outbox_event WHERE aggregate_id = $1 AND payload->>\'questionVersionId\' = $2', [
+    sessionForBrokenOutbox.session.accountId,
+    qF.questionVersionId,
+  ]);
+  check('CERO outbox_event -- ni el intento ni el evento sobreviven al fallo (atomicidad real, no dos pasos)', outboxRowsAfterBrokenOutbox.rows[0].n === 0);
 
-  const replayAfterBrokenOutbox = await service.answer(
+  console.log('--- 12b. El MISMO operationId, tras el rollback, se trata como una operación NUEVA (nunca quedó admitida) ---');
+  const retryWithHealthyService = await service.answer(
     sessionForBrokenOutbox.session.accountId,
     sessionForBrokenOutbox.session.id,
     qF.answerOptionId,
-    (answerWithBrokenOutboxResult as { attempt: { operationId: string } }).attempt.operationId,
+    brokenOperationId,
   );
   check(
-    'incluso con el servicio SANO, reintentar con el MISMO operationId sigue siendo un replay idempotente (nunca se corrompe)',
-    replayAfterBrokenOutbox.outcome === 'ANSWERED' &&
-      replayAfterBrokenOutbox.created === false &&
-      replayAfterBrokenOutbox.attempt.id === (answerWithBrokenOutboxResult as { attempt: { id: string } }).attempt.id,
+    'con el servicio SANO y el MISMO operationId que había fallado, se crea el intento normalmente (created=true, nunca replay de una fila que nunca existió)',
+    retryWithHealthyService.outcome === 'ANSWERED' && retryWithHealthyService.created === true,
   );
+  if (retryWithHealthyService.outcome === 'ANSWERED') {
+    const outboxAfterHealthyRetry = await pg.query(`SELECT count(*)::int AS n FROM outbox_event WHERE payload->>'quickQuestionAttemptId' = $1`, [retryWithHealthyService.attempt.id]);
+    check('esta vez SÍ existe exactamente un outbox_event -- confirma que el fallo anterior era exclusivo del outbox roto, no algo estructural', outboxAfterHealthyRetry.rows[0].n === 1);
+  }
+
+  console.log('--- 12c. Backward-compat: el camino BEST-EFFORT (sin tx) de OutboxService sigue intacto para otros dominios (ej. PROGRESS) ---');
+  let bestEffortThrew = false;
+  try {
+    await brokenOutbox.publish({
+      eventKey: 'unrelated_domain_event',
+      schemaVersion: GAMIFICATION_SCHEMA_VERSION,
+      sourceDomain: 'GAMIFICATION',
+      payload: { note: 'publish sin tx -- debe seguir siendo best-effort' },
+    });
+  } catch {
+    bestEffortThrew = true;
+  }
+  check('OutboxService.publish() SIN tx sigue atrapando el error internamente (comportamiento histórico intacto para llamadores no migrados)', !bestEffortThrew);
 
   console.log('--- 12b. Incremento 9: deadline AUTORITATIVA + timeout server-side ---');
   check('la constante autoritativa es 60 000 ms (vc3, F01)', QUICK_QUESTION_TIME_LIMIT_MS === 60_000);

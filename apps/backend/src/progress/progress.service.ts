@@ -213,7 +213,7 @@ export class ProgressService {
     const byOperation = await this.responseRepo.findByOperationId(input.operationId);
     if (byOperation) {
       const status = await this.currentTopicStatus(accountId, topicId);
-      return { data: this.toSubmitResponse(byOperation, status), created: false };
+      return { data: this.toSubmitResponse(byOperation, status, false, false), created: false };
     }
 
     // Validaciones de servidor (ADR-0014, punto 7).
@@ -287,6 +287,12 @@ export class ProgressService {
       // primera vez -- nunca en llamadas posteriores mientras el tema ya
       // estaba COMPLETED (evita republicar el mismo hecho en cada
       // respuesta subsiguiente a una unidad ya completada).
+      // VC4 (Instant Progress) -- captura, sin cambiar NADA de la lógica de
+      // negocio de arriba, si esta llamada disparó la completitud del
+      // recurso -- la misma señal `created` que `recordResourceCompletion`
+      // ya devolvía, ahora también propagada a la respuesta HTTP.
+      let resourceJustCompleted = false;
+
       if (justCompleted && completedAt) {
         // STABILIZATION-B6 -- la completitud del RECURSO ahora ocurre
         // automáticamente al terminar el flujo de preguntas del tema-recurso
@@ -298,7 +304,8 @@ export class ProgressService {
         // abajo): son dos hechos académicos distintos, +20 XP cada uno.
         const publishedResource = await this.resourceVersionRepo.findLatestPublishedByTopicId(topicId);
         if (publishedResource) {
-          await this.recordResourceCompletion(accountId, topicId, publishedResource.learningResource.id);
+          const resourceCompletion = await this.recordResourceCompletion(accountId, topicId, publishedResource.learningResource.id);
+          resourceJustCompleted = resourceCompletion.created;
         }
 
         await this.outbox.publish({
@@ -315,7 +322,7 @@ export class ProgressService {
         });
       }
 
-      return { data: this.toSubmitResponse(created, status), created: true };
+      return { data: this.toSubmitResponse(created, status, justCompleted, resourceJustCompleted), created: true };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION) {
         // Ganador de la carrera de concurrencia -- re-consultar y aplicar la misma lógica de idempotencia/conflicto. Nunca un 500.
@@ -340,7 +347,7 @@ export class ProgressService {
       throw new ResponseConflictError(existing);
     }
     const status = await this.currentTopicStatus(accountId, topicId);
-    return this.toSubmitResponse(existing, status);
+    return this.toSubmitResponse(existing, status, false, false);
   }
 
   private async currentTopicStatus(accountId: string, topicId: string): Promise<'IN_PROGRESS' | 'COMPLETED'> {
@@ -398,13 +405,20 @@ export class ProgressService {
     return { status: updated.status, justCompleted, completedAt: updated.completedAt };
   }
 
-  private toSubmitResponse(response: StudentResponse, topicStatus: 'IN_PROGRESS' | 'COMPLETED'): SubmitResponseResponse {
+  private toSubmitResponse(
+    response: StudentResponse,
+    topicStatus: 'IN_PROGRESS' | 'COMPLETED',
+    topicJustCompleted: boolean,
+    resourceJustCompleted: boolean,
+  ): SubmitResponseResponse {
     return submitResponseResponseSchema.parse({
       questionVersionId: response.questionVersionId,
       answerOptionId: response.answerOptionId,
       isCorrect: response.isCorrect,
       respondedAt: response.respondedAt.toISOString(),
       topicStatus,
+      topicJustCompleted,
+      resourceJustCompleted,
     });
   }
 

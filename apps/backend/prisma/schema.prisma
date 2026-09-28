@@ -2431,6 +2431,14 @@ model QuickQuestionSession {
   currentQuestionVersionId String?                    @map("current_question_version_id") @db.Uuid
   /// Timestamp de auditoría (decisión #4, §12.8) -- nunca usado para ningún límite de tiempo en V1.
   currentPresentedAt       DateTime?                  @map("current_presented_at")
+  /// RC (Quick Question timeout exclusion fix) -- id de la ÚLTIMA pregunta
+  /// que expiró (vía `/timeout` o el camino de seguridad inline de `/next`)
+  /// sin generar un `QuickQuestionAttempt`. Sin relación FK a propósito
+  /// (solo se lee su id para excluirlo de la siguiente selección, nunca se
+  /// hace join) -- ver `QuickQuestionService.next`/`.timeout`. Se limpia a
+  /// `null` en cuanto se presenta una pregunta NUEVA (`setCurrentQuestion`)
+  /// -- excluye únicamente la más reciente, nunca acumula un historial.
+  lastExpiredQuestionVersionId String?                @map("last_expired_question_version_id") @db.Uuid
   startedAt                DateTime                   @default(now()) @map("started_at")
   closedAt                 DateTime?                  @map("closed_at")
 

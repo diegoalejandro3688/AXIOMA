@@ -11,6 +11,7 @@ import {
 } from '../../../../../../lib/api/exams';
 import { forgetActiveAttempt } from '../../../../../../lib/exams/attempt-cache';
 import { armStudyProgressReconciliation } from '../../../../../../lib/progress/study-progress-reconciliation';
+import { addOptimisticXp, XP_REWARD_BY_ACTIVITY_TYPE } from '../../../../../../lib/progress/instant-xp-store';
 import {
   selectionsFromQuestions,
   sortByDisplayOrder,
@@ -211,7 +212,12 @@ export default function EnsayoAttemptScreen() {
       // STABILIZATION-B8 (Polish F) -- ensayo enviado: se producirá
       // ENSAYO_COMPLETADO, cuyo XP + evaluación de Desafíos llega asíncrono.
       // Inicio/Competir mostrarán "Actualizando progreso…" de forma acotada.
-      if (result.ok) armStudyProgressReconciliation();
+      if (result.ok) {
+        armStudyProgressReconciliation();
+        // VC4 (Instant Progress) -- mismo criterio que ejercicio.tsx: overlay
+        // optimista inmediato, solo en el camino ACEPTADO por el servidor.
+        addOptimisticXp(XP_REWARD_BY_ACTIVITY_TYPE.ENSAYO_COMPLETADO);
+      }
       await forgetActiveAttempt(examId);
       goToResult();
       return;

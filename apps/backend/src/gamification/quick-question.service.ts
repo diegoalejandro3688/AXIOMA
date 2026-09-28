@@ -167,6 +167,15 @@ export class QuickQuestionService {
         // Ids excluidos de la selección: los ya intentados en la sesión y,
         // si aplica, la pregunta que se acaba de consumir por expiración.
         const excludeIds = await this.attemptRepo.findQuestionVersionIdsBySession(sessionId, tx);
+        // RC (Quick Question timeout exclusion fix) -- la última pregunta
+        // que expiró vía `/timeout` explícito (o vía este mismo camino en
+        // una llamada anterior) NUNCA debe resurgir en la selección
+        // inmediatamente siguiente. Antes de este fix, `session` no
+        // conservaba ningún rastro de esa expiración una vez que
+        // `/timeout` limpiaba `currentQuestionVersionId` por separado.
+        if (session.lastExpiredQuestionVersionId) {
+          excludeIds.push(session.lastExpiredQuestionVersionId);
+        }
 
         if (session.currentQuestionVersionId) {
           if (!isQuickQuestionExpired(session.currentPresentedAt, new Date())) {
@@ -192,7 +201,7 @@ export class QuickQuestionService {
           // el endpoint explícito `/timeout`; este camino es la red de
           // seguridad para un `/next` sobre una pregunta ya vencida.
           excludeIds.push(session.currentQuestionVersionId);
-          await this.sessionRepo.clearCurrentQuestion(tx, sessionId);
+          await this.sessionRepo.clearCurrentQuestionAsExpired(tx, sessionId, session.currentQuestionVersionId);
         }
 
         const candidate = await this.selectEligibleQuestion(subjectIds, excludeIds, tx);
@@ -246,11 +255,17 @@ export class QuickQuestionService {
         if (!correctOption) {
           // Integridad rota (pregunta PUBLISHED sin correcta): se consume
           // igual para no dejar la sesión atascada.
-          await this.sessionRepo.clearCurrentQuestion(tx, sessionId);
+          await this.sessionRepo.clearCurrentQuestionAsExpired(tx, sessionId, session.currentQuestionVersionId);
           throw new ConflictException('La pregunta pendiente de esta sesión ya no está disponible.');
         }
 
-        await this.sessionRepo.clearCurrentQuestion(tx, sessionId);
+        // RC (Quick Question timeout exclusion fix) -- antes llamaba a
+        // `clearCurrentQuestion` (genérico), perdiendo qué pregunta expiró.
+        // `clearCurrentQuestionAsExpired` conserva ese id
+        // (`lastExpiredQuestionVersionId`) para que la SIGUIENTE llamada a
+        // `/next` la excluya -- mismo criterio que ya aplicaba el camino de
+        // seguridad inline de `/next` (§2.B), ahora también aquí.
+        await this.sessionRepo.clearCurrentQuestionAsExpired(tx, sessionId, session.currentQuestionVersionId);
         return { outcome: 'TIMED_OUT' as const, correctAnswerOptionId: correctOption.id };
       },
       { timeout: 30_000, maxWait: 30_000 },
@@ -354,6 +369,36 @@ export class QuickQuestionService {
         });
         await this.sessionRepo.clearCurrentQuestion(tx, sessionId);
 
+        // VC4 (League Reward Reliability) -- publicación DENTRO de la MISMA
+        // transacción que crea el intento (`tx`, pasado explícitamente a
+        // `OutboxService.publish`), cerrando el hueco best-effort que existía
+        // aquí (§13.3 punto 4-5 histórico): un fallo al insertar el evento
+        // ahora revierte TAMBIÉN el intento (ROLLBACK real de Postgres),
+        // nunca dos filas a medias. Solo se publica en el camino de creación
+        // real (`created === true` -- ver el `return` de más abajo), nunca en
+        // el replay -- mismo criterio de siempre, ahora simplemente atómico
+        // con la fila que lo origina en vez de posterior a ella. `OutboxService`
+        // sigue siendo la MISMA infraestructura compartida (ADR-0006); otros
+        // dominios que no pasan `tx` (p. ej. PROGRESS) conservan exactamente
+        // el comportamiento best-effort anterior, sin cambios.
+        await this.outbox.publish(
+          {
+            eventKey: 'quick_question_answered',
+            schemaVersion: GAMIFICATION_SCHEMA_VERSION,
+            sourceDomain: 'GAMIFICATION',
+            aggregateId: accountId,
+            occurredAt: attempt.respondedAt,
+            payload: {
+              accountId,
+              quickQuestionAttemptId: attempt.id,
+              quickQuestionSessionId: attempt.sessionId,
+              questionVersionId: attempt.questionVersionId,
+              isCorrect: attempt.isCorrect,
+            },
+          },
+          tx,
+        );
+
         return {
           outcome: 'ANSWERED' as const,
           attempt,
@@ -364,33 +409,6 @@ export class QuickQuestionService {
       },
       { timeout: 30_000, maxWait: 30_000 },
     );
-
-    // Publicación best-effort, POST-COMMIT, fuera de la transacción de
-    // arriba (§13.3 punto 4-5, corregido conforme a ADR-0006: OutboxService
-    // usa el cliente Prisma global, no puede participar en esa transacción).
-    // GARANTÍA LIMITADA, documentada y aceptada: si el proceso cae
-    // exactamente aquí -- entre el commit de arriba y este publish -- el
-    // intento queda registrado correctamente (nunca se pierde ni se
-    // corrompe) pero este evento puntual no se publica, sin reintento
-    // automático. Solo se publica en el camino de creación real (`created
-    // === true`), nunca en el replay -- mismo criterio ya usado por
-    // PROGRESS al publicar el evento equivalente de respuesta académica.
-    if (result.outcome === 'ANSWERED' && result.created) {
-      await this.outbox.publish({
-        eventKey: 'quick_question_answered',
-        schemaVersion: GAMIFICATION_SCHEMA_VERSION,
-        sourceDomain: 'GAMIFICATION',
-        aggregateId: accountId,
-        occurredAt: result.attempt.respondedAt,
-        payload: {
-          accountId,
-          quickQuestionAttemptId: result.attempt.id,
-          quickQuestionSessionId: result.attempt.sessionId,
-          questionVersionId: result.attempt.questionVersionId,
-          isCorrect: result.attempt.isCorrect,
-        },
-      });
-    }
 
     return result;
   }

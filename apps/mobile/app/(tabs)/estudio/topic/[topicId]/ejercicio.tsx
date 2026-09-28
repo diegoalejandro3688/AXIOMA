@@ -7,6 +7,7 @@ import { listPublishedQuestions } from '../../../../../lib/api/education';
 import { getTopicProgress } from '../../../../../lib/api/progress';
 import { submitResponseViaOutbox } from '../../../../../lib/progress/submit-response';
 import { armStudyProgressReconciliation } from '../../../../../lib/progress/study-progress-reconciliation';
+import { addOptimisticXp, XP_REWARD_BY_ACTIVITY_TYPE } from '../../../../../lib/progress/instant-xp-store';
 import { syncPendingOperations } from '../../../../../lib/offline/sync-worker';
 import { isPremiumRequiredError, isPremiumRequiredOutcome } from '../../../../../lib/entitlement/premium-error';
 import { PremiumLockedScreen } from '../../../../../components/premium/premium-locked-screen';
@@ -137,6 +138,21 @@ export default function EjercicioScreen() {
     // (`outcome.kind === 'ok'`) -- una operación en cola offline no arma nada.
     if (outcome.kind === 'ok') {
       armStudyProgressReconciliation();
+      // VC4 (Instant Progress, follow-up) -- overlay optimista INMEDIATO:
+      // RESPUESTA_VALIDADA siempre se produce en una respuesta aceptada.
+      // TEMA_COMPLETADO/RECURSO_COMPLETADO usan las señales REALES que el
+      // backend ahora expone (`topicJustCompleted`/`resourceJustCompleted`,
+      // ver `ProgressService.submitResponse` -- ya las calculaba
+      // internamente, solo faltaba devolverlas). Nunca `topicStatus`
+      // (puede seguir en COMPLETED en un replay sin que ESTA llamada haya
+      // completado nada -- habría duplicado XP local en ese caso).
+      addOptimisticXp(XP_REWARD_BY_ACTIVITY_TYPE.RESPUESTA_VALIDADA);
+      if (outcome.data.topicJustCompleted) {
+        addOptimisticXp(XP_REWARD_BY_ACTIVITY_TYPE.TEMA_COMPLETADO);
+      }
+      if (outcome.data.resourceJustCompleted) {
+        addOptimisticXp(XP_REWARD_BY_ACTIVITY_TYPE.RECURSO_COMPLETADO);
+      }
     }
 
     setState((prev) => {

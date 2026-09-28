@@ -28,7 +28,7 @@ import {
 } from '../../../lib/quick-question/quick-question-feedback';
 import { ContentBlockRenderer } from '../../../components/content-block-renderer';
 import { LeagueTrophy } from '../../../components/competitive/league-trophy';
-import { addPendingLp } from '../../../lib/league/pending-lp-store';
+import { addPendingReward } from '../../../lib/league/pending-lp-store';
 import { useAuth } from '../../../lib/auth/auth-provider';
 import { getQuickQuestionSubjects } from '../../../lib/storage/quick-question-subjects-store';
 import { DEFAULT_QUICK_QUESTION_SUBJECT_KEYS } from '../../../lib/quick-question/subjects';
@@ -311,7 +311,15 @@ export default function QuickQuestionScreen() {
         // elegible para LP en la temporada vigente (`lpEligible`). Sin
         // temporada/participación activa: cero pendiente -- el hub reconcilia
         // contra el saldo autoritativo real, nunca se suma aquí al total.
-        addPendingLp(QUICK_QUESTION_CORRECT_LP);
+        //
+        // VC4 -- `operationId` (ya generado por este cliente, línea 279) es
+        // el `attemptId` real que identifica esta operación de forma estable
+        // (es la misma clave de idempotencia que el backend usa para el
+        // intento) -- se persiste localmente (SQLite, sobrevive el cierre de
+        // la app) y se AWAIT-ea aquí, antes del `setScreen` de abajo, para
+        // que nunca dependa de que la pantalla siga montada ni de que el
+        // usuario no navegue de inmediato.
+        await addPendingReward(operationId, QUICK_QUESTION_CORRECT_LP);
       }
       setScreen({
         status: 'result',

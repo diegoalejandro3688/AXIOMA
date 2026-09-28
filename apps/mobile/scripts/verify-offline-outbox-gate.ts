@@ -74,12 +74,17 @@ async function main() {
   );
   check('índice de pendientes (sync_status, created_at) creado', indexes.length === 1);
   const version1 = await driver1.getFirstAsync<{ user_version: number }>('PRAGMA user_version', []);
-  check('PRAGMA user_version == 1 tras migrar', version1?.user_version === 1);
+  // VC4 -- `defaultMigrations` ahora incluye v2 (pending_reward), así que
+  // migrar contra la BD real llega hasta la última versión conocida, no
+  // necesariamente 1. Esta sección solo audita outbox_operation (v1); el
+  // valor exacto de la última versión se prueba de forma aislada más abajo
+  // con un set de migraciones EXPLÍCITO (`[stepOne]`), no contra el default.
+  check('PRAGMA user_version == la última migración conocida tras migrar (>= 1, outbox_operation es v1)', (version1?.user_version ?? 0) >= 1);
 
   console.log('--- 2. Migraciones monotónicas: correr de nuevo no falla ni reaplica ---');
   await runMigrations(driver1);
   const versionAfterSecondRun = await driver1.getFirstAsync<{ user_version: number }>('PRAGMA user_version', []);
-  check('la versión sigue en 1 (no se reaplicó)', versionAfterSecondRun?.user_version === 1);
+  check('la versión no cambia al reaplicar (no se reaplica nada)', versionAfterSecondRun?.user_version === version1?.user_version);
 
   console.log('--- 3. Una migración fallida NO actualiza la versión (atomicidad real, con ROLLBACK) ---');
   const db2 = new DatabaseSync(':memory:');

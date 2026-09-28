@@ -44,10 +44,16 @@ export class QuickQuestionSessionRepository {
    * mientras la sesión siga ACTIVE. `tx` opcional -- QuickQuestionService.next
    * lo pasa para escribir dentro de la transacción bloqueada por sesión.
    */
+  /**
+   * RC (Quick Question timeout exclusion fix) -- limpia SIEMPRE
+   * `lastExpiredQuestionVersionId` al presentar una pregunta nueva: esa
+   * exclusión solo debe cubrir la selección INMEDIATAMENTE siguiente a una
+   * expiración, nunca acumular un historial permanente.
+   */
   setCurrentQuestion(id: string, questionVersionId: string, presentedAt: Date, tx?: Prisma.TransactionClient): Promise<QuickQuestionSession> {
     return (tx ?? this.prisma).quickQuestionSession.update({
       where: { id },
-      data: { currentQuestionVersionId: questionVersionId, currentPresentedAt: presentedAt },
+      data: { currentQuestionVersionId: questionVersionId, currentPresentedAt: presentedAt, lastExpiredQuestionVersionId: null },
     });
   }
 
@@ -56,12 +62,30 @@ export class QuickQuestionSessionRepository {
    * `tx` OBLIGATORIO, misma transacción que crea el `quick_question_attempt`
    * correspondiente (§13.3 punto 4, corregido 2026-08-06: la transacción
    * cubre EXCLUSIVAMENTE estas dos tablas propias, la publicación del evento
-   * ocurre después, best-effort, fuera de ella).
+   * ocurre después, best-effort, fuera de ella). NUNCA toca
+   * `lastExpiredQuestionVersionId` -- esta pregunta se respondió de verdad,
+   * no expiró.
    */
   clearCurrentQuestion(tx: Prisma.TransactionClient, id: string): Promise<QuickQuestionSession> {
     return tx.quickQuestionSession.update({
       where: { id },
       data: { currentQuestionVersionId: null, currentPresentedAt: null },
+    });
+  }
+
+  /**
+   * RC (Quick Question timeout exclusion fix) -- mismo efecto que
+   * `clearCurrentQuestion`, pero además registra QUÉ pregunta expiró
+   * (`expiredQuestionVersionId`) para que la SIGUIENTE selección de `/next`
+   * la excluya -- cierra la asimetría real entre el camino normal
+   * (`/timeout` explícito, que antes perdía este dato) y el camino de
+   * seguridad inline de `/next` (que ya excluía correctamente dentro de la
+   * MISMA llamada, pero no dejaba rastro para llamadas posteriores).
+   */
+  clearCurrentQuestionAsExpired(tx: Prisma.TransactionClient, id: string, expiredQuestionVersionId: string): Promise<QuickQuestionSession> {
+    return tx.quickQuestionSession.update({
+      where: { id },
+      data: { currentQuestionVersionId: null, currentPresentedAt: null, lastExpiredQuestionVersionId: expiredQuestionVersionId },
     });
   }
 

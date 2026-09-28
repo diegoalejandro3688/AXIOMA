@@ -15,16 +15,29 @@ import type { OutboxEvent, Prisma } from '../../generated/prisma/client';
 export class OutboxEventRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(input: {
-    eventKey: string;
-    schemaVersion: string;
-    sourceDomain: string;
-    aggregateId?: string | null;
-    producerVersion?: string | null;
-    occurredAt: Date;
-    payload: Prisma.InputJsonValue;
-  }): Promise<OutboxEvent> {
-    return this.prisma.outboxEvent.create({ data: input });
+  /**
+   * VC4 (League Reward Reliability) -- `tx` opcional: cuando el llamador lo
+   * pasa (su propio `Prisma.TransactionClient`), el INSERT participa en ESA
+   * transacción -- un rollback del llamador revierte también este evento, y
+   * un fallo aquí revierte al llamador. Sin `tx` (default, todos los
+   * llamadores existentes sin cambios), se usa el cliente global de siempre
+   * -- comportamiento idéntico al anterior. Generalización mínima del MISMO
+   * método/tabla, nunca una segunda arquitectura de outbox.
+   */
+  create(
+    input: {
+      eventKey: string;
+      schemaVersion: string;
+      sourceDomain: string;
+      aggregateId?: string | null;
+      producerVersion?: string | null;
+      occurredAt: Date;
+      payload: Prisma.InputJsonValue;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<OutboxEvent> {
+    const client = tx ?? this.prisma;
+    return client.outboxEvent.create({ data: input });
   }
 
   /**

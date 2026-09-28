@@ -3,6 +3,7 @@ import { randomUUID } from 'expo-crypto';
 import { createExpoSqliteDriver } from './sqlite-driver.expo';
 import { runMigrations } from './migration-runner';
 import { OutboxRepository } from './outbox-repository';
+import { PendingRewardRepository } from './pending-reward-repository';
 import type { SqliteDriver } from './sqlite-driver';
 
 const DATABASE_NAME = 'axioma-offline.db';
@@ -28,4 +29,10 @@ async function getDriver(): Promise<SqliteDriver> {
 export async function getOutboxRepository(): Promise<OutboxRepository> {
   const driver = await getDriver();
   return new OutboxRepository(driver, randomUUID);
+}
+
+/** VC4 (League Reward Reliability) -- misma BD/driver cacheado que `getOutboxRepository`, tabla distinta (`pending_reward`, migración `version: 2`). */
+export async function getPendingRewardRepository(): Promise<PendingRewardRepository> {
+  const driver = await getDriver();
+  return new PendingRewardRepository(driver, randomUUID);
 }

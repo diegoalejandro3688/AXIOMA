@@ -9,6 +9,7 @@ import { listChallenges } from '../../lib/api/challenges';
 import { groupChallenges, progressRatio as challengeProgressRatio } from '../../lib/challenges/group-challenges';
 import { pickContinueTarget, type ContinueTarget } from '../../lib/progress/pick-continue-topic';
 import { useBoundedReconciliation } from '../../lib/progress/use-bounded-reconciliation';
+import { getOptimisticXpDelta, reconcileXp, subscribeInstantXp, applyOptimisticXpOverlay } from '../../lib/progress/instant-xp-store';
 import { useEntitlement } from '../../lib/entitlement/entitlement-provider';
 import { LoadingState } from '../../components/loading-state';
 import { Text, Icon, Card, Progress, LevelBadge } from '../../components/ui';
@@ -126,6 +127,10 @@ export default function InicioScreen() {
     const freshProfile = profileResult.ok ? profileResult.data : undefined;
     const freshStreak = streakResult.ok ? streakResult.data : undefined;
     const freshLevel = levelResult.ok ? levelResult.data : undefined;
+    // VC4 (Instant Progress) -- CADA `lifetimeXp` autoritativo fresco reconcilia
+    // el overlay optimista (nunca solo en la carga inicial): consume el delta
+    // local por el incremento REAL confirmado, nunca lo duplica.
+    if (freshLevel) reconcileXp(freshLevel.lifetimeXp);
     const freshChallenges = challengesResult.ok
       ? groupChallenges(challengesResult.data.challenges).active.filter((c) => c.challengeType === 'DAILY')
       : undefined;
@@ -179,6 +184,14 @@ export default function InicioScreen() {
     reconcileRefresh,
     state.status === 'ready' && state.level ? state.level.lifetimeXp : null,
   );
+
+  // VC4 (Instant Progress) -- re-render inmediato al completar una actividad
+  // en otra pantalla (Estudio ya montó/desmontó, este hub sigue vivo en el
+  // stack de tabs): `addOptimisticXp` notifica sin esperar ningún refetch.
+  const [, forceInstantXpRerender] = useState(0);
+  useEffect(() => {
+    return subscribeInstantXp(() => forceInstantXpRerender((n) => n + 1));
+  }, []);
 
   if (state.status === 'loading') return <LoadingState message="Cargando tu progreso…" />;
 
@@ -244,26 +257,36 @@ export default function InicioScreen() {
         )}
       </View>
 
-      {/* SECUNDARIO -- Nivel / XP como una sola unidad. */}
+      {/* SECUNDARIO -- Nivel / XP como una sola unidad. VC4 (Instant Progress):
+          `displayedLevel` superpone el delta optimista (si hay uno pendiente
+          de confirmar) -- nunca inventa un nivel nuevo, nunca se sale de la
+          barra (ver `applyOptimisticXpOverlay`). */}
       {state.level ? (
         <Card variant="outlined" style={styles.statusCard}>
-          <View style={styles.statusRow} accessibilityLabel="Nivel y experiencia">
-            <View style={styles.statusLeft}>
-              <LevelBadge levelNumber={state.level.currentLevel.levelNumber} size={36} />
-              <Text variant="titleMedium">Nivel {state.level.currentLevel.levelNumber}</Text>
-            </View>
-            <Text variant="caption" color="secondary" style={styles.statusXp}>
-              {state.level.xpForNextLevel !== null
-                ? `${state.level.xpIntoLevel} / ${state.level.xpForNextLevel} XP`
-                : `${state.level.lifetimeXp} XP`}
-            </Text>
-          </View>
-          <View style={styles.progressTrack}>
-            <Progress
-              value={state.level.progressRatio}
-              accessibilityLabel={`Progreso de nivel: ${Math.round(state.level.progressRatio * 100)}%`}
-            />
-          </View>
+          {(() => {
+            const displayedLevel = applyOptimisticXpOverlay(state.level, getOptimisticXpDelta());
+            return (
+              <>
+                <View style={styles.statusRow} accessibilityLabel="Nivel y experiencia">
+                  <View style={styles.statusLeft}>
+                    <LevelBadge levelNumber={displayedLevel.currentLevel.levelNumber} size={36} />
+                    <Text variant="titleMedium">Nivel {displayedLevel.currentLevel.levelNumber}</Text>
+                  </View>
+                  <Text variant="caption" color="secondary" style={styles.statusXp}>
+                    {displayedLevel.xpForNextLevel !== null
+                      ? `${displayedLevel.xpIntoLevel} / ${displayedLevel.xpForNextLevel} XP`
+                      : `${displayedLevel.lifetimeXp} XP`}
+                  </Text>
+                </View>
+                <View style={styles.progressTrack}>
+                  <Progress
+                    value={displayedLevel.progressRatio}
+                    accessibilityLabel={`Progreso de nivel: ${Math.round(displayedLevel.progressRatio * 100)}%`}
+                  />
+                </View>
+              </>
+            );
+          })()}
           {progressProcessing ? (
             <Text variant="caption" color="secondary" style={styles.reconcilingNote} accessibilityLabel="Actualizando progreso">
               Actualizando progreso…

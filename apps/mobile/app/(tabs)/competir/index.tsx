@@ -10,7 +10,7 @@ import { selectHubChallenges } from '../../../lib/challenges/select-hub-challeng
 import { describeParticipation, type LeagueParticipationView } from '../../../lib/league/participation-view';
 import { seasonCountdown } from '../../../lib/league/season-countdown';
 import { leagueVisual } from '../../../lib/league/league-visual';
-import { getPendingLp, reconcilePendingLp, subscribePendingLp } from '../../../lib/league/pending-lp-store';
+import { getPendingLp, reconcilePendingRewards, expireStalePendingRewards, initPendingRewardStore, subscribePendingLp } from '../../../lib/league/pending-lp-store';
 import { describeMyPosition } from '../../../lib/leaderboard/paginate-leaderboard';
 import type { QuickQuestionSubjectKey } from '@axioma/contracts';
 import { Text, Card, Button, Icon, Divider } from '../../../components/ui';
@@ -180,7 +180,7 @@ export default function CompetirScreen() {
     if (view.kind === 'enrolled') {
       const previous = lastKnownLpRef.current;
       if (previous != null && view.leaguePoints > previous) {
-        reconcilePendingLp(view.leaguePoints - previous);
+        void reconcilePendingRewards(view.leaguePoints - previous);
       }
       lastKnownLpRef.current = view.leaguePoints;
     }
@@ -263,6 +263,11 @@ export default function CompetirScreen() {
   // aún el pendiente) queda como única fuente de verdad.
   useEffect(() => {
     const unsubscribe = subscribePendingLp(() => setPendingLp(getPendingLp()));
+    // VC4 -- hidrata desde SQLite al montar (recupera pendientes que
+    // sobrevivieron un cierre completo de la app); el propio hydrate emite
+    // `notify()` cuando termina, así que el listener de arriba ya cubre
+    // actualizar `pendingLp` con el valor real persistido.
+    void initPendingRewardStore();
     return unsubscribe;
   }, []);
 
@@ -280,6 +285,15 @@ export default function CompetirScreen() {
     }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [pendingLp, loadLeague]);
+
+  // VC4 -- expira (deja de mostrar como "pendiente") cualquier recompensa
+  // local más vieja que la ventana de gracia, sin importar si la pantalla de
+  // Competir está siendo sondeada activamente ahora mismo (cubre el caso de
+  // reabrir la app mucho después, con un pendiente ya demasiado viejo para
+  // seguir esperándolo con confianza). Corre una vez al montar el hub.
+  useEffect(() => {
+    void expireStalePendingRewards();
+  }, []);
 
   // Refresca la hora cada minuto mientras la pantalla está montada, y al
   // recuperar el foco -- suficiente para una cuenta regresiva de días.

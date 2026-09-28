@@ -139,21 +139,27 @@ async function main() {
     check('sin evento resource_completed antes de responder', (await countOutbox(accountA, 'resource_completed')) === 0);
 
     console.log('--- 2. Responder SOLO parte de las preguntas NO completa el recurso ---');
-    await answer(accountA, res0!, 0);
-    await answer(accountA, res0!, 1);
+    const partial0 = await answer(accountA, res0!, 0);
+    const partial1 = await answer(accountA, res0!, 1);
     check(`con ${QUESTIONS_PER_RESOURCE - 1}/${QUESTIONS_PER_RESOURCE} respondidas: sin learning_resource_progress`, (await resourceProgressRepo.findByAccountAndResource(accountA, res0!.learningResourceId)) == null);
     check('sin evento resource_completed todavía', (await countOutbox(accountA, 'resource_completed')) === 0);
     const partialStatus = await progressService.getTopicProgress(accountA, res0!.topicId);
     check('tema-recurso aún IN_PROGRESS / NOT_STARTED', partialStatus.status !== 'COMPLETED');
+    check('VC4: topicJustCompleted=false en una respuesta parcial (respuesta 1/3)', partial0.data.topicJustCompleted === false);
+    check('VC4: resourceJustCompleted=false en una respuesta parcial (respuesta 1/3)', partial0.data.resourceJustCompleted === false);
+    check('VC4: topicJustCompleted=false en una respuesta parcial (respuesta 2/3)', partial1.data.topicJustCompleted === false);
+    check('VC4: resourceJustCompleted=false en una respuesta parcial (respuesta 2/3)', partial1.data.resourceJustCompleted === false);
 
     console.log('--- 3. Responder la ÚLTIMA pregunta completa el recurso automáticamente ---');
-    await answer(accountA, res0!, QUESTIONS_PER_RESOURCE - 1);
+    const completing = await answer(accountA, res0!, QUESTIONS_PER_RESOURCE - 1);
     const lrp = await resourceProgressRepo.findByAccountAndResource(accountA, res0!.learningResourceId);
     check('learning_resource_progress creado (COMPLETED)', lrp != null);
     check('exactamente 1 evento resource_completed', (await countOutbox(accountA, 'resource_completed')) === 1);
     check('exactamente 1 evento curriculum_topic_completed', (await countOutbox(accountA, 'curriculum_topic_completed')) === 1);
     const finalStatus = await progressService.getTopicProgress(accountA, res0!.topicId);
     check('tema-recurso ahora COMPLETED', finalStatus.status === 'COMPLETED');
+    check('VC4 (Instant Progress): topicJustCompleted=true EXACTAMENTE en la respuesta que completó el tema', completing.data.topicJustCompleted === true);
+    check('VC4 (Instant Progress): resourceJustCompleted=true EXACTAMENTE en la misma respuesta (auto-completitud del recurso)', completing.data.resourceJustCompleted === true);
 
     console.log('--- 4. Completar un recurso NO completa el otro recurso de la misma unidad ---');
     const res1Progress = await topicProgressRepo.findByAccountAndTopic(accountA, res1!.topicId);
@@ -162,9 +168,12 @@ async function main() {
 
     console.log('--- 5. Re-enviar una respuesta ya dada: idempotente, sin duplicar completitud ---');
     const qv0 = res0!.questionVersionIds[0]!;
-    await progressService.submitResponse(accountA, res0!.topicId, { questionVersionId: qv0, answerOptionId: res0!.correctByQv.get(qv0)!, operationId: randomUUID() });
+    const replay = await progressService.submitResponse(accountA, res0!.topicId, { questionVersionId: qv0, answerOptionId: res0!.correctByQv.get(qv0)!, operationId: randomUUID() });
     check('sigue habiendo exactamente 1 evento resource_completed', (await countOutbox(accountA, 'resource_completed')) === 1);
     check('sigue habiendo exactamente 1 evento curriculum_topic_completed', (await countOutbox(accountA, 'curriculum_topic_completed')) === 1);
+    check('VC4 (Instant Progress): topicJustCompleted=false en el replay -- NUNCA true de nuevo (el tema ya estaba COMPLETED)', replay.data.topicJustCompleted === false);
+    check('VC4 (Instant Progress): resourceJustCompleted=false en el replay -- evita doble conteo de XP local en el cliente', replay.data.resourceJustCompleted === false);
+    check('VC4: topicStatus sigue reportando COMPLETED en el replay (dato correcto, solo el flag "just" es false)', replay.data.topicStatus === 'COMPLETED');
     const lrpCount = await raw.$queryRawUnsafe<{ n: number }[]>(
       `SELECT count(*)::int AS n FROM learning_resource_progress WHERE account_id = $1 AND learning_resource_id = $2`,
       accountA, res0!.learningResourceId,
