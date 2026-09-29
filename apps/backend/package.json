@@ -93,6 +93,7 @@
     "verify:historical-avatar-bundle-seed-gate": "tsx scripts/run-gate.ts verify-historical-avatar-bundle-seed-gate.ts",
     "verify:league-ranking-gate": "tsx scripts/run-gate.ts verify-league-ranking-gate.ts",
     "verify:competitive-v1-gate": "tsx scripts/run-gate.ts verify-competitive-v1-gate.ts",
+    "verify:league-point-grant-starvation-gate": "tsx scripts/run-gate.ts verify-league-point-grant-starvation-gate.ts",
     "verify:competitive-profile-foundation-gate": "tsx scripts/run-gate.ts verify-competitive-profile-foundation-gate.ts",
     "verify:competitive-profile-endpoint-gate": "tsx scripts/run-gate.ts verify-competitive-profile-endpoint-gate.ts",
     "verify:competitive-leaderboard-gate": "tsx scripts/run-gate.ts verify-competitive-leaderboard-gate.ts",
