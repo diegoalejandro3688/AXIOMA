@@ -14,6 +14,7 @@ import {
   explanationContentResponseSchema,
   resourceContentBlocksResponseSchema,
   examPassageContentResponseSchema,
+  examRewardStatusResponseSchema,
   type ExamListResponse,
   type ExamDetailResponse,
   type ExamAttemptStateResponse,
@@ -21,12 +22,16 @@ import {
   type UpsertExamAttemptAnswerResponse,
   type ExamAttemptResultResponse,
   type ExamAttemptReviewResponse,
+  type ExamRewardStatusResponse,
 } from '@axioma/contracts';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { parseRequestBody } from '../platform/validation/parse-request-body';
 import { ObjectStorageService } from '../platform/object-storage/object-storage.service';
 import type { ExamPassage } from '../generated/prisma/client';
 import { ExamService, type ExamAttemptQuestionView } from './exam.service';
+// VC4 MICROBLOQUE 11 -- estado AUTORITATIVO de recompensa (reward-status),
+// NUNCA GamificationService completo (ver docstring de exams.module.ts).
+import { ExamRewardStatusService } from '../gamification/exam-reward-status.service';
 
 /** Mismo TTL de URL firmada que `EducationService`/`QuickQuestionController` -- lectura de corta duración, nunca persistida (ADR-0010). */
 const IMAGE_SIGNED_URL_TTL_SECONDS = 300;
@@ -53,6 +58,7 @@ export class ExamController {
   constructor(
     private readonly examService: ExamService,
     private readonly objectStorage: ObjectStorageService,
+    private readonly examRewardStatus: ExamRewardStatusService,
   ) {}
 
   @Get()
@@ -81,6 +87,19 @@ export class ExamController {
       durationSeconds: exam.durationSeconds,
       questionCount,
     });
+  }
+
+  /**
+   * VC4 MICROBLOQUE 11 -- estado AUTORITATIVO de recompensa para
+   * `(request.accountId, examId)`. `accountId` SIEMPRE derivado de
+   * `AuthGuard` (§18) -- nunca aceptado del cliente; `examId` es el único
+   * input de ruta. Ver `ExamRewardStatusService` para la semántica exacta
+   * de PENDING/GRANTED.
+   */
+  @Get(':examId/reward-status')
+  async rewardStatus(@Req() request: AuthenticatedRequest, @Param('examId') examId: string): Promise<ExamRewardStatusResponse> {
+    const result = await this.examRewardStatus.getExamRewardStatus(request.accountId, examId);
+    return examRewardStatusResponseSchema.parse({ examId, status: result.status, xpAmount: result.xpAmount });
   }
 
   @Post(':examId/attempts')

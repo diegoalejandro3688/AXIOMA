@@ -315,6 +315,51 @@ export const examAttemptReviewResponseSchema = z.object({
 });
 export type ExamAttemptReviewResponse = z.infer<typeof examAttemptReviewResponseSchema>;
 
+// --- GET /exams/:examId/reward-status -- estado AUTORITATIVO de la recompensa de gamificación (VC4 MICROBLOQUE 11) ---
+
+/**
+ * `justCompleted` (ExamAttempt ACTIVE->COMPLETED) NUNCA implica que el
+ * backend ya otorgó XP -- la identidad de recompensa real es
+ * `(accountId, examId)`, deduplicada por GAMIFICATION de forma
+ * INDEPENDIENTE del intento (ver `gamification-key.ts`), y el otorgamiento
+ * es asíncrono (`XpGrantScheduler`, ~1 min). Este endpoint es la ÚNICA
+ * fuente autoritativa de "¿ya se otorgó el +100 real para este examen y
+ * esta cuenta?" -- nunca se infiere desde el resultado de `submit`.
+ *
+ * `PENDING` cubre DOS casos indistinguibles desde este endpoint (ninguno es
+ * observable con evidencia demostrable hoy, ver `ExamRewardStatusService`):
+ * "todavía no existe `ValidatedGamificationActivity`" (evento aún no
+ * procesado) y "existe la actividad pero `XpGrantScheduler` aún no
+ * corrió". `GRANTED` significa que existe un `XpLedgerEntry` OTORGAMIENTO
+ * real -- nunca un estado optimista. No existe un estado `FAILED`
+ * demostrable hoy (ver docstring del backend) -- deliberadamente omitido en
+ * vez de inventado.
+ */
+export const examRewardStatusSchema = z.enum(['PENDING', 'GRANTED']);
+export type ExamRewardStatus = z.infer<typeof examRewardStatusSchema>;
+
+/**
+ * VC4 MICROBLOQUE 11 (PRE-QA CONSISTENCY FIX) -- invariante GRANTED ⇒
+ * xpAmount no-nulo, forzado en el propio esquema (no solo documentado):
+ * `GRANTED` sólo se produce en el backend cuando existe un `XpLedgerEntry`
+ * real (`ExamRewardStatusService`), cuyo `xpAmount` NUNCA es nulo en el
+ * esquema de base de datos -- así que un `GRANTED` con `xpAmount: null`
+ * indicaría un bug real, no un caso válido, y este `.refine` lo rechaza en
+ * vez de dejar que el cliente invente un monto de respaldo.
+ */
+export const examRewardStatusResponseSchema = z
+  .object({
+    examId: entityId,
+    status: examRewardStatusSchema,
+    /** Monto REAL del `XpLedgerEntry` OTORGAMIENTO cuando `status === 'GRANTED'`; `null` en PENDING (nunca un monto inventado/optimista). */
+    xpAmount: z.number().int().positive().nullable(),
+  })
+  .refine((v) => v.status !== 'GRANTED' || v.xpAmount !== null, {
+    message: 'xpAmount no puede ser null cuando status === GRANTED',
+    path: ['xpAmount'],
+  });
+export type ExamRewardStatusResponse = z.infer<typeof examRewardStatusResponseSchema>;
+
 // ===========================================================================
 // API ADMINISTRATIVA de definición de ensayos -- ENSAYOS-M1-B.
 //

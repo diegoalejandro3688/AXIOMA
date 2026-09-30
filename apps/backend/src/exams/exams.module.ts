@@ -10,6 +10,11 @@ import { EntitlementModule } from '../entitlement/entitlement.module';
 // PROGRESS/GAMIFICATION) solo para alimentar ENSAYO_COMPLETADO. Sigue sin
 // escribir/leer `StudentResponse`/`CurriculumTopicProgress`.
 import { OutboxModule } from '../platform/outbox/outbox.module';
+// VC4 MICROBLOQUE 11 -- SOLO para `ExamRewardStatusService` (lectura
+// autoritativa de "¿ya se otorgó XP real?", GET /exams/:examId/reward-status).
+// Nunca importa GamificationService completo ni ningún otro provider de
+// GamificationModule -- el controller sólo inyecta ExamRewardStatusService.
+import { GamificationModule } from '../gamification/gamification.module';
 import { ExamRepository } from './exam.repository';
 import { ExamQuestionRepository } from './exam-question.repository';
 import { ExamPassageRepository } from './exam-passage.repository';
@@ -44,7 +49,7 @@ import { ExamAdminController } from './exam-admin.controller';
  * que ese importer futuro y el gate compartan un único camino de escritura.
  */
 @Module({
-  imports: [AuthModule, AdministrationModule, EducationModule, ObjectStorageModule, EntitlementModule, OutboxModule],
+  imports: [AuthModule, AdministrationModule, EducationModule, ObjectStorageModule, EntitlementModule, OutboxModule, GamificationModule],
   controllers: [ExamController, ExamAdminController],
   providers: [
     ExamRepository,

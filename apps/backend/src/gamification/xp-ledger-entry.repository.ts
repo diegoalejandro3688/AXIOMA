@@ -93,6 +93,19 @@ export class XpLedgerEntryRepository {
   }
 
   /**
+   * VC4 MICROBLOQUE 11 -- único método que consulta el ledger por
+   * `validatedActivityId` (no por `accountId`), usado por
+   * `ExamRewardStatusService` para responder "¿ya existe el otorgamiento
+   * REAL de XP para esta actividad validada?" -- `entryType: 'OTORGAMIENTO'`
+   * explícito: un `REVERSO` nunca cuenta como "otorgado" para este propósito
+   * (mismo criterio que `sumGrantedTodayForRule`). Lectura pura, no muta
+   * nada.
+   */
+  findGrantByValidatedActivityId(validatedActivityId: string): Promise<XpLedgerEntry | null> {
+    return this.prisma.xpLedgerEntry.findFirst({ where: { validatedActivityId, entryType: 'OTORGAMIENTO' } });
+  }
+
+  /**
    * Historial paginado para el incremento "Progresión visible" (Bloque II)
    * -- descendente (más reciente primero), cursor por `recordedAt` (nunca
    * por offset numérico, para no desalinearse si se insertan filas entre
