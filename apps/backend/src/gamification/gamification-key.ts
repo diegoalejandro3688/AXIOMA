@@ -70,6 +70,68 @@ export function buildActivityDedupKeyV2(
 }
 
 /**
+ * VC4 MICROBLOQUE 12 -- Gamification Secret Exposure Continuity.
+ *
+ * `secrets` es SIEMPRE `[current]` o `[current, previous]` (ver
+ * `secretCandidatesFor` más abajo) -- NUNCA un arreglo arbitrario. Aplica la
+ * MISMA fórmula `buildActivityDedupKeyV2` una vez por secreto candidato,
+ * de-duplicando el resultado (si `current === previous`, produce un único
+ * candidato, nunca dos idénticos). El PRIMER elemento de `secrets` es
+ * SIEMPRE el secreto CANÓNICO/actual -- el llamador usa
+ * `candidates[0]` (o mejor, `buildActivityDedupKeyV2` directo con el
+ * secreto actual) para decidir qué persistir en una escritura NUEVA; esta
+ * función es EXCLUSIVAMENTE para el lado de LECTURA/deduplicación
+ * ("¿ya existe esta actividad, bajo cualquier secreto válido hoy?").
+ *
+ * Para `student_response_recorded`/`quick_question_answered` (que nunca
+ * embebieron accountId) cada candidato produce la MISMA clave sin importar
+ * el secreto (la función ni siquiera invoca `getSecret()` para esos dos
+ * tipos, ver `buildActivityDedupKeyV2`) -- el de-duplicado por `Set` colapsa
+ * esto a un único candidato automáticamente, sin necesitar una rama
+ * especial aquí.
+ */
+export function buildActivityDedupKeyV2Candidates(
+  eventKey: GamificationEventKey,
+  accountId: string,
+  secrets: readonly string[],
+  payload: Record<string, unknown>,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const secret of secrets) {
+    const key = buildActivityDedupKeyV2(eventKey, accountId, () => secret, payload);
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(key);
+    }
+  }
+  return out;
+}
+
+/**
+ * VC4 MICROBLOQUE 12 -- resolución CENTRALIZADA de qué secretos participan
+ * en una búsqueda de continuidad, usada por TODO llamador de
+ * `buildActivityDedupKeyV2Candidates` (nunca reimplementada por separado en
+ * cada servicio -- ver §12 del bloque). Reglas congeladas:
+ *   - `previous` ausente/vacío -> `[current]` (comportamiento EXISTENTE sin
+ *     cambios, cero candidatos extra);
+ *   - `previous === current` -> `[current]` (de-duplicado explícito, nunca
+ *     dos búsquedas idénticas ni una falsa sensación de "dos secretos
+ *     activos" cuando en realidad hay uno solo);
+ *   - en cualquier otro caso -> `[current, previous]`, SIEMPRE con
+ *     `current` primero (el orden importa para el llamador: el primer
+ *     elemento es el que se usa para escrituras NUEVAS).
+ *
+ * `current` es SIEMPRE requerido (el llamador ya lo resolvió de forma
+ * fail-closed antes de llegar aquí -- esta función nunca decide qué hacer
+ * si falta, solo compone la lista de candidatos de LECTURA).
+ */
+export function secretCandidatesFor(current: string, previous: string | null | undefined): string[] {
+  if (!previous || previous === current) return [current];
+  return [current, previous];
+}
+
+/**
  * WEB-0D.1C-B4 -- las mismas dos formas de arriba (`buildLegacyActivityDedupKey`/
  * `buildActivityDedupKeyV2`), pero reconstruidas desde una fila YA
  * PERSISTIDA (`activityType` + `deduplicationKey` existente) en vez de
@@ -119,4 +181,29 @@ export function buildLegacyRewardSourceId(accountId: string, businessKey: string
 /** Forma V2 -- la ÚNICA que este bloque persiste de aquí en adelante. */
 export function buildRewardSourceIdV2(accountId: string, secret: string, businessKey: string | number): string {
   return `v2:${gamificationActorRef(accountId, secret)}:${businessKey}`;
+}
+
+/**
+ * VC4 MICROBLOQUE 12.1 -- mismo criterio EXACTO que
+ * `buildActivityDedupKeyV2Candidates` (ver su docstring completa arriba),
+ * aplicado a `RewardGrant.sourceEntityId` (LEVEL/STUDY_SUBJECT) en vez de
+ * `ValidatedGamificationActivity.deduplicationKey`. `secrets` es SIEMPRE
+ * `secretCandidatesFor(current, previous)` -- current primero, de-duplicado
+ * si coincide con previous. EXCLUSIVAMENTE para el lado de LECTURA/
+ * deduplicación ("¿ya existe este RewardGrant bajo cualquier secreto válido
+ * hoy?") -- una escritura NUEVA sigue usando únicamente
+ * `buildRewardSourceIdV2(accountId, secrets[0], businessKey)` (secreto
+ * actual).
+ */
+export function buildRewardSourceIdV2Candidates(accountId: string, secrets: readonly string[], businessKey: string | number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const secret of secrets) {
+    const id = buildRewardSourceIdV2(accountId, secret, businessKey);
+    if (!seen.has(id)) {
+      seen.add(id);
+      out.push(id);
+    }
+  }
+  return out;
 }

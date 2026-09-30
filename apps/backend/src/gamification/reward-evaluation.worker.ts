@@ -45,7 +45,7 @@ import { TitleDefinitionRepository } from './title-definition.repository';
 import { TitleEligibilityService } from './title-eligibility.service';
 import { TITLES_V1 } from './titles-v1-catalog';
 import { AccountRepository } from '../auth/account.repository';
-import { buildLegacyRewardSourceId, buildRewardSourceIdV2 } from './gamification-key';
+import { buildLegacyRewardSourceId, buildRewardSourceIdV2, buildRewardSourceIdV2Candidates, secretCandidatesFor } from './gamification-key';
 
 /**
  * STABILIZATION-B -- decisión de producto CONGELADA (§5 del brief): "actividad
@@ -185,6 +185,20 @@ export class RewardEvaluationWorker {
   }
 
   /**
+   * VC4 MICROBLOQUE 12.1 -- Gamification Secret Exposure Continuity (misma
+   * extensión que `GamificationService`/`ExamRewardStatusService`, mismo
+   * helper centralizado `secretCandidatesFor`). `GAMIFICATION_ACTOR_SECRET_PREVIOUS`
+   * es OPCIONAL y EXCLUSIVAMENTE de lectura/deduplicación de `RewardGrant`
+   * (LEVEL/STUDY_SUBJECT) -- nunca genera un `sourceEntityId` que se
+   * persista, nunca reemplaza al secreto actual.
+   */
+  private getGamificationSecretCandidates(): string[] {
+    const current = this.getGamificationSecret();
+    const previous = this.config?.get<string>('GAMIFICATION_ACTOR_SECRET_PREVIOUS') ?? process.env.GAMIFICATION_ACTOR_SECRET_PREVIOUS;
+    return secretCandidatesFor(current, previous);
+  }
+
+  /**
    * Sub-incremento 1.c (ADR-0019, BLOCK-III-DEFINITION.md §4.1) -- primer
    * camino real de entrega, ÚNICAMENTE fuente `LEVEL` y componente
    * `XP_BONUS`. Logros/desafíos (Incrementos 2/4) y títulos/cosméticos
@@ -258,9 +272,17 @@ export class RewardEvaluationWorker {
     // crudo); `legacySourceEntityId` se calcula SOLO para reconocer un
     // `reward_grant` ya escrito antes de B2 bajo la clave vieja, nunca se
     // vuelve a persistir (ver `RewardGrantRepository.createIdempotent`).
-    const sourceEntityId = buildRewardSourceIdV2(accountId, this.getGamificationSecret(), level.levelNumber);
+    // VC4 MICROBLOQUE 12.1 -- `secrets[0]` (actual) determina el
+    // `sourceEntityId` de una escritura NUEVA; `secrets` completo (actual +
+    // anterior si está configurado) alimenta `previousSourceEntityIds` para
+    // que una reevaluación posterior a una rotación segura reconozca el
+    // `RewardGrant` ya entregado bajo el secreto anterior, en vez de
+    // intentar crear uno segundo (ver `RewardGrantRepository.createIdempotent`).
+    const secrets = this.getGamificationSecretCandidates();
+    const sourceEntityId = buildRewardSourceIdV2(accountId, secrets[0]!, level.levelNumber);
     const legacySourceEntityId = buildLegacyRewardSourceId(accountId, level.levelNumber);
-    const { allResolved } = await this.deliverBundleComponents(accountId, bundle, 'LEVEL', sourceEntityId, legacySourceEntityId);
+    const previousSourceEntityIds = buildRewardSourceIdV2Candidates(accountId, secrets, level.levelNumber).filter((id) => id !== sourceEntityId);
+    const { allResolved } = await this.deliverBundleComponents(accountId, bundle, 'LEVEL', sourceEntityId, legacySourceEntityId, previousSourceEntityIds);
     return allResolved;
   }
 
@@ -291,6 +313,11 @@ export class RewardEvaluationWorker {
     // fila opaco y no necesitan lectura doble. Nunca se persiste -- ver
     // `RewardGrantRepository.createIdempotent`.
     legacySourceEntityId?: string,
+    // VC4 MICROBLOQUE 12.1 -- candidatos de `sourceEntityId` bajo el
+    // secreto ANTERIOR (SOLO LEVEL/STUDY_SUBJECT, mismo criterio que
+    // `legacySourceEntityId` de arriba -- `undefined` para
+    // ACHIEVEMENT_UNLOCK/CHALLENGE_CLAIM/LEAGUE). Nunca se persiste.
+    previousSourceEntityIds?: string[],
   ) {
     // Guarda de última línea (defensa en profundidad): un accountId ausente
     // aquí nunca debería originarse en el propio worker (siempre recibe el
@@ -309,6 +336,7 @@ export class RewardEvaluationWorker {
       sourceEntityId,
       idempotencyKey: `reward:${sourceEntityType}:${sourceEntityId}`,
       legacyIdempotencyKey: legacySourceEntityId ? `reward:${sourceEntityType}:${legacySourceEntityId}` : undefined,
+      previousIdempotencyKeys: previousSourceEntityIds?.map((id) => `reward:${sourceEntityType}:${id}`),
       components: bundle.items.map((item) => ({
         componentType: item.componentType,
         xpAmount: item.xpAmount,
@@ -699,9 +727,12 @@ export class RewardEvaluationWorker {
       // RewardGrant no lo lleva (mismo criterio que LEVEL/LEAGUE/STUDY_UNIT).
       // `legacySourceEntityId` solo para reconocer un grant ya escrito
       // antes de B2, nunca se vuelve a persistir.
-      const sourceEntityId = buildRewardSourceIdV2(accountId, this.getGamificationSecret(), subjectKey);
+      // VC4 MICROBLOQUE 12.1 -- ver docstring EXACTA de `grantLevelReward` (mismo criterio).
+      const secrets = this.getGamificationSecretCandidates();
+      const sourceEntityId = buildRewardSourceIdV2(accountId, secrets[0]!, subjectKey);
       const legacySourceEntityId = buildLegacyRewardSourceId(accountId, subjectKey);
-      const { allResolved: delivered } = await this.deliverBundleComponents(accountId, bundle, 'STUDY_SUBJECT', sourceEntityId, legacySourceEntityId);
+      const previousSourceEntityIds = buildRewardSourceIdV2Candidates(accountId, secrets, subjectKey).filter((id) => id !== sourceEntityId);
+      const { allResolved: delivered } = await this.deliverBundleComponents(accountId, bundle, 'STUDY_SUBJECT', sourceEntityId, legacySourceEntityId, previousSourceEntityIds);
       if (!delivered) allResolved = false;
     }
     return allResolved;

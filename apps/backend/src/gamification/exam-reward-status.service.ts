@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { ExamRewardStatus } from '@axioma/contracts';
 import { ValidatedGamificationActivityRepository } from './validated-gamification-activity.repository';
 import { XpLedgerEntryRepository } from './xp-ledger-entry.repository';
-import { buildActivityDedupKeyV2 } from './gamification-key';
+import { buildActivityDedupKeyV2Candidates, secretCandidatesFor } from './gamification-key';
 
 export interface ExamRewardStatusResult {
   status: ExamRewardStatus;
@@ -26,6 +26,16 @@ export interface ExamRewardStatusResult {
  * -- si esto alguna vez divergiera de la escritura real, este endpoint
  * respondería PENDING para siempre en vez de un falso GRANTED (fail-closed:
  * peor caso es "nunca ves el burst", nunca "ves un burst falso").
+ *
+ * VC4 MICROBLOQUE 12 -- Gamification Secret Exposure Continuity: busca por
+ * TODOS los candidatos (`current` + `previous`, ver
+ * `getGamificationSecretCandidates`/`buildActivityDedupKeyV2Candidates`,
+ * helper centralizado en `gamification-key.ts`) -- así un `ENSAYO.M2` (u
+ * otro examen) recompensado bajo el secreto ANTERIOR a una rotación segura
+ * sigue resolviendo GRANTED con el `xpAmount` real después de rotar, en vez
+ * de volverse invisible y responder un PENDING falso (regresión de replay
+ * semantics que el propio audit de este bloque debía descartar ANTES de
+ * autorizar cualquier rotación).
  */
 @Injectable()
 export class ExamRewardStatusService {
@@ -45,6 +55,13 @@ export class ExamRewardStatusService {
     return secret;
   }
 
+  /** VC4 MICROBLOQUE 12 -- ver docstring EXACTA de `GamificationService.getGamificationSecretCandidates` (mismo criterio, mismo helper centralizado). */
+  private getGamificationSecretCandidates(): string[] {
+    const current = this.getGamificationSecret();
+    const previous = this.config?.get<string>('GAMIFICATION_ACTOR_SECRET_PREVIOUS') ?? process.env.GAMIFICATION_ACTOR_SECRET_PREVIOUS;
+    return secretCandidatesFor(current, previous);
+  }
+
   /**
    * `accountId` SIEMPRE viene de `request.accountId` (identidad autenticada
    * server-side) -- el llamador (controller) nunca debe aceptar un
@@ -53,8 +70,12 @@ export class ExamRewardStatusService {
    * documentada aquí para que ningún llamador futuro la omita.
    */
   async getExamRewardStatus(accountId: string, examId: string): Promise<ExamRewardStatusResult> {
-    const deduplicationKey = buildActivityDedupKeyV2('exam_completed', accountId, () => this.getGamificationSecret(), { examId });
-    const activity = await this.activityRepo.findByDeduplicationKey(deduplicationKey);
+    const candidateKeys = buildActivityDedupKeyV2Candidates('exam_completed', accountId, this.getGamificationSecretCandidates(), { examId });
+    let activity: Awaited<ReturnType<ValidatedGamificationActivityRepository['findByDeduplicationKey']>> = null;
+    for (const key of candidateKeys) {
+      activity = await this.activityRepo.findByDeduplicationKey(key);
+      if (activity) break;
+    }
     if (!activity) {
       // Ni siquiera existe la ValidatedGamificationActivity todavía -- el
       // outbox `exam_completed` puede no haberse procesado aún (PENDING),

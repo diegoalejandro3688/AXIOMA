@@ -45,6 +45,18 @@ export class RewardGrantRepository {
     // sourceEntityId nunca embebió accountId (ACHIEVEMENT_UNLOCK/
     // CHALLENGE_CLAIM/LEAGUE) -- sin lectura doble que hacer ahí.
     legacyIdempotencyKey?: string;
+    // VC4 MICROBLOQUE 12.1 -- Gamification Secret Exposure Continuity.
+    // Candidatos de idempotencyKey calculados con el secreto ANTERIOR (ver
+    // `buildRewardSourceIdV2Candidates`/`secretCandidatesFor`,
+    // `gamification-key.ts`) -- NUNCA con el secreto actual (ese ya es
+    // `input.idempotencyKey`). Se buscan ANTES de intentar crear, mismo
+    // criterio que `legacyIdempotencyKey` (dominio DISTINTO: legacy =
+    // pre-v2/accountId crudo; esto = v2 bajo un secreto ROTADO). Si
+    // cualquiera coincide, se devuelve esa fila tal cual (`created: false`)
+    // -- nunca se inserta una segunda fila para el mismo hecho de negocio
+    // sólo porque el secreto rotó entre la entrega original y esta
+    // reevaluación.
+    previousIdempotencyKeys?: string[];
     components: Array<{ componentType: RewardComponentType; xpAmount?: number | null; referenceId?: string | null }>;
   }): Promise<{ grant: RewardGrantWithComponents; created: boolean }> {
     if (input.legacyIdempotencyKey) {
@@ -53,6 +65,13 @@ export class RewardGrantRepository {
         include: { components: true },
       });
       if (legacy) return { grant: legacy, created: false };
+    }
+    for (const previousKey of input.previousIdempotencyKeys ?? []) {
+      const existing = await this.prisma.rewardGrant.findUnique({
+        where: { idempotencyKey: previousKey },
+        include: { components: true },
+      });
+      if (existing) return { grant: existing, created: false };
     }
     try {
       const grant = await this.prisma.rewardGrant.create({

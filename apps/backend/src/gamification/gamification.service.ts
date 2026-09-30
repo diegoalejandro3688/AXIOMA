@@ -13,7 +13,7 @@ import { ValidatedGamificationActivityRepository } from './validated-gamificatio
 import { XpBalanceRepository } from './xp-balance.repository';
 import { AccountTitleRepository } from './account-title.repository';
 import { InventoryItemRepository } from './inventory-item.repository';
-import { buildActivityDedupKeyV2, buildLegacyActivityDedupKey } from './gamification-key';
+import { buildActivityDedupKeyV2, buildActivityDedupKeyV2Candidates, buildLegacyActivityDedupKey, secretCandidatesFor } from './gamification-key';
 import type { OutboxEvent } from '../generated/prisma/client';
 
 const RELAY_BATCH_SIZE = 100;
@@ -119,6 +119,24 @@ export class GamificationService {
   }
 
   /**
+   * VC4 MICROBLOQUE 12 -- Gamification Secret Exposure Continuity.
+   * `GAMIFICATION_ACTOR_SECRET_PREVIOUS` es OPCIONAL y EXCLUSIVAMENTE de
+   * lectura/deduplicación (§11 del bloque): nunca genera una clave nueva
+   * que se persista, nunca reemplaza al secreto actual (`getGamificationSecret()`
+   * sigue siendo fail-closed e inalterado), y se de-duplica automáticamente
+   * si coincide con el actual (`secretCandidatesFor`, `gamification-key.ts`
+   * -- helper centralizado, no reimplementado aquí ni en ningún otro
+   * servicio). Si falta el secreto ACTUAL, esto lanza igual que
+   * `getGamificationSecret()` -- nunca degrada a un comportamiento menos
+   * seguro.
+   */
+  private getGamificationSecretCandidates(): string[] {
+    const current = this.getGamificationSecret();
+    const previous = this.config?.get<string>('GAMIFICATION_ACTOR_SECRET_PREVIOUS') ?? process.env.GAMIFICATION_ACTOR_SECRET_PREVIOUS;
+    return secretCandidatesFor(current, previous);
+  }
+
+  /**
    * WEB-0D.1B-P0B2-R1 -- justo después de que `recordOutcome` deja
    * DURABLE el resultado de la entrega, se dispara la minimización
    * INMEDIATA (`OutboxLifecycleService.minimizeIfTerminal`) para ESE
@@ -219,16 +237,46 @@ export class GamificationService {
     // exige (ni se lee) para ellos -- ninguna razón para requerirlo donde
     // nunca hubo accountId crudo que pseudonimizar.
     const legacyDeduplicationKey = buildLegacyActivityDedupKey(outboxEvent.eventKey, payload);
-    const deduplicationKey = buildActivityDedupKeyV2(outboxEvent.eventKey, accountId, () => this.getGamificationSecret(), payload);
+    // VC4 MICROBLOQUE 12 -- `legacyDeduplicationKey !== null` es la MISMA
+    // señal que el código ya usaba para distinguir los 3 tipos que embeben
+    // accountId (exigen el secreto) de los 2 que nunca lo hicieron
+    // (`response`/`quick-question`, que NUNCA deben exigir/leer el
+    // secreto -- ver docstring original más arriba). Reutilizarla aquí
+    // evita invocar `getGamificationSecretCandidates()` (que SIEMPRE exige
+    // el secreto actual) para los tipos que nunca lo necesitaron -- ninguna
+    // regresión de "el secreto ahora se exige donde antes no".
+    const needsSecret = legacyDeduplicationKey !== null;
+    const deduplicationKey = needsSecret
+      ? buildActivityDedupKeyV2(outboxEvent.eventKey, accountId, () => this.getGamificationSecretCandidates()[0]!, payload)
+      : buildActivityDedupKeyV2(outboxEvent.eventKey, accountId, () => {
+          throw new Error('unreachable: este eventKey nunca invoca getSecret()');
+        }, payload);
+    // Candidatos de LECTURA/deduplicación -- current + previous (si está
+    // configurado y difiere), SIEMPRE calculados con la MISMA fórmula que
+    // `deduplicationKey` de arriba (solo el secreto varía). Para los 2
+    // tipos sin secreto, `[deduplicationKey]` ya es el único candidato
+    // posible (ver `secretCandidatesFor` -- no aplica aquí, no se invoca).
+    const candidateKeys = needsSecret
+      ? buildActivityDedupKeyV2Candidates(outboxEvent.eventKey, accountId, this.getGamificationSecretCandidates(), payload)
+      : [deduplicationKey];
 
     // Idempotencia de NEGOCIO: si el hecho académico ya generó una
     // actividad validada (p. ej. dos mensajes distintos publicados por
-    // error para el mismo StudentResponse, O una fila legacy escrita
-    // antes de B2 para el mismo hecho), no se crea una segunda fila --
-    // se considera éxito, no fallo, igual que ANALYTICS con analytics_event.
-    const alreadyValidated =
-      (await this.activityRepo.findByDeduplicationKey(deduplicationKey)) ??
-      (legacyDeduplicationKey ? await this.activityRepo.findByDeduplicationKey(legacyDeduplicationKey) : null);
+    // error para el mismo StudentResponse, una fila legacy escrita antes
+    // de B2 para el mismo hecho, O -- VC4 MICROBLOQUE 12 -- una fila v2
+    // escrita bajo el secreto ANTERIOR antes de una rotación segura), no se
+    // crea una segunda fila -- se considera éxito, no fallo, igual que
+    // ANALYTICS con analytics_event. La escritura NUEVA (más abajo) SIEMPRE
+    // usa `deduplicationKey` (secreto ACTUAL únicamente) -- el secreto
+    // anterior NUNCA genera una clave que se persista.
+    let alreadyValidated: Awaited<ReturnType<ValidatedGamificationActivityRepository['findByDeduplicationKey']>> = null;
+    for (const key of candidateKeys) {
+      alreadyValidated = await this.activityRepo.findByDeduplicationKey(key);
+      if (alreadyValidated) break;
+    }
+    if (!alreadyValidated && legacyDeduplicationKey) {
+      alreadyValidated = await this.activityRepo.findByDeduplicationKey(legacyDeduplicationKey);
+    }
     if (alreadyValidated) return;
 
     const sourceEntity = sourceEntityFor(outboxEvent.eventKey, payload);
