@@ -3,7 +3,7 @@
     "name": "ZETRYND",
     "slug": "axioma",
     "scheme": "axioma",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.zetrynd.app",
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "backgroundColor": "#04203D",
         "foregroundImage": "./assets/android-icon-foreground.png",
