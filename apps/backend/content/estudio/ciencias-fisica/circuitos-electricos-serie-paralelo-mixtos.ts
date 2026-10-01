@@ -198,7 +198,9 @@ const circuitosElectricosSerieParaleloMixtos: ResourceContentModule = {
     {
       questionKey: 'CIENCIAS.FISICA.CIRCUITOS_ELECTRICOS_SERIE_PARALELO_MIXTOS.Q5',
       order: 4,
-      difficulty: 'DIFICIL',
+      // VC4 MICROBLOQUE 8.1 -- relabel DIFICIL->MEDIA. Auditoría: sustitución
+      // directa en 1/Req=1/R1+1/R2, fórmula recién presentada en la lección.
+      difficulty: 'MEDIA',
       stemContent: toBlocks([
         ...situacionA,
         { type: 'paragraph', text: '¿Cuál es la resistencia equivalente de R₁ = 6 Ω y R₂ = 3 Ω conectados en paralelo?' },

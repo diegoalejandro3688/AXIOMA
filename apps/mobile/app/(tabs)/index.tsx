@@ -33,6 +33,14 @@ const HOME_CHALLENGE_PREVIEW_LIMIT = 2;
 const HOME_CHALLENGES_ROUTE = '/(tabs)/competir/desafios' as const;
 
 /**
+ * VC4 MICROBLOQUE 4.1B -- `from: 'home'` viaja como param explícito para que
+ * `desafios.tsx` sepa determinísticamente a qué pestaña volver (Inicio vs
+ * Competir) sin depender de `canGoBack()`/la profundidad real de la pila
+ * cross-tab, que resultó no fiable en dispositivo real (ver
+ * `competir/_layout.tsx`).
+ */
+
+/**
  * Continuidad de estudio -- resultado real de `pickContinueTarget()` o, si la
  * consulta a EDUCATION/PROGRESS falla, `unavailable` (estado LOCAL del card,
  * nunca un error de pantalla completa -- INICIO Increment 2).
@@ -117,7 +125,7 @@ export default function InicioScreen() {
       pickContinueTarget({ freeUnitsOnly: confirmedTier === 'FREE' }),
       getStreak(),
       getLevel(),
-      listChallenges(),
+      fetchChallengesWithRetry(),
     ]);
 
     // Descarta una respuesta obsoleta (otro foco disparó una carga más nueva)
@@ -175,15 +183,17 @@ export default function InicioScreen() {
   );
 
   // STABILIZATION-B8 (Polish F) -- tras una actividad de estudio, XP y
-  // Desafíos llegan de forma asíncrona (~1.5-2.5 min). Mientras la ventana
-  // de reconciliación esté armada y el XP autoritativo NO haya cambiado,
-  // esta tarjeta muestra "Actualizando progreso…" y refresca de forma
-  // acotada. Nunca fabrica XP.
+  // Desafíos llegan de forma asíncrona (~1.5-2.5 min). Mientras la ventana de
+  // reconciliación esté armada y el XP autoritativo NO haya cambiado, esta
+  // tarjeta refresca de forma acotada en segundo plano.
+  //
+  // MICROBLOQUE 2 (Progreso instantáneo XP) -- ya NO se renderiza
+  // "Actualizando progreso…" para XP (el overlay optimista lo hace
+  // innecesario, ver el bloque de render más abajo) -- por eso el `processing`
+  // que devuelve el hook ya no se necesita, solo su efecto de refetch
+  // acotado en segundo plano, que sigue exactamente igual.
   const reconcileRefresh = useCallback(() => void load({ silent: true }), [load]);
-  const { processing: progressProcessing } = useBoundedReconciliation(
-    reconcileRefresh,
-    state.status === 'ready' && state.level ? state.level.lifetimeXp : null,
-  );
+  useBoundedReconciliation(reconcileRefresh, state.status === 'ready' && state.level ? state.level.lifetimeXp : null);
 
   // VC4 (Instant Progress) -- re-render inmediato al completar una actividad
   // en otra pantalla (Estudio ya montó/desmontó, este hub sigue vivo en el
@@ -287,11 +297,20 @@ export default function InicioScreen() {
               </>
             );
           })()}
-          {progressProcessing ? (
-            <Text variant="caption" color="secondary" style={styles.reconcilingNote} accessibilityLabel="Actualizando progreso">
-              Actualizando progreso…
-            </Text>
-          ) : null}
+          {/*
+            MICROBLOQUE 2 (Progreso instantáneo XP) -- decisión de producto:
+            con el overlay optimista de XP ya mostrando la recompensa real de
+            inmediato, "Actualizando progreso…" pasa a ser ruido que contradice
+            esa instantaneidad -- se deja de RENDERIZAR para XP. El mecanismo
+            interno (`useBoundedReconciliation`, `progressProcessing`, los
+            refetches espaciados que sigue disparando) NO se toca: sigue
+            corriendo exactamente igual en segundo plano, sigue siendo lo que
+            finalmente confirma/concilia el overlay (`reconcileXp`). Solo se
+            oculta la presentación, nunca la confiabilidad. La MISMA UI para
+            Desafíos (en Competir) es un `useBoundedReconciliation` totalmente
+            independiente (su propia `challengeSignature`) -- no se ve
+            afectada por este cambio.
+          */}
         </Card>
       ) : (
         <Card variant="outlined" style={styles.statusCard}>
@@ -348,7 +367,7 @@ export default function InicioScreen() {
             accessibilityLabel="Ver todos los desafíos"
             hitSlop={8}
             style={styles.seeAllButton}
-            onPress={() => router.push(HOME_CHALLENGES_ROUTE)}
+            onPress={() => router.push({ pathname: HOME_CHALLENGES_ROUTE, params: { from: 'home' } })}
           >
             <Text variant="label" style={{ color: tokens.color.accent.default }}>
               Ver todos
@@ -403,6 +422,33 @@ export default function InicioScreen() {
  * (ahí el título ya lo explica y el botón está deshabilitado). NO es un
  * objetivo diario -- ese concepto no existe.
  */
+/**
+ * MICROBLOQUE 3 (Desafíos DAILY -- Home stale) -- causa candidata confirmada:
+ * un refresco SILENCIOSO de `listChallenges()` que falla (timeout/hiccup de
+ * red puntual) conserva silenciosamente `prevReady.dailyChallenges` (por
+ * diseño, ver el comentario en `load()`) -- correcto para no mostrar un error
+ * agresivo, pero significa que un solo fallo transitorio deja a Inicio
+ * mostrando el progreso VIEJO de un desafío DAILY hasta el próximo foco,
+ * incluso si la pantalla completa de Desafíos (que no comparte ningún fallo
+ * con esta llamada) ya muestra el valor real.
+ *
+ * Fix mínimo: UN reintento inmediato, sin loop, sin backoff. Si el segundo
+ * intento también falla, se devuelve tal cual -- `load()` sigue cayendo al
+ * mismo fallback silencioso de siempre (sin cambios en esa lógica).
+ */
+async function fetchChallengesWithRetry(): ReturnType<typeof listChallenges> {
+  const first = await listChallenges();
+  if (first.ok) return first;
+  if (__DEV__) {
+    console.warn('[Inicio] listChallenges() falló en el primer intento -- reintentando una vez', { kind: first.kind });
+  }
+  const retry = await listChallenges();
+  if (__DEV__ && !retry.ok) {
+    console.warn('[Inicio] listChallenges() falló también en el reintento -- se conserva el último dato bueno (fallback stale)', { kind: retry.kind });
+  }
+  return retry;
+}
+
 function continueKicker(target: ContinueTarget): string | null {
   if (target.kind !== 'topic') return null;
   return target.entry === 'exercise' ? 'Continúa donde quedaste' : 'Sigue estudiando';
@@ -466,7 +512,6 @@ function createStyles(t: ThemeTokens) {
 
     // SECUNDARIO -- Nivel / XP (una sola unidad)
     statusCard: { gap: spacing.space3 },
-    reconcilingNote: { marginTop: -spacing.space1 },
     statusRow: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, gap: spacing.space3 },
     statusLeft: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.space2, flexShrink: 1, minWidth: 0 },
     statusXp: { flexShrink: 0 },

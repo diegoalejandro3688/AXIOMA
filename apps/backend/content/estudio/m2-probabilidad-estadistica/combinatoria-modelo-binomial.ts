@@ -257,7 +257,10 @@ const combinatoriaModeloBinomial: ResourceContentModule = {
     {
       questionKey: 'M2.PROBABILIDAD_ESTADISTICA.COMBINATORIA_MODELO_BINOMIAL.Q7',
       order: 6,
-      difficulty: 'DIFICIL',
+      // VC4 MICROBLOQUE 8.1 -- relabel DIFICIL->MEDIA. Auditoría: llamada
+      // directa a la fórmula de combinaciones, sin ambigüedad de modelado
+      // (el enunciado ya deja claro que el orden no importa).
+      difficulty: 'MEDIA',
       stemContent: [
         { type: 'paragraph', order: 0, text: 'De 10 estudiantes se seleccionan 4 para integrar un equipo. ¿Cuántos equipos distintos pueden formarse?' },
       ],

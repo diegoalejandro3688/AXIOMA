@@ -5,6 +5,8 @@ import { loadSession, saveSession, clearSession } from './session-storage';
 import { setUnauthorizedHandler } from '../api/client';
 import { createSession, getMe, logout as logoutRequest } from '../api/auth';
 import { syncPendingOperations } from '../offline/sync-worker';
+import { bindInstantXpAccount } from '../progress/instant-xp-store';
+import { bindPendingLpAccount } from '../league/pending-lp-store';
 
 export type AuthStatus = 'loading' | 'unauthenticated' | 'authenticated';
 export type AuthActionResult = { ok: true } | { ok: false; message: string };
@@ -33,10 +35,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accountId, setAccountId] = useState<string | null>(null);
   const identityClient = useRef(createIdentityClient()).current;
 
+  /**
+   * VC4 MICROBLOQUE 10 -- ÚNICO punto que cambia `accountId`, a propósito:
+   * liga los stores locales de cuenta (`instant-xp-store`, y cualquier
+   * futuro store del mismo patrón) SÍNCRONAMENTE, en el mismo tick que el
+   * propio `setAccountId` -- nunca una ventana donde un render intermedio
+   * pueda leer el estado optimista de la identidad anterior junto al
+   * `accountId` ya nuevo (ver auditoría §13 del prompt). `bindInstantXpAccount`
+   * ya es un no-op determinista cuando `accountId` no cambia realmente
+   * (mismo id -- reautenticación, ver §14), así que llamarlo aquí siempre,
+   * incondicionalmente, es seguro.
+   */
+  function updateAccountId(id: string | null): void {
+    bindInstantXpAccount(id);
+    bindPendingLpAccount(id);
+    setAccountId(id);
+  }
+
   useEffect(() => {
     const handleUnauthorized = () => {
       void clearSession();
-      setAccountId(null);
+      updateAccountId(null);
       setStatus('unauthenticated');
     };
     setUnauthorizedHandler(handleUnauthorized);
@@ -49,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const me = await getMe();
       if (me.ok) {
-        setAccountId(me.data.accountId);
+        updateAccountId(me.data.accountId);
         setStatus('authenticated');
       } else {
         // Sesión guardada pero inválida (401) o inalcanzable (red) -- por
@@ -58,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // caso de red, se limpia aquí también para no quedar en un estado
         // ambiguo (ver ADR-0013, punto de gate 5).
         await clearSession();
-        setAccountId(null);
+        updateAccountId(null);
         setStatus('unauthenticated');
       }
     })();
@@ -92,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // RC1A: solo se persiste el sessionId -- el idToken de Firebase ya cumplió
     // su papel (probar identidad ante POST /auth/session) y no se guarda.
     await saveSession({ sessionId: sessionResult.data.sessionId });
-    setAccountId(sessionResult.data.accountId);
+    updateAccountId(sessionResult.data.accountId);
     setStatus('authenticated');
     return { ok: true };
   }
@@ -119,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await logoutRequest(); // best-effort -- apiRequest nunca lanza, un fallo de red no bloquea el logout local.
     await identityClient.signOut().catch(() => {});
     await clearSession();
-    setAccountId(null);
+    updateAccountId(null);
     setStatus('unauthenticated');
   }
 

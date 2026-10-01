@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Animated, ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import type { AnswerOptionPublicResponse, ResourceContentBlockResponse, QuickQuestionSubjectKey } from '@axioma/contracts';
@@ -501,12 +501,18 @@ export default function QuickQuestionScreen() {
        * castigador.
        */}
       {screen.verdict === 'correct' && screen.lpEligible ? (
-        <View style={styles.rewardRow}>
+        // VC4 (motion pass, LP instantáneo) -- `key` cambia con cada resultado
+        // NUEVO (sessionId + la alternativa correcta de ESTA pregunta), así
+        // que React remonta `RewardReveal` fresco cada vez que aparece una
+        // recompensa nueva -- la animación de entrada corre una vez por
+        // recompensa, nunca en un re-render posterior de la MISMA pantalla de
+        // resultado (ej. si algo más en el árbol se re-renderiza).
+        <RewardReveal key={`${screen.sessionId}-${screen.correctAnswerOptionId ?? 'x'}`} style={styles.rewardRow}>
           <LeagueTrophy size={22} accessibilityLabel="League Points" />
           <Text variant="bodySmall" weight="bold" color="secondary">
-            +{QUICK_QUESTION_CORRECT_LP} LP pendiente
+            +{QUICK_QUESTION_CORRECT_LP} LP
           </Text>
-        </View>
+        </RewardReveal>
       ) : (
         <Text variant="bodySmall" color="muted">
           {screen.verdict === 'timeout'
@@ -563,6 +569,46 @@ function resultOptionState(outcome: OptionOutcome): 'correct' | 'incorrect' | 'd
   if (outcome === 'correct') return 'correct';
   if (outcome === 'incorrect') return 'incorrect';
   return 'disabled';
+}
+
+const REWARD_REVEAL_DURATION_MS = 220;
+
+/**
+ * VC4 (motion pass, LP instantáneo) -- aparición sutil (fade + leve escala)
+ * del bloque de recompensa "+N LP" al mostrarse el resultado. Sin loop, sin
+ * rebote (`Easing.out` simple). `useNativeDriver: true` -- solo anima
+ * `opacity`/`transform`, nunca color ni layout. Se monta fresca por cada
+ * recompensa nueva (el padre le pasa una `key` distinta por resultado), así
+ * que la animación arranca en `useEffect` al montar -- nunca se reinicia por
+ * un re-render normal de la MISMA instancia.
+ *
+ * Respeta Reduce Motion (mismo patrón que `skeleton.tsx`/`Progress`): si está
+ * activo, se pinta directamente el estado final, sin animar.
+ */
+function RewardReveal({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.96)).current;
+
+  useEffect(() => {
+    let cancelled = false;
+    AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
+      if (cancelled) return;
+      if (reduceMotion) {
+        opacity.setValue(1);
+        scale.setValue(1);
+        return;
+      }
+      Animated.parallel([
+        Animated.timing(opacity, { toValue: 1, duration: REWARD_REVEAL_DURATION_MS, useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1, duration: REWARD_REVEAL_DURATION_MS, useNativeDriver: true }),
+      ]).start();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return <Animated.View style={[style, { opacity, transform: [{ scale }] }]}>{children}</Animated.View>;
 }
 
 function AnswerOptionRow({

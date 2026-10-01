@@ -375,8 +375,21 @@ const estadoYMercado: ResourceContentModule = {
         ...textoB,
         { type: 'paragraph', text: '¿Cuál interpretación sintetiza mejor la relación entre Estado y mercado mostrada en ambos textos?' },
       ]),
+      // VC4 MICROBLOQUE 8.1 -- distractores reforzados (mismo patrón que
+      // INSTITUCIONALIDAD_DEMOCRATICA_CHILE.Q10/GUERRA_FRIA.Q10). Misma
+      // clave correcta, mismo posicionamiento; los 3 distractores dejan de
+      // depender de palabras absolutistas y ahora fallan por una razón
+      // sustantiva ya presente en `explanationContent` (ignoran costos/
+      // efectos distributivos de la intervención).
       options: [
-        { content: { type: 'paragraph', order: 0, text: 'El Estado solo puede participar reemplazando completamente al mercado.' }, correct: false },
+        {
+          content: {
+            type: 'paragraph',
+            order: 0,
+            text: 'El Estado debe asumir directamente la producción y distribución de los bienes en los sectores donde interviene, sustituyendo al mercado como mecanismo de asignación.',
+          },
+          correct: false,
+        },
         {
           content: {
             type: 'paragraph',
@@ -385,8 +398,22 @@ const estadoYMercado: ResourceContentModule = {
           },
           correct: true,
         },
-        { content: { type: 'paragraph', order: 0, text: 'Toda política estatal mejora necesariamente los resultados económicos.' }, correct: false },
-        { content: { type: 'paragraph', order: 0, text: 'Los mercados no necesitan reglas ni instituciones para funcionar.' }, correct: false },
+        {
+          content: {
+            type: 'paragraph',
+            order: 0,
+            text: 'Las políticas estatales orientadas a objetivos sociales tienden a mejorar los resultados económicos generales, dado que corrigen las fallas que el mercado no resuelve por sí mismo.',
+          },
+          correct: false,
+        },
+        {
+          content: {
+            type: 'paragraph',
+            order: 0,
+            text: 'Los mercados alcanzan resultados eficientes por sí mismos siempre que el Estado se limite a garantizar el orden público, sin participar en su regulación económica.',
+          },
+          correct: false,
+        },
       ],
       explanationContent: [
         {

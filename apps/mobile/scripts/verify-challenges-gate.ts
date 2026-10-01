@@ -172,12 +172,37 @@ function main() {
   const hubSrc = readFileSync(join(__dirname, '..', 'app', '(tabs)', 'competir', 'index.tsx'), 'utf8');
   check('existe competir/desafios.tsx', screenSrc.length > 0);
   check('está registrada como Stack.Screen "desafios" en competir/_layout.tsx', layoutSrc.includes('name="desafios"'));
-  check('el CTA del hub navega a /(tabs)/competir/desafios (ruta real, ya activa)', hubSrc.includes("router.push('/(tabs)/competir/desafios')"));
+  // VC4 MICROBLOQUE 4.1B -- el push pasó de string plano a forma objeto
+  // (`{ pathname, params: { from: 'competir' } }`) para llevar el origen
+  // explícito que usa `desafios.tsx` en su `handleBack` determinista (ver
+  // docstring de `competir/_layout.tsx`) -- misma ruta real, nueva forma.
+  check(
+    'el CTA del hub navega a /(tabs)/competir/desafios (ruta real, ya activa) con from=competir explícito',
+    /router\.push\(\{\s*pathname:\s*'\/\(tabs\)\/competir\/desafios'/.test(hubSrc) && /from:\s*'competir'/.test(hubSrc),
+  );
   check('la pantalla usa `listChallenges` (misma colección, sin endpoint nuevo)', screenSrc.includes('listChallenges'));
   check('la pantalla usa `useChallengeClaim` y NO reimplementa claim (`claimChallenge` nunca aparece)', screenSrc.includes('useChallengeClaim') && !screenSrc.includes('claimChallenge'));
   check('la pantalla ordena vía `challengeSections` (challengeKey), NUNCA `acceptedAt`', screenSrc.includes('challengeSections(') && !/acceptedAt/.test(screenSrc));
   check('la pantalla usa `<ChallengeRow variant="full"`', screenSrc.includes('variant="full"'));
-  check('secciones DIARIOS + SEMANAL, sin tabs/filtros/historial/streaks/refresh', /Diarios/i.test(screenSrc) && /Semanal/i.test(screenSrc) && !/\b(Tabs|filtro|filtros|historial|streak|racha|Refresh|Actualizar manualmente)\b/i.test(screenSrc));
+  // VC4 FINAL E2E GATE -- mantenimiento de expectativa STALE: `\bTabs\b`
+  // (case-insensitive) coincidía con CUALQUIER mención textual de "tabs",
+  // incluida la del propio nombre de ruta de Expo Router `(tabs)` dentro de
+  // comentarios/docstrings de este mismo archivo (p. ej. "`(tabs)/_layout.tsx`",
+  // "/(tabs)/competir") -- un falso positivo de texto de ruta, nunca de UI
+  // real. El invariante REAL que este check protege es "no se agregó un
+  // control de pestañas/tabs de UI a las secciones Diarios/Semanal" -- se
+  // reescribe para exigir evidencia de UN COMPONENTE de tabs real
+  // (`<Tabs`/`TabBar`/`SegmentedControl`, con mayúscula inicial como
+  // identificador JSX/import, nunca el nombre de ruta en minúscula entre
+  // paréntesis) sobre el CÓDIGO SIN COMENTARIOS -- nunca sobre comentarios
+  // que sólo documentan la ruta.
+  const screenSrcNoComments = screenSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  check(
+    'secciones DIARIOS + SEMANAL, sin un componente de Tabs/filtros/historial/streaks/refresh real (código, no comentarios/rutas)',
+    /Diarios/i.test(screenSrc) &&
+      /Semanal/i.test(screenSrc) &&
+      !/<Tabs\b|\bTabBar\b|\bSegmentedControl\b|\b(filtro|filtros|historial|streak|racha|Refresh|Actualizar manualmente)\b/i.test(screenSrcNoComments),
+  );
   check('la pantalla NO muestra dificultad ni rareza', !/\b(EASY|MEDIUM|HARD|ADVANCED)\b/.test(screenSrc) && !/dificultad|rareza|rarity/i.test(screenSrc));
   check('COMPLETED/CLAIMED representables -- la pantalla no filtra por estado', !/filter\([^)]*challengeStatus|challengeStatus !== 'CLAIMED'|!== 'COMPLETED'/.test(screenSrc));
   check('back nativo (header de _layout, como Ranking) -- sin navegación custom', !screenSrc.includes('router.back') || !screenSrc.includes('customBack'));

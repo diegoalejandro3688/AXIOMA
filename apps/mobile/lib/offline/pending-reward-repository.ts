@@ -4,6 +4,10 @@ export type PendingRewardStatus = 'PENDING' | 'CONFIRMED' | 'EXPIRED';
 
 export interface PendingReward {
   id: string;
+  /** VC4 MICROBLOQUE 10.1 -- `null` SÓLO en filas legacy previas a la
+   * migración `version: 3` (owner no reconstruible, ver migrations.ts).
+   * Toda fila creada desde esta versión SIEMPRE trae un valor real. */
+  accountId: string | null;
   /**
    * El `operationId` REAL de la operación que originó la recompensa (ej. la
    * Pregunta rápida respondida) -- nunca un id sintético del cliente. Es el
@@ -22,6 +26,7 @@ export interface PendingReward {
 
 interface PendingRewardRow {
   id: string;
+  account_id: string | null;
   attempt_id: string;
   reward_type: string;
   reward_amount: number;
@@ -33,6 +38,7 @@ interface PendingRewardRow {
 function mapRow(row: PendingRewardRow): PendingReward {
   return {
     id: row.id,
+    accountId: row.account_id,
     attemptId: row.attempt_id,
     rewardType: row.reward_type,
     rewardAmount: row.reward_amount,
@@ -69,7 +75,8 @@ export class PendingRewardRepository {
    * descarta también, nunca queda huérfano en ningún lado (no se inserta
    * nada más que la fila ganadora).
    */
-  async create(input: { attemptId: string; rewardType: string; rewardAmount: number }): Promise<PendingReward> {
+  /** `accountId` OBLIGATORIO (VC4 MICROBLOQUE 10.1) -- nunca inferido implícitamente dentro del repositorio; el llamador (el store, que sabe la identidad ligada) siempre lo pasa explícito. */
+  async create(input: { accountId: string; attemptId: string; rewardType: string; rewardAmount: number }): Promise<PendingReward> {
     const existing = await this.findByAttemptId(input.attemptId);
     if (existing) return existing;
 
@@ -77,9 +84,9 @@ export class PendingRewardRepository {
     const now = new Date().toISOString();
     try {
       await this.driver.runAsync(
-        `INSERT INTO pending_reward (id, attempt_id, reward_type, reward_amount, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'PENDING', ?, ?)`,
-        [id, input.attemptId, input.rewardType, input.rewardAmount, now, now],
+        `INSERT INTO pending_reward (id, account_id, attempt_id, reward_type, reward_amount, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?)`,
+        [id, input.accountId, input.attemptId, input.rewardType, input.rewardAmount, now, now],
       );
     } catch {
       // Carrera real: otra llamada concurrente ganó el INSERT para el MISMO
@@ -101,9 +108,20 @@ export class PendingRewardRepository {
     return row ? mapRow(row) : null;
   }
 
-  /** Orden `created_at ASC` -- FIFO, la base de la reconciliación por delta (ver `pending-lp-store.ts`). */
-  async listPending(): Promise<PendingReward[]> {
-    const rows = await this.driver.getAllAsync<PendingRewardRow>(`SELECT * FROM pending_reward WHERE status = ? ORDER BY created_at ASC`, ['PENDING']);
+  /**
+   * `accountId` OBLIGATORIO (VC4 MICROBLOQUE 10.1) -- NUNCA un SELECT
+   * global. `account_id = ?` con un valor no-nulo jamás hace match con una
+   * fila `account_id IS NULL` (filas legacy pre-migración, ver
+   * `migrations.ts` versión 3) -- quedan excluidas estructuralmente de
+   * cualquier cuenta, nunca atribuidas a la incorrecta. Orden
+   * `created_at ASC` -- FIFO, la base de la reconciliación por delta (ver
+   * `pending-lp-store.ts`).
+   */
+  async listPending(accountId: string): Promise<PendingReward[]> {
+    const rows = await this.driver.getAllAsync<PendingRewardRow>(
+      `SELECT * FROM pending_reward WHERE account_id = ? AND status = ? ORDER BY created_at ASC`,
+      [accountId, 'PENDING'],
+    );
     return rows.map(mapRow);
   }
 
@@ -117,5 +135,26 @@ export class PendingRewardRepository {
   async markExpired(id: string): Promise<void> {
     const now = new Date().toISOString();
     await this.driver.runAsync(`UPDATE pending_reward SET status = 'EXPIRED', updated_at = ? WHERE id = ?`, [now, id]);
+  }
+
+  /**
+   * VC4 MICROBLOQUE 10.1 (FINAL EDGE-CASE FIX) -- única operación de este
+   * repositorio que NO está scopeada por `accountId`, a propósito: las filas
+   * legacy pre-migración `version: 3` tienen `account_id IS NULL` y por eso
+   * `listPending(accountId)` nunca las carga en ningún caché (quedan en
+   * cuarentena -- invisibles para toda cuenta, ver docstring de
+   * `listPending`), pero eso mismo significa que `expireStalePendingRewards`
+   * tampoco las ve nunca a través del caché, así que sin esto se quedarían
+   * `PENDING` en SQLite para siempre. Este método NO adopta ninguna fila (no
+   * las asocia a ninguna cuenta, no las toca salvo para expirarlas) -- solo
+   * aplica la misma política de TTL general a las filas sin owner
+   * reconstruible, igual que ya se aplica a las filas con owner.
+   */
+  async expireOrphanedLegacyRewards(cutoffIso: string): Promise<number> {
+    const result = await this.driver.runAsync(
+      `UPDATE pending_reward SET status = 'EXPIRED', updated_at = ? WHERE account_id IS NULL AND status = 'PENDING' AND created_at < ?`,
+      [new Date().toISOString(), cutoffIso],
+    );
+    return result.changes;
   }
 }

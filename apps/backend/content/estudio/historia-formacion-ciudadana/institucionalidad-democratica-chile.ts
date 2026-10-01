@@ -347,13 +347,29 @@ const institucionalidadDemocraticaChile: ResourceContentModule = {
       order: 9,
       difficulty: 'DIFICIL',
       stemContent: toBlocks([...textoB, { type: 'paragraph', text: '¿Cuál interpretación sintetiza mejor el funcionamiento de una institucionalidad democrática?' }]),
+      // VC4 MICROBLOQUE 8.1 -- distractores reforzados (Auditoría Microbloque
+      // 8, patrón Historia: opción correcta consistentemente más larga/
+      // matizada vs. distractores cortos con palabras absolutistas
+      // "todas"/"nunca"/"sin límites", explotable sin dominar el contenido).
+      // Misma clave correcta, mismo posicionamiento historiográfico, sin
+      // framing político nuevo -- sólo se reescriben los 3 distractores para
+      // que sean plausibles, de longitud/matiz comparable a la opción
+      // correcta, e incorrectos por una razón conceptual real (no por una
+      // palabra absoluta obvia).
       options: [
-        { content: { type: 'paragraph', order: 0, text: 'Todas las decisiones importantes deben concentrarse en una sola autoridad.' }, correct: false },
         {
           content: {
             type: 'paragraph',
             order: 0,
-            text: 'Las instituciones funcionan democráticamente únicamente cuando nunca existen desacuerdos entre ellas.',
+            text: 'El poder se organiza en distintas autoridades, pero la decisión final sobre cualquier materia recae en la práctica en el Presidente, quien coordina y supervisa directamente a las demás instituciones.',
+          },
+          correct: false,
+        },
+        {
+          content: {
+            type: 'paragraph',
+            order: 0,
+            text: 'Las instituciones funcionan democráticamente cuando actúan de manera coordinada y evitan que sus diferencias de criterio lleguen a instancias judiciales o de fiscalización externa.',
           },
           correct: false,
         },
@@ -365,7 +381,14 @@ const institucionalidadDemocraticaChile: ResourceContentModule = {
           },
           correct: true,
         },
-        { content: { type: 'paragraph', order: 0, text: 'La independencia institucional permite que cada organismo actúe sin límites legales.' }, correct: false },
+        {
+          content: {
+            type: 'paragraph',
+            order: 0,
+            text: 'La independencia institucional consiste en que cada organismo defina sus propias normas internas, sin que estas necesiten ser coherentes con el resto del ordenamiento jurídico vigente.',
+          },
+          correct: false,
+        },
       ],
       explanationContent: [
         {

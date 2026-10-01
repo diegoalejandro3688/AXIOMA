@@ -18,10 +18,20 @@ import {
  *   - se programan refetch silenciosos ESPACIADOS (`STUDY_RECONCILE_REFETCH_OFFSETS_MS`)
  *     hasta la ventana máxima (`STUDY_RECONCILE_WINDOW_MS`)
  *
- * Se detiene (`processing = false`, timers cancelados) en cuanto:
- *   - `signature` cambia respecto al valor que tenía al armarse (el backend
- *     ya se puso al día), o
- *   - expira la ventana.
+ * Se detiene LOCALMENTE (`processing = false`, timers propios cancelados)
+ * en cuanto `signature` cambia respecto al valor que tenía al armarse (el
+ * backend ya se puso al día para ESTA tarjeta) -- pero eso NUNCA limpia la
+ * ventana COMPARTIDA (`armedAt` es un único valor global en
+ * `study-progress-reconciliation`, consumido por Inicio Y Competir a la
+ * vez): la ventana sólo se cierra globalmente por expiración natural
+ * (`STUDY_RECONCILE_WINDOW_MS`). VC4 MICROBLOQUE 4 -- antes, cada
+ * consumidor llamaba `clearStudyProgressReconciliation()` en cuanto SU
+ * PROPIA señal cambiaba (p.ej. XP, que se otorga más rápido que la
+ * evaluación de Desafíos aguas abajo), matando los refetch programados de
+ * CUALQUIER OTRO consumidor (p.ej. Desafíos) que todavía no había
+ * alcanzado su propio valor autoritativo -- confirmado como causa raíz de
+ * que Desafíos quedara mostrando progreso viejo mientras XP ya se veía
+ * correcto, en la misma pantalla y en otras.
  *
  * NUNCA fabrica valores. NUNCA lanza timers duplicados (un solo `useEffect`
  * por ciclo de armado). Cancela todo al desmontar.
@@ -49,13 +59,6 @@ export function useBoundedReconciliation(
 
   const changed = armedAt != null && baselineRef.current !== null && signature !== baselineRef.current;
   const processing = armedAt != null && !changed;
-
-  // El backend ya se puso al día -> limpiar la ventana (una vez).
-  useEffect(() => {
-    if (changed) {
-      clearStudyProgressReconciliation();
-    }
-  }, [changed]);
 
   // Refetch espaciado + cierre de ventana. Un único efecto por `armedAt`;
   // su cleanup cancela TODOS los timers -> nunca hay bucles solapados, y el

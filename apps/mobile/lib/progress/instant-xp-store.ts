@@ -42,8 +42,44 @@ let optimisticDelta = 0;
 let baselineLifetimeXp: number | null = null;
 const listeners = new Set<Listener>();
 
+/**
+ * VC4 MICROBLOQUE 10 -- identidad de cuenta a la que está ligado el estado
+ * optimista actual. `null` = sin cuenta ligada todavía (arranque, o sin
+ * sesión). Causa raíz del leak encontrado en Final QA: este store es un
+ * singleton a nivel de módulo (sobrevive logout/login -- `AuthProvider`
+ * nunca se desmonta, ver auditoría de ciclo de vida) sin ningún concepto
+ * de "de quién" es `optimisticDelta`/`baselineLifetimeXp`. Se eligió
+ * RESET EXPLÍCITO en cambio de identidad (§12 del prompt, opción B) en vez
+ * de un store keyed por cuenta -- el singleton ya es correcto para UNA
+ * sesión activa a la vez (nunca hay dos cuentas autenticadas
+ * simultáneamente en este cliente), así que resetear en la transición es
+ * la opción de MENOR RIESGO para RC frente a un refactor amplio a
+ * multi-cuenta.
+ */
+let boundAccountId: string | null = null;
+
 function notify(): void {
   for (const listener of listeners) listener();
+}
+
+/**
+ * Liga el store a `accountId` (o a "ninguna cuenta" si `null`), llamado
+ * desde `AuthProvider` en CADA transición real de identidad (login,
+ * logout, account switch -- ver auditoría §12-14). Determinista: compara
+ * contra la identidad previamente ligada, NUNCA contra "hubo un logout" --
+ * un refresh de token para la MISMA cuenta (`A -> A`) es un no-op
+ * intencional (§14 -- no destruir estado útil sólo por una reautenticación
+ * de la misma identidad). Sólo `previousAccountId !== nextAccountId`
+ * (incluyendo las transiciones hacia/desde `null`) dispara el reset, y lo
+ * hace de forma SÍNCRONA -- nunca queda una ventana donde el delta de la
+ * cuenta anterior pueda combinarse con el XP autoritativo de la nueva.
+ */
+export function bindInstantXpAccount(accountId: string | null): void {
+  if (accountId === boundAccountId) return;
+  boundAccountId = accountId;
+  optimisticDelta = 0;
+  baselineLifetimeXp = null;
+  notify();
 }
 
 /** Llamado tras una actividad ACEPTADA por el servidor (mismo criterio que `armStudyProgressReconciliation` -- nunca en cola offline, nunca especulativo). */

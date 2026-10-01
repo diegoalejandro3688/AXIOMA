@@ -288,9 +288,29 @@ const guerraFria: ResourceContentModule = {
       order: 9,
       difficulty: 'DIFICIL',
       stemContent: toBlocks([...textoB, { type: 'paragraph', text: '¿Cuál interpretación explica mejor la relación entre la Guerra Fría y los conflictos regionales?' }]),
+      // VC4 MICROBLOQUE 8.1 -- distractores reforzados (mismo patrón que
+      // INSTITUCIONALIDAD_DEMOCRATICA_CHILE.Q10: opción correcta larga/
+      // matizada vs. distractores cortos con palabras absolutistas
+      // "todos"/"completamente"/"ningún"/"eliminó"). Misma clave correcta,
+      // mismo posicionamiento historiográfico (consistente con la
+      // explicación ya existente), sin framing nuevo.
       options: [
-        { content: { type: 'paragraph', order: 0, text: 'Todos los conflictos regionales fueron creados completamente por las superpotencias.' }, correct: false },
-        { content: { type: 'paragraph', order: 0, text: 'La rivalidad entre Estados Unidos y la URSS no tuvo ningún efecto sobre guerras locales.' }, correct: false },
+        {
+          content: {
+            type: 'paragraph',
+            order: 0,
+            text: 'Los conflictos regionales surgieron como consecuencia directa de la rivalidad entre Estados Unidos y la URSS, que fue la causa que dio origen a tensiones locales antes inexistentes.',
+          },
+          correct: false,
+        },
+        {
+          content: {
+            type: 'paragraph',
+            order: 0,
+            text: 'Las guerras locales respondieron sobre todo a sus propias causas internas, por lo que la disputa entre las superpotencias tuvo escasa influencia sobre su desarrollo o desenlace real.',
+          },
+          correct: false,
+        },
         {
           content: {
             type: 'paragraph',
@@ -299,7 +319,14 @@ const guerraFria: ResourceContentModule = {
           },
           correct: true,
         },
-        { content: { type: 'paragraph', order: 0, text: 'La Guerra Fría eliminó las motivaciones políticas de los actores locales.' }, correct: false },
+        {
+          content: {
+            type: 'paragraph',
+            order: 0,
+            text: 'La Guerra Fría reemplazó las motivaciones políticas locales por objetivos definidos por las superpotencias, dejando a los actores regionales sin capacidad real de decisión propia.',
+          },
+          correct: false,
+        },
       ],
       explanationContent: [
         { type: 'paragraph', order: 0, text: 'La competencia bipolar podía transformar conflictos existentes mediante apoyo político, económico o militar, pero no anulaba las causas y objetivos de los actores locales.' },

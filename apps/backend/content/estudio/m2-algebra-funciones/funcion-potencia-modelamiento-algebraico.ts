@@ -369,7 +369,10 @@ const funcionPotenciaModelamientoAlgebraico: ResourceContentModule = {
     {
       questionKey: 'M2.ALGEBRA_FUNCIONES.FUNCION_POTENCIA_MODELAMIENTO_ALGEBRAICO.Q8',
       order: 7,
-      difficulty: 'DIFICIL',
+      // VC4 MICROBLOQUE 8.1 -- relabel DIFICIL->MEDIA. Auditoría: resolver
+      // el parámetro a y evaluar f(-3) es sustitución encadenada en dos
+      // pasos, sin transferencia/interpretación adicional real.
+      difficulty: 'MEDIA',
       stemContent: [
         { type: 'paragraph', order: 0, text: 'Se sabe que:' },
         { type: 'formula', order: 1, latex: 'f(x)=ax^3' },

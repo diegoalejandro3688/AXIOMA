@@ -201,7 +201,9 @@ const fuerzasMovimientoLeyesNewton: ResourceContentModule = {
     {
       questionKey: 'CIENCIAS.FISICA.FUERZAS_MOVIMIENTO_LEYES_NEWTON.Q5',
       order: 4,
-      difficulty: 'DIFICIL',
+      // VC4 MICROBLOQUE 8.1 -- relabel DIFICIL->MEDIA. Auditoría: sustitución
+      // directa en a=F/m, fórmula recién presentada, sin interpretación.
+      difficulty: 'MEDIA',
       stemContent: toBlocks([
         ...situacionA,
         { type: 'paragraph', text: 'Si se utilizara un carro de 4 kg y se aplicara una fuerza neta de 8 N, ¿qué aceleración se esperaría?' },

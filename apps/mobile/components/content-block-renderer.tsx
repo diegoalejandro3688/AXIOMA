@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Image, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import type { ResourceContentBlockResponse } from '@axioma/contracts';
-import { Text, Card } from './ui';
+import { Text, Card, DataTable } from './ui';
+import { groupIntoSegments } from '../lib/content/table-blocks';
 import { useTheme, useThemedStyles } from '../theme';
 import type { ThemeTokens } from '../theme';
 
@@ -41,16 +42,25 @@ export function ContentBlockRenderer({
 }) {
   const sorted = [...blocks].sort((a, b) => a.order - b.order);
   const styles = useThemedStyles(createStyles);
+  const segments = useMemo(() => groupIntoSegments(sorted), [sorted]);
   return (
     <View style={styles.container}>
-      {sorted.map((block, index) => (
-        <ContentBlock
-          key={index}
-          block={block}
-          styles={styles}
-          highlightFormulas={highlightFormulas}
-          formulaContext={formulaContext}
-        />
+      {segments.map((segment, index) => (
+        <Fragment key={index}>
+          {segment.kind === 'table' ? (
+            <DataTable headers={segment.headers} rows={segment.rows} />
+          ) : (
+            segment.blocks.map((block, blockIndex) => (
+              <ContentBlock
+                key={blockIndex}
+                block={block}
+                styles={styles}
+                highlightFormulas={highlightFormulas}
+                formulaContext={formulaContext}
+              />
+            ))
+          )}
+        </Fragment>
       ))}
     </View>
   );

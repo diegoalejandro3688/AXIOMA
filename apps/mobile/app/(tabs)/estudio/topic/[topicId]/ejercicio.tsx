@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Platform, Pressable, ScrollView, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { QuestionResponse, ResourceContentBlockResponse, TopicProgressResponse } from '@axioma/contracts';
@@ -15,9 +15,9 @@ import { LoadingState } from '../../../../../components/loading-state';
 import { ErrorState } from '../../../../../components/error-state';
 import { EmptyState } from '../../../../../components/empty-state';
 import { ContentBlockRenderer } from '../../../../../components/content-block-renderer';
-import { IconButton, Text, Button, AnswerOption, Icon } from '../../../../../components/ui';
+import { IconButton, Text, Button, AnswerOption, Icon, RewardBurst, Card } from '../../../../../components/ui';
 import type { AnswerOptionState } from '../../../../../components/ui';
-import { useTheme, useThemedStyles, spacing, radii } from '../../../../../theme';
+import { useTheme, useThemedStyles, spacing, radii, borders } from '../../../../../theme';
 import type { ThemeTokens } from '../../../../../theme';
 
 /** `isCorrect: null` = respondida localmente, pendiente de confirmación del servidor (ver ADR-0014, punto 5). */
@@ -42,12 +42,15 @@ type ScreenState =
  * mismo render y ocultar el resultado antes de que pueda verlo.
  */
 export default function EjercicioScreen() {
-  const { topicId, subjectId, name, unitId, unitName } = useLocalSearchParams<{
+  const { topicId, subjectId, name, unitId, unitName, origin } = useLocalSearchParams<{
     topicId: string;
     subjectId: string;
     name?: string;
     unitId?: string;
     unitName?: string;
+    /** VC4 MICROBLOQUE 6.1 -- 'resources' cuando se entró por la biblioteca
+     * "Recursos" (nunca inferido). Ver `resourceFlowNav`. */
+    origin?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -58,6 +61,23 @@ export default function EjercicioScreen() {
   const [showCompleted, setShowCompleted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // VC4 MICROBLOQUE 5/5B -- feedback visual puro, MISMA señal que ya dispara
+  // el overlay optimista de XP (`resourceJustCompleted`, ver `handleSelect`).
+  // `key` incremental evita que un remount accidental reproduzca el burst.
+  const [resourceBurst, setResourceBurst] = useState<{ key: number } | null>(null);
+  const burstKeyRef = useRef(0);
+  // §10/§14 -- el resumen ("Recurso completado" + score) se revela DESPUÉS
+  // de que termina el burst. Arranca en `true` (reentrada a un recurso YA
+  // completo: nunca hay burst que esperar, el resumen debe verse de
+  // inmediato) -- SOLO se pone en `false` en el instante de un completion
+  // NUEVO real (ver `handleSelect`), nunca por defecto.
+  const [summaryRevealed, setSummaryRevealed] = useState(true);
+  // VC4 MICROBLOQUE 6 -- Repasar recurso (HARD READ-ONLY, §7 del prompt).
+  // Nunca persistido (§13): arranca en `false`/`0` y `load()` los reinicia
+  // explícitamente en CADA reentrada -- reabrir el recurso SIEMPRE muestra
+  // el summary primero, nunca entra a Repaso automáticamente.
+  const [reviewMode, setReviewMode] = useState(false);
+  const [reviewIndex, setReviewIndex] = useState(0);
 
   const load = useCallback(async () => {
     setState({ status: 'loading' });
@@ -93,11 +113,22 @@ export default function EjercicioScreen() {
     }
 
     const firstUnanswered = questionsResult.data.find((question) => !answers[question.versionId]);
+    const completedNow = !firstUnanswered;
     setDisplayedQuestionVersionId(firstUnanswered?.versionId ?? null);
-    setShowCompleted(!firstUnanswered);
+    setShowCompleted(completedNow);
+    // VC4 MICROBLOQUE 6 -- §8/§13: toda (re)carga vuelve al summary, nunca a
+    // Repaso -- EXCEPTO la entrada explícita 6.1 desde "Recursos" (§8/§11:
+    // recurso completado abierto desde Recursos entra DIRECTO a Repaso, sin
+    // summary intermedio). El guard usa `completedNow`, derivado del estado
+    // AUTORITATIVO recién cargado (`getTopicProgress`/`answers`), NUNCA sólo
+    // el param del cliente (§19 -- un `origin=resources` sobre un recurso que
+    // en realidad no está completo cae al flujo normal de estudio, no a
+    // Repaso).
+    setReviewMode(origin === 'resources' && completedNow);
+    setReviewIndex(0);
 
     setState({ status: 'ready', questions: questionsResult.data, topicStatus: progressResult.data.status, answers });
-  }, [topicId]);
+  }, [topicId, origin]);
 
   useEffect(() => {
     load();
@@ -152,6 +183,19 @@ export default function EjercicioScreen() {
       }
       if (outcome.data.resourceJustCompleted) {
         addOptimisticXp(XP_REWARD_BY_ACTIVITY_TYPE.RECURSO_COMPLETADO);
+        // VC4 MICROBLOQUE 5B -- burst visual, MISMA condición que la línea
+        // de arriba, nunca una fuente de verdad propia. `key` incremental
+        // (no el mismo valor fijo) para que dos completions reales
+        // consecutivas (escenario ya de por sí infrecuente) siempre
+        // remonten limpio.
+        burstKeyRef.current += 1;
+        setResourceBurst({ key: burstKeyRef.current });
+        // §13 -- NO esperar al tap "Continuar" sobre la última pregunta: el
+        // completion state aparece de inmediato, con el burst YA dentro de
+        // él (nunca superpuesto sobre la pregunta). El resumen (§10/§14)
+        // se revela recién, dentro de esa pantalla, cuando el burst termina.
+        setShowCompleted(true);
+        setSummaryRevealed(false);
       }
     }
 
@@ -215,6 +259,16 @@ export default function EjercicioScreen() {
     router.push({ pathname: '/(tabs)/estudio/[subjectId]/unidades', params: { subjectId, name: name ?? '' } });
   }
 
+  // VC4 MICROBLOQUE 6.1 -- §16: "Salir del repaso" respeta el ORIGEN
+  // explícito. Un repaso alcanzado vía `origin=resources` vuelve a la
+  // biblioteca "Recursos" (el recurso ya se vio, no hace falta re-mostrar el
+  // summary intermedio); cualquier otro origen (Unidades/CTA del summary)
+  // sigue volviendo al summary local, comportamiento ya aprobado.
+  function backToRecursos() {
+    router.push({ pathname: '/(tabs)/estudio/[subjectId]/recursos', params: { subjectId, name: name ?? '' } });
+  }
+  const exitReview = origin === 'resources' ? backToRecursos : () => setReviewMode(false);
+
   if (state.status === 'loading') return <LoadingState message="Cargando preguntas…" />;
   if (state.status === 'premium') return <PremiumLockedScreen origin="unit" onBack={backToUnidades} />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
@@ -223,18 +277,65 @@ export default function EjercicioScreen() {
   }
 
   if (showCompleted) {
+    // §8/§9 -- fuente LOCAL y fiable: `state.answers` viene de
+    // `getTopicProgress` (autoritativo) y se actualiza en vivo por
+    // respuesta; cada pregunta tiene COMO MÁXIMO una respuesta INMUTABLE
+    // (ADR-0014) -- nunca cuenta replays ni preguntas de otro recurso.
+    const totalCount = state.questions.length;
+    const correctCount = state.questions.filter((question) => state.answers[question.versionId]?.isCorrect === true).length;
+    const percentage = totalCount > 0 ? Math.round((correctCount / totalCount) * 100) : 0;
+
+    // VC4 MICROBLOQUE 6 -- Repasar recurso: rama COMPLETAMENTE separada del
+    // summary (§12 -- "los elementos interactivos que pueden escribir
+    // simplemente NO se montan en review mode"). `RewardBurst`/`CompletionSummary`
+    // (que a su vez es lo único que puede disparar `backToUnidades`/burst)
+    // NUNCA se renderizan aquí -- no son alcanzables desde este árbol, no
+    // hace falta un guard condicional adicional dentro de ellos.
+    if (reviewMode) {
+      return (
+        <ReviewScreen
+          questions={state.questions}
+          answers={state.answers}
+          reviewIndex={reviewIndex}
+          setReviewIndex={setReviewIndex}
+          onExit={exitReview}
+          insets={insets}
+          styles={styles}
+        />
+      );
+    }
+
     return (
       <View style={[styles.completedScreen, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
-        <View style={styles.completedBadge}>
-          <Icon name="check" size={28} color={tokens.color.state.success.text} />
-        </View>
-        <Text variant="heading2" accessibilityRole="header">
-          Recurso completado
-        </Text>
-        <Text variant="body" color="secondary" style={styles.completedMessage}>
-          Respondiste todas las preguntas de este recurso.
-        </Text>
-        <Button variant="primary" label="Volver a Unidades" onPress={backToUnidades} style={styles.completedButton} />
+        {resourceBurst ? (
+          <RewardBurst
+            key={resourceBurst.key}
+            amount={XP_REWARD_BY_ACTIVITY_TYPE.RECURSO_COMPLETADO}
+            kind="resource"
+            onComplete={() => {
+              setResourceBurst(null);
+              setSummaryRevealed(true);
+            }}
+          />
+        ) : null}
+        <CompletionSummary
+          visible={summaryRevealed}
+          correctCount={correctCount}
+          totalCount={totalCount}
+          percentage={percentage}
+          tokens={tokens}
+          styles={styles}
+          continueLabel={origin === 'resources' ? 'Volver a Recursos' : 'Volver a Unidades'}
+          onContinue={origin === 'resources' ? backToRecursos : backToUnidades}
+          onReview={
+            origin === 'resources'
+              ? () => {
+                  setReviewIndex(0);
+                  setReviewMode(true);
+                }
+              : undefined
+          }
+        />
       </View>
     );
   }
@@ -360,6 +461,220 @@ export default function EjercicioScreen() {
 }
 
 /**
+ * VC4 MICROBLOQUE 5B (§10/§14) -- "Recurso completado" + score se revelan
+ * con un fade-in corto (~250ms) DESPUÉS de que el RewardBurst termina
+ * (`visible`), nunca simultáneo -- así la secuencia comunica recompensa,
+ * luego logro, luego rendimiento, sin competir. En reentrada (`visible`
+ * ya `true` desde el montaje, ver `summaryRevealed`), se muestra de
+ * inmediato sin animación (no hay nada que "revelar después de" un burst
+ * que nunca ocurrió).
+ */
+function CompletionSummary({
+  visible,
+  correctCount,
+  totalCount,
+  percentage,
+  tokens,
+  styles,
+  continueLabel,
+  onContinue,
+  onReview,
+}: {
+  visible: boolean;
+  correctCount: number;
+  totalCount: number;
+  percentage: number;
+  tokens: ThemeTokens;
+  styles: ReturnType<typeof createStyles>;
+  /** VC4 MICROBLOQUE 6.1.1 -- respeta el `origin` explícito ya aprobado en
+   * 6.1: "Volver a Unidades" (origin 'unit') o "Volver a Recursos" (origin
+   * 'resources'). Nunca `router.back()` incidental. */
+  continueLabel: string;
+  onContinue: () => void;
+  /** VC4 MICROBLOQUE 6.1.2 -- "Repasar recurso" pertenece a Recursos, no a
+   * Unidades (modelo de producto ya aprobado). `undefined` = el CTA NO se
+   * renderiza (nunca un botón deshabilitado ni un espacio vacío) -- el
+   * caller sólo lo pasa cuando `origin === 'resources'`. */
+  onReview?: () => void;
+}) {
+  const opacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const wasVisible = useRef(visible);
+
+  useEffect(() => {
+    if (visible && !wasVisible.current) {
+      Animated.timing(opacity, { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    }
+    wasVisible.current = visible;
+  }, [visible, opacity]);
+
+  if (!visible) return null;
+
+  return (
+    <Animated.View style={[styles.completedContent, { opacity }]}>
+      <View style={styles.completedBadgeRing}>
+        <View style={styles.completedBadge}>
+          <Icon name="check" size={32} color={tokens.color.state.success.text} />
+        </View>
+      </View>
+      <View style={styles.completedHeading}>
+        <Text variant="heading2" accessibilityRole="header" style={styles.completedTitle}>
+          Recurso completado
+        </Text>
+        <Text variant="bodySmall" color="secondary" style={styles.completedSubtitle}>
+          Buen trabajo, sigue así
+        </Text>
+      </View>
+      <Card variant="surface" style={styles.statsCard}>
+        <View style={styles.statsColumn}>
+          <Text variant="heading1" style={styles.statsValue}>
+            {correctCount}/{totalCount}
+          </Text>
+          <Text variant="label" color="secondary" style={styles.statsLabel}>
+            Correctas
+          </Text>
+        </View>
+        <View style={styles.statsDivider} />
+        <View style={styles.statsColumn}>
+          <Text variant="heading1" style={styles.statsValue}>
+            {percentage}%
+          </Text>
+          <Text variant="label" color="secondary" style={styles.statsLabel}>
+            Aciertos
+          </Text>
+        </View>
+      </Card>
+      {/* VC4 MICROBLOQUE 6.1.2 -- "Repasar recurso" pertenece a Recursos, no
+          a Unidades: `onReview` sólo existe cuando `origin === 'resources'`
+          (ver caller). Ausente -> el botón NO se renderiza (nunca un hueco
+          vacío ni un botón deshabilitado) -- composición limpia:
+          stats -> CTA único "Volver a Unidades"/"Volver a Recursos". Sólo
+          activa `reviewMode` local -- ninguna llamada de red, ninguna
+          mutación (ver ReviewScreen). */}
+      {onReview ? <Button variant="secondary" label="Repasar recurso" onPress={onReview} style={styles.completedButton} /> : null}
+      <Button variant="primary" label={continueLabel} onPress={onContinue} style={styles.completedButton} />
+    </Animated.View>
+  );
+}
+
+/**
+ * VC4 MICROBLOQUE 6 -- Repasar recurso, HARD READ-ONLY (§2/§7/§12 del
+ * prompt). Consume EXCLUSIVAMENTE `questions`/`answers` ya cargados por
+ * `load()` -- cero fetch propio, cero mutación posible desde este árbol:
+ *
+ *   - NO importa `submitResponseViaOutbox`/`answerExamQuestion` ni nada que
+ *     llame a una API de escritura -- imposible de invocar porque no está
+ *     ni siquiera referenciado aquí (defensa estructural, no sólo un guard).
+ *   - NO llama `addOptimisticXp`/`armStudyProgressReconciliation` -- mismo
+ *     motivo.
+ *   - `AnswerOption` se usa SIEMPRE con `disabled` fijo en `true` y
+ *     `onPress={() => {}}` -- RN's `Pressable` con `disabled=true` NUNCA
+ *     invoca `onPress` a nivel nativo, así que aunque el callback existiera
+ *     con lógica real no sería alcanzable por toque.
+ *   - Navegación (`Anterior`/`Siguiente`/`Salir`) sólo toca el estado LOCAL
+ *     `reviewIndex`/`onExit` (prop, cierra `reviewMode` en el padre) -- nunca
+ *     `router`, nunca re-dispara `load()`.
+ *
+ * LIMITACIÓN CONOCIDA (aprobada explícitamente, ver decisión del bloque):
+ * cuando `answer.isCorrect === false`, NINGUNA alternativa se marca como la
+ * correcta -- el contrato de EDUCATION (`answerOptionPublicResponseSchema`)
+ * NUNCA expone qué opción es correcta (ADR-0012, "la pauta no viaja al
+ * cliente"), y este bloque tiene prohibido crear backend nuevo o inferir la
+ * respuesta correcta por heurística. El usuario ve su propia respuesta,
+ * si fue correcta/incorrecta, y la explicación ya existente -- nunca cuál
+ * era la alternativa correcta cuando falló.
+ */
+function ReviewScreen({
+  questions,
+  answers,
+  reviewIndex,
+  setReviewIndex,
+  onExit,
+  insets,
+  styles,
+}: {
+  questions: QuestionResponse[];
+  answers: Record<string, AnsweredState>;
+  reviewIndex: number;
+  setReviewIndex: (updater: (index: number) => number) => void;
+  onExit: () => void;
+  insets: { top: number; bottom: number };
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const total = questions.length;
+  const safeIndex = Math.min(Math.max(reviewIndex, 0), Math.max(total - 1, 0));
+  const question = questions[safeIndex];
+  const answer = answers[question.versionId];
+
+  return (
+    <View style={[styles.screen, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
+      <View style={styles.header}>
+        <IconButton name="close" accessibilityLabel="Salir del repaso" onPress={onExit} color="secondary" />
+        <Text variant="label" color="secondary" style={styles.progressLabel}>
+          REPASO · Pregunta {safeIndex + 1} de {total}
+        </Text>
+      </View>
+
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+        <StemContent blocks={question.stemContent} />
+
+        <View style={styles.options}>
+          {question.answerOptions.map((option, optionIndex) => {
+            const isChosen = answer?.answerOptionId === option.id;
+            // §9/decisión aprobada -- SÓLO la alternativa elegida por el
+            // estudiante puede llevar estado correct/incorrect; el resto
+            // SIEMPRE queda en 'default', sin importar cuál sea la real.
+            let optionState: AnswerOptionState = 'default';
+            if (isChosen && answer) optionState = answer.isCorrect ? 'correct' : 'incorrect';
+            return (
+              <AnswerOption
+                key={option.id}
+                label={String.fromCharCode(65 + optionIndex)}
+                state={optionState}
+                disabled
+                accessibilityRole="radio"
+                accessibilityLabel={`Alternativa ${String.fromCharCode(65 + optionIndex)}${isChosen ? ' -- tu respuesta' : ''}`}
+                onPress={() => {}}
+              >
+                <ContentBlockRenderer blocks={[option.content]} formulaContext="option" />
+              </AnswerOption>
+            );
+          })}
+        </View>
+
+        {answer ? (
+          <View style={[styles.feedback, answer.isCorrect ? styles.feedbackCorrect : styles.feedbackIncorrect]}>
+            <Text weight="bold" color={answer.isCorrect ? 'success' : 'error'}>
+              {answer.isCorrect ? 'Respondiste correctamente' : 'Respondiste incorrectamente'}
+            </Text>
+            <ContentBlockRenderer blocks={question.explanationContent} />
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <View style={styles.navRow}>
+          <Button
+            variant="secondary"
+            size="small"
+            label="Anterior"
+            disabled={safeIndex === 0}
+            onPress={() => setReviewIndex((i) => Math.max(0, Math.min(i, total - 1) - 1))}
+          />
+          <Button
+            variant="secondary"
+            size="small"
+            label="Siguiente"
+            disabled={safeIndex === total - 1}
+            onPress={() => setReviewIndex((i) => Math.min(total - 1, Math.max(i, 0) + 1))}
+          />
+        </View>
+        <Button variant="tertiary" label="Salir del repaso" onPress={onExit} />
+      </View>
+    </View>
+  );
+}
+
+/**
  * STUDY-5 -- el enunciado real de una pregunta es, hoy, un único bloque
  * `paragraph` (`stemContent: resourceContentBlocksSchema.parse([{type:
  * 'paragraph', ...}])`, ver `apps/backend/prisma/seed.ts`). Para darle la
@@ -402,21 +717,51 @@ function createStyles(t: ThemeTokens) {
       flex: 1,
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
-      gap: 14,
       padding: 24,
       backgroundColor: t.color.background.default,
     },
-    completedBadge: {
-      width: 64,
-      height: 64,
-      borderRadius: 32,
+    // VC4 MICROBLOQUE 5C -- polish visual puro, misma estructura/orden de
+    // antes (badge -> título -> stats -> CTA), sólo mejor jerarquía/espaciado.
+    completedContent: { alignItems: 'center' as const, gap: spacing.space5, width: '100%' as const, maxWidth: 360 },
+    completedBadgeRing: {
+      width: 96,
+      height: 96,
+      borderRadius: 48,
       backgroundColor: t.color.state.success.background,
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
     },
-    completedMessage: { textAlign: 'center' as const },
-    completedButton: { marginTop: 8, alignSelf: 'stretch' as const },
+    completedBadge: {
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor: t.color.state.success.border,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
+    completedHeading: { alignItems: 'center' as const, gap: spacing.space1 },
+    completedTitle: { textAlign: 'center' as const },
+    completedSubtitle: { textAlign: 'center' as const },
+    statsCard: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'space-evenly' as const,
+      alignSelf: 'stretch' as const,
+      paddingVertical: spacing.space5,
+    },
+    statsColumn: { flex: 1, alignItems: 'center' as const, gap: 2 },
+    statsDivider: { width: borders.default, height: 40, backgroundColor: t.color.border.default },
+    statsValue: { color: t.color.accent.strong },
+    statsLabel: { textTransform: 'uppercase' as const, letterSpacing: 0.6 },
+    completedButton: { alignSelf: 'stretch' as const },
     continueButton: { marginTop: 8 },
     exitLink: { alignSelf: 'center' as const, paddingVertical: spacing.space2 },
+    // VC4 MICROBLOQUE 6 -- estilos propios de ReviewScreen (Repasar recurso).
+    // No reutilizan nombres de otras pantallas (p. ej. el intento de Ensayo)
+    // -- mismo criterio de espaciado (`spacing`), tokens ya usados arriba.
+    progressLabel: { flex: 1, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+    scroll: { flex: 1 },
+    footer: { gap: spacing.space2, paddingTop: spacing.space2 },
+    navRow: { flexDirection: 'row' as const, gap: spacing.space2 },
   };
 }

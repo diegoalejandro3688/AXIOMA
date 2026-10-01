@@ -58,11 +58,25 @@ export const sourceExplanationContentSchema = z.array(sourceExplanationBlockSche
 export const sourceAnswerOptionContentSchema = z.discriminatedUnion('type', [paragraphBlockSchema, sourceFormulaBlockSchema]);
 
 /**
- * Progresión editorial de CONTENT-3 (3 fáciles / 5 medias / 2 difíciles para
- * un recurso de 10) -- el ENUM es la parte validable aquí; la distribución
- * exacta por recurso es una regla de contenido/coverage, no de forma, y
- * queda fuera de este schema (ver gate, que sí puede auditarla si se pide
- * en un incremento posterior).
+ * `difficulty` se determina SIEMPRE por la demanda cognitiva real del ítem
+ * (recuerdo/aplicación directa vs. integración multi-paso vs. transferencia),
+ * nunca por su posición/`order` dentro del recurso ni por una cuota fija a
+ * rellenar. CONTENT-3 usó como punto de partida editorial "3 fáciles / 5
+ * medias / 2 difíciles" para un recurso de 10 -- esto es una convención
+ * HISTÓRICA de un incremento puntual, NO una cuota obligatoria: un recurso
+ * puede legítimamente terminar con 0 preguntas DIFICIL si ninguna de sus
+ * preguntas exige razonamiento multi-paso/transferencia real (ver VC4
+ * MICROBLOQUE 8/8.1 -- auditoría académica que encontró y corrigió varios
+ * ítems DIFICIL que en realidad eran sustitución directa de una fórmula, y
+ * MICROBLOQUE 8.1.1, que aclaró esta regla tras confirmar que no existe
+ * ningún auto-assignment por posición en el código).
+ *
+ * El ENUM es la parte validable aquí; la distribución exacta por recurso
+ * (`expectedDifficulty` en `manifest.ts`) es un SNAPSHOT de la distribución
+ * REAL del contenido ya escrito, mantenido para que el gate de cobertura
+ * (`verify-content-source-gate.ts`) detecte drift accidental entre el
+ * manifest y el contenido -- nunca un target editorial que un autor deba
+ * "rellenar" ajustando difficulty artificialmente.
  */
 export const questionDifficultySchema = z.enum(['FACIL', 'MEDIA', 'DIFICIL']);
 export type QuestionDifficulty = z.infer<typeof questionDifficultySchema>;

@@ -43,21 +43,34 @@ console.log('--- §32.1 Unidad -> lista de Recursos ---');
 
 console.log('--- §32.2 Recurso -> flujo recurso/ejercicio con el id del RECURSO ---');
 {
-  const r1 = resourceFlowNav(subjectId, resource, 'resource', 'Matemática M1', { id: unit.id, name: unit.name });
+  const r1 = resourceFlowNav(subjectId, resource, 'resource', 'Matemática M1', { id: unit.id, name: unit.name }, 'unit');
   check('entry "resource" -> pantalla recurso', r1.screen === 'recurso');
   check('topicId === id del RECURSO hijo', r1.params.topicId === resource.id);
   check('topicId NUNCA es el id de la Unidad', r1.params.topicId !== unit.id);
   check('el id de la Unidad viaja aparte en unitId', r1.params.unitId === unit.id);
 
-  const r2 = resourceFlowNav(subjectId, resource, 'exercise', 'Matemática M1', { id: unit.id, name: unit.name });
+  const r2 = resourceFlowNav(subjectId, resource, 'exercise', 'Matemática M1', { id: unit.id, name: unit.name }, 'unit');
   check('entry "exercise" -> pantalla ejercicio', r2.screen === 'ejercicio');
   check('topicId sigue siendo el del RECURSO en ejercicio', r2.params.topicId === resource.id);
 
-  const r3 = resourceFlowNav(subjectId, resource, 'completed', 'Matemática M1', { id: unit.id, name: unit.name });
+  const r3 = resourceFlowNav(subjectId, resource, 'completed', 'Matemática M1', { id: unit.id, name: unit.name }, 'unit');
   check('entry "completed" -> pantalla ejercicio (muestra "Unidad completada")', r3.screen === 'ejercicio');
 
-  const r4 = resourceFlowNav(subjectId, resource, 'resource', 'Matemática M1', undefined);
+  const r4 = resourceFlowNav(subjectId, resource, 'resource', 'Matemática M1', undefined, 'unit');
   check('sin unidad (entrada directa desde Inicio) -> unitId vacío, no crashea', r4.params.unitId === '');
+}
+
+console.log('--- §32.3 VC4 MICROBLOQUE 6.1 -- origin explícito viaja intacto (unit vs resources) ---');
+{
+  const fromUnit = resourceFlowNav(subjectId, resource, 'completed', 'Matemática M1', { id: unit.id, name: unit.name }, 'unit');
+  check('origin "unit" viaja intacto en los params', fromUnit.params.origin === 'unit');
+
+  const fromResources = resourceFlowNav(subjectId, resource, 'completed', 'Matemática M1', { id: unit.id, name: unit.name }, 'resources');
+  check('origin "resources" viaja intacto en los params', fromResources.params.origin === 'resources');
+  check('origin no altera la pantalla destino (sigue siendo ejercicio para "completed")', fromResources.screen === 'ejercicio');
+
+  const incompleteFromResources = resourceFlowNav(subjectId, resource, 'resource', 'Matemática M1', { id: unit.id, name: unit.name }, 'resources');
+  check('origin "resources" con entry "resource" (incompleto) sigue yendo a la pantalla recurso, no a repaso', incompleteFromResources.screen === 'recurso');
 }
 
 console.log('--- §33 Agregación de progreso de Unidad ---');

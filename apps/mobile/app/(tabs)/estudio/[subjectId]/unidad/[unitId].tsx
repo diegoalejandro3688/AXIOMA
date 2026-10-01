@@ -119,7 +119,7 @@ export default function UnidadRecursosScreen() {
     if (state.status !== 'ready') return;
     const progress = state.progressByTopic[resource.id];
     const entry = progress ? resolveContinuationEntry(progress) : 'resource';
-    const { screen, params } = resourceFlowNav(subjectId, resource, entry, name, { id: unitId, name: unitName });
+    const { screen, params } = resourceFlowNav(subjectId, resource, entry, name, { id: unitId, name: unitName }, 'unit');
     if (screen === 'recurso') {
       router.push({ pathname: '/(tabs)/estudio/topic/[topicId]/recurso', params });
     } else {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import type { AiAssistanceMode, AiConversationDetailResponse, AiResponseReportType } from '@axioma/contracts';
 import { getAiConversation, reportAiMessage, sendAiMessage } from '../../../../lib/api/ai';
@@ -49,18 +49,68 @@ type SendState =
  * bloquea localmente además de estar cubierto por la idempotencia del
  * servidor.
  */
+/**
+ * MICROBLOQUE 1 (Tutor IA -- navegación inmediata) -- parámetros OPCIONALES
+ * y ADITIVOS: solo presentes cuando se llega aquí desde el composer de Home
+ * (`ia/index.tsx`) recién creando la conversación. Al abrir una conversación
+ * YA existente (desde el historial), ninguno de los tres llega -- el
+ * comportamiento es idéntico al de antes de este cambio.
+ */
 export default function AiConversationScreen() {
-  const { conversationId } = useLocalSearchParams<{ conversationId: string }>();
+  const params = useLocalSearchParams<{
+    conversationId: string;
+    initialMessage?: string;
+    initialOperationId?: string;
+    initialMode?: AiAssistanceMode;
+  }>();
+  const { conversationId } = params;
+  const router = useRouter();
   const tokens = useTheme();
   const styles = useThemedStyles(createStyles);
   const scrollRef = useRef<ScrollView | null>(null);
 
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
   const [draft, setDraft] = useState('');
+  // Inicializador SIN CAMBIOS respecto al original -- `verify-ai-mobile-gate.ts`
+  // exige este texto literal ("nunca fuerza un enum desde el cliente"). Si hay
+  // un `initialMode` de Home, se aplica DESPUÉS, vía `setMode`, en el efecto
+  // de abajo -- nunca en el inicializador.
   const [mode, setMode] = useState<AiAssistanceMode | null>(DEFAULT_ASSISTANCE_MODE);
   const [sendState, setSendState] = useState<SendState>({ status: 'idle' });
-  const [pending, setPending] = useState<PendingSendAttempt | null>(null);
+  // MICROBLOQUE 1 -- si venimos de Home con un mensaje inicial, `pending` se
+  // siembra desde el primer render con el MISMO `operationId` que Home ya
+  // generó (nunca uno nuevo aquí). Cuando el efecto de auto-envío llame a
+  // `submit(initialMessage)`, `resolveSendOperationId` lo reconocerá como la
+  // MISMA operación (mismo contenido + este `pending` ya presente) y
+  // reutilizará este id -- nunca genera uno adicional.
+  const [pending, setPending] = useState<PendingSendAttempt | null>(() =>
+    params.initialMessage?.trim() && params.initialOperationId
+      ? { content: params.initialMessage.trim(), operationId: params.initialOperationId }
+      : null,
+  );
   const [reportStates, setReportStates] = useState<Record<string, MessageReportState>>({});
+  // Protección de re-entrada DENTRO del mismo montaje (ej. doble invocación
+  // de efectos en desarrollo) -- NUNCA la única protección: la protección
+  // real contra un remount/reapertura real de esta ruta es limpiar el
+  // parámetro `initialMessage` (ver el efecto de auto-envío más abajo), que
+  // sobrevive a que este `ref` se reinicie en una instancia nueva.
+  const autoSendGuardRef = useRef(false);
+  // MICROBLOQUE 1 (corrección) -- gate que impide el auto-envío HASTA que el
+  // `initialMode` (si lo hay) ya se haya aplicado a `mode` vía `setMode` --
+  // así `submit()` lee siempre el modo correcto de su propio closure, nunca
+  // el valor por defecto de un render atrasado. Si no hay `initialMode` que
+  // aplicar, arranca en `true` (nada que esperar, se procede de inmediato
+  // con el default, como pide la corrección).
+  const [modeReady, setModeReady] = useState(() => !params.initialMode);
+  const modeAppliedRef = useRef(false);
+
+  useEffect(() => {
+    if (modeAppliedRef.current) return;
+    modeAppliedRef.current = true;
+    if (!params.initialMode) return; // nada que aplicar -- `modeReady` ya arrancó en `true`.
+    setMode(params.initialMode);
+    setModeReady(true);
+  }, []);
 
   const load = useCallback(async () => {
     const result = await getAiConversation(conversationId);
@@ -153,6 +203,41 @@ export default function AiConversationScreen() {
     if (!retryable) setPending(null);
     setSendState({ status: 'failed', outcome, retryable });
   }
+
+  /**
+   * MICROBLOQUE 1 (Tutor IA -- navegación inmediata) -- dispara el envío real
+   * del mensaje que Home ya mostró como "en camino", pero SOLO cuando:
+   *   a) hay un `initialMessage` real pendiente de consumir,
+   *   b) la conversación ya terminó de cargar (`state.status === 'ready'`) --
+   *      nunca antes: `submit()` no-opea silenciosamente si `state` no está
+   *      `ready`, y perderíamos el mensaje inicial sin ningún aviso, y
+   *   c) `modeReady` -- si Home pasó un `initialMode`, ese modo YA se aplicó
+   *      a `mode` (efecto de arriba) ANTES de esta condición volverse cierta.
+   *      Sin este gate, `submit()` podría leer todavía `DEFAULT_ASSISTANCE_MODE`
+   *      de su closure (un render de atraso) en vez del modo real elegido en
+   *      Home -- la razón exacta de esta corrección.
+   *
+   * Doble protección contra reenvío:
+   *   1. `autoSendGuardRef` -- evita una segunda invocación DENTRO del mismo
+   *      montaje (ej. doble-invocación de efectos en desarrollo).
+   *   2. `router.setParams(...)` limpia `initialMessage`/`initialOperationId`/
+   *      `initialMode` INMEDIATAMENTE tras disparar el envío -- si la ruta se
+   *      remontara de verdad (nueva instancia, `autoSendGuardRef` reiniciado a
+   *      `false`), los parámetros ya no estarían ahí para volver a disparar
+   *      nada. `router.setParams` actualiza los parámetros de la ruta ACTUAL
+   *      sin apilar una entrada nueva de historial -- no afecta "atrás".
+   */
+  useEffect(() => {
+    if (autoSendGuardRef.current) return;
+    if (state.status !== 'ready') return;
+    if (!modeReady) return;
+    const initialMessage = params.initialMessage?.trim();
+    if (!initialMessage) return;
+
+    autoSendGuardRef.current = true;
+    router.setParams({ initialMessage: undefined, initialOperationId: undefined, initialMode: undefined });
+    void submit(initialMessage);
+  }, [state.status, modeReady]);
 
   async function handleReport(messageId: string, reportType: AiResponseReportType) {
     if (reportStates[messageId]?.status === 'sending' || reportStates[messageId]?.status === 'sent') return; // anti doble-toque.

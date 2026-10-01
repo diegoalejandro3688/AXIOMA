@@ -4,8 +4,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { randomUUID } from 'expo-crypto';
 import type { AiAssistanceMode, AiConversationSummaryResponse, AiMeStatusResponse } from '@axioma/contracts';
-import { createAiConversation, deleteAiConversation, getAiStatus, listAiConversations, sendAiMessage } from '../../../lib/api/ai';
-import { mapSendMessageResult, resolveSendOperationId, type PendingSendAttempt } from '../../../lib/ai/send-outcome';
+import { createAiConversation, deleteAiConversation, getAiStatus, listAiConversations } from '../../../lib/api/ai';
 import { resolveSendAvailability } from '../../../lib/ai/conversation-availability';
 import { ASSISTANCE_MODE_OPTIONS, DEFAULT_ASSISTANCE_MODE, describeAssistanceMode } from '../../../lib/ai/assistance-modes';
 import { AiQuotaSummary } from '../../../components/ai/ai-quota-summary';
@@ -68,16 +67,19 @@ export default function IaHubScreen() {
   // aprobada): estado local simple, sin ruta nueva, reutilizando `Dialog`.
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  // AI-1B -- composer real en Home. Estado 100% local a esta pantalla, sin
-  // segundo pipeline: reutiliza los mismos tipos/helpers ya usados por
-  // `conversation/[conversationId].tsx` (`PendingSendAttempt`,
-  // `resolveSendOperationId`, `mapSendMessageResult`).
+  // AI-1B -- composer real en Home. Estado 100% local a esta pantalla.
+  // MICROBLOQUE 1 (Tutor IA -- navegación inmediata): Home YA NO envía el
+  // mensaje -- solo crea la conversación y navega de inmediato, pasando el
+  // texto como parámetro. El envío real (mensaje optimista, `sendAiMessage`,
+  // `AiThinkingIndicator`, idempotencia, error/retry) es responsabilidad
+  // exclusiva de `submit()` en `conversation/[conversationId].tsx` -- nunca
+  // se duplica esa lógica aquí. `pendingHomeSend`/`resolveSendOperationId`/
+  // `mapSendMessageResult` quedaron muertos con este cambio y se retiraron.
   const [draft, setDraft] = useState('');
   const [mode, setMode] = useState<AiAssistanceMode | null>(DEFAULT_ASSISTANCE_MODE);
   const [modePickerOpen, setModePickerOpen] = useState(false);
   const [homeSending, setHomeSending] = useState(false);
   const [homeSendError, setHomeSendError] = useState<string | null>(null);
-  const [pendingHomeSend, setPendingHomeSend] = useState<PendingSendAttempt | null>(null);
 
   /**
    * `GET /ai/me/status` -- SOLO para el caso "historial vacío". Es una
@@ -193,16 +195,31 @@ export default function IaHubScreen() {
   const composerDisabled = homeSending || (homeAvailability !== null && !homeAvailability.canSend);
 
   /**
-   * AI-1B -- secuencia ESTRICTA create -> send -> navigate, reutilizando
-   * EXACTAMENTE el pipeline real (`createAiConversation`, `sendAiMessage`,
-   * `mapSendMessageResult`, `resolveSendOperationId`) -- cero pipeline
-   * paralelo, cero optimismo: solo se navega tras el resultado canónico OK
-   * de `sendAiMessage`.
+   * MICROBLOQUE 1 (Tutor IA -- navegación inmediata al chat).
+   *
+   * Secuencia: create -> navigate INMEDIATAMENTE, pasando el texto (y un
+   * `operationId` ya generado) como parámetros de ruta. El envío real
+   * (`sendAiMessage`, mensaje optimista, `AiThinkingIndicator`, reconciliación,
+   * error/retry) ocurre en `conversation/[conversationId].tsx` (`submit()`),
+   * que ya implementaba exactamente esa UX para una conversación existente --
+   * nunca se duplica esa lógica aquí. Home solo sigue siendo dueño de:
+   * crear la conversación y manejar el fallo de ESE paso (`homeSendError`
+   * cubre únicamente "no se pudo iniciar la conversación").
+   *
+   * `operationId` se genera aquí (no en la pantalla de conversación) para que
+   * `submit()` pueda inicializar su estado `pending` con el MISMO id desde el
+   * primer instante (ver `conversation/[conversationId].tsx`) -- así, si el
+   * efecto de auto-envío llegara a reintentar por cualquier motivo dentro del
+   * mismo montaje, `resolveSendOperationId` lo reconoce como la MISMA
+   * operación (mismo contenido + mismo id ya en `pending`) y nunca genera uno
+   * nuevo. La protección real contra un reenvío tras un REMOUNT (recargar la
+   * ruta) es la limpieza del parámetro `initialMessage` vía `router.setParams`
+   * en la propia pantalla de conversación -- ver ese archivo.
    */
   async function handleSend() {
-    if (homeSending) return; // anti doble-toque: nunca dos secuencias create->send a la vez.
+    if (homeSending) return; // anti doble-toque: nunca dos creaciones de conversación a la vez.
     const trimmed = draft.trim();
-    if (!trimmed) return; // sin contenido -> ni crea conversación ni envía nada.
+    if (!trimmed) return; // sin contenido -> no crea conversación.
     if (homeAvailability && !homeAvailability.canSend) return; // cuota agotada -- misma regla canónica que Conversación.
 
     setHomeSendError(null);
@@ -212,37 +229,23 @@ export default function IaHubScreen() {
       contextQuestionVersionId: contextQuestionVersionId || undefined,
       contextCurriculumTopicId: contextCurriculumTopicId || undefined,
     });
+    setHomeSending(false);
     if (!createResult.ok) {
-      setHomeSending(false);
       setHomeSendError('No se pudo iniciar la conversación. Inténtalo de nuevo.');
-      return; // NUNCA se llama a sendAiMessage si la creación falló.
+      return; // NUNCA se navega si la creación falló.
     }
 
     const { conversationId } = createResult.data;
-    // Reintento de la MISMA operación (mismo texto pendiente) -> mismo
-    // operationId, igual criterio que Conversación -- si el usuario vuelve a
-    // pulsar enviar tras un fallo sin cambiar el texto, no se duplica el
-    // efecto en el servidor.
-    const operationId = resolveSendOperationId(pendingHomeSend, trimmed, randomUUID);
-    setPendingHomeSend({ content: trimmed, operationId });
-
-    const outcome = mapSendMessageResult(await sendAiMessage(conversationId, { content: trimmed, operationId, requestedMode: mode }));
-    setHomeSending(false);
-
-    if (outcome.kind === 'ok') {
-      // Backend es la única autoridad: solo se navega tras la confirmación
-      // canónica del envío, nunca solo porque la creación funcionó.
-      setPendingHomeSend(null);
-      setDraft('');
-      router.push({ pathname: '/(tabs)/ia/conversation/[conversationId]', params: { conversationId } });
-      return;
-    }
-
-    // La conversación YA existe en el servidor (creación exitosa) pero el
-    // primer mensaje falló -- NO se intenta un rollback/delete automático
-    // (fuera de alcance de AI-1B, ver auditoría). El texto se conserva en el
-    // composer para que el estudiante pueda reintentar o abrir el historial.
-    setHomeSendError('No se pudo enviar el mensaje. Puedes abrir la conversación e intentarlo de nuevo.');
+    const operationId = randomUUID();
+    setDraft('');
+    router.push({
+      pathname: '/(tabs)/ia/conversation/[conversationId]',
+      // `initialMode` preserva el modo que el usuario ya eligió en el
+      // selector de Home (antes se enviaba directamente en `sendAiMessage`
+      // desde aquí) -- sin este parámetro, `submit()` usaría su propio
+      // default y el modo elegido se perdería silenciosamente.
+      params: { conversationId, initialMessage: trimmed, initialOperationId: operationId, ...(mode ? { initialMode: mode } : {}) },
+    });
   }
 
   return (

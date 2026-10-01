@@ -40,12 +40,13 @@ type ScreenState =
  * Cero contenido académico nuevo -- ver auditoría STUDY-4.
  */
 export default function RecursoScreen() {
-  const { topicId, subjectId, name, unitId, unitName } = useLocalSearchParams<{
+  const { topicId, subjectId, name, unitId, unitName, origin } = useLocalSearchParams<{
     topicId: string;
     subjectId: string;
     name?: string;
     unitId?: string;
     unitName?: string;
+    origin?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -104,7 +105,7 @@ export default function RecursoScreen() {
   function goToExercise() {
     router.push({
       pathname: '/(tabs)/estudio/topic/[topicId]/ejercicio',
-      params: { topicId, subjectId, name: name ?? '', unitId: unitId ?? '', unitName: unitName ?? '' },
+      params: { topicId, subjectId, name: name ?? '', unitId: unitId ?? '', unitName: unitName ?? '', origin: origin ?? '' },
     });
   }
 

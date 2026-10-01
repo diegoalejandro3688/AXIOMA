@@ -76,4 +76,40 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    /**
+     * VC4 MICROBLOQUE 10.1 -- account scoping de `pending_reward`. Root
+     * cause (Final QA Anomaly Audit + Microbloque 10): la tabla nunca tuvo
+     * `account_id`, así que LP pendiente de una cuenta podía leerse/sumarse
+     * en OTRA cuenta del mismo dispositivo (SELECT global sin filtro).
+     *
+     * ADITIVA, no destructiva (§10/§16 del prompt): `ALTER TABLE ... ADD
+     * COLUMN account_id TEXT` (nullable -- SQLite no permite agregar una
+     * columna NOT NULL sin DEFAULT a una tabla con filas existentes, y no
+     * hay un valor de owner seguro que backfillear, ver §7/§11: el owner
+     * de las filas legacy NO es reconstruible localmente -- `attempt_id`
+     * no tiene ninguna tabla local que lo mapee a una cuenta, y resolverlo
+     * exigiría un endpoint de backend nuevo, fuera de alcance). Las filas
+     * legacy quedan con `account_id IS NULL` para siempre -- el código de
+     * aplicación (`pending-reward-repository.ts`) las excluye
+     * estructuralmente de CUALQUIER consulta por cuenta (un filtro
+     * `account_id = ?` con un valor no-nulo NUNCA hace match con NULL en
+     * SQL), así que quedan invisibles para TODAS las cuentas -- nunca se
+     * atribuyen a la cuenta incorrecta -- y se auto-expiran con el mismo
+     * mecanismo ya existente (`expireStalePendingRewards`, 30 min) sin
+     * necesitar ninguna lógica de borrado nueva. Nunca se pierden
+     * (`DELETE`) ni se adoptan a ciegas.
+     *
+     * Toda fila NUEVA desde esta versión SIEMPRE trae `account_id`
+     * explícito (`PendingRewardRepository.create` lo exige como parámetro
+     * obligatorio, nunca inferido implícitamente dentro del repositorio).
+     */
+    version: 3,
+    up: async (driver) => {
+      await driver.execAsync(`ALTER TABLE pending_reward ADD COLUMN account_id TEXT;`);
+      await driver.execAsync(`
+        CREATE INDEX idx_pending_reward_account_status ON pending_reward (account_id, status, created_at);
+      `);
+    },
+  },
 ];

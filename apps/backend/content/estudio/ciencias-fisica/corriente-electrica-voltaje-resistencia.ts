@@ -186,7 +186,9 @@ const corrienteElectricaVoltajeResistencia: ResourceContentModule = {
     {
       questionKey: 'CIENCIAS.FISICA.CORRIENTE_ELECTRICA_VOLTAJE_RESISTENCIA.Q5',
       order: 4,
-      difficulty: 'DIFICIL',
+      // VC4 MICROBLOQUE 8.1 -- relabel DIFICIL->MEDIA. Auditoría: sustitución
+      // directa en I=V/R, fórmula recién presentada en la lección.
+      difficulty: 'MEDIA',
       stemContent: toBlocks([
         ...situacionA,
         {

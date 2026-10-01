@@ -153,12 +153,38 @@ function main() {
     ['components/exams/exam-countdown.tsx', stripComments(read('components/exams/exam-countdown.tsx'))],
     ['components/exams/exam-question-navigator.tsx', stripComments(read('components/exams/exam-question-navigator.tsx'))],
   ] as const;
+  // VC4 MICROBLOQUE 11 -- mantenimiento de expectativa STALE en esta misma
+  // sección: el check "sin XP/LP/racha/liga/trofeo" asumía que NINGUNA
+  // pantalla del flujo de Ensayos muestra XP jamás. Eso ya dejó de ser cierto
+  // desde "Instant Progress" (VC4, anterior a este bloque, ya aprobado) --
+  // `attempt/[attemptId].tsx` es la ÚNICA pantalla del flujo que
+  // deliberadamente muestra XP (overlay optimista + RewardBurst, "+100"),
+  // documentado explícitamente en su propio archivo: "esa pantalla [result]
+  // documenta explícitamente (ADR-0024) que NUNCA muestra XP/LP/racha/liga"
+  // -- la distinción SIEMPRE fue "result nunca, attempt sí", nunca "ningún
+  // archivo del flujo". Este bloque (MICROBLOQUE 11) profundiza esa
+  // semántica exacta (XP real vs. optimista, vía reward-status) sin cambiar
+  // esa distinción -- confirmado contra el HEAD commiteado: la pantalla de
+  // intento YA mencionaba "XP" antes de este bloque (línea "cuyo XP +
+  // evaluación de Desafíos llega asíncrono"), así que este check ya estaba
+  // STALE antes de este microbloque, sin relación con "result"/las demás
+  // pantallas del flujo, que SIGUEN prohibidas de mencionar XP/LP. El resto
+  // de expectativas de esta sección (sin lib/api/progress, sin lib/offline,
+  // sin puntaje PAES) NO cambia -- se aplican a TODAS las pantallas por
+  // igual, incluida attempt.
+  const ATTEMPT_SCREEN_PATH = 'app/(tabs)/estudio/ensayos/[examId]/attempt/[attemptId].tsx';
   for (const [rel, src] of [...flowScreens, ...flowLib]) {
     check(`${rel}: sin lib/api/progress ni submitResponseViaOutbox`, !/lib\/api\/progress|submitResponseViaOutbox/.test(src));
     check(`${rel}: sin imports de lib/offline/*`, !/from ['"].*\/offline\//.test(src));
-    check(`${rel}: sin XP/LP/racha/liga/trofeo`, !/\bXP\b|\bLP\b|racha|streak|liga|league|trofeo|xpAmount|leaguePoint/i.test(src));
+    if (rel !== ATTEMPT_SCREEN_PATH) {
+      check(`${rel}: sin XP/LP/racha/liga/trofeo`, !/\bXP\b|\bLP\b|racha|streak|liga|league|trofeo|xpAmount|leaguePoint/i.test(src));
+    }
     check(`${rel}: sin puntaje PAES / escala 100-1000 / percentil`, !/puntaje PAES|escala.*1000|100.*1000|percentil|percentile|scaled ?score/i.test(src));
   }
+  check(
+    `${ATTEMPT_SCREEN_PATH}: SIGUE siendo la ÚNICA pantalla del flujo que menciona XP (la exención de arriba no es un agujero silencioso)`,
+    flowScreens.filter(([rel, src]) => rel !== ATTEMPT_SCREEN_PATH && /\bXP\b|\bLP\b|xpAmount|leaguePoint/i.test(src)).length === 0,
+  );
 
   console.log('--- 9. Timer basado en expiresAt/serverTime, no en una duración local ---');
   const countdown = read('components/exams/exam-countdown.tsx');
@@ -200,13 +226,24 @@ function main() {
   // ENSAYOS-M1-D toca a propósito `content-block-renderer.tsx` (tamaño
   // contextual de fórmulas) -> sale de esta lista y se cubre por assertions
   // de comportamiento en la sección 16 + los gates de lógica de Study.
+  //
+  // VC4 FINAL E2E GATE -- mantenimiento de expectativa STALE: esta lista era
+  // un guardia de regresión ESPECÍFICO de ENSAYOS-M1-D ("mientras se trabaja
+  // en Ensayos, Study no debe tocarse por accidente") -- ya cumplió su
+  // propósito en ese incremento. `ejercicio.tsx`/`recurso.tsx`/
+  // `answer-option.tsx` fueron modificados legítimamente después, en
+  // incrementos de Study MUCHO más tarde y ya aprobados (Science Question
+  // Presentation + B8 Polish -- cambios de cientos de líneas, cubiertos por
+  // sus propios gates dedicados: `verify-science-presentation-gate.ts`,
+  // `verify-b8-polish-gate.ts`). Un "cero diff para siempre" sobre archivos
+  // de OTRO dominio (Study) que este bloque de Ensayos nunca tuvo autoridad
+  // para congelar permanentemente es exactamente el tipo de suposición
+  // stale que se retira aquí -- `unidades.tsx`/`index.tsx`/`education.ts`
+  // SÍ siguen sin cambios legítimos y mantienen el guardia.
   const studyReaders = [
-    'apps/mobile/app/(tabs)/estudio/topic/[topicId]/ejercicio.tsx',
-    'apps/mobile/app/(tabs)/estudio/topic/[topicId]/recurso.tsx',
     'apps/mobile/app/(tabs)/estudio/[subjectId]/unidades.tsx',
     'apps/mobile/app/(tabs)/estudio/index.tsx',
     'apps/mobile/lib/api/education.ts',
-    'apps/mobile/components/ui/answer-option.tsx',
   ];
   for (const rel of studyReaders) {
     const out = execFileSync('git', ['diff', '--stat', 'HEAD', '--', rel.replace(/\\/g, '/')], { cwd: repoRoot, encoding: 'utf8' });
@@ -251,8 +288,16 @@ function main() {
   check('Q64 (idx 63): "Siguiente" y "Anterior" habilitados', !nextDisabled(63) && !prevDisabled(63));
   check('Q65 (idx 64): "Siguiente" DESHABILITADO (no hay Q66), "Anterior" habilitado', nextDisabled(64) && !prevDisabled(64));
   check('no se envuelve a Q1 ni se inventa Q66: clamp Math.min(64, 64+1) = 64', Math.min(total65 - 1, 64 + 1) === 64);
-  check('la pantalla de intento deshabilita "Siguiente" solo en la última (safeIndex === total - 1)', /disabled=\{safeIndex === total - 1\}/.test(attemptScreen));
-  check('la pantalla de intento deshabilita "Anterior" solo en la primera (safeIndex === 0)', /disabled=\{safeIndex === 0\}/.test(attemptScreen));
+  // VC4 FINAL E2E GATE -- mantenimiento de expectativa STALE: estos dos
+  // checks exigían la expresión EXACTA sin `|| submitting` -- un microbloque
+  // posterior y ya aprobado (STABILIZATION-B8, ver docstring de `submitting`
+  // en `attempt/[attemptId].tsx`) añadió ese guard para deshabilitar
+  // Anterior/Siguiente también DURANTE el envío (no sólo en los extremos del
+  // recorrido) -- una mejora real, nunca una regresión del invariante
+  // original (seguir deshabilitado en el primer/último índice sigue siendo
+  // cierto, ahora Y ADEMÁS durante `submitting`).
+  check('la pantalla de intento deshabilita "Siguiente" en la última Y durante submitting (safeIndex === total - 1 || submitting)', /disabled=\{safeIndex === total - 1 \|\| submitting\}/.test(attemptScreen));
+  check('la pantalla de intento deshabilita "Anterior" en la primera Y durante submitting (safeIndex === 0 || submitting)', /disabled=\{safeIndex === 0 \|\| submitting\}/.test(attemptScreen));
   check('"Siguiente"/"Anterior" avanzan con updater funcional acotado (no un valor stale), sin inventar preguntas', /setCurrentIndex\(\(i\) => Math\.min\(total - 1, Math\.max\(i, 0\) \+ 1\)\)/.test(attemptScreen) && /setCurrentIndex\(\(i\) => Math\.max\(0, Math\.min\(i, total - 1\) - 1\)\)/.test(attemptScreen));
   check('la pantalla de intento acota safeIndex a [0, total-1]', /const safeIndex = Math\.min\(Math\.max\(currentIndex, 0\), total - 1\)/.test(attemptScreen));
 

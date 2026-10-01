@@ -119,7 +119,7 @@ export default function RecursosScreen() {
   function openResource(resource: CurriculumTopicResponse, unit: CurriculumTopicResponse) {
     const progress = catalog.progressByResource[resource.id];
     const entry = progress ? resolveContinuationEntry(progress) : 'resource';
-    const { screen, params } = resourceFlowNav(subjectId, resource, entry, name, { id: unit.id, name: unit.name });
+    const { screen, params } = resourceFlowNav(subjectId, resource, entry, name, { id: unit.id, name: unit.name }, 'resources');
     if (screen === 'recurso') {
       router.push({ pathname: '/(tabs)/estudio/topic/[topicId]/recurso', params });
     } else {

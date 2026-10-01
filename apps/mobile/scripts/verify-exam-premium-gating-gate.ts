@@ -21,7 +21,6 @@
 //   D. runner / submit / result / review -> sin gating Premium nuevo (ni
 //      imports ni cambios en el arbol de trabajo).
 import Module from 'node:module';
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -44,7 +43,6 @@ function check(label: string, condition: boolean) {
 }
 
 const MOBILE_ROOT = join(__dirname, '..');
-const REPO_ROOT = join(MOBILE_ROOT, '..', '..');
 const read = (...seg: string[]) => readFileSync(join(MOBILE_ROOT, ...seg), 'utf8');
 const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
@@ -178,26 +176,28 @@ async function main() {
 
   // --------------------------------------------------------------------
   console.log('--- D. runner / submit / result / review : sin gating Premium nuevo ---');
+  // VC4 MICROBLOQUE 11 -- mantenimiento de expectativa STALE: el segundo
+  // bucle de abajo (ahora eliminado) afirmaba "cero diff contra HEAD" para
+  // `attempt/[attemptId].tsx`/`lib/api/exams.ts` -- una aserción válida
+  // SOLO mientras nada legítimo los tocara después de este bloque de Premium
+  // gating. MICROBLOQUE 11 (Essay Reward Truth) los modifica legítimamente
+  // (reward-status autoritativo, ver su propio gate dedicado
+  // `verify-exam-reward-truth-gate.ts`) -- lo que este check SIEMPRE quiso
+  // proteger no era "cero diff para siempre", sino "ningún gating Premium
+  // nuevo se coló en estos archivos". Se unifica con el chequeo de
+  // contenido de arriba (mismo criterio, misma lista de símbolos) en vez de
+  // una prohibición de diff -- AHORA cubre los 5 archivos por contenido, no
+  // solo los 4 originales.
   for (const [label, path] of [
     ['runner', RUNNER],
     ['result', RESULT],
     ['review', REVIEW],
     ['attempt-cache', CACHE],
+    ['exams-api-client', 'lib/api/exams.ts'],
   ] as const) {
     const code = stripComments(read(path));
     check(`${label}: sin usePaywall / useEntitlement / PremiumBadge / PremiumLockedScreen / isPremiumRequiredError`,
       !/usePaywall|useEntitlement|PremiumBadge|PremiumLockedScreen|isPremiumRequiredError/.test(code));
-  }
-  for (const rel of [
-    'apps/mobile/app/(tabs)/estudio/ensayos/[examId]/attempt/[attemptId].tsx',
-    'apps/mobile/app/(tabs)/estudio/ensayos/[examId]/result/[attemptId].tsx',
-    'apps/mobile/app/(tabs)/estudio/ensayos/[examId]/review/[attemptId].tsx',
-    'apps/mobile/lib/exams/attempt-cache.ts',
-    'apps/mobile/lib/api/exams.ts',
-  ]) {
-    const out = execFileSync('git', ['diff', '--stat', 'HEAD', '--', rel], { cwd: REPO_ROOT, encoding: 'utf8' });
-    if (out.trim() !== '') console.error(`       diff: ${out.trim()}`);
-    check(`${rel}: sin cambios en el arbol de trabajo (post-commit)`, out.trim() === '');
   }
 
   // --------------------------------------------------------------------

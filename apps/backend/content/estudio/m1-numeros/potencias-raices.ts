@@ -260,7 +260,9 @@ const potenciasRaices: ResourceContentModule = {
     {
       questionKey: 'M1.NUMEROS.POTENCIAS_RAICES.Q10',
       order: 9,
-      difficulty: 'DIFICIL',
+      // VC4 MICROBLOQUE 8.1 -- relabel DIFICIL->MEDIA. Auditoría: a^3=216 ya
+      // dado, un solo paso de raíz cúbica, sin interpretación adicional.
+      difficulty: 'MEDIA',
       stemContent: [
         {
           type: 'paragraph',

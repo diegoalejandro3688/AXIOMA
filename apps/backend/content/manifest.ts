@@ -20,9 +20,23 @@ import { contentKindSchema } from './schema';
  * `expectedQuestions` del mismo recurso (verificado por `.refine` más abajo,
  * a nivel del propio `manifestResourceSchema` -- un manifest inconsistente
  * consigo mismo ya falla al cargar, antes de que el gate compare nada
- * contra contenido real). Data-driven: CONTENT-3 fija 3/5/2 para recursos
- * de 10 preguntas, pero esta forma admite cualquier distribución para
- * cualquier cantidad, sin ninguna rama `if expectedQuestions === 10`.
+ * contra contenido real). Data-driven: esta forma admite cualquier
+ * distribución para cualquier cantidad de preguntas, sin ninguna rama
+ * `if expectedQuestions === 10`.
+ *
+ * IMPORTANTE (VC4 MICROBLOQUE 8.1.1) -- cada valor aquí es un SNAPSHOT de la
+ * distribución REAL del contenido ya escrito en `content/estudio/**`, usado
+ * por `verify-content-source-gate.ts` para detectar drift accidental entre
+ * manifest y contenido. NUNCA es un target editorial: "3/5/2" fue el punto
+ * de partida de CONTENT-3 para los primeros recursos de 10 preguntas, no una
+ * cuota obligatoria -- un recurso puede tener legítimamente 0 DIFICIL si
+ * ningún ítem exige razonamiento multi-paso/transferencia real (ver
+ * `content/schema.ts`, `questionDifficultySchema`, y el audit de VC4
+ * MICROBLOQUE 8/8.1 que corrigió varios DIFICIL sobreestimados). Al
+ * cambiar el `difficulty` de una pregunta existente, este snapshot DEBE
+ * actualizarse para reflejar la distribución real resultante -- nunca al
+ * revés (nunca se ajusta `difficulty` de una pregunta para "cuadrar" contra
+ * un valor aquí ya fijado).
  */
 export const difficultyDistributionSchema = z.object({
   FACIL: z.number().int().nonnegative(),
@@ -140,7 +154,8 @@ export const CONTENT_MANIFEST: ContentManifest = [
           {
             topicCode: 'M1.NUMEROS.POTENCIAS_RAICES',
             expectedQuestions: 10,
-            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+            // VC4 MICROBLOQUE 8.1 -- Q10 DIFICIL->MEDIA (relabel de auditoría).
+            expectedDifficulty: { FACIL: 3, MEDIA: 6, DIFICIL: 1 },
           },
         ],
       },
@@ -192,7 +207,8 @@ export const CONTENT_MANIFEST: ContentManifest = [
           {
             topicCode: 'M1.ALGEBRA_FUNCIONES.FUNCION_CUADRATICA',
             expectedQuestions: 10,
-            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+            // VC4 MICROBLOQUE 8.1 -- Q9 DIFICIL->MEDIA (relabel de auditoría).
+            expectedDifficulty: { FACIL: 3, MEDIA: 6, DIFICIL: 1 },
           },
         ],
       },
@@ -219,7 +235,8 @@ export const CONTENT_MANIFEST: ContentManifest = [
           {
             topicCode: 'M1.GEOMETRIA.CUERPOS_GEOMETRICOS',
             expectedQuestions: 10,
-            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+            // VC4 MICROBLOQUE 8.1 -- Q9+Q10 DIFICIL->MEDIA (relabel de auditoría).
+            expectedDifficulty: { FACIL: 3, MEDIA: 7, DIFICIL: 0 },
           },
           {
             topicCode: 'M1.GEOMETRIA.TRANSFORMACIONES_ISOMETRICAS',
@@ -316,7 +333,8 @@ export const CONTENT_MANIFEST: ContentManifest = [
           {
             topicCode: 'M2.ALGEBRA_FUNCIONES.FUNCION_POTENCIA_MODELAMIENTO_ALGEBRAICO',
             expectedQuestions: 10,
-            expectedDifficulty: { FACIL: 2, MEDIA: 4, DIFICIL: 4 },
+            // VC4 MICROBLOQUE 8.1 -- Q8 DIFICIL->MEDIA (relabel de auditoría).
+            expectedDifficulty: { FACIL: 2, MEDIA: 5, DIFICIL: 3 },
           },
         ],
       },
@@ -350,7 +368,8 @@ export const CONTENT_MANIFEST: ContentManifest = [
           {
             topicCode: 'M2.PROBABILIDAD_ESTADISTICA.COMBINATORIA_MODELO_BINOMIAL',
             expectedQuestions: 10,
-            expectedDifficulty: { FACIL: 2, MEDIA: 4, DIFICIL: 4 },
+            // VC4 MICROBLOQUE 8.1 -- Q7 DIFICIL->MEDIA (relabel de auditoría).
+            expectedDifficulty: { FACIL: 2, MEDIA: 5, DIFICIL: 3 },
           },
         ],
       },
@@ -860,7 +879,8 @@ export const CONTENT_MANIFEST: ContentManifest = [
           {
             topicCode: 'CIENCIAS.FISICA.FUERZAS_MOVIMIENTO_LEYES_NEWTON',
             expectedQuestions: 10,
-            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+            // VC4 MICROBLOQUE 8.1 -- Q5 DIFICIL->MEDIA (relabel de auditoría).
+            expectedDifficulty: { FACIL: 3, MEDIA: 6, DIFICIL: 1 },
           },
           {
             topicCode: 'CIENCIAS.FISICA.FUERZAS_CONTACTO_PESO_ROCE_ELASTICIDAD',
@@ -885,12 +905,14 @@ export const CONTENT_MANIFEST: ContentManifest = [
           {
             topicCode: 'CIENCIAS.FISICA.CORRIENTE_ELECTRICA_VOLTAJE_RESISTENCIA',
             expectedQuestions: 10,
-            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+            // VC4 MICROBLOQUE 8.1 -- Q5 DIFICIL->MEDIA (relabel de auditoría).
+            expectedDifficulty: { FACIL: 3, MEDIA: 6, DIFICIL: 1 },
           },
           {
             topicCode: 'CIENCIAS.FISICA.CIRCUITOS_ELECTRICOS_SERIE_PARALELO_MIXTOS',
             expectedQuestions: 10,
-            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+            // VC4 MICROBLOQUE 8.1 -- Q5 DIFICIL->MEDIA (relabel de auditoría).
+            expectedDifficulty: { FACIL: 3, MEDIA: 6, DIFICIL: 1 },
           },
           {
             topicCode: 'CIENCIAS.FISICA.POTENCIA_ENERGIA_CONSUMO_ELECTRICO',
@@ -957,7 +979,8 @@ export const CONTENT_MANIFEST: ContentManifest = [
           {
             topicCode: 'CIENCIAS.QUIMICA.MOL_MASA_MOLAR_RELACIONES_ESTEQUIOMETRICAS',
             expectedQuestions: 10,
-            expectedDifficulty: { FACIL: 3, MEDIA: 5, DIFICIL: 2 },
+            // VC4 MICROBLOQUE 8.1 -- Q5 DIFICIL->MEDIA (relabel de auditoría).
+            expectedDifficulty: { FACIL: 3, MEDIA: 6, DIFICIL: 1 },
           },
           {
             topicCode: 'CIENCIAS.QUIMICA.REACTIVO_LIMITANTE_RENDIMIENTO_ANALISIS_CUANTITATIVO_REACCIONES',

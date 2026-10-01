@@ -6,6 +6,7 @@ import {
   upsertExamAttemptAnswerResponseSchema,
   examAttemptResultResponseSchema,
   examAttemptReviewResponseSchema,
+  examRewardStatusResponseSchema,
   type ExamListResponse,
   type ExamDetailResponse,
   type ExamAttemptStateResponse,
@@ -13,6 +14,7 @@ import {
   type UpsertExamAttemptAnswerResponse,
   type ExamAttemptResultResponse,
   type ExamAttemptReviewResponse,
+  type ExamRewardStatusResponse,
 } from '@axioma/contracts';
 import { apiRequest, type ApiResult } from './client';
 
@@ -70,4 +72,15 @@ export function getExamResult(attemptId: string): Promise<ApiResult<ExamAttemptR
 
 export function getExamReview(attemptId: string): Promise<ApiResult<ExamAttemptReviewResponse>> {
   return apiRequest('GET', `${BASE}/me/attempts/${attemptId}/review`, { schema: examAttemptReviewResponseSchema });
+}
+
+/**
+ * VC4 MICROBLOQUE 11 -- estado AUTORITATIVO de la recompensa de gamificación
+ * para `(cuenta autenticada, examId)`. ÚNICA fuente que el cliente puede usar
+ * para decidir si mostrar el RewardBurst/XP optimista de un ensayo -- nunca
+ * el resultado de `submitExamAttempt` (`justCompleted`/`result.ok` NO
+ * implican que el backend ya otorgó XP real, ver `attempt/[attemptId].tsx`).
+ */
+export function getExamRewardStatus(examId: string): Promise<ApiResult<ExamRewardStatusResponse>> {
+  return apiRequest('GET', `${BASE}/${examId}/reward-status`, { schema: examRewardStatusResponseSchema });
 }

@@ -30,15 +30,27 @@ export function unitResourceListParams(
  * SIEMPRE `resource.id`. `entry === 'resource'` -> pantalla `recurso`;
  * cualquier otro valor (`exercise`/`completed`) -> `ejercicio`.
  */
+/**
+ * VC4 MICROBLOQUE 6.1 -- `origin` identifica EXPLÍCITAMENTE la sección que
+ * disparó la navegación (`unit` = Unidades/`unidad/[unitId]`, `resources` =
+ * biblioteca "Recursos"). Viaja como parámetro de ruta y NUNCA se infiere
+ * desde `navigation.canGoBack()`/stack depth (ver §10 del prompt -- patrón
+ * ya identificado como frágil en Challenges). `ejercicio.tsx` lo usa SOLO
+ * para decidir presentación (entrar directo a Repaso / a dónde vuelve "Salir
+ * del repaso"), nunca para alterar datos, XP o completion.
+ */
+export type ResourceFlowOrigin = 'unit' | 'resources';
+
 export function resourceFlowNav(
   subjectId: string,
   resource: CurriculumTopicResponse,
   entry: ContinuationEntry,
   subjectName: string | undefined,
   unit: { id: string; name?: string } | undefined,
+  origin: ResourceFlowOrigin,
 ): {
   screen: 'recurso' | 'ejercicio';
-  params: { topicId: string; subjectId: string; name: string; unitId: string; unitName: string };
+  params: { topicId: string; subjectId: string; name: string; unitId: string; unitName: string; origin: ResourceFlowOrigin };
 } {
   return {
     screen: entry === 'resource' ? 'recurso' : 'ejercicio',
@@ -48,6 +60,7 @@ export function resourceFlowNav(
       name: subjectName ?? '',
       unitId: unit?.id ?? '',
       unitName: unit?.name ?? '',
+      origin,
     },
   };
 }

@@ -188,7 +188,10 @@ const molMasaMolarRelacionesEstequiometricas: ResourceContentModule = {
     {
       questionKey: 'CIENCIAS.QUIMICA.MOL_MASA_MOLAR_RELACIONES_ESTEQUIOMETRICAS.Q5',
       order: 4,
-      difficulty: 'DIFICIL',
+      // VC4 MICROBLOQUE 8.1 -- relabel DIFICIL->MEDIA. Auditoría: cadena
+      // aritmética g->mol->moléculas, dos pasos mecánicos, sin salto
+      // conceptual adicional.
+      difficulty: 'MEDIA',
       stemContent: toBlocks([
         ...situacionA,
         { type: 'paragraph', text: '¿Cuántas moléculas de H₂O contiene aproximadamente la muestra S?' },

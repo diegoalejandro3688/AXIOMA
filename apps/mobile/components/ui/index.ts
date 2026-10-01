@@ -51,3 +51,8 @@ export type { ScreenProps, ScreenVariant } from './screen';
 
 export { ScreenHeader } from './screen-header';
 export type { ScreenHeaderProps, ScreenHeaderVariant } from './screen-header';
+export { RewardBurst } from './reward-burst';
+export type { RewardBurstProps, RewardBurstKind } from './reward-burst';
+
+export { DataTable } from './data-table';
+export type { DataTableProps } from './data-table';

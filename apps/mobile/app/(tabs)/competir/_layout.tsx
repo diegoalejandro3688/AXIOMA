@@ -2,19 +2,28 @@ import { Stack } from 'expo-router';
 import { useTheme, typeScale, borders } from '../../../theme';
 
 /**
- * CHALLENGES ESCAPE-PATH HOTFIX -- `index` (el hub) es la ruta ANCLA de este
- * stack. `desafios` es la única pantalla anidada a la que se llega desde OTRA
- * pestaña: Inicio -> "Ver todos los desafíos" -> `router.push('/(tabs)/competir/desafios')`
- * (`app/(tabs)/index.tsx`). Sin ancla, esa navegación cross-tab dejaba
- * `desafios` como raíz del stack de Competir -> `navigation.canGoBack()` era
- * `false` -> el header nativo se pintaba SIN flecha de volver y Android Back no
- * tenía destino coherente -> el usuario quedaba atrapado. `initialRouteName`
- * garantiza que `competir/index` siempre quede por debajo, así que la flecha
- * nativa de volver aparece y Android Back regresa al hub -- exactamente el
- * comportamiento que ya tiene Ranking (que sólo se abre desde el hub). No
- * cambia nada para las entradas que ya vienen del propio hub.
+ * CHALLENGES ESCAPE-PATH -- historial: `desafios` es la única pantalla
+ * anidada de este stack alcanzada desde OTRA pestaña (Inicio ->
+ * "Ver todos los desafíos" -> `push('/(tabs)/competir/desafios')`).
+ * El hotfix original (`691a69c`) usó `unstable_settings.initialRouteName`
+ * para anclar `index` debajo de `desafios` y así darle a Android Back un
+ * destino coherente.
+ *
+ * VC4 MICROBLOQUE 4.1/4.1B -- `unstable_settings` (API explícitamente
+ * INESTABLE) demostró en dispositivo real ser poco fiable en DOS frentes:
+ * primero la flecha nativa (4.1, intermitente sin cambiar la ruta de
+ * entrada), y luego la propia acción de volver -- un `router.replace()` de
+ * href absoluto apoyado en el mismo estado de pila incidental terminaba en
+ * Perfil (la PRIMERA pestaña declarada en `(tabs)/_layout.tsx`) y dejaba el
+ * stack de Competir corrupto (4.1B). Con el fix 4.1B, `desafios.tsx` YA NO
+ * depende de la pila nativa para NADA relacionado con volver: header propio
+ * (`ScreenHeader`, `headerShown:false`) + `onBack` determinista por origen
+ * explícito (`from=home|competir`) + `BackHandler` propio para Android Back
+ * físico. Como `desafios` era el ÚNICO motivo de `unstable_settings` en
+ * este stack (ninguna otra pantalla se alcanza cross-tab), y ya no depende
+ * de él para nada, SE ELIMINA -- mantenerlo sin ningún consumidor real sería
+ * inercia, no necesidad (§4 de la auditoría del microbloque).
  */
-export const unstable_settings = { initialRouteName: 'index' };
 
 /**
  * Sub-navegación de Competir -- ver docs/adr/LEF-BLOCK-IV-DEFINITION.md,
@@ -53,7 +62,7 @@ export default function CompetirLayout() {
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="ranking" options={{ title: 'Ranking' }} />
-      <Stack.Screen name="desafios" options={{ title: 'Desafíos' }} />
+      <Stack.Screen name="desafios" options={{ headerShown: false }} />
       <Stack.Screen name="perfil/[username]" options={{ title: 'Perfil' }} />
       <Stack.Screen name="quick-question" options={{ title: 'Pregunta rápida' }} />
     </Stack>

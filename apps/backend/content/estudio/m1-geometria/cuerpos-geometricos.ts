@@ -172,7 +172,9 @@ const cuerposGeometricos: ResourceContentModule = {
     {
       questionKey: 'M1.GEOMETRIA.CUERPOS_GEOMETRICOS.Q9',
       order: 8,
-      difficulty: 'DIFICIL',
+      // VC4 MICROBLOQUE 8.1 -- relabel DIFICIL->MEDIA. Auditoría: sustitución
+      // directa V=l·w·h, cognitive demand ~2, sin interpretación adicional.
+      difficulty: 'MEDIA',
       stemContent: [{ type: 'paragraph', order: 0, text: 'Una piscina mide 8 m de largo, 5 m de ancho y 1,5 m de profundidad. ¿Cuál es su volumen?' }],
       options: [
         { content: { type: 'paragraph', order: 0, text: '13,5 m³' }, correct: false },
@@ -185,7 +187,9 @@ const cuerposGeometricos: ResourceContentModule = {
     {
       questionKey: 'M1.GEOMETRIA.CUERPOS_GEOMETRICOS.Q10',
       order: 9,
-      difficulty: 'DIFICIL',
+      // VC4 MICROBLOQUE 8.1 -- relabel DIFICIL->MEDIA. Auditoría: despeje
+      // directo de una variable en V=πr²h, un solo paso algebraico.
+      difficulty: 'MEDIA',
       stemContent: [
         { type: 'paragraph', order: 0, text: 'Un cilindro tiene un volumen de 200π cm³ y un radio de 5 cm. ¿Cuál es su altura?' },
       ],

@@ -128,6 +128,16 @@ export default function CompetirScreen() {
   // para medir el delta real en el siguiente refresco.
   const [pendingLp, setPendingLp] = useState(() => getPendingLp());
   const lastKnownLpRef = useRef<number | null>(null);
+  // MICROBLOQUE 2 (fix de atomicidad visual LP) -- CONTADOR, no booleano:
+  // `loadLeague` tiene 3 puntos de entrada (montaje, sondeo cada ~10s
+  // mientras hay pendiente, y useFocusEffect) SIN ningún guard de
+  // solapamiento -- dos llamadas pueden estar reconciliando a la vez (ej. un
+  // foco llega mientras el sondeo todavía está a medio camino). Con un
+  // booleano simple, la que termina PRIMERO limpiaría la supresión mientras
+  // la otra sigue reconciliando, dejando pasar una notificación a medio
+  // camino igual. El contador solo deja pasar notificaciones del subscriber
+  // cuando NINGUNA reconciliación está activa (`=== 0`).
+  const reconciliationDepthRef = useRef(0);
   // STABILIZATION-B (Finding 8) -- Dialog informativo estático de la escalera de ligas.
   const [leagueInfoVisible, setLeagueInfoVisible] = useState(false);
   // vc3 (F03, Quick Subject Selector) -- selección de materias de Pregunta
@@ -176,14 +186,44 @@ export default function CompetirScreen() {
       return;
     }
     const view = describeParticipation(result.data);
-    setLeagueState({ status: 'ready', view });
+    // MICROBLOQUE 2 (fix de atomicidad visual LP) -- el riesgo real: el
+    // subscriber genérico de `pendingLp` (ver el efecto de abajo) reacciona a
+    // `notify()` DENTRO de `reconcilePendingRewards` (síncronamente, antes de
+    // que esa promesa se resuelva) -- una microtask ANTES de que este `await`
+    // reanude. Si React llegara a renderizar entre esas dos microtasks (el
+    // riesgo real es la escritura SQLite nativa de por medio, no algo que se
+    // pueda descartar con certeza desde JS puro), el usuario vería
+    // `authoritative` VIEJO + `pending` YA reducido -- un subconteo
+    // transitorio (ej. 4 -> 2 -> 4).
+    //
+    // Fix: `reconciliationDepthRef` SILENCIA al subscriber genérico mientras
+    // esta reconciliación (o cualquier otra en vuelo, de ahí el contador y no
+    // un booleano -- ver su docstring) esté activa. Al terminar, se publican
+    // `setPendingLp(getPendingLp())` y `setLeagueState(...)` SIN ningún
+    // `await` entre medias -- el caso más simple de automatic batching de
+    // React 18, sin depender de ninguna suposición sobre el timing del bridge
+    // nativo de SQLite.
     if (view.kind === 'enrolled') {
       const previous = lastKnownLpRef.current;
       if (previous != null && view.leaguePoints > previous) {
-        void reconcilePendingRewards(view.leaguePoints - previous);
+        reconciliationDepthRef.current += 1;
+        try {
+          await reconcilePendingRewards(view.leaguePoints - previous);
+        } finally {
+          reconciliationDepthRef.current -= 1;
+        }
+        // `getPendingLp()` lee el caché EN VIVO del store -- recoge el estado
+        // real más reciente sin importar cuántas notificaciones se hayan
+        // ignorado mientras `reconciliationDepthRef.current > 0` (nunca se
+        // pierde una actualización, solo se retrasa hasta este punto).
+        setPendingLp(getPendingLp());
       }
       lastKnownLpRef.current = view.leaguePoints;
     }
+    // Sin ningún `await` desde el `setPendingLp` de arriba hasta aquí --
+    // ambas quedan en el MISMO tramo síncrono de JS, garantizando que React
+    // las aplique en el mismo render.
+    setLeagueState({ status: 'ready', view });
     if (view.kind !== 'enrolled') {
       if (silent) {
         setMyContext('unknown');
@@ -262,7 +302,18 @@ export default function CompetirScreen() {
   // confirmación, se detiene el sondeo y el saldo real (aunque no refleje
   // aún el pendiente) queda como única fuente de verdad.
   useEffect(() => {
-    const unsubscribe = subscribePendingLp(() => setPendingLp(getPendingLp()));
+    // MICROBLOQUE 2 (fix de atomicidad visual LP) -- se comporta EXACTAMENTE
+    // igual que antes (sincroniza `pendingLp` en cuanto el store notifica),
+    // salvo mientras `loadLeague` tiene una reconciliación propia en vuelo
+    // (`reconciliationDepthRef.current > 0`) -- en ese caso ignora esta
+    // notificación puntual: `loadLeague` ya se encarga de publicar el valor
+    // final correcto, batcheado junto al `authoritative` nuevo, en cuanto
+    // termina. Ninguna actualización se pierde -- solo se retrasa hasta ese
+    // punto (`getPendingLp()` siempre lee el caché en vivo).
+    const unsubscribe = subscribePendingLp(() => {
+      if (reconciliationDepthRef.current > 0) return;
+      setPendingLp(getPendingLp());
+    });
     // VC4 -- hidrata desde SQLite al montar (recupera pendientes que
     // sobrevivieron un cierre completo de la app); el propio hydrate emite
     // `notify()` cuando termina, así que el listener de arriba ya cubre
@@ -353,20 +404,19 @@ export default function CompetirScreen() {
     );
   }
 
+  // VC4 (LP instantáneo) -- el estado "pendiente" es exclusivamente
+  // infraestructura interna (ver `pending-lp-store.ts`); esta superficie
+  // dejó de mostrarlo. El usuario ya recibe el feedback de LP de forma
+  // instantánea en la pantalla de resultado de Quick Question -- `pendingLp`
+  // (el estado React) sigue existiendo y sigue alimentando el sondeo interno
+  // de reconciliación más abajo, solo se retiró de este render.
   function lpValue(points: number) {
     return (
-      <View>
-        <View style={styles.lpValueRow}>
-          <LeagueTrophy size={26} />
-          <Text variant="titleLarge" weight="bold">
-            {points}
-          </Text>
-        </View>
-        {pendingLp > 0 ? (
-          <Text variant="caption" color="secondary">
-            +{pendingLp} LP pendiente
-          </Text>
-        ) : null}
+      <View style={styles.lpValueRow}>
+        <LeagueTrophy size={26} />
+        <Text variant="titleLarge" weight="bold">
+          {points}
+        </Text>
       </View>
     );
   }
@@ -527,7 +577,17 @@ export default function CompetirScreen() {
             ),
             'Posición',
           )}
-          {leagueStat(lpValue(view.leaguePoints), 'LP')}
+          {/*
+            MICROBLOQUE 2 (LP instantáneo) -- SOLO aquí (temporada EN CURSO):
+            `view.leaguePoints + pendingLp` = total visible. `pendingLp` es
+            el mismo store/estado ya existente (`getPendingLp`/
+            `subscribePendingLp`), nunca un valor nuevo -- solo se suma al
+            autoritativo en vez de mostrarse aparte. NUNCA se aplica en la
+            rama "TEMPORADA FINALIZADA" de arriba: un pendiente en este
+            instante pertenece a la participación EN CURSO, nunca a una
+            temporada ya cerrada/inmutable.
+          */}
+          {leagueStat(lpValue(view.leaguePoints + pendingLp), 'LP')}
         </View>
 
         {ctx ? zoneChip(ctx.competitiveZone) : null}
@@ -606,7 +666,7 @@ export default function CompetirScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Ver todos los desafíos"
-              onPress={() => router.push('/(tabs)/competir/desafios')}
+              onPress={() => router.push({ pathname: '/(tabs)/competir/desafios', params: { from: 'competir' } })}
               style={styles.seeAll}
             >
               <Text variant="label" style={{ color: tokens.color.accent.strong }}>

@@ -204,7 +204,11 @@ const funcionCuadratica: ResourceContentModule = {
     {
       questionKey: 'M1.ALGEBRA_FUNCIONES.FUNCION_CUADRATICA.Q9',
       order: 8,
-      difficulty: 'DIFICIL',
+      // VC4 MICROBLOQUE 8.1 -- relabel DIFICIL->MEDIA. Auditoría (Microbloque 8):
+      // sustitución directa en t=-b/2a, cognitive demand ~2 (una fórmula,
+      // un paso), no exige interpretación adicional. Pregunta correcta y
+      // pedagógicamente útil -- no se reescribe artificialmente.
+      difficulty: 'MEDIA',
       stemContent: [
         { type: 'paragraph', order: 0, text: 'La altura de un objeto es:' },
         { type: 'formula', order: 1, latex: 'h(t)=-5t^2+20t+3' },

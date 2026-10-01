@@ -1,16 +1,17 @@
 import { View } from 'react-native';
 import { ZetryndMark } from './zetrynd-mark';
+import { ZetryndWordmark } from './zetrynd-wordmark';
 import { Text } from '../ui';
 import { useThemedStyles, spacing } from '../../theme';
 import type { ThemeTokens } from '../../theme';
 
 /**
  * AUTH-1A -- identidad visual compartida de Login/Registro (evita
- * divergencias entre ambas pantallas). Símbolo oficial (`ZetryndMark`,
- * transcripción literal del asset aprobado) + wordmark "ZETRYND" (texto,
- * el asset NO incluye wordmark -- nunca se inventa un logo combinado) +
- * separador/acento + lema real de marca ("Aprende. Progresa. Supérate."),
- * mismo copy en ambas pantallas.
+ * divergencias entre ambas pantallas). Símbolo oficial (`ZetryndMark`) +
+ * wordmark oficial (`ZetryndWordmark`, vectorial -- ver TESTER-DISTRIBUTION-1B.1b/1B.2:
+ * el `<Text>ZETRYND</Text>` con fuente de plataforma que había aquí antes
+ * NO era el wordmark oficial) + separador/acento + lema real de marca
+ * ("Aprende. Progresa. Supérate."), mismo copy en ambas pantallas.
  */
 export function AuthBrandHeader() {
   const styles = useThemedStyles(createStyles);
@@ -18,9 +19,9 @@ export function AuthBrandHeader() {
   return (
     <View style={styles.container}>
       <ZetryndMark size={72} />
-      <Text variant="heading1" style={styles.wordmark} accessibilityRole="header">
-        ZETRYND
-      </Text>
+      <View accessibilityRole="header" style={styles.wordmark}>
+        <ZetryndWordmark size={24} />
+      </View>
       <View style={styles.separator}>
         <View style={styles.separatorLine} />
         <View style={styles.separatorDot} />
@@ -36,7 +37,7 @@ export function AuthBrandHeader() {
 function createStyles(t: ThemeTokens) {
   return {
     container: { alignItems: 'center' as const, gap: spacing.space2 },
-    wordmark: { letterSpacing: 4, marginTop: spacing.space2 },
+    wordmark: { marginTop: spacing.space2 },
     separator: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
