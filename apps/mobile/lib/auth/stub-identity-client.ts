@@ -32,6 +32,10 @@ export class StubIdentityClient implements IdentityClient {
     return this.encode(email);
   }
 
+  async sendPasswordReset(): Promise<void> {
+    // Solo desarrollo: sin correo real ni lógica de existencia de cuenta.
+  }
+
   async signOut(): Promise<void> {
     // Sin estado de servidor que limpiar -- el logout real ocurre contra
     // Axioma (POST /auth/logout), no contra el proveedor de identidad.

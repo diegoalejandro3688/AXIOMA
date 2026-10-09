@@ -8,4 +8,6 @@ export interface IdentityClient {
   signIn(email: string, password: string): Promise<{ idToken: string }>;
   signUp(email: string, password: string): Promise<{ idToken: string }>;
   signOut(): Promise<void>;
+  /** Envía el correo de restablecimiento de contraseña (Firebase lo maneja de extremo a extremo). */
+  sendPasswordReset(email: string): Promise<void>;
 }

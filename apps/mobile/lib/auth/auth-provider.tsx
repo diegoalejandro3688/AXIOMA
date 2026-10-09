@@ -16,7 +16,29 @@ interface AuthContextValue {
   accountId: string | null;
   login: (email: string, password: string) => Promise<AuthActionResult>;
   register: (email: string, password: string) => Promise<AuthActionResult>;
+  resetPassword: (email: string) => Promise<AuthActionResult>;
   logout: () => Promise<void>;
+}
+
+/**
+ * Mapeo de errores de Firebase para el flujo de recuperación de contraseña.
+ * Nunca se expone `error.message` crudo. `auth/user-not-found` se trata como
+ * éxito para no revelar si existe una cuenta con ese correo.
+ */
+function mapPasswordResetError(error: unknown): AuthActionResult {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as { code: unknown }).code) : '';
+  switch (code) {
+    case 'auth/user-not-found':
+      return { ok: true };
+    case 'auth/invalid-email':
+      return { ok: false, message: 'Revisa el formato del correo electrónico.' };
+    case 'auth/too-many-requests':
+      return { ok: false, message: 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.' };
+    case 'auth/network-request-failed':
+      return { ok: false, message: 'No se pudo conectar. Revisa tu conexión e inténtalo de nuevo.' };
+    default:
+      return { ok: false, message: 'No se pudo enviar el enlace. Inténtalo de nuevo más tarde.' };
+  }
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -134,6 +156,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function resetPassword(email: string): Promise<AuthActionResult> {
+    try {
+      await identityClient.sendPasswordReset(email.trim());
+      return { ok: true };
+    } catch (error) {
+      return mapPasswordResetError(error);
+    }
+  }
+
   async function logout(): Promise<void> {
     await logoutRequest(); // best-effort -- apiRequest nunca lanza, un fallo de red no bloquea el logout local.
     await identityClient.signOut().catch(() => {});
@@ -142,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus('unauthenticated');
   }
 
-  const value = useMemo<AuthContextValue>(() => ({ status, accountId, login, register, logout }), [status, accountId]);
+  const value = useMemo<AuthContextValue>(() => ({ status, accountId, login, register, resetPassword, logout }), [status, accountId]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

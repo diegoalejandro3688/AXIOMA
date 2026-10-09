@@ -40,6 +40,7 @@ export class FirebaseIdentityClient implements IdentityClient {
       inMemoryPersistence,
       signInWithEmailAndPassword,
       createUserWithEmailAndPassword,
+      sendPasswordResetEmail,
       signOut,
     } = await import('firebase/auth');
 
@@ -50,7 +51,7 @@ export class FirebaseIdentityClient implements IdentityClient {
     const auth = alreadyInitialized
       ? getAuth(app)
       : initializeAuth(app, { persistence: inMemoryPersistence });
-    return { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut };
+    return { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut };
   }
 
   private getAuth() {
@@ -70,6 +71,11 @@ export class FirebaseIdentityClient implements IdentityClient {
     const credential = await createUserWithEmailAndPassword(auth, email, password);
     const idToken = await credential.user.getIdToken();
     return { idToken };
+  }
+
+  async sendPasswordReset(email: string): Promise<void> {
+    const { auth, sendPasswordResetEmail } = await this.getAuth();
+    await sendPasswordResetEmail(auth, email.trim());
   }
 
   async signOut(): Promise<void> {
