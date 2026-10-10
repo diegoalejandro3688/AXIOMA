@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   react-native-google-mobile-ads@17.0.0:
-    hash: 34cqjuboxj5i2nbg2m2qguphza
+    hash: 43s635gopdm7kabj25fxx43nsa
     path: patches/react-native-google-mobile-ads@17.0.0.patch
 
 importers:
@@ -175,7 +175,7 @@ importers:
         version: 0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0)
       react-native-google-mobile-ads:
         specifier: 17.0.0
-        version: 17.0.0(patch_hash=34cqjuboxj5i2nbg2m2qguphza)(expo@54.0.36)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+        version: 17.0.0(patch_hash=43s635gopdm7kabj25fxx43nsa)(expo@54.0.36)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       react-native-safe-area-context:
         specifier: ~5.6.2
         version: 5.6.2(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -12312,7 +12312,7 @@ snapshots:
 
   react-is@19.2.8: {}
 
-  react-native-google-mobile-ads@17.0.0(patch_hash=34cqjuboxj5i2nbg2m2qguphza)(expo@54.0.36)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
+  react-native-google-mobile-ads@17.0.0(patch_hash=43s635gopdm7kabj25fxx43nsa)(expo@54.0.36)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
     dependencies:
       '@iabtcf/core': 1.5.6
       react: 19.1.0
