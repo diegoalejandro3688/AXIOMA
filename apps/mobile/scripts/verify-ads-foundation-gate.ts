@@ -314,13 +314,16 @@ console.log('--- 5. fuente: PG + TEEN antes de initialize, SDK aislado, sin plac
   const appFiles = ['app', 'lib', 'components'].flatMap((d) => (existsSync(join(MOBILE_ROOT, d)) ? walk(join(MOBILE_ROOT, d)) : []));
   const rel = (f: string) => relative(MOBILE_ROOT, f).replace(/\\/g, '/');
   const withLib = appFiles.filter((f) => /react-native-google-mobile-ads/.test(stripComments(readText(f)))).map(rel);
-  check(`SOLO lib/ads/ads-sdk.ts toca react-native-google-mobile-ads (encontrado: ${withLib.join(', ') || 'ninguno'})`, withLib.length === 1 && withLib[0] === 'lib/ads/ads-sdk.ts');
+  const LIB_ALLOWED = ['components/ads/ads-banner-view.tsx', 'lib/ads/ads-interstitial-sdk.ts', 'lib/ads/ads-sdk.ts'];
+  check(`SOLO 3 archivos tocan react-native-google-mobile-ads: ads-sdk.ts (init), ads-interstitial-sdk.ts y ads-banner-view.tsx (encontrado: ${withLib.join(', ') || 'ninguno'})`, JSON.stringify([...withLib].sort()) === JSON.stringify(LIB_ALLOWED));
   const deprecated = appFiles.filter((f) => /tagForChildDirectedTreatment|tagForUnderAgeOfConsent|NativeModules\.RNGoogleMobileAds|RNGoogleMobileAdsModule/.test(stripComments(readText(f)))).map(rel);
   check(`sin TFUA/TFCD ni llamadas directas al modulo nativo${deprecated.length ? ` (${deprecated.join(', ')})` : ''}`, deprecated.length === 0);
   const placementRe = /\bBannerAd\b|\bInterstitialAd\b|useInterstitialAd|useRewardedAd|\bRewardedAd\b|\bAppOpenAd\b|\bNativeAd\b|\bAdBannerSlot\b|\bCompetirInterstitialController\b/;
   const placementOffenders = appFiles.filter((f) => placementRe.test(stripComments(readText(f)))).map(rel);
-  check(`NO existen placements ni contenedores de anuncio (ADS-1C)${placementOffenders.length ? ` (${placementOffenders.join(', ')})` : ''}`, placementOffenders.length === 0);
-  check('ninguna pantalla ni componente consume useAds todavia; no existe components/ads/', !appFiles.filter((f) => rel(f).startsWith('app/') || rel(f).startsWith('components/')).some((f) => /\buseAds\b/.test(stripComments(readText(f)))) && !existsSync(join(MOBILE_ROOT, 'components', 'ads')));
+  const placementOutsideAdapters = placementOffenders.filter((f) => f !== 'components/ads/ads-banner-view.tsx' && f !== 'lib/ads/ads-interstitial-sdk.ts');
+  check(`las clases de anuncio (BannerAd/InterstitialAd/...) solo aparecen en los 2 adaptadores del SDK, nunca en pantallas ni en otros modulos${placementOutsideAdapters.length ? ` (${placementOutsideAdapters.join(', ')})` : ''}`, placementOutsideAdapters.length === 0);
+  const useAdsConsumers = appFiles.filter((f) => /\buseAds\b/.test(stripComments(readText(f)))).map(rel).sort();
+  check(`useAds() solo lo consumen el provider, el hook del intersticial y el placement de banner (encontrado: ${useAdsConsumers.join(', ')})`, JSON.stringify(useAdsConsumers) === JSON.stringify(['components/ads/ads-banner-placement.tsx', 'lib/ads/ads-provider.tsx', 'lib/ads/use-quick-exit-interstitial.ts']));
   const prodIdOffenders = appFiles.filter((f) => [...stripComments(readText(f)).matchAll(/ca-app-pub-(\d{16})/g)].some((m) => m[1] !== GOOGLE_TEST_PUBLISHER)).map(rel);
   check(`ningun id de AdMob de produccion versionado en app/lib/components${prodIdOffenders.length ? ` (${prodIdOffenders.join(', ')})` : ''}`, prodIdOffenders.length === 0);
 

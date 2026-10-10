@@ -3,6 +3,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import type { UserProfileResponse, LevelProgressResponse, StreakResponse, ChallengeSummary } from '@axioma/contracts';
+import { AdsBannerPlacement } from '../../components/ads/ads-banner-placement';
 import { getProfile } from '../../lib/api/user';
 import { getLevel, getStreak } from '../../lib/api/progression';
 import { listChallenges } from '../../lib/api/challenges';
@@ -244,6 +245,7 @@ export default function InicioScreen() {
       : 'Sin acción disponible';
 
   return (
+    <>
     <ScrollView style={styles.scroll} contentContainerStyle={[styles.container, { paddingTop: insets.top + spacing.space4 }]}>
       {/* SOPORTE -- saludo (título de pantalla) + racha compacta, sin competir con el título. */}
       <View style={styles.header}>
@@ -412,6 +414,9 @@ export default function InicioScreen() {
         )}
       </Card>
     </ScrollView>
+    {/* ADS-1C -- banner anclado debajo del scroll (encima de la tab bar); no renderiza nada salvo elegibilidad completa. */}
+    <AdsBannerPlacement slot="home" />
+    </>
   );
 }
 

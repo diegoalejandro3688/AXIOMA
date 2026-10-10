@@ -30,6 +30,7 @@ import { ContentBlockRenderer } from '../../../components/content-block-renderer
 import { LeagueTrophy } from '../../../components/competitive/league-trophy';
 import { addPendingReward } from '../../../lib/league/pending-lp-store';
 import { useAuth } from '../../../lib/auth/auth-provider';
+import { useQuickExitInterstitial } from '../../../lib/ads/use-quick-exit-interstitial';
 import { getQuickQuestionSubjects } from '../../../lib/storage/quick-question-subjects-store';
 import { DEFAULT_QUICK_QUESTION_SUBJECT_KEYS } from '../../../lib/quick-question/subjects';
 import { LoadingState } from '../../../components/loading-state';
@@ -117,6 +118,9 @@ export default function QuickQuestionScreen() {
   const styles = useThemedStyles(createStyles);
   const auth = useAuth();
   const [screen, setScreen] = useState<Screen>({ status: 'initializing' });
+  // ADS-1C -- intersticial de salida: SOLO con la pantalla de RESULTADOS visible (nunca con Quick activo).
+  const { requestExit } = useQuickExitInterstitial(screen.status === 'result');
+  const exitingRef = useRef(false);
   const [nowTs, setNowTs] = useState(() => Date.now());
   const mountedRef = useRef(true);
   const timeoutInFlightRef = useRef(false);
@@ -369,14 +373,40 @@ export default function QuickQuestionScreen() {
     applyNextOutcome(sessionId, outcome);
   }
 
-  /** ÚNICO lugar del archivo que invoca `closeQuickQuestionSession` -- exclusivamente desde este `onPress`. */
+  /** Salida SIN anuncio (timeout, sin preguntas): mismo comportamiento de siempre. */
   async function handleExit() {
+    await performExit((go) => go());
+  }
+
+  /**
+   * ÚNICO lugar del archivo que invoca `closeQuickQuestionSession` -- exclusivamente
+   * desde el `onPress` de un botón de salida (vía `handleExit` / `handleExitFromResults`).
+   * `runNavigation` decide CÓMO se llega a Competir: la salida normal navega de
+   * inmediato (en cuanto la sesión se cierra); la salida desde RESULTADOS puede
+   * ofrecer antes el intersticial (ADS-1C).
+   */
+  async function performExit(runNavigation: (go: () => void) => void) {
     const sessionId = 'sessionId' in screen ? screen.sessionId : null;
-    if (sessionId) {
-      await closeQuickQuestionSession(sessionId);
-    }
-    if (!mountedRef.current) return;
-    router.push('/(tabs)/competir');
+    const closing = sessionId ? closeQuickQuestionSession(sessionId) : Promise.resolve(null);
+    runNavigation(() => {
+      void closing.then(() => {
+        if (!mountedRef.current) return;
+        router.push('/(tabs)/competir');
+      });
+    });
+  }
+
+  /**
+   * ADS-1C -- "Volver a Competir" de la pantalla de RESULTADOS: MISMA salida que
+   * `handleExit`, pero ofreciendo antes el intersticial ya cargado, si y solo si la
+   * elegibilidad es completa EN ESTE INSTANTE. Si no hay anuncio listo (o no es
+   * elegible) navega sin esperar nada; el botón funciona igual sin anuncio. La
+   * navegación ocurre una sola vez. Las demás salidas NO ofrecen anuncio.
+   */
+  function handleExitFromResults() {
+    if (exitingRef.current) return;
+    exitingRef.current = true;
+    void performExit(requestExit);
   }
 
   if (screen.status === 'initializing') return <LoadingState message="Preparando pregunta rápida…" />;
@@ -559,7 +589,7 @@ export default function QuickQuestionScreen() {
         loading={screen.loadingNext}
         style={styles.primaryButton}
       />
-      <Button variant="tertiary" label="Volver a Competir" accessibilityLabel="Volver a Competir" onPress={handleExit} style={styles.exitButton} />
+      <Button variant="tertiary" label="Volver a Competir" accessibilityLabel="Volver a Competir" onPress={handleExitFromResults} style={styles.exitButton} />
     </ScrollView>
   );
 }

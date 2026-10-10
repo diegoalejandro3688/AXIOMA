@@ -25,6 +25,7 @@ import { useBoundedReconciliation } from '../../../lib/progress/use-bounded-reco
 import { useAuth } from '../../../lib/auth/auth-provider';
 import { getQuickQuestionSubjects, setQuickQuestionSubjects } from '../../../lib/storage/quick-question-subjects-store';
 import { DEFAULT_QUICK_QUESTION_SUBJECT_KEYS, quickQuestionSubjectsSummary } from '../../../lib/quick-question/subjects';
+import { AdsBannerPlacement } from '../../../components/ads/ads-banner-placement';
 import { useTheme, useThemedStyles, useColorSchemeName, spacing, radii } from '../../../theme';
 import type { ThemeTokens, IconName } from '../../../theme';
 
@@ -729,6 +730,8 @@ export default function CompetirScreen() {
 
       {renderChallengesSection()}
     </ScrollView>
+    {/* ADS-1C -- banner anclado debajo del scroll (encima de la tab bar); no renderiza nada salvo elegibilidad completa. */}
+    <AdsBannerPlacement slot="compete" />
     <LeagueLadderDialog
       visible={leagueInfoVisible}
       onRequestClose={() => setLeagueInfoVisible(false)}

@@ -6,6 +6,7 @@ import type { SubjectResponse } from '@axioma/contracts';
 import type { IconName } from '../../../theme';
 import { listSubjects } from '../../../lib/api/education';
 import { subjectIcon, subjectToneColor, subjectToneBackground } from '../../../lib/academic/subject-icon';
+import { AdsBannerPlacement } from '../../../components/ads/ads-banner-placement';
 import { LoadingState } from '../../../components/loading-state';
 import { ErrorState } from '../../../components/error-state';
 import { EmptyState } from '../../../components/empty-state';
@@ -59,6 +60,7 @@ export default function EstudioIndexScreen() {
   if (state.subjects.length === 0) return <EmptyState message="Todavía no hay materias disponibles." />;
 
   return (
+    <>
     <View style={styles.container}>
       <View style={styles.headerBlock}>
         <Text variant="heading1" accessibilityRole="header">
@@ -131,6 +133,9 @@ export default function EstudioIndexScreen() {
         }}
       />
     </View>
+    {/* ADS-1C -- banner anclado fuera del padding de la lista; no renderiza nada salvo elegibilidad completa. */}
+    <AdsBannerPlacement slot="study" />
+    </>
   );
 }
 
