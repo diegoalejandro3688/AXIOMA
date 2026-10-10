@@ -21,6 +21,31 @@ interface AuthContextValue {
 }
 
 /**
+ * Mapeo de errores de Firebase para el inicio de sesión. Nunca se expone
+ * `error.message` crudo ni el código. Credenciales inválidas, contraseña
+ * incorrecta y cuenta inexistente comparten el MISMO mensaje, para no revelar
+ * si existe una cuenta con ese correo.
+ */
+function mapLoginError(error: unknown): string {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as { code: unknown }).code) : '';
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/invalid-login-credentials':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return 'Correo o contraseña incorrectos.';
+    case 'auth/invalid-email':
+      return 'Revisa el formato del correo electrónico.';
+    case 'auth/network-request-failed':
+      return 'No se pudo conectar. Revisa tu conexión e inténtalo de nuevo.';
+    case 'auth/too-many-requests':
+      return 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.';
+    default:
+      return 'No pudimos iniciar sesión. Inténtalo de nuevo.';
+  }
+}
+
+/**
  * Mapeo de errores de Firebase para el flujo de recuperación de contraseña.
  * Nunca se expone `error.message` crudo. `auth/user-not-found` se trata como
  * éxito para no revelar si existe una cuenta con ese correo.
@@ -143,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { idToken } = await identityClient.signIn(email, password);
       return await establishSession(idToken);
     } catch (error) {
-      return { ok: false, message: error instanceof Error ? error.message : 'No se pudo iniciar sesión.' };
+      return { ok: false, message: mapLoginError(error) };
     }
   }
 

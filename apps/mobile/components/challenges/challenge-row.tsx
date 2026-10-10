@@ -94,7 +94,9 @@ export function ChallengeRow({ challenge, claiming, claimDisabled, error, onClai
           </Text>
         ) : null}
 
-        <Progress value={progressRatio(challenge)} accessibilityLabel={`Progreso: ${challenge.progressValue} de ${challenge.targetValue}`} />
+        <View style={[styles.progressTrack, { borderColor: tokens.color.border.default }]}>
+          <Progress value={progressRatio(challenge)} accessibilityLabel={`Progreso: ${challenge.progressValue} de ${challenge.targetValue}`} />
+        </View>
 
         <View style={styles.metaRow}>
           <Text variant="caption" color="muted">
@@ -156,6 +158,9 @@ const styles = StyleSheet.create({
   bodyCompact: { gap: 3 },
   topLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.space2 },
   type: { textTransform: 'uppercase', letterSpacing: 0.6 },
+  // Riel de 1px (`border.default`), mismo criterio que Inicio: define la pista a
+  // cualquier valor sin falsear el relleno (0 % sigue siendo 0 px).
+  progressTrack: { borderRadius: radii.full, borderWidth: 1, overflow: 'hidden' },
   metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.space2 },
   claimed: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   claimButton: { marginTop: spacing.space2, alignSelf: 'flex-start' },
