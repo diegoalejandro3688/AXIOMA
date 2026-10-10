@@ -342,7 +342,7 @@ console.log('--- 5. fuente: PG + TEEN antes de initialize, SDK aislado, sin plac
   const placementOutsideAdapters = placementOffenders.filter((f) => f !== 'components/ads/ads-banner-view.tsx' && f !== 'lib/ads/ads-interstitial-sdk.ts');
   check(`las clases de anuncio (BannerAd/InterstitialAd/...) solo aparecen en los 2 adaptadores del SDK, nunca en pantallas ni en otros modulos${placementOutsideAdapters.length ? ` (${placementOutsideAdapters.join(', ')})` : ''}`, placementOutsideAdapters.length === 0);
   const useAdsConsumers = appFiles.filter((f) => /\buseAds\b/.test(stripComments(readText(f)))).map(rel).sort();
-  check(`useAds() solo lo consumen el provider, el hook del intersticial y el placement de banner (encontrado: ${useAdsConsumers.join(', ')})`, JSON.stringify(useAdsConsumers) === JSON.stringify(['components/ads/ads-banner-placement.tsx', 'lib/ads/ads-provider.tsx', 'lib/ads/use-quick-exit-interstitial.ts']));
+  check(`useAds() solo lo consumen el provider, el hook del intersticial, el placement de banner y la pantalla de edad (encontrado: ${useAdsConsumers.join(', ')})`, JSON.stringify(useAdsConsumers) === JSON.stringify(['components/ads/ads-banner-placement.tsx', 'components/ads/age-screen-host.tsx', 'lib/ads/ads-provider.tsx', 'lib/ads/use-quick-exit-interstitial.ts']));
   const prodIdOffenders = appFiles.filter((f) => [...stripComments(readText(f)).matchAll(/ca-app-pub-(\d{16})/g)].some((m) => m[1] !== GOOGLE_TEST_PUBLISHER)).map(rel);
   check(`ningun id de AdMob de produccion versionado en app/lib/components${prodIdOffenders.length ? ` (${prodIdOffenders.join(', ')})` : ''}`, prodIdOffenders.length === 0);
 
@@ -358,7 +358,7 @@ console.log('--- 5. fuente: PG + TEEN antes de initialize, SDK aislado, sin plac
   check('provider: sdkState NO se resetea al cambiar de cuenta (es un hecho del proceso)', !/setSdkState\('idle'\)/.test(provider) && /prev === 'failed' \? 'idle' : prev/.test(provider));
   check('provider: useAds fuera del proveedor devuelve TODO apagado', /useContext\(AdsContext\) \?\? ADS_OFF/.test(provider) && /ready: false/.test(provider));
   check('provider: la config expuesta es effectiveAdsConfig (OFF salvo ready)', /config: effectiveAdsConfig\(phase, configState\)/.test(provider));
-  check("provider: el log de QA solo corre en modo 'test' y NO incluye cuenta/email", /if \(mode !== 'test'\) return;\s*console\.info\(`\[ads\] mode=\$\{mode\} entitlement=\$\{entitlementInput\} phase=\$\{phase\} sdk=\$\{sdkState\}`\)/.test(provider) && (provider.match(/console\./g) ?? []).length === 1);
+  check("provider: el log de QA solo corre en modo 'test' y NO incluye cuenta/email", /if \(mode !== 'test'\) return;\s*console\.info\(`\[ads\] mode=\$\{mode\} entitlement=\$\{entitlementInput\} age=\$\{age\} phase=\$\{phase\} sdk=\$\{sdkState\}`\)/.test(provider) && (provider.match(/console\./g) ?? []).length === 1);
 
   const api = stripComments(readMobile('lib', 'api', 'ads.ts'));
   check("lib/api/ads.ts: GET /me/ads-config validado con adsConfigResponseSchema (strict)", /'GET', '\/me\/ads-config'/.test(api) && /schema: adsConfigResponseSchema/.test(api));

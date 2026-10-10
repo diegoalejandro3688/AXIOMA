@@ -7,6 +7,16 @@ import { getAdsConfig } from '../api/ads';
 import { readAdUnitEnv, resolveAdsBuildMode, resolveTestDeviceIds } from './ad-unit-ids';
 import { initializeAdsSdk } from './ads-sdk';
 import {
+  AGE_ENTRY_IDLE,
+  evaluateBirthDate,
+  gateEntitlementByAge,
+  scopeAgeToAccount,
+  shouldPromptForAge,
+  type AgeEntry,
+  type BirthDateFields,
+} from './age-eligibility';
+import { readAgeEligibility, writeAgeEligibility } from './age-store';
+import {
   ADS_CONFIG_ENTRY_IDLE,
   deriveAdsPhase,
   effectiveAdsConfig,
@@ -47,6 +57,13 @@ import {
  * hecho del proceso (no se resetea al cambiar de cuenta); lo que SI se
  * invalida en cada cambio de cuenta es la config remota y, por ende, la fase.
  *
+ * PUERTA DE EDAD (pre-Play): ANTES de cualquier decision de anuncios, el
+ * entitlement pasa por `gateEntitlementByAge`. Sin edad conocida `adult18plus`
+ * PARA ESTA CUENTA (desconocida, cargando, menor de 18, error de lectura o de otra
+ * cuenta) el resultado es "no FREE": cero config remota, SDK sin inicializar, cero
+ * placements. La fecha de nacimiento se evalua solo en el dispositivo; unicamente la
+ * etiqueta derivada se persiste (SecureStore, por cuenta). No se monetiza a menores.
+ *
  * La config se vuelve a leer al volver a primer plano (como maximo cada 5 min)
  * para que el kill switch remoto surta efecto sin reiniciar la app; un fallo en
  * esa lectura apaga todo (fail-closed).
@@ -60,6 +77,12 @@ export interface AdsContextValue {
   /** Config efectiva: la remota solo en `ready`; si no, TODO apagado. */
   config: AdsConfigResponse;
   isPlacementEnabled: (placement: AdsPlacement) => boolean;
+  /** `true` si hay que mostrar la pantalla de edad (FREE confirmado, edad aun sin respuesta). */
+  agePromptRequired: boolean;
+  /** Evalua la fecha SOLO en el dispositivo y guarda unicamente la etiqueta derivada. `invalid` = fecha no valida. */
+  submitBirthDate: (fields: BirthDateFields) => 'ok' | 'invalid';
+  /** Cierra la pantalla en esta sesion SIN dar edad: sigue sin anuncios y se vuelve a preguntar en el proximo arranque. */
+  skipAgePrompt: () => void;
 }
 
 const AdsContext = createContext<AdsContextValue | null>(null);
@@ -70,13 +93,22 @@ const ADS_OFF: AdsContextValue = Object.freeze({
   ready: false,
   config: ADS_CONFIG_OFF,
   isPlacementEnabled: () => false,
+  agePromptRequired: false,
+  submitBirthDate: () => 'invalid' as const,
+  skipAgePrompt: () => undefined,
 });
 
 export function AdsProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const entitlement = useEntitlement();
-  const entitlementInput = toAdsEntitlementInput(entitlement.state);
+  const rawEntitlementInput = toAdsEntitlementInput(entitlement.state);
   const accountId = auth.accountId;
+  const [ageEntry, setAgeEntry] = useState<AgeEntry>(AGE_ENTRY_IDLE);
+  const [skippedForAccountId, setSkippedForAccountId] = useState<string | null>(null);
+  // La etiqueta de edad solo vale para la cuenta actual (nunca se filtra a otra sesion).
+  const age = scopeAgeToAccount(ageEntry, accountId);
+  // PUERTA DE EDAD: de aqui en adelante TODA decision de anuncios usa el entitlement ya filtrado.
+  const entitlementInput = gateEntitlementByAge(rawEntitlementInput, age);
   // El entorno es estatico por build: se resuelve una vez.
   const adUnitEnv = useMemo(() => readAdUnitEnv(), []);
   const mode = useMemo(() => resolveAdsBuildMode(adUnitEnv), [adUnitEnv]);
@@ -102,6 +134,39 @@ export function AdsProvider({ children }: { children: ReactNode }) {
       state: result.ok ? { status: 'ready', config: result.data } : { status: 'error' },
     });
   }, []);
+
+  // Lectura LOCAL de la etiqueta de edad de la cuenta actual (sin red). Cualquier cambio de cuenta
+  // descarta la anterior; mientras se lee, la edad es `unknown` (fail-closed).
+  useEffect(() => {
+    if (accountId === null) {
+      setAgeEntry(AGE_ENTRY_IDLE);
+      return;
+    }
+    let cancelled = false;
+    setAgeEntry({ accountId, status: 'loading', value: 'unknown' });
+    void readAgeEligibility(accountId).then((value) => {
+      if (cancelled || !mountedRef.current) return;
+      setAgeEntry({ accountId, status: 'resolved', value });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
+
+  const submitBirthDate = useCallback(
+    (fields: BirthDateFields): 'ok' | 'invalid' => {
+      if (accountId === null) return 'invalid';
+      const result = evaluateBirthDate(fields, new Date());
+      if (result.kind !== 'ok') return 'invalid';
+      // Solo la etiqueta derivada sale de esta funcion; `fields` no se guarda ni se registra.
+      setAgeEntry({ accountId, status: 'resolved', value: result.eligibility });
+      void writeAgeEligibility(accountId, result.eligibility);
+      return 'ok';
+    },
+    [accountId],
+  );
+
+  const skipAgePrompt = useCallback(() => setSkippedForAccountId(accountId), [accountId]);
 
   // Config remota SOLO para una cuenta FREE confirmada en un build con modo explicito;
   // cualquier otro caso (o cualquier cambio de cuenta) descarta lo anterior.
@@ -154,8 +219,17 @@ export function AdsProvider({ children }: { children: ReactNode }) {
   // (ni cuenta ni email): fase, modo y estado del SDK. Nunca en produccion/off.
   useEffect(() => {
     if (mode !== 'test') return;
-    console.info(`[ads] mode=${mode} entitlement=${entitlementInput} phase=${phase} sdk=${sdkState}`);
-  }, [mode, entitlementInput, phase, sdkState]);
+    console.info(`[ads] mode=${mode} entitlement=${entitlementInput} age=${age} phase=${phase} sdk=${sdkState}`);
+  }, [mode, entitlementInput, age, phase, sdkState]);
+
+  const agePromptRequired = shouldPromptForAge({
+    entitlement: rawEntitlementInput,
+    accountId,
+    modeIsOff: mode === 'off',
+    age,
+    ageResolved: accountId !== null && ageEntry.accountId === accountId && ageEntry.status === 'resolved',
+    skippedThisSession: skippedForAccountId !== null && skippedForAccountId === accountId,
+  });
 
   const value = useMemo<AdsContextValue>(
     () => ({
@@ -163,8 +237,11 @@ export function AdsProvider({ children }: { children: ReactNode }) {
       ready: isAdsReady(phase),
       config: effectiveAdsConfig(phase, configState),
       isPlacementEnabled: (placement) => isPlacementEnabled(phase, configState, placement),
+      agePromptRequired,
+      submitBirthDate,
+      skipAgePrompt,
     }),
-    [phase, configState],
+    [phase, configState, agePromptRequired, submitBirthDate, skipAgePrompt],
   );
 
   return <AdsContext.Provider value={value}>{children}</AdsContext.Provider>;

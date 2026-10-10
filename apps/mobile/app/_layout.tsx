@@ -15,6 +15,7 @@ import { BillingProvider } from '../lib/billing/billing-provider';
 // ADS V1 -- ADS-1B: proveedor centralizado de publicidad (fail-closed). Consume
 // auth + entitlement; se monta dentro de ThemedRootNavigator (ver abajo). No monta placements.
 import { AdsProvider } from '../lib/ads/ads-provider';
+import { AgeScreenHost } from '../components/ads/age-screen-host';
 import { PaywallProvider } from '../lib/entitlement/paywall-context';
 import { ThemeProvider, useTheme, useColorSchemeName } from '../theme';
 
@@ -81,6 +82,8 @@ function ThemedRootNavigator() {
       <NavigationThemeProvider value={navigationTheme}>
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <RootNavigator />
+        {/* PRE-PLAY: pantalla de edad neutral (solo FREE, solo local). */}
+        <AgeScreenHost />
       </NavigationThemeProvider>
     </AdsProvider>
   );

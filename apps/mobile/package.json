@@ -41,7 +41,8 @@
     "verify:public-participation-safety-gate": "tsx scripts/verify-public-participation-safety-gate.ts",
     "verify:ads-tfat-patch-gate": "tsx scripts/verify-ads-tfat-patch-gate.ts",
     "verify:ads-foundation-gate": "tsx scripts/verify-ads-foundation-gate.ts",
-    "verify:ads-placements-gate": "tsx scripts/verify-ads-placements-gate.ts"
+    "verify:ads-placements-gate": "tsx scripts/verify-ads-placements-gate.ts",
+    "verify:ads-age-gate": "tsx scripts/verify-ads-age-gate.ts"
   },
   "dependencies": {
     "@axioma/contracts": "workspace:*",
