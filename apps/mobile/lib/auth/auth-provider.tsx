@@ -46,6 +46,29 @@ function mapLoginError(error: unknown): string {
 }
 
 /**
+ * Mapeo de errores de Firebase para el registro. Nunca se expone `error.message`
+ * crudo ni el código. No se fija ningún mínimo de contraseña aquí: el mensaje
+ * de contraseña débil es genérico (la regla real la define Firebase).
+ */
+function mapRegisterError(error: unknown): string {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as { code: unknown }).code) : '';
+  switch (code) {
+    case 'auth/email-already-in-use':
+      return 'No pudimos crear la cuenta con ese correo. Si ya tienes una cuenta, intenta iniciar sesión.';
+    case 'auth/invalid-email':
+      return 'Revisa el formato del correo electrónico.';
+    case 'auth/weak-password':
+      return 'La contraseña no cumple los requisitos de seguridad.';
+    case 'auth/network-request-failed':
+      return 'No se pudo conectar. Revisa tu conexión e inténtalo de nuevo.';
+    case 'auth/too-many-requests':
+      return 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.';
+    default:
+      return 'No pudimos crear tu cuenta. Inténtalo de nuevo.';
+  }
+}
+
+/**
  * Mapeo de errores de Firebase para el flujo de recuperación de contraseña.
  * Nunca se expone `error.message` crudo. `auth/user-not-found` se trata como
  * éxito para no revelar si existe una cuenta con ese correo.
@@ -177,7 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { idToken } = await identityClient.signUp(email, password);
       return await establishSession(idToken);
     } catch (error) {
-      return { ok: false, message: error instanceof Error ? error.message : 'No se pudo crear la cuenta.' };
+      return { ok: false, message: mapRegisterError(error) };
     }
   }
 
