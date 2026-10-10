@@ -1,0 +1,14 @@
+diff --git a/android/src/main/java/io/invertase/googlemobileads/ReactNativeGoogleMobileAdsModule.kt b/android/src/main/java/io/invertase/googlemobileads/ReactNativeGoogleMobileAdsModule.kt
+index 5246a5830a1e23900d3f0f26d6f05da8a9e3dd29..e6ff0ee00a6e7a5bebeee6f0a5e9824b6d2ba81b 100644
+--- a/android/src/main/java/io/invertase/googlemobileads/ReactNativeGoogleMobileAdsModule.kt
++++ b/android/src/main/java/io/invertase/googlemobileads/ReactNativeGoogleMobileAdsModule.kt
+@@ -73,7 +73,8 @@ class ReactNativeGoogleMobileAdsModule(
+     if (requestConfiguration.hasKey("ageRestrictedTreatment")) {
+       val ageRestrictedTreatment = requestConfiguration.getString("ageRestrictedTreatment")
+ 
+-      when (ageRestrictedTreatment) {
++      // ZETRYND patch: the JS enum sends lowercase ('child' | 'teen' | 'unspecified'); match case-insensitively.
++      when (ageRestrictedTreatment?.uppercase()) {
+         "CHILD" -> builder.setAgeRestrictedTreatment(AgeRestrictedTreatment.CHILD)
+         "TEEN" -> builder.setAgeRestrictedTreatment(AgeRestrictedTreatment.TEEN)
+         "UNSPECIFIED" -> builder.setAgeRestrictedTreatment(AgeRestrictedTreatment.UNSPECIFIED)
