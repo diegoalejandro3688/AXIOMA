@@ -33,7 +33,14 @@
       "expo-router",
       "expo-iap",
       "./plugins/with-android-nav-bar-contrast.js",
-      "./plugins/with-android-release-signing.js"
+      "./plugins/with-android-release-signing.js",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-6604871026616427~2222635311",
+          "delayAppMeasurementInit": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
