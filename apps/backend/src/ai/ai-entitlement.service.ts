@@ -12,7 +12,7 @@ export interface AiEntitlement {
 }
 
 /**
- * Free = 6 turnos / 3 consultas diarias, Premium = 15 turnos / 20 consultas
+ * Free = 6 turnos / 3 consultas diarias, Premium = 15 turnos / 30 consultas
  * diarias -- ambos pares son contractuales del bloque IA. NO migran fuera de
  * este archivo.
  *
@@ -23,10 +23,14 @@ export interface AiEntitlement {
  * frente a FX y peso de peticion). `maxTurns` (6/15) sin cambios. Semantica de
  * consumo/reset/lease/TQ-02 sin cambios. Los ADR de cierre del Bloque VI/VII
  * (fechados) NO se reescriben -- registran el valor de su epoca.
+ *
+ * PRE-PLAY (2026-10-10): el contrato canonico de producto fija PREMIUM en
+ * 30 consultas/dia (FREE 3). Decision explicita del PO que sustituye el 20 de
+ * PB-1C; `maxTurns` y toda la semantica de consumo/reset/lease quedan igual.
  */
 const ENTITLEMENTS: Record<AiTier, Omit<AiEntitlement, 'tier'>> = {
   FREE: { maxTurns: 6, dailyRequestLimit: 3 },
-  PREMIUM: { maxTurns: 15, dailyRequestLimit: 20 },
+  PREMIUM: { maxTurns: 15, dailyRequestLimit: 30 },
 };
 
 /**

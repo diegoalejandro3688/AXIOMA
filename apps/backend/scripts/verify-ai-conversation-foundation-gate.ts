@@ -197,7 +197,7 @@ async function main() {
   console.log('--- A-C. Enforcement real del límite de turnos (independiente de la cuota diaria, Incremento 3) ---');
   // Este bloque necesita más de 3 consultas EXITOSAS (cuota FREE/día) en una sola cuenta para poder
   // probar el límite de turnos hasta agotarlo -- se usa una cuenta dedicada con override PREMIUM
-  // (20 consultas/día -- PB-1C; ver AiInternalAdminController, solo alcanzable en gate/desarrollo,
+  // (30 consultas/día -- contrato pre-Play; ver AiInternalAdminController, solo alcanzable en gate/desarrollo,
   // NUNCA en producción). El límite de turnos verificado sigue siendo el MISMO mecanismo (turnCount >= maxTurns)
   // -- probarlo con maxTurns=15 (Premium) en vez de 6 (Free) es una prueba igual de válida del mecanismo,
   // nunca del valor numérico específico (ese ya está cubierto por el punto A siguiente).
@@ -210,7 +210,7 @@ async function main() {
   const maxTurns = turnLimitConversation.body?.maxTurns as number;
   check('A. conversación nueva: turnCount == 0', turnLimitConversation.body?.turnCount === 0);
   check('A. conversación nueva: maxTurns == 15 (Premium, vía override de prueba)', maxTurns === 15);
-  check('A. dailyQuota.limit == 20 (Premium -- PB-1C)', turnLimitConversation.body?.dailyQuota?.limit === 20);
+  check('A. dailyQuota.limit == 30 (Premium -- contrato pre-Play)', turnLimitConversation.body?.dailyQuota?.limit === 30);
 
   const turnOperationIds: string[] = [];
   const turnResponses: Array<{ userMessageId: string; assistantMessageId: string }> = [];

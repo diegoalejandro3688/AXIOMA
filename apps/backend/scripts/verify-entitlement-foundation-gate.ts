@@ -87,7 +87,7 @@ console.log('--- B. AiEntitlementService como adaptador delgado ---');
 
   tierToReturn = 'PREMIUM';
   const premium = await ai.getEntitlement('acc-x');
-  check('PREMIUM -> { tier:PREMIUM, maxTurns:15, dailyRequestLimit:20 }', premium.tier === 'PREMIUM' && premium.maxTurns === 15 && premium.dailyRequestLimit === 20);
+  check('PREMIUM -> { tier:PREMIUM, maxTurns:15, dailyRequestLimit:30 }', premium.tier === 'PREMIUM' && premium.maxTurns === 15 && premium.dailyRequestLimit === 30);
 
   ai.setTestOnlyTierOverride('acc-x', 'PREMIUM');
   ai.setTestOnlyTierOverride('acc-x', null);
@@ -97,7 +97,7 @@ console.log('--- B. AiEntitlementService como adaptador delgado ---');
   check('ai-entitlement.service ya NO define un mapa de override propio', !/new Map<|testOnlyTierOverride\s*=/.test(aiSrc));
   check('ai-entitlement.service inyecta EntitlementService en el constructor', /constructor\(\s*private readonly entitlementService: EntitlementService/.test(aiSrc));
   check('ai-entitlement.service importa EntitlementService de ../entitlement/entitlement.service', /import \{ EntitlementService \} from '\.\.\/entitlement\/entitlement\.service'/.test(aiSrc));
-  check('los pares de allowance de IA (6/3 FREE y 15/20 PREMIUM -- PB-1C)', /FREE:\s*\{\s*maxTurns:\s*6,\s*dailyRequestLimit:\s*3\s*\}/.test(aiSrc) && /PREMIUM:\s*\{\s*maxTurns:\s*15,\s*dailyRequestLimit:\s*20\s*\}/.test(aiSrc));
+  check('los pares de allowance de IA (6/3 FREE y 15/30 PREMIUM -- contrato pre-Play)', /FREE:\s*\{\s*maxTurns:\s*6,\s*dailyRequestLimit:\s*3\s*\}/.test(aiSrc) && /PREMIUM:\s*\{\s*maxTurns:\s*15,\s*dailyRequestLimit:\s*30\s*\}/.test(aiSrc));
 }
 
 // --------------------------------------------------------------------------
