@@ -103,6 +103,9 @@ function evaluateReleaseCandidate(input: ReleaseCandidateInput): string[] {
     problems.push('falta el entorno de release (.env.production)');
     return problems;
   }
+  const api = (input.releaseEnv.EXPO_PUBLIC_API_BASE_URL ?? '').trim();
+  if (!/^https:\/\/[^/]+/.test(api) || /^https:\/\/(localhost|127\.0\.0\.1|10\.0\.2\.2|0\.0\.0\.0|\[::1\])(?::|\/|$)/.test(api)) problems.push('EXPO_PUBLIC_API_BASE_URL efectiva debe ser https y NO local (posible fuga del .env de QA)');
+  if (input.releaseEnv.EXPO_PUBLIC_AUTH_IDENTITY_CLIENT !== 'firebase') problems.push('EXPO_PUBLIC_AUTH_IDENTITY_CLIENT efectivo debe ser firebase (posible fuga del .env de QA)');
   if (input.releaseEnv.EXPO_PUBLIC_ADMOB_TEST_MODE === 'true') problems.push('EXPO_PUBLIC_ADMOB_TEST_MODE=true en el entorno de release (modo de prueba debe estar APAGADO)');
   if (input.requireUnitIds) {
     if (input.releaseEnv.EXPO_PUBLIC_ADMOB_PRODUCTION_IDS !== 'true') problems.push('EXPO_PUBLIC_ADMOB_PRODUCTION_IDS debe ser true');
@@ -117,10 +120,26 @@ function parseEnvFile(path: string): Record<string, string> | null {
   if (!existsSync(path)) return null;
   const out: Record<string, string> = {};
   for (const line of readText(path).split('\n')) {
-    const m = line.match(/^\s*(EXPO_PUBLIC_ADMOB_[A-Z_]+)\s*=\s*(.*?)\s*$/);
+    const m = line.match(/^\s*(EXPO_PUBLIC_(?:ADMOB_[A-Z_]+|API_BASE_URL|AUTH_IDENTITY_CLIENT))\s*=\s*(.*?)\s*$/);
     if (m) out[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
   }
   return out;
+}
+
+/**
+ * Entorno EFECTIVO de un build de produccion, con la precedencia REAL del cargador de Expo
+ * (`@expo/env` getFiles('production')): .env.production.local > .env.local > .env.production > .env.
+ * La primera definicion de cada clave gana; un `.env` de QA (TEST_MODE, API local, identidad stub)
+ * rellena las claves que los archivos de produccion no definen. `null` = no existe .env.production.
+ */
+function mergeReleaseEnv(files: Array<Record<string, string> | null>, productionFile: Record<string, string> | null): Record<string, string> | null {
+  if (productionFile === null) return null;
+  const merged: Record<string, string> = {};
+  for (const file of files) {
+    if (!file) continue;
+    for (const [key, value] of Object.entries(file)) if (!(key in merged)) merged[key] = value;
+  }
+  return merged;
 }
 
 // --- 1. version exacta + gate del parche TFAT -------------------------------
@@ -375,22 +394,39 @@ console.log('--- 6. app.json (App ID real), documentacion de entorno y modo rele
   // Logica release-candidate: fixtures.
   const goodApp = { expo: { plugins: [['react-native-google-mobile-ads', { androidAppId: 'ca-app-pub-1111222233334444~1234567890', delayAppMeasurementInit: true }]] } };
   const goodIds = { EXPO_PUBLIC_ADMOB_PRODUCTION_IDS: 'true', EXPO_PUBLIC_ADMOB_BANNER_HOME_ID: 'ca-app-pub-1111222233334444/1000000001', EXPO_PUBLIC_ADMOB_BANNER_STUDY_ID: 'ca-app-pub-1111222233334444/1000000002', EXPO_PUBLIC_ADMOB_BANNER_COMPETE_ID: 'ca-app-pub-1111222233334444/1000000003', EXPO_PUBLIC_ADMOB_INTERSTITIAL_QUICK_EXIT_ID: 'ca-app-pub-1111222233334444/1000000004' };
-  const rc = (over: Partial<ReleaseCandidateInput>) => evaluateReleaseCandidate({ appJson: goodApp, releaseEnv: {}, requireUnitIds: false, ...over });
+  const goodBase = { EXPO_PUBLIC_API_BASE_URL: 'https://api.example.com', EXPO_PUBLIC_AUTH_IDENTITY_CLIENT: 'firebase' };
+  const rc = (over: Partial<ReleaseCandidateInput>) =>
+    evaluateReleaseCandidate({
+      appJson: goodApp,
+      requireUnitIds: false,
+      ...over,
+      releaseEnv: over.releaseEnv === undefined ? { ...goodBase } : over.releaseEnv === null ? null : { ...goodBase, ...over.releaseEnv },
+    });
   check('RC (fixture): ADS-1B.1 sin ids de unidad y test mode APAGADO -> sin problemas', rc({}).length === 0);
   check('RC (fixture): entorno de release con TEST_MODE=true -> RECHAZA', rc({ releaseEnv: { EXPO_PUBLIC_ADMOB_TEST_MODE: 'true' } }).length === 1);
   check('RC (fixture): sin .env.production -> RECHAZA', rc({ releaseEnv: null }).length > 0);
+  // Fuga del .env de QA: precedencia real de Expo (production > .env) con un .env de QA al final.
+  const qaEnv = { EXPO_PUBLIC_API_BASE_URL: 'http://localhost:3000', EXPO_PUBLIC_AUTH_IDENTITY_CLIENT: 'stub', EXPO_PUBLIC_ADMOB_TEST_MODE: 'true' };
+  const prodEnvNoAds = { EXPO_PUBLIC_API_BASE_URL: 'https://api.example.com', EXPO_PUBLIC_AUTH_IDENTITY_CLIENT: 'firebase', ...goodIds };
+  const leaked = mergeReleaseEnv([null, null, prodEnvNoAds, qaEnv], prodEnvNoAds);
+  check('mergeReleaseEnv: la primera definicion gana (production pisa a .env en API e identidad) pero .env RELLENA TEST_MODE', leaked !== null && leaked.EXPO_PUBLIC_API_BASE_URL === 'https://api.example.com' && leaked.EXPO_PUBLIC_AUTH_IDENTITY_CLIENT === 'firebase' && leaked.EXPO_PUBLIC_ADMOB_TEST_MODE === 'true');
+  check('RC (fixture): un .env de QA con TEST_MODE=true que se filtra al build de produccion -> RECHAZA', rc({ requireUnitIds: true, releaseEnv: leaked }).length === 1);
+  check('RC (fixture): API local / http o identidad stub efectivas -> RECHAZA', rc({ releaseEnv: { EXPO_PUBLIC_API_BASE_URL: 'http://localhost:3000' } }).length === 1 && rc({ releaseEnv: { EXPO_PUBLIC_API_BASE_URL: 'https://localhost:3000' } }).length === 1 && rc({ releaseEnv: { EXPO_PUBLIC_AUTH_IDENTITY_CLIENT: 'stub' } }).length === 1);
+  const cleanMerged = mergeReleaseEnv([null, null, prodEnvNoAds, null], prodEnvNoAds);
+  check('RC (fixture): sin .env de QA el entorno efectivo es valido', cleanMerged !== null && rc({ requireUnitIds: true, releaseEnv: cleanMerged }).length === 0);
   check('RC (fixture): App ID de muestra -> RECHAZA', rc({ appJson: { expo: { plugins: [['react-native-google-mobile-ads', { androidAppId: SAMPLE_APP_ID, delayAppMeasurementInit: true }]] } } }).length > 0);
   check('RC (fixture): delayAppMeasurementInit ausente -> RECHAZA', rc({ appJson: { expo: { plugins: [['react-native-google-mobile-ads', { androidAppId: 'ca-app-pub-1111222233334444~1234567890' }]] } } }).length === 1);
   check('RC (fixture): plugin ausente o duplicado -> RECHAZA', rc({ appJson: { expo: { plugins: [] } } }).length > 0 && rc({ appJson: { expo: { plugins: [...goodApp.expo.plugins, ...goodApp.expo.plugins] } } }).length > 0);
   check('RC (fixture): ids de unidad requeridos y validos -> sin problemas', rc({ requireUnitIds: true, releaseEnv: goodIds }).length === 0);
   check('RC (fixture): ids requeridos pero ausentes / de prueba / sin opt-in -> RECHAZA', rc({ requireUnitIds: true, releaseEnv: {} }).length === 5 && rc({ requireUnitIds: true, releaseEnv: { ...goodIds, EXPO_PUBLIC_ADMOB_BANNER_HOME_ID: GOOGLE_TEST_UNIT_IDS.banner } }).length === 1 && rc({ requireUnitIds: true, releaseEnv: { ...goodIds, EXPO_PUBLIC_ADMOB_PRODUCTION_IDS: 'false' } }).length === 1);
 
-  const releaseEnv = parseEnvFile(join(MOBILE_ROOT, '.env.production'));
+  const productionFile = parseEnvFile(join(MOBILE_ROOT, '.env.production'));
+  const releaseEnv = mergeReleaseEnv(['.env.production.local', '.env.local', '.env.production', '.env'].map((name) => parseEnvFile(join(MOBILE_ROOT, name))), productionFile);
   if (process.env.ADS_RELEASE_CANDIDATE === '1') {
     const problems = evaluateReleaseCandidate({ appJson, releaseEnv, requireUnitIds: process.env.ADS_REQUIRE_UNIT_IDS === '1' });
     check(`RELEASE-CANDIDATE (ADS_RELEASE_CANDIDATE=1) sobre el repo${problems.length ? `: ${problems.join('; ')}` : ''}`, problems.length === 0);
   } else if (releaseEnv?.EXPO_PUBLIC_ADMOB_TEST_MODE === 'true') {
-    warn('smoke: .env.production tiene EXPO_PUBLIC_ADMOB_TEST_MODE=true (permitido solo para builds de QA). Un build de release publico requiere ADS_RELEASE_CANDIDATE=1.');
+    warn('smoke: el entorno EFECTIVO de un build de produccion tiene EXPO_PUBLIC_ADMOB_TEST_MODE=true (.env.production o un .env de QA). Permitido solo para builds de QA; un build publico exige ADS_RELEASE_CANDIDATE=1 y mover el .env de QA.');
   }
 }
 
