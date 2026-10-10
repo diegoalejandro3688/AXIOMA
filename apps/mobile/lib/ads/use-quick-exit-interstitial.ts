@@ -12,14 +12,15 @@ import { QuickExitInterstitialController, type QuickExitInput } from './quick-ex
  * aqui solo se lee la elegibilidad, se crea/descarta el controlador con la
  * pantalla y se expone `requestExit`.
  *
- * - `quickEnded` = la pantalla de RESULTADOS de Quick esta visible.
+ * - `quickClosed` = la sesion de Quick esta realmente CERRADA (`isQuickSessionTerminal`);
+ *   con Quick activo (incluido el resultado de cada pregunta) es siempre false.
  * - Se desmonta con la pantalla (logout, cambio de cuenta o salir de Quick
  *   desmontan el arbol): el anuncio cargado se descarta, nunca se reutiliza.
  * - `requestExit` lee el estado MAS RECIENTE de `useAds()` en el instante de la
  *   pulsacion (via ref), no el de cuando se cargo el anuncio.
  * - Si no hay controlador (p. ej. antes de montar), navega de inmediato.
  */
-export function useQuickExitInterstitial(quickEnded: boolean): { requestExit: (navigate: () => void) => void } {
+export function useQuickExitInterstitial(quickClosed: boolean): { requestExit: (navigate: () => void) => void } {
   const ads = useAds();
   const unitId = useMemo(() => resolveAdUnitId('interstitialQuickExit', readAdUnitEnv()), []);
   const placementEnabled = ads.isPlacementEnabled('interstitialQuickExit');
@@ -29,7 +30,7 @@ export function useQuickExitInterstitial(quickEnded: boolean): { requestExit: (n
   const ineligibleReason = eligible ? undefined : !ads.ready ? `phase-${ads.phase}` : !placementEnabled ? 'flag-off' : 'no-unit-id';
 
   const input: QuickExitInput = {
-    quickEnded,
+    quickClosed,
     eligible,
     unitId,
     limits: { cooldownMinutes, maxPerSession },
@@ -60,7 +61,7 @@ export function useQuickExitInterstitial(quickEnded: boolean): { requestExit: (n
 
   useEffect(() => {
     controllerRef.current?.update(inputRef.current);
-  }, [quickEnded, eligible, unitId, cooldownMinutes, maxPerSession, ineligibleReason]);
+  }, [quickClosed, eligible, unitId, cooldownMinutes, maxPerSession, ineligibleReason]);
 
   const requestExit = useCallback((navigate: () => void) => {
     const controller = controllerRef.current;

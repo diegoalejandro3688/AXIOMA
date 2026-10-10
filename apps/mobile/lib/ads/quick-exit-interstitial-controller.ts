@@ -14,8 +14,9 @@ import {
  * de forma determinista con un anuncio falso.
  *
  * Ciclo de vida:
- *   - NO crea ni solicita nada mientras Quick esta ACTIVO (`quickEnded=false`).
- *   - Con la pantalla de resultados visible Y elegibilidad completa, carga UNA vez.
+ *   - NO crea ni solicita nada mientras Quick esta ACTIVO (`quickClosed=false`),
+ *     incluida la pantalla de resultado de cada pregunta (se puede continuar).
+ *   - Con la sesion de Quick realmente CERRADA Y elegibilidad completa, carga UNA vez.
  *   - Cualquier perdida de elegibilidad (logout, Premium, entitlement en carga,
  *     error del provider, config apagada, cambio de cuenta...) DESCARTA el
  *     anuncio cargado: nunca queda reutilizable.
@@ -41,8 +42,8 @@ export interface InterstitialAdHandle {
 }
 
 export interface QuickExitInput {
-  /** `true` solo con la pantalla de resultados de Quick visible. */
-  quickEnded: boolean;
+  /** `true` SOLO con la sesion de Quick realmente cerrada (ver `quick-lifecycle.ts`). */
+  quickClosed: boolean;
   /** `ads.isPlacementEnabled('interstitialQuickExit')` AND unitId valido. */
   eligible: boolean;
   unitId: string | null;
@@ -90,7 +91,7 @@ export class QuickExitInterstitialController {
     if (this.state !== 'idle') return;
 
     const decision = decideLoad({
-      quickEnded: input.quickEnded,
+      quickClosed: input.quickClosed,
       eligible: input.eligible,
       unitId: input.unitId,
       session: this.deps.session.get(),
@@ -105,7 +106,7 @@ export class QuickExitInterstitialController {
   }
 
   /**
-   * Pulsacion de "Volver a Competir" en la pantalla de resultados. `readInput`
+   * Pulsacion de "Volver a Competir" con la sesion ya cerrada. `readInput`
    * se llama AQUI, en el instante del toque (elegibilidad fresca, no la del momento de carga).
    */
   exit(navigate: () => void, readInput: () => QuickExitInput): void {
@@ -123,7 +124,7 @@ export class QuickExitInterstitialController {
     }
 
     const current = readInput();
-    const eligibleNow = current.quickEnded && current.eligible && current.unitId !== null;
+    const eligibleNow = current.quickClosed && current.eligible && current.unitId !== null;
     const decision = decideExit({
       eligibleNow,
       loaded: this.state === 'loaded' && this.ad !== null,

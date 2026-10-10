@@ -1,6 +1,6 @@
 // Gate ADS-1C -- placements de publicidad V1: 3 banners (Inicio, Estudio,
 // Competir) + 1 oportunidad de intersticial al pulsar "Volver a Competir" desde
-// la pantalla de RESULTADOS de Quick. Verificacion DETERMINISTA: Node puro, sin
+// una sesion de Quick realmente CERRADA (ADS-1C.1). Verificacion DETERMINISTA: Node puro, sin
 // React Native, sin el SDK, sin red; el anuncio se simula con un puerto falso.
 //
 //   1. Banners (politica pura sobre la maquina de estados REAL de ADS-1B):
@@ -50,6 +50,7 @@ import {
   type QuickExitInput,
 } from '../lib/ads/quick-exit-interstitial-controller';
 import { GOOGLE_TEST_UNIT_IDS } from '../lib/ads/ad-unit-ids';
+import { QUICK_STATUS_CLASS, isQuickSessionTerminal, type QuickScreenStatus } from '../lib/ads/quick-lifecycle';
 
 let failures = 0;
 function check(label: string, condition: boolean) {
@@ -119,10 +120,10 @@ console.log('--- 2. politica: cargar / mostrar / tope por sesion / cooldown ---'
 {
   const limits: InterstitialLimits = { cooldownMinutes: 20, maxPerSession: 1 };
   const t0 = 50_000_000;
-  const load = (over: Partial<{ quickEnded: boolean; eligible: boolean; unitId: string | null; session: InterstitialSessionState; limits: InterstitialLimits }>) =>
-    decideLoad({ quickEnded: true, eligible: true, unitId: TEST_INTERSTITIAL, session: INITIAL_INTERSTITIAL_SESSION, limits, nowMs: t0, ...over });
-  check('Quick ACTIVO -> no se puede cargar (quick-active)', JSON.stringify(load({ quickEnded: false })) === JSON.stringify({ ok: false, reason: 'quick-active' }));
-  check('Quick terminado + elegible -> se puede cargar', load({}).ok === true);
+  const load = (over: Partial<{ quickClosed: boolean; eligible: boolean; unitId: string | null; session: InterstitialSessionState; limits: InterstitialLimits }>) =>
+    decideLoad({ quickClosed: true, eligible: true, unitId: TEST_INTERSTITIAL, session: INITIAL_INTERSTITIAL_SESSION, limits, nowMs: t0, ...over });
+  check('Quick ACTIVO (o resultado intermedio) -> no se puede cargar (quick-active)', JSON.stringify(load({ quickClosed: false })) === JSON.stringify({ ok: false, reason: 'quick-active' }));
+  check('sesion de Quick CERRADA + elegible -> se puede cargar', load({}).ok === true);
   check('no elegible (Premium / no-ready / flag apagado) -> no carga', JSON.stringify(load({ eligible: false })) === JSON.stringify({ ok: false, reason: 'not-eligible' }));
   check('id de unidad nulo -> no carga', load({ unitId: null }).ok === false);
   check('tope alcanzado -> no carga (session-cap)', JSON.stringify(load({ session: { shownCount: 1, lastShownAtMs: t0 - 60 * 60_000 } })) === JSON.stringify({ ok: false, reason: 'session-cap' }));
@@ -200,7 +201,7 @@ console.log('--- 3. controlador: ciclo de vida completo con un anuncio falso ---
     };
   };
   const limits: InterstitialLimits = { cooldownMinutes: 20, maxPerSession: 1 };
-  const input = (over: Partial<QuickExitInput> = {}): QuickExitInput => ({ quickEnded: true, eligible: true, unitId: TEST_INTERSTITIAL, limits, ...over });
+  const input = (over: Partial<QuickExitInput> = {}): QuickExitInput => ({ quickClosed: true, eligible: true, unitId: TEST_INTERSTITIAL, limits, ...over });
   const navCounter = () => {
     let n = 0;
     return { fn: () => void n++, get n() {
@@ -211,14 +212,14 @@ console.log('--- 3. controlador: ciclo de vida completo con un anuncio falso ---
   // Quick activo
   {
     const h = harness();
-    h.controller.update(input({ quickEnded: false }));
+    h.controller.update(input({ quickClosed: false }));
     check('Quick ACTIVO + elegible: NO se crea ni se carga ningun anuncio', h.ads.length === 0 && h.controller.debugState === 'idle');
   }
   // Resultados + elegible
   {
     const h = harness();
     h.controller.update(input());
-    check('resultados visibles + elegible: se crea y carga UN anuncio de prueba', h.ads.length === 1 && h.ads[0].loads === 1 && h.ads[0].unitId === TEST_INTERSTITIAL && h.controller.debugState === 'loading');
+    check('sesion CERRADA + elegible: se crea y carga UN anuncio de prueba', h.ads.length === 1 && h.ads[0].loads === 1 && h.ads[0].unitId === TEST_INTERSTITIAL && h.controller.debugState === 'loading');
     h.ads[0].events.onLoaded();
     check('evento loaded -> estado loaded', h.controller.debugState === 'loaded');
     h.controller.update(input());
@@ -374,8 +375,8 @@ console.log('--- 3. controlador: ciclo de vida completo con un anuncio falso ---
     h.controller.update(input());
     h.ads[0].events.onLoaded();
     const nav = navCounter();
-    h.controller.exit(nav.fn, () => input({ quickEnded: false }));
-    check('si Quick ya no esta en RESULTADOS al pulsar: no se muestra (navega)', h.ads[0].shows === 0 && nav.n === 1);
+    h.controller.exit(nav.fn, () => input({ quickClosed: false }));
+    check('si la sesion de Quick no esta CERRADA al pulsar: no se muestra (navega)', h.ads[0].shows === 0 && nav.n === 1);
   }
   // Desmontaje (logout / cambio de cuenta desmontan la pantalla)
   {
@@ -389,6 +390,50 @@ console.log('--- 3. controlador: ciclo de vida completo con un anuncio falso ---
     check('salida tras dispose: navega una vez, nunca muestra', nav.n === 1 && h.ads[0].shows === 0);
     h.controller.update(input());
     check('un controlador desmontado no vuelve a cargar', h.ads.length === 1);
+  }
+}
+
+// --- 3b. ciclo de vida de Quick (ADS-1C.1) ---------------------------------------
+console.log('--- 3b. Quick: un resultado por pregunta (sesion ACTIVA) NUNCA crea ni carga un intersticial ---');
+{
+  const quickSource = stripComments(readMobile('app', '(tabs)', 'competir', 'quick-question.tsx'));
+  const typeStart = quickSource.indexOf('type Screen =');
+  const typeEnd = quickSource.indexOf('export default function QuickQuestionScreen', typeStart);
+  const typeBlock = typeStart > -1 && typeEnd > typeStart ? quickSource.slice(typeStart, typeEnd) : '';
+  const sourceStatuses = [...new Set([...typeBlock.matchAll(/status: '([a-z_]+)'/g)].map((m) => m[1]))].sort();
+  const classified = Object.keys(QUICK_STATUS_CLASS).sort();
+  check('TODOS los estados reales de la pantalla de Quick estan clasificados (un estado nuevo exige decision explicita)', JSON.stringify(sourceStatuses) === JSON.stringify(classified));
+  check("solo 'session_closed' es TERMINAL; 'result', 'question', 'resolving_timeout' y 'no_questions' son ACTIVOS", Object.entries(QUICK_STATUS_CLASS).filter(([, c]) => c === 'terminal').map(([k]) => k).join() === 'session_closed' && ['result', 'question', 'resolving_timeout', 'no_questions'].every((k) => QUICK_STATUS_CLASS[k as QuickScreenStatus] === 'active'));
+  check('isQuickSessionTerminal: true unicamente para session_closed', (Object.keys(QUICK_STATUS_CLASS) as QuickScreenStatus[]).every((st) => isQuickSessionTerminal(st) === (st === 'session_closed')));
+
+  // Controlador con anuncio falso, alimentado con el 'quickClosed' que el hook REALMENTE deriva de cada estado.
+  const created: string[] = [];
+  const limits3: InterstitialLimits = { cooldownMinutes: 20, maxPerSession: 1 };
+  const makeController = () =>
+    new QuickExitInterstitialController({
+      createAd: (unitId) => {
+        created.push(unitId);
+        return { load() {}, show() {}, destroy() {} };
+      },
+      now: () => 1_000_000,
+      log: () => undefined,
+      session: { get: () => INITIAL_INTERSTITIAL_SESSION, commit: () => undefined },
+      schedule: () => () => undefined,
+    });
+  const drive = (statuses: QuickScreenStatus[]) => {
+    created.length = 0;
+    const controller = makeController();
+    for (const st of statuses) controller.update({ quickClosed: isQuickSessionTerminal(st), eligible: true, unitId: TEST_INTERSTITIAL, limits: limits3 });
+    return created.length;
+  };
+  check('flujo normal: initializing -> question -> result -> question -> result -> resolving_timeout: CERO anuncios creados/cargados', drive(['initializing', 'question', 'result', 'question', 'result', 'resolving_timeout']) === 0);
+  check("pantalla de RESULTADO por pregunta (donde ADS-1C cargaba): CERO anuncios, aunque la elegibilidad sea completa", drive(['result']) === 0);
+  check("'no_questions' (sesion abierta sin preguntas): CERO anuncios", drive(['no_questions']) === 0);
+  check("'error' / 'initializing': CERO anuncios", drive(['error', 'initializing']) === 0);
+  check("solo 'session_closed' abre la ventana de carga: exactamente UN anuncio", drive(['question', 'result', 'session_closed']) === 1);
+  check("tras 'session_closed' un 'update' posterior no crea otro", drive(['session_closed', 'session_closed', 'session_closed']) === 1);
+  for (const st of ['result', 'question', 'resolving_timeout', 'no_questions', 'initializing', 'error'] as QuickScreenStatus[]) {
+    check(`[${st}] decideLoad bloquea con quick-active`, JSON.stringify(decideLoad({ quickClosed: isQuickSessionTerminal(st), eligible: true, unitId: TEST_INTERSTITIAL, session: INITIAL_INTERSTITIAL_SESSION, limits: limits3, nowMs: 1 })) === JSON.stringify({ ok: false, reason: 'quick-active' }));
   }
 }
 
@@ -438,18 +483,22 @@ console.log('--- 4. fronteras: 3 banners + 1 intersticial, nada mas; SDK aislado
 
   const quickRaw = readMobile('app', '(tabs)', 'competir', 'quick-question.tsx');
   const quick = stripComments(quickRaw);
-  check("Quick: el hook se llama con `screen.status === 'result'` (nunca con Quick activo)", count(quick, "useQuickExitInterstitial(screen.status === 'result')") === 1);
+  check("Quick: el hook se llama con isQuickSessionTerminal(screen.status) -- solo una sesion CERRADA abre la ventana de carga", count(quick, 'useQuickExitInterstitial(isQuickSessionTerminal(screen.status))') === 1 && /from '\.\.\/\.\.\/\.\.\/lib\/ads\/quick-lifecycle'/.test(quick));
+  check("Quick: el hook NO se alimenta con 'result', 'question', 'no_questions' ni 'resolving_timeout'", !/useQuickExitInterstitial\([^)]*(?:'result'|'question'|'no_questions'|'resolving_timeout')/.test(quick));
   const iHook = quick.indexOf('useQuickExitInterstitial(');
   const iFirstEarlyReturn = quick.indexOf("if (screen.status === 'initializing') return");
   check('Quick: el hook se invoca ANTES de los retornos tempranos (orden de hooks estable)', iHook > -1 && iHook < iFirstEarlyReturn);
-  check('Quick: requestExit se usa UNA sola vez, solo desde handleExitFromResults', count(quick, 'requestExit') === 2 && /void performExit\(requestExit\)/.test(quick));
-  const iResultMarker = quick.indexOf("const headlineColor = screen.verdict === 'correct'"); // inicio del render de la pantalla de RESULTADOS
+  check('Quick: requestExit se usa UNA sola vez, solo desde handleExitFromClosedSession', count(quick, 'requestExit') === 2 && /function handleExitFromClosedSession\(\) \{[\s\S]*?requestExit\(\(\) => router\.push\('\/\(tabs\)\/competir'\)\);/.test(quick));
+  const iClosedBlock = quick.indexOf("if (screen.status === 'session_closed') {");
+  const iNoQuestionsBlock = quick.indexOf("if (screen.status === 'no_questions') {");
+  const closedBlock = iClosedBlock > -1 && iNoQuestionsBlock > iClosedBlock ? quick.slice(iClosedBlock, iNoQuestionsBlock) : '';
+  check('Quick: handleExitFromClosedSession es el onPress de "Volver a Competir" SOLO en la pantalla de sesion CERRADA', count(quick, 'onPress={handleExitFromClosedSession}') === 1 && count(closedBlock, 'onPress={handleExitFromClosedSession}') === 1);
+  const iResultMarker = quick.indexOf("const headlineColor = screen.verdict === 'correct'"); // inicio del render del RESULTADO por pregunta
   const resultTail = iResultMarker > -1 ? quick.slice(iResultMarker) : '';
-  check('Quick: handleExitFromResults es el onPress de "Volver a Competir" SOLO en la pantalla de RESULTADOS', count(quick, 'onPress={handleExitFromResults}') === 1 && count(resultTail, 'onPress={handleExitFromResults}') === 1);
-  check('Quick: las demas salidas (sin preguntas, timeout y "Salir" de la pregunta ACTIVA) siguen con handleExit y SIN anuncio', count(quick, 'onPress={handleExit}') === 3 && count(resultTail, 'onPress={handleExit}') === 0);
-  check('Quick: el boton "Volver a Competir" de sesion cerrada navega directo (sin anuncio)', /label="Volver a Competir" onPress=\{\(\) => router\.push\('\/\(tabs\)\/competir'\)\}/.test(quick));
-  check('Quick: closeQuickQuestionSession se invoca UNA sola vez (en performExit)', count(quick, 'closeQuickQuestionSession(') === 1 && /async function performExit[\s\S]*closeQuickQuestionSession\(/.test(quick));
-  check('Quick: doble toque bloqueado (exitingRef) y navegacion solo tras cerrar la sesion', /if \(exitingRef\.current\) return;/.test(quick) && /void closing\.then\(\(\) => \{\s*if \(!mountedRef\.current\) return;\s*router\.push\('\/\(tabs\)\/competir'\);/.test(quick));
+  check('Quick: el RESULTADO por pregunta NO ofrece anuncio (su "Volver a Competir" usa handleExit; sin requestExit)', count(resultTail, 'onPress={handleExit}') === 1 && !/requestExit|handleExitFromClosedSession/.test(resultTail));
+  check('Quick: las demas salidas (sin preguntas, timeout, "Salir" de la pregunta ACTIVA, resultado) usan handleExit y SIN anuncio', count(quick, 'onPress={handleExit}') === 4);
+  check('Quick: closeQuickQuestionSession se invoca UNA sola vez, dentro de handleExit (comportamiento original)', count(quick, 'closeQuickQuestionSession(') === 1 && /async function handleExit\(\) \{[\s\S]*?await closeQuickQuestionSession\(sessionId\);/.test(quick));
+  check('Quick: doble toque bloqueado en la salida con anuncio (exitingRef)', /function handleExitFromClosedSession\(\) \{\s*if \(exitingRef\.current\) return;\s*exitingRef\.current = true;/.test(quick));
   check('Quick: ningun otro codigo de anuncios (sin load/show/InterstitialAd en la pantalla)', !/InterstitialAd|\.show\(|BannerAd/.test(quick));
 
   const placement = code(join(MOBILE_ROOT, 'components', 'ads', 'ads-banner-placement.tsx'));

@@ -1,9 +1,10 @@
 /**
  * ADS V1 -- ADS-1C. Politica PURA del intersticial de salida de Quick.
  *
- * UNICA oportunidad: el usuario ya esta en la pantalla de RESULTADOS de Quick
- * y pulsa "Volver a Competir". Nunca al iniciar Quick, ni entre preguntas, ni
- * con el temporizador activo, ni al pasar a segundo plano.
+ * UNICA oportunidad: la sesion de Quick esta realmente CERRADA y el usuario pulsa
+ * "Volver a Competir". Nunca al iniciar Quick, ni entre preguntas, ni en la
+ * pantalla de resultado de una pregunta (la sesion sigue ACTIVA: se puede continuar),
+ * ni con el temporizador activo, ni al pasar a segundo plano.
  *
  * Solo se usan los valores canonicos del servidor (`interstitialCooldownMinutes`,
  * `interstitialMaxPerSession`); no se inventan reglas de edad de cuenta, tope
@@ -44,8 +45,8 @@ export function frequencyBlock(
 }
 
 export interface LoadDecisionInput {
-  /** `true` solo con la pantalla de resultados de Quick visible (nunca con Quick activo). */
-  quickEnded: boolean;
+  /** `true` SOLO con la sesion de Quick realmente cerrada (nunca con Quick activo ni en un resultado intermedio). */
+  quickClosed: boolean;
   eligible: boolean;
   unitId: string | null;
   session: InterstitialSessionState;
@@ -54,7 +55,7 @@ export interface LoadDecisionInput {
 }
 
 export function decideLoad(input: LoadDecisionInput): { ok: true } | { ok: false; reason: LoadBlockReason } {
-  if (!input.quickEnded) return { ok: false, reason: 'quick-active' };
+  if (!input.quickClosed) return { ok: false, reason: 'quick-active' };
   if (!input.eligible || input.unitId === null) return { ok: false, reason: 'not-eligible' };
   const block = frequencyBlock(input.session, input.limits, input.nowMs);
   return block ? { ok: false, reason: block } : { ok: true };
