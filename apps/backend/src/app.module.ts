@@ -18,6 +18,8 @@ import { AiModule } from './ai/ai.module';
 import { EntitlementModule } from './entitlement/entitlement.module';
 // PREMIUM V1 -- Capa 3 (Google Play Billing), C3.2.
 import { SubscriptionModule } from './subscription/subscription.module';
+// ADS V1 -- ADS-1B (configuracion remota de anuncios + kill switch).
+import { AdsModule } from './ads/ads.module';
 import { AdministrationModule } from './administration/administration.module';
 // PS-0C.2 -- Minimum Compliance Remediation (Términos de participación pública).
 import { ComplianceModule } from './compliance/compliance.module';
@@ -59,6 +61,7 @@ import { CoverageMatrixModule } from './editorial/coverage-matrix.module';
     AiModule,
     EntitlementModule,
     SubscriptionModule,
+    AdsModule,
     AdministrationModule,
     ComplianceModule,
     EditorialModule,

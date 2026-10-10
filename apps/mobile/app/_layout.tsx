@@ -12,6 +12,9 @@ import { EntitlementProvider } from '../lib/entitlement/entitlement-provider';
 // facturacion y la metadata localizada del producto. No compra, no restaura,
 // no toca el entitlement (eso sigue siendo backend).
 import { BillingProvider } from '../lib/billing/billing-provider';
+// ADS V1 -- ADS-1B: proveedor centralizado de publicidad (fail-closed). Consume
+// auth + entitlement; se monta dentro de ThemedRootNavigator (ver abajo). No monta placements.
+import { AdsProvider } from '../lib/ads/ads-provider';
 import { PaywallProvider } from '../lib/entitlement/paywall-context';
 import { ThemeProvider, useTheme, useColorSchemeName } from '../theme';
 
@@ -70,11 +73,16 @@ function ThemedRootNavigator() {
     };
   }, [scheme, tokens]);
 
+  // ADS-1B -- `AdsProvider` vive AQUI (debajo de Auth + Entitlement + Billing +
+  // Paywall, que ya envuelven a este componente) para no alterar el anidado
+  // congelado de esos providers. No monta placements; solo expone estado.
   return (
-    <NavigationThemeProvider value={navigationTheme}>
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-      <RootNavigator />
-    </NavigationThemeProvider>
+    <AdsProvider>
+      <NavigationThemeProvider value={navigationTheme}>
+        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+        <RootNavigator />
+      </NavigationThemeProvider>
+    </AdsProvider>
   );
 }
 

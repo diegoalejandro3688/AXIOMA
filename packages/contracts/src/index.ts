@@ -13,6 +13,7 @@ export * from './ai';
 export * from './administration';
 export * from './editorial';
 export * from './content-coverage';
+export * from './ads';
 export * from './premium';
 export * from './subscription';
 export * from './compliance';

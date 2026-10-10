@@ -21,6 +21,7 @@
     "verify:study-content-mobile-reachability-gate": "tsx scripts/verify-study-content-mobile-reachability-gate.ts",
     "verify:premium-contract-gate": "tsx scripts/verify-premium-contract-gate.ts",
     "verify:entitlement-foundation-gate": "tsx scripts/verify-entitlement-foundation-gate.ts",
+    "verify:ads-config-gate": "tsx scripts/verify-ads-config-gate.ts",
     "verify:profile-subject-progress-gate": "tsx scripts/verify-profile-subject-progress-gate.ts",
     "verify:ensayo-source-gate": "tsx scripts/verify-ensayo-source-gate.ts",
     "verify:ensayo-import-gate": "tsx scripts/run-gate.ts verify-ensayo-import-gate.ts",
